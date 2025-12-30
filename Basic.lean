@@ -14,7 +14,6 @@
 -- OrdSetOps: typeclass for ordered set operations
 -- α = element type, β = set implementation type
 class OrdSetOps (α : Type) (β : outParam Type) where
-  empty  : β                    -- empty set
   add    : Array α → β → β      -- add elements (dedup)
   remove : Array α → β → β      -- remove elements
   toggle : α → β → β            -- add if absent, remove if present
@@ -102,7 +101,6 @@ abbrev Row := String → String
 
 -- OrdSet implements OrdSetOps
 instance [BEq α] : OrdSetOps α (OrdSet α) where
-  empty  := ⟨#[], false⟩
   add    := fun xs s => { s with arr := dedup (s.arr ++ xs) }
   remove := fun xs s => { s with arr := s.arr.filter (!xs.contains ·) }
   toggle := fun x s => if s.arr.contains x
@@ -148,7 +146,7 @@ theorem OrdSet.invert_invert [BEq α] (s : OrdSet α) :
 
 -- clear produces empty set
 theorem OrdSet.clear_empty [BEq α] (s : OrdSet α) :
-    (OrdSetOps.clear (α := α) s) = (OrdSetOps.empty (α := α) : OrdSet α) := by
+    (OrdSetOps.clear (α := α) s) = ({} : OrdSet α) := by
   rfl
 
 -- group columns are at front of display order
