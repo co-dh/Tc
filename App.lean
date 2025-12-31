@@ -51,19 +51,34 @@ def render (st : SomeTable) (t : Table) (nav : NavState t) : IO Unit := do
   Term.present
 
 -- Map key to command
+-- r=row.cur, c=col.cur, R=row.sels, C=col.sels, G=col.group
+-- +=down/add, -=up/del, </>=page, 0/$=home/end/clear/all, ^=toggle, ~=invert
 def keyToCmd (ev : Term.Event) : Option String :=
   if ev.type != Term.eventKey then none
   else if ev.ch != 0 then
     match Char.ofNat ev.ch.toNat with
+    -- row cursor (r): j/k=move, g/G=home/end
     | 'j' => some "r+"  | 'k' => some "r-"
-    | 'l' => some "c+"  | 'h' => some "c-"
     | 'g' => some "r0"  | 'G' => some "r$"
+    -- col cursor (c): h/l=move, 0/$=home/end, H/L=page
+    | 'l' => some "c+"  | 'h' => some "c-"
     | '0' => some "c0"  | '$' => some "c$"
-    | ' ' => some "R^"  | 's' => some "C^"  | '!' => some "G^"
-    | 'S' => some "R$"  | 'c' => some "R0"
-    | '~' => some "R~"  | 'I' => some "C~"
+    | 'H' => some "c<"  | 'L' => some "c>"
+    -- row selection (R): space=toggle, v/V=add/del, a=all, d=clear, ~=invert
+    | ' ' => some "R^"
+    | 'v' => some "R+"  | 'V' => some "R-"
+    | 'a' => some "R$"  | 'd' => some "R0"
+    | '~' => some "R~"
+    -- col selection (C): s=toggle, S=all, D=clear, I=invert
+    | 's' => some "C^"
+    | 'S' => some "C$"  | 'x' => some "C0"
+    | 'I' => some "C~"
+    -- group (G): !=toggle, @=all, #=clear
+    | '!' => some "G^"
+    | '@' => some "G$"  | '#' => some "G0"
     | _ => none
   else
+    -- non-printable keys
     if ev.key == Term.keyArrowDown  then some "r+"
     else if ev.key == Term.keyArrowUp    then some "r-"
     else if ev.key == Term.keyArrowRight then some "c+"

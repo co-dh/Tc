@@ -13,9 +13,9 @@ namespace Tc
 
 /-! ## Classes -/
 
--- NavOps: unified verb-based operations for navigation
+-- Ops: unified verb-based operations for navigation
 -- α = state type, bound = max position (for cursors), elem = element type
-class NavOps (α : Type) (bound : Nat) (elem : Type) where
+class Ops (α : Type) (bound : Nat) (elem : Type) where
   plus   : Option elem → α → α        -- + : move +1 / add elem
   minus  : Option elem → α → α        -- - : move -1 / remove elem
   pageUp : Nat → α → α                -- < : move -page
@@ -92,13 +92,18 @@ structure NavState (t : Table) where
   row : RowNav := {}
   col : ColNav := {}
 
+-- Adjust offset to keep cursor on screen: off <= cur < off + page
+-- page = screen capacity (e.g., terminal has 20 rows, page=20)
+def adjOff (cur off page : Nat) : Nat :=
+  min cur (max off (cur + 1 - page))
+
 -- Row: map from column name to cell value
 abbrev Row := String → String
 
 /-! ## Instances -/
 
--- RowNav NavOps: cursor operations (elem ignored for +/-/^)
-instance : NavOps RowNav bound Row where
+-- RowNav Ops: cursor operations (elem ignored for +/-/^)
+instance : Ops RowNav bound Row where
   plus   := fun _ r => { r with cur := clamp (r.cur + 1) bound }
   minus  := fun _ r => { r with cur := clamp (r.cur - 1) bound }
   pageUp := fun n r => { r with cur := clamp (r.cur - n) bound }
@@ -110,8 +115,8 @@ instance : NavOps RowNav bound Row where
   invert := fun r => r    -- no-op for cursor
   mem    := fun _ _ => false
 
--- ColNav NavOps: cursor operations (elem ignored for +/-/^)
-instance : NavOps ColNav bound String where
+-- ColNav Ops: cursor operations (elem ignored for +/-/^)
+instance : Ops ColNav bound String where
   plus   := fun _ c => { c with cur := clampDisp (c.cur.val + 1) bound }
   minus  := fun _ c => { c with cur := clampDisp (c.cur.val - 1) bound }
   pageUp := fun n c => { c with cur := clampDisp (c.cur.val - n) bound }
@@ -123,8 +128,8 @@ instance : NavOps ColNav bound String where
   invert := fun c => c    -- no-op for cursor
   mem    := fun _ _ => false
 
--- OrdSet NavOps: set operations (bound=0 unused, elem required for +/-/^)
-instance [BEq α] : NavOps (OrdSet α) 0 α where
+-- OrdSet Ops: set operations (bound=0 unused, elem required for +/-/^)
+instance [BEq α] : Ops (OrdSet α) 0 α where
   plus   := fun e s => match e with
     | some x => { s with arr := dedup (s.arr.push x) }
     | none => s
@@ -159,12 +164,12 @@ theorem clamp_lt_bound (n : Int) (bound : Nat) (h : bound > 0) : clamp n bound <
 
 -- invert twice returns to original
 theorem OrdSet.invert_invert [BEq α] (s : OrdSet α) :
-    @NavOps.invert (OrdSet α) 0 α _ (@NavOps.invert (OrdSet α) 0 α _ s) = s := by
-  simp only [NavOps.invert, Bool.not_not]
+    @Ops.invert (OrdSet α) 0 α _ (@Ops.invert (OrdSet α) 0 α _ s) = s := by
+  simp only [Ops.invert, Bool.not_not]
 
 -- home (clear) produces empty set
 theorem OrdSet.home_empty [BEq α] (s : OrdSet α) :
-    @NavOps.home (OrdSet α) 0 α _ s = ({} : OrdSet α) := by
+    @Ops.home (OrdSet α) 0 α _ s = ({} : OrdSet α) := by
   rfl
 
 -- group columns are at front of display order
@@ -177,26 +182,26 @@ theorem ColNav.group_at_front (c : ColNav) (colNames : Array String) (i : Nat)
 /-! ## Dispatch -/
 
 -- Apply verb to cursor (generic)
-def curVerb (α : Type) (bound : Nat) (elem : Type) [inst : NavOps α bound elem]
+def curVerb (α : Type) (bound : Nat) (elem : Type) [inst : Ops α bound elem]
     (v : Char) (page : Nat) (x : α) : α :=
   match v with
-  | '+' => @NavOps.plus α bound elem inst none x
-  | '-' => @NavOps.minus α bound elem inst none x
-  | '<' => @NavOps.pageUp α bound elem inst page x
-  | '>' => @NavOps.pageDn α bound elem inst page x
-  | '0' => @NavOps.home α bound elem inst x
-  | '$' => @NavOps.end_ α bound elem inst x
+  | '+' => @Ops.plus α bound elem inst none x
+  | '-' => @Ops.minus α bound elem inst none x
+  | '<' => @Ops.pageUp α bound elem inst page x
+  | '>' => @Ops.pageDn α bound elem inst page x
+  | '0' => @Ops.home α bound elem inst x
+  | '$' => @Ops.end_ α bound elem inst x
   | _   => x
 
 -- Apply verb to OrdSet
 def setVerb [BEq α] (v : Char) (e : Option α) (s : OrdSet α) : OrdSet α :=
   match v with
-  | '+' => @NavOps.plus (OrdSet α) 0 α _ e s
-  | '-' => @NavOps.minus (OrdSet α) 0 α _ e s
-  | '0' => @NavOps.home (OrdSet α) 0 α _ s
-  | '$' => @NavOps.end_ (OrdSet α) 0 α _ s
-  | '^' => @NavOps.toggle (OrdSet α) 0 α _ e s
-  | '~' => @NavOps.invert (OrdSet α) 0 α _ s
+  | '+' => @Ops.plus (OrdSet α) 0 α _ e s
+  | '-' => @Ops.minus (OrdSet α) 0 α _ e s
+  | '0' => @Ops.home (OrdSet α) 0 α _ s
+  | '$' => @Ops.end_ (OrdSet α) 0 α _ s
+  | '^' => @Ops.toggle (OrdSet α) 0 α _ e s
+  | '~' => @Ops.invert (OrdSet α) 0 α _ s
   | _   => s
 
 -- Dispatch 2-char command (object + verb) to NavState
