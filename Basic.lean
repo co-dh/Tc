@@ -9,6 +9,8 @@
   - NavState: composes RowNav + ColNav
 -/
 
+namespace Tc
+
 /-! ## Classes -/
 
 -- NavOps: unified verb-based operations for navigation
@@ -157,12 +159,12 @@ theorem clamp_lt_bound (n : Int) (bound : Nat) (h : bound > 0) : clamp n bound <
 
 -- invert twice returns to original
 theorem OrdSet.invert_invert [BEq α] (s : OrdSet α) :
-    NavOps.invert (NavOps.invert s) = s := by
+    @NavOps.invert (OrdSet α) 0 α _ (@NavOps.invert (OrdSet α) 0 α _ s) = s := by
   simp only [NavOps.invert, Bool.not_not]
 
 -- home (clear) produces empty set
 theorem OrdSet.home_empty [BEq α] (s : OrdSet α) :
-    NavOps.home s = ({} : OrdSet α) := by
+    @NavOps.home (OrdSet α) 0 α _ s = ({} : OrdSet α) := by
   rfl
 
 -- group columns are at front of display order
@@ -175,33 +177,34 @@ theorem ColNav.group_at_front (c : ColNav) (colNames : Array String) (i : Nat)
 /-! ## Dispatch -/
 
 -- Apply verb to cursor (generic)
-def curVerb (α : Type) (bound : Nat) (elem : Type) [NavOps α bound elem]
+def curVerb (α : Type) (bound : Nat) (elem : Type) [inst : NavOps α bound elem]
     (v : Char) (page : Nat) (x : α) : α :=
   match v with
-  | '+' => NavOps.plus none x
-  | '-' => NavOps.minus none x
-  | '<' => NavOps.pageUp page x
-  | '>' => NavOps.pageDn page x
-  | '0' => NavOps.home x
-  | '$' => NavOps.end_ x
+  | '+' => @NavOps.plus α bound elem inst none x
+  | '-' => @NavOps.minus α bound elem inst none x
+  | '<' => @NavOps.pageUp α bound elem inst page x
+  | '>' => @NavOps.pageDn α bound elem inst page x
+  | '0' => @NavOps.home α bound elem inst x
+  | '$' => @NavOps.end_ α bound elem inst x
   | _   => x
 
 -- Apply verb to OrdSet
 def setVerb [BEq α] (v : Char) (e : Option α) (s : OrdSet α) : OrdSet α :=
   match v with
-  | '+' => NavOps.plus e s
-  | '-' => NavOps.minus e s
-  | '0' => NavOps.home s
-  | '$' => NavOps.end_ s
-  | '^' => NavOps.toggle e s
-  | '~' => NavOps.invert s
+  | '+' => @NavOps.plus (OrdSet α) 0 α _ e s
+  | '-' => @NavOps.minus (OrdSet α) 0 α _ e s
+  | '0' => @NavOps.home (OrdSet α) 0 α _ s
+  | '$' => @NavOps.end_ (OrdSet α) 0 α _ s
+  | '^' => @NavOps.toggle (OrdSet α) 0 α _ e s
+  | '~' => @NavOps.invert (OrdSet α) 0 α _ s
   | _   => s
 
 -- Dispatch 2-char command (object + verb) to NavState
 def dispatch (cmd : String) (t : Table) (nav : NavState t) (page : Nat := 10) : NavState t :=
-  if h : cmd.length = 2 then
-    let obj := cmd.get ⟨0, by omega⟩
-    let v := cmd.get ⟨1, by omega⟩
+  let chars := cmd.toList
+  if h : chars.length = 2 then
+    let obj := chars[0]'(by omega)
+    let v := chars[1]'(by omega)
     let nr := t.nRows
     let nc := (nav.col.dispOrder t.colNames).size
     let curCol := nav.col.colAt t.colNames nav.col.cur
@@ -213,3 +216,5 @@ def dispatch (cmd : String) (t : Table) (nav : NavState t) (page : Nat := 10) : 
     | 'G' => { nav with col := { nav.col with group := setVerb v curCol nav.col.group } }
     | _   => nav
   else nav
+
+end Tc
