@@ -1,6 +1,7 @@
 /-
   ADBC backend: ReadTable + RenderTable instances for SomeTable
 -/
+import Tc.Error
 import Tc.Render
 import Tc.Types
 
@@ -16,8 +17,10 @@ instance : ReadTable SomeTable where
 -- RenderTable instance for SomeTable (uses C render)
 instance : RenderTable SomeTable where
   render nav colOff r0 r1 st := do
+    let t0 ← IO.monoNanosNow
     let _ ← nav.tbl.render nav.dispColIdxs nav.nKeys colOff
       r0 r1 nav.curRow nav.curColIdx nav.selColIdxs nav.selRows st 50 20 3
-    pure ()
+    let t1 ← IO.monoNanosNow
+    Log.timing "c-render" ((t1 - t0) / 1000)
 
 end Tc

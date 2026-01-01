@@ -4,6 +4,7 @@
 -/
 import Tc.Nav
 import Tc.Term
+import Tc.Error
 
 open Tc
 
@@ -97,8 +98,11 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
   -- adjust offsets (need Fin for adjColOff, use curRow accessor for row)
   let rowOff := adjOff nav.curRow view.rowOff visRows
   let colOff := adjColOff ⟨nav.curColIdx, sorry⟩ view.colOff cumW w.toNat
-  -- render via RenderTable
+  -- render via RenderTable with timing
+  let t0 ← IO.monoNanosNow
   RenderTable.render nav colOff.val rowOff (min nRows (rowOff + visRows)) styles
+  let t1 ← IO.monoNanosNow
+  Log.timing "render" ((t1 - t0) / 1000)
   -- status
   let status := s!"r{nav.curRow}/{nRows} c{nav.curColIdx}/{nCols} grp={nav.nKeys} sel={nav.selRows.size}"
   Term.print 0 (h - 1) Term.cyan Term.default status
