@@ -47,48 +47,66 @@ def render {n : Nat} (st : SomeTable) (t : Table n) (nav : NavState n t) : IO Un
   let status := s!"r{nav.row.cur}/{t.nRows} c{nav.col.cur.val}/{n} grp={nKeys} sel={selRows.size}"
   Term.print 0 (h - 1) Term.cyan Term.default status
   -- help
-  Term.print (w - 28) (h - 1) Term.yellow Term.default "hjkl:nav stu:sel !:grp q:quit"
+  Term.print (w - 36) (h - 1) Term.yellow Term.default "hjkl:nav HJKL:pg g?:end stu:sel q:quit"
   Term.present
 
--- Map key to command (s/t/u=select/toggle/unselect)
-def keyToCmd (ev : Term.Event) : Option String :=
-  if ev.type != Term.eventKey then none
-  -- Ctrl+D/U for page down/up
-  else if ev.ch == Term.ctrlD then some "r>"
-  else if ev.ch == Term.ctrlU then some "r<"
-  -- Arrow keys
-  else if ev.key == Term.keyArrowDown  then some "r+"
-  else if ev.key == Term.keyArrowUp    then some "r-"
-  else if ev.key == Term.keyArrowRight then some "c+"
-  else if ev.key == Term.keyArrowLeft  then some "c-"
-  else if ev.key == Term.keyPageDown   then some "r>"
-  else if ev.key == Term.keyPageUp     then some "r<"
-  else if ev.key == Term.keyHome       then some "r0"
-  else if ev.key == Term.keyEnd        then some "r$"
-  -- Character keys
-  else if ev.ch != 0 then
-    match Char.ofNat ev.ch.toNat with
-    | 'j' => some "r+"  | 'k' => some "r-"
-    | 'h' => some "c-"  | 'l' => some "c+"
-    | 'g' => some "r0"  | 'G' => some "r$"
-    | '0' => some "c0"  | '$' => some "c$"
-    | 'H' => some "c<"  | 'L' => some "c>"
-    | 's' => some "R+"  | 't' => some "R^"  | 'u' => some "R-"
-    | 'S' => some "C+"  | 'T' => some "C^"  | 'U' => some "C-"
-    | '!' => some "G^"
-    | _ => none
+-- Map direction key to axis and forward flag
+def dirKey (ev : Term.Event) : Option (Char × Bool) :=
+  if ev.ch == 'j'.toNat.toUInt32 || ev.key == Term.keyArrowDown  then some ('r', true)
+  else if ev.ch == 'k'.toNat.toUInt32 || ev.key == Term.keyArrowUp    then some ('r', false)
+  else if ev.ch == 'l'.toNat.toUInt32 || ev.key == Term.keyArrowRight then some ('c', true)
+  else if ev.ch == 'h'.toNat.toUInt32 || ev.key == Term.keyArrowLeft  then some ('c', false)
   else none
 
--- Main loop
+-- Map key to command: hjkl/arrows=step, HJKL=page, g+dir=end, s/t/u=sel
+def keyToCmd (ev : Term.Event) (gPrefix : Bool) : Option String :=
+  if ev.type != Term.eventKey then none
+  else if gPrefix then
+    -- g prefix: end commands (top/bottom/first/last)
+    match dirKey ev with
+    | some (axis, fwd) => some (String.ofList [axis, if fwd then '$' else '0'])
+    | none => none
+  else
+    -- Normal mode
+    match dirKey ev with
+    | some (axis, fwd) => some (String.ofList [axis, if fwd then '+' else '-'])
+    | none =>
+      -- Shifted keys = page
+      let c := Char.ofNat ev.ch.toNat
+      if c == 'J' then some "r>"
+      else if c == 'K' then some "r<"
+      else if c == 'L' then some "c>"
+      else if c == 'H' then some "c<"
+      -- Special keys
+      else if ev.key == Term.keyPageDown then some "r>"
+      else if ev.key == Term.keyPageUp   then some "r<"
+      else if ev.key == Term.keyHome     then some "r0"
+      else if ev.key == Term.keyEnd      then some "r$"
+      -- Selection: s/t/u row, S/T/U col
+      else if ev.ch == 's'.toNat.toUInt32 then some "R+"
+      else if ev.ch == 't'.toNat.toUInt32 then some "R^"
+      else if ev.ch == 'u'.toNat.toUInt32 then some "R-"
+      else if ev.ch == 'S'.toNat.toUInt32 then some "C+"
+      else if ev.ch == 'T'.toNat.toUInt32 then some "C^"
+      else if ev.ch == 'U'.toNat.toUInt32 then some "C-"
+      -- Group
+      else if ev.ch == '!'.toNat.toUInt32 then some "G^"
+      else none
+
+-- Main loop with g-prefix state
 partial def mainLoop {n : Nat} (st : SomeTable) (t : Table n) (nav : NavState n t)
-    (cumW : CumW n) (screenW : Nat) : IO Unit := do
+    (cumW : CumW n) (screenW : Nat) (gPrefix : Bool := false) : IO Unit := do
   render st t nav
   let ev ← Term.pollEvent
   if ev.type == Term.eventKey then
     if ev.ch == 'q'.toNat.toUInt32 || ev.key == Term.keyEsc then return
+    -- Check for g prefix
+    if ev.ch == 'g'.toNat.toUInt32 && !gPrefix then
+      mainLoop st t nav cumW screenW true
+      return
   let h ← Term.height
   let rowPg := h.toNat - 2
-  match keyToCmd ev with
+  match keyToCmd ev gPrefix with
   | some cmd => mainLoop st t (dispatch cmd t nav cumW screenW rowPg) cumW screenW
   | none => mainLoop st t nav cumW screenW
 

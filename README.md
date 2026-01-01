@@ -6,20 +6,20 @@ Test app for typeclass-based navigation with VisiData-style keybindings.
 
 ### Cursor
 
-| Key             | Action   |
-|-----------------|----------|
-| `j` / `↓`       | Down     |
-| `k` / `↑`       | Up       |
-| `h` / `←`       | Left     |
-| `l` / `→`       | Right    |
-| `Ctrl+D` / `PgDn` | Page ↓ |
-| `Ctrl+U` / `PgUp` | Page ↑ |
-| `H`             | Page ←   |
-| `L`             | Page →   |
-| `g` / `Home`    | Top      |
-| `G` / `End`     | Bottom   |
-| `0`             | First    |
-| `$`             | Last     |
+| Key           | Action |
+|---------------|--------|
+| `j` / `↓`     | Down   |
+| `k` / `↑`     | Up     |
+| `h` / `←`     | Left   |
+| `l` / `→`     | Right  |
+| `J` / `PgDn`  | Page ↓ |
+| `K` / `PgUp`  | Page ↑ |
+| `H`           | Page ← |
+| `L`           | Page → |
+| `gj` / `g↓`   | Bottom |
+| `gk` / `g↑`   | Top    |
+| `gh` / `g←`   | First  |
+| `gl` / `g→`   | Last   |
 
 ### Row Selection
 

@@ -337,8 +337,8 @@ def colVerb {n : Nat} (cumW : CumW n) (screenW : Nat) (v : Char) (c : ColNav n) 
   match v with
   | '+' => @Ops.plus (ColNav n) n String (instOpsColNav cumW screenW) "" 0 c
   | '-' => @Ops.minus (ColNav n) n String (instOpsColNav cumW screenW) "" 0 c
-  | '<' => @Ops.pageUp (ColNav n) n String (instOpsColNav cumW screenW) 1 c
-  | '>' => @Ops.pageDn (ColNav n) n String (instOpsColNav cumW screenW) 1 c
+  | '<' => @Ops.pageUp (ColNav n) n String (instOpsColNav cumW screenW) 10 c
+  | '>' => @Ops.pageDn (ColNav n) n String (instOpsColNav cumW screenW) 10 c
   | '0' => @Ops.home (ColNav n) n String (instOpsColNav cumW screenW) 0 c
   | '$' => @Ops.end_ (ColNav n) n String (instOpsColNav cumW screenW) 0 c
   | _   => c
