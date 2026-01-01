@@ -46,21 +46,17 @@ structure Nav (nCols : Nat) where
 structure OrdSet (α : Type) [BEq α] where
   arr : Array α := #[]   -- selected elements
 
--- Row navigation: cursor as Fin m + selection (offset is view state)
-structure RowNav (m : Nat) where
-  cur  : Fin m              -- cursor position bounded by nRows
-  sels : OrdSet Nat := {}   -- selected row indices
+-- NavAxis: cursor + selection for one axis (row or col)
+structure NavAxis (n : Nat) (elem : Type) [BEq elem] where
+  cur  : Fin n              -- cursor position
+  sels : OrdSet elem := {}  -- selected elements
 
--- Default RowNav for m > 0
-def RowNav.default (h : m > 0) : RowNav m := ⟨⟨0, h⟩, {}⟩
+-- Default NavAxis for n > 0
+def NavAxis.default [BEq elem] (h : n > 0) : NavAxis n elem := ⟨⟨0, h⟩, {}⟩
 
--- Column navigation: cursor as Fin n + selection (offset is view state)
-structure ColNav (n : Nat) where
-  cur  : Fin n              -- cursor position in display order
-  sels : OrdSet String := {}  -- selected column names
-
--- Default ColNav for n > 0
-def ColNav.default (h : n > 0) : ColNav n := ⟨⟨0, h⟩, {}⟩
+-- Type aliases
+abbrev RowNav (m : Nat) := NavAxis m Nat
+abbrev ColNav (n : Nat) := NavAxis n String
 
 -- Compute display order: group first, then rest
 def dispOrder (group : OrdSet String) (colNames : Array String) : Array String :=
@@ -81,15 +77,10 @@ abbrev Row := String → String
 
 /-! ## Instances -/
 
--- RowNav CurOps
-instance : CurOps (RowNav m) m Nat where
+-- NavAxis CurOps (covers RowNav and ColNav)
+instance [BEq elem] : CurOps (NavAxis n elem) n elem where
   pos    := (·.cur)
-  setPos := fun f r => { r with cur := f }
-
--- ColNav CurOps
-instance : CurOps (ColNav n) n String where
-  pos    := (·.cur)
-  setPos := fun f c => { c with cur := f }
+  setPos := fun f a => { a with cur := f }
 
 -- OrdSet SetOps: toggle only
 instance [BEq α] : SetOps (OrdSet α) α where

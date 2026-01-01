@@ -49,7 +49,7 @@ def main (args : List String) : IO Unit := do
       -- colWidths for rendering (same size as colNames from SomeTable)
       have hWidths : st.colWidths.size = nc := sorry
       let cumW : CumW nc := hWidths ▸ mkCumW st.colWidths
-      let nav : NavState nc t := ⟨RowNav.default hr, ColNav.default hc, {}⟩
+      let nav : NavState nc t := ⟨NavAxis.default hr, NavAxis.default hc, {}⟩
       let view : ViewState nc := ViewState.default hc
       mainLoop st t nav view cumW
     else
