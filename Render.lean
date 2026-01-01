@@ -27,13 +27,19 @@ def styles : Array UInt32 := #[
   Term.default, Term.default  -- default
 ]
 
+-- Reserved lines: 1 header + 1 status + 1 margin
+def reservedLines : Nat := 3
+
+-- Column page size (fixed, since widths vary)
+def colPageSize : Nat := 5
+
 -- Render table to terminal, returns updated ViewState with adjusted offsets
 def render {n : Nat} (st : SomeTable) (t : Nav n) (nav : NavState n t)
     (view : ViewState n) (cumW : CumW n) : IO (ViewState n) := do
   Term.clear
   let h ← Term.height
   let w ← Term.width
-  let visRows := h.toNat - 2
+  let visRows := h.toNat - reservedLines
   -- adjust row offset
   let rowOff := adjOff nav.row.cur view.rowOff visRows
   -- adjust col offset

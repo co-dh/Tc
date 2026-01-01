@@ -18,8 +18,8 @@ partial def mainLoop {n : Nat} (st : SomeTable) (t : Nav n) (nav : NavState n t)
   let ev ← Term.pollEvent
   -- page sizes: half screen
   let h ← Term.height
-  let rowPg := (h.toNat - 2) / 2  -- half visible rows
-  let colPg := 5                   -- cols vary in width, use fixed
+  let rowPg := (h.toNat - reservedLines) / 2
+  let colPg := colPageSize
   if ev.type == Term.eventKey then
     if ev.ch == 'q'.toNat.toUInt32 || ev.key == Term.keyEsc then return
     -- Check for g prefix
