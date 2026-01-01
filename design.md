@@ -12,8 +12,8 @@
 ┌─────────────────────────────────────────────────────────┐
 │                    NavState n t                         │
 │  ┌──────────────────────┐  ┌──────────────────────────┐ │
-│  │       RowNav         │  │      ColNav n            │ │
-│  │  cur : Nat           │  │  cur : Fin n             │ │
+│  │    RowNav t.nRows    │  │      ColNav n            │ │
+│  │  cur : Fin m         │  │  cur : Fin n             │ │
 │  │  sels: OrdSet Nat ───┼──┼─ sels: OrdSet String ────┤ │
 │  │    (CurOps)          │  │    (CurOps)              │ │
 │  └──────────────────────┘  └──────────────────────────┘ │
@@ -80,7 +80,7 @@
 |-----------|--------------------------------------------|
 | Nav n     | Query dims (nRows, colNames, proof)        |
 | OrdSet    | Ordered set with invert flag               |
-| RowNav    | Row cursor + selections                    |
+| RowNav m  | Row cursor (Fin m) + selections            |
 | ColNav n  | Column cursor (Fin n) + selections         |
 | NavState  | Composes RowNav + ColNav + group           |
 | ViewState | Scroll offsets (view concern)              |
@@ -89,7 +89,7 @@
 
 **Separation**: NavState = navigation logic, ViewState = scroll offsets.
 
-**Fin n**: ColNav cursor is `Fin n` for type-safe bounds.
+**Fin bounds**: Both RowNav and ColNav use `Fin` for type-safe cursor bounds. `Fin.clamp` handles delta movement.
 
 **CurOps.move**: Unified movement by Int delta, clamped. Home = move(-cur), end = move(bound-1-cur).
 
