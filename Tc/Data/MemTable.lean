@@ -69,37 +69,25 @@ instance : ReadTable MemTable where
   colWidths := (·.widths)
   cell      := fun t r c => (MemTable.cell t r c).toString
 
--- Render MemTable to terminal using shared render logic
+-- Render MemTable using unified C render (no Lean string alloc)
 instance : RenderTable MemTable where
   render nav colOff r0 r1 st := do
     let w ← Term.width
-    -- build visible column info: (origIdx, x, width)
-    let mut cols : Array ColInfo := #[]
-    let mut x : UInt32 := 0
+    -- find visible columns
+    let mut visColIdxs : Array Nat := #[]
+    let mut x : Nat := 0
     for di in nav.dispColIdxs do
       if di < colOff then continue
-      if x >= w then break
-      let cw := (nav.tbl.widths.getD di 10).toUInt32
-      cols := cols.push (di, x, cw)
-      x := x + cw + 1
-    -- separator x: after last visible key column
-    let visKeys := min nav.nKeys cols.size
-    let sepX : UInt32 := if visKeys > 0 then
-      let (_, sx, sw) := cols.getD (visKeys - 1) (0, 0, 0); sx + sw else 0
-    -- header (y=0) and footer (y=nDataRows+1)
-    let yFoot := (r1 - r0 + 1).toUInt32
-    renderHdrRow nav.tbl.names cols nav.selColIdxs nav.curColIdx st 0
-    renderHdrRow nav.tbl.names cols nav.selColIdxs nav.curColIdx st yFoot
-    renderSep sepX 0 st; renderSep sepX yFoot st
-    -- data rows
-    for row in [r0:r1] do
-      let y := (row - r0 + 1).toUInt32
-      for (di, cx, cw) in cols do
-        let c := MemTable.cell nav.tbl row di
-        let si := cellStyle (row == nav.curRow && di == nav.curColIdx) (nav.selRows.contains row)
-                            (nav.selColIdxs.contains di) (row == nav.curRow) (di == nav.curColIdx)
-        renderCell cx y cw (styleFg st si) (styleBg st si) c.toString c.isNum
-      renderSep sepX y st
-    pure ()
+      if x >= w.toNat then break
+      visColIdxs := visColIdxs.push di
+      x := x + (nav.tbl.widths.getD di 10) + 1
+    -- extract visible column data (slice rows r0..r1)
+    let visCols := visColIdxs.map fun di =>
+      let col := nav.tbl.cols.getD di #[]
+      (Array.range (r1 - r0)).map fun i => col.getD (r0 + i) .null
+    -- call C render
+    Term.renderTable visCols nav.tbl.names nav.tbl.widths visColIdxs
+      nav.nKeys.toUInt64 colOff.toUInt64 r0.toUInt64 nav.curRow.toUInt64 nav.curColIdx.toUInt64
+      nav.selColIdxs nav.selRows st
 
 end Tc

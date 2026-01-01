@@ -84,6 +84,17 @@ opaque bufferStr : IO String
 @[extern "lean_tb_print_pad"]
 opaque printPadC : UInt32 → UInt32 → UInt32 → UInt32 → UInt32 → @& String → UInt8 → IO Unit
 
+-- | Batch render column (x, w, y0, fgs, bgs, strs, rights)
+@[extern "lean_tb_render_col"]
+opaque renderCol : UInt32 → UInt32 → UInt32 → @& Array UInt32 → @& Array UInt32
+                 → @& Array String → @& Array UInt8 → IO Unit
+
+-- | Unified table render (C does formatting, no Lean string alloc)
+@[extern "lean_render_table"]
+opaque renderTable : @& Array (Array Cell) → @& Array String → @& Array Nat
+                   → @& Array Nat → UInt64 → UInt64 → UInt64 → UInt64 → UInt64
+                   → @& Array Nat → @& Array Nat → @& Array UInt32 → IO Unit
+
 -- | Print string left-aligned, truncated/padded to width
 def printPad (x y w : UInt32) (fg bg : UInt32) (s : String) : IO Unit :=
   printPadC x y w fg bg s 0

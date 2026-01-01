@@ -681,7 +681,7 @@ static int get_cell_style(int isCursor, int isSelRow, int isSel, int isCurRow, i
 // maxWStr: max width for string columns
 // maxWOther: max width for numeric/other columns
 // decimals: decimal places
-lean_obj_res lean_render_table(
+lean_obj_res lean_render_table_arrow(
     b_lean_obj_arg qr_obj,
     b_lean_obj_arg colIdxs,   // Array Nat
     uint64_t nKeyCols,        // number of key columns

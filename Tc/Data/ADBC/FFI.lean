@@ -66,7 +66,7 @@ opaque colWidths : @& QueryResult → IO (Array Nat)
 -- maxWStr, maxWOther: max column widths
 -- decimals: decimal places for floats
 -- returns: Array (colIdx, x, width) of visible columns
-@[extern "lean_render_table"]
+@[extern "lean_render_table_arrow"]
 opaque renderTable : @& QueryResult → @& Array Nat → UInt64 → UInt64 →
                      UInt64 → UInt64 → UInt64 → UInt64 →
                      @& Array Nat → @& Array Nat →
