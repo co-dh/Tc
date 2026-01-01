@@ -22,7 +22,7 @@ class CurOps (α : Type) (bound : Nat) (elem : Type) where
 
 -- SetOps: set operations (just toggle)
 class SetOps (α : Type) (elem : Type) where
-  toggle : elem → α → α               -- ^ : toggle elem
+  toggle : elem → α → α               -- ~ : toggle elem
 
 /-! ## Structures -/
 
@@ -130,7 +130,7 @@ def colVerb {n : Nat} (pg : Nat) (v : Char) (c : ColNav n) : ColNav n :=
 -- Apply verb to OrdSet (toggle only)
 def setVerb [BEq α] (v : Char) (e : α) (s : OrdSet α) : OrdSet α :=
   match v with
-  | '^' => @SetOps.toggle (OrdSet α) α _ e s
+  | '~' => @SetOps.toggle (OrdSet α) α _ e s
   | _   => s
 
 -- Dispatch 2-char command (object + verb) to NavState

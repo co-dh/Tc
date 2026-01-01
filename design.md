@@ -60,7 +60,7 @@
 | >  | move +page   |             |
 | 0  | move to 0    |             |
 | $  | move to end  |             |
-| ^  |              | toggle      |
+| ~  |              | toggle      |
 
 ## Keys
 
