@@ -20,21 +20,9 @@ class CurOps (α : Type) (bound : Nat) (elem : Type) where
   move : Int → α → α                  -- move by delta, clamped to [0, bound)
   find : (elem → Bool) → α → α        -- / : search
 
--- SetOps: set operations
--- α = set type, elem = element type
+-- SetOps: set operations (just toggle)
 class SetOps (α : Type) (elem : Type) where
-  add    : elem → α → α               -- + : add elem
-  remove : elem → α → α               -- - : remove elem
-  clear  : α → α                      -- 0 : clear
-  all    : α → α                      -- $ : select all
   toggle : elem → α → α               -- ^ : toggle elem
-  invert : α → α                      -- ~ : invert
-
-/-! ## Private helpers -/
-
--- Remove duplicates keeping first occurrence
-private def dedup [BEq α] (a : Array α) : Array α :=
-  a.foldl (fun acc x => if acc.contains x then acc else acc.push x) #[]
 
 /-! ## Structures -/
 
@@ -97,31 +85,16 @@ instance : CurOps (ColNav n) n String where
     { c with cur := ⟨v', Nat.lt_of_le_of_lt (Nat.min_le_right _ _) (Nat.sub_lt c.cur.pos Nat.one_pos)⟩ }
   find := fun _ c => c
 
--- OrdSet SetOps: set operations
+-- OrdSet SetOps: toggle only
 instance [BEq α] : SetOps (OrdSet α) α where
-  add    := fun x s => { s with arr := dedup (s.arr.push x) }
-  remove := fun x s => { s with arr := s.arr.erase x }
-  clear  := fun _ => ⟨#[], false⟩
-  all    := fun _ => ⟨#[], true⟩   -- inverted empty = all
   toggle := fun x s => if s.arr.contains x
                        then { s with arr := s.arr.erase x }
                        else { s with arr := s.arr.push x }
-  invert := fun s => { s with inv := !s.inv }
 
 -- OrdSet membership (not in class, used internally)
 def OrdSet.mem [BEq α] (x : α) (s : OrdSet α) : Bool := s.arr.contains x != s.inv
 
 /-! ## Theorems -/
-
--- invert twice returns to original
-theorem OrdSet.invert_invert [BEq α] (s : OrdSet α) :
-    @SetOps.invert (OrdSet α) α _ (@SetOps.invert (OrdSet α) α _ s) = s := by
-  simp only [SetOps.invert, Bool.not_not]
-
--- clear produces empty set
-theorem OrdSet.clear_empty [BEq α] (s : OrdSet α) :
-    @SetOps.clear (OrdSet α) α _ s = ({} : OrdSet α) := by
-  rfl
 
 -- group columns are at front of display order
 theorem group_at_front (g : OrdSet String) (colNames : Array String) (i : Nat)
@@ -154,15 +127,10 @@ def colVerb {n : Nat} (pg : Nat) (v : Char) (c : ColNav n) : ColNav n :=
   | '$' => @CurOps.move (ColNav n) n String _ (n - 1 - c.cur.val : Int) c
   | _   => c
 
--- Apply verb to OrdSet
+-- Apply verb to OrdSet (toggle only)
 def setVerb [BEq α] (v : Char) (e : α) (s : OrdSet α) : OrdSet α :=
   match v with
-  | '+' => @SetOps.add (OrdSet α) α _ e s
-  | '-' => @SetOps.remove (OrdSet α) α _ e s
-  | '0' => @SetOps.clear (OrdSet α) α _ s
-  | '$' => @SetOps.all (OrdSet α) α _ s
   | '^' => @SetOps.toggle (OrdSet α) α _ e s
-  | '~' => @SetOps.invert (OrdSet α) α _ s
   | _   => s
 
 -- Dispatch 2-char command (object + verb) to NavState
