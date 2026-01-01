@@ -3,7 +3,7 @@
   ViewState holds scroll offsets (view concern, not navigation state)
 -/
 import Tc.Nav
-import Tv.Term
+import Tc.Term
 
 open Tc
 

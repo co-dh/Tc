@@ -1,7 +1,7 @@
 /-
   Key mapping for typeclass-based navigation
 -/
-import Tv.Term
+import Tc.Term
 
 -- Arrow key to axis and forward flag (shift = page)
 def arrowCmd (ev : Term.Event) : Option String :=

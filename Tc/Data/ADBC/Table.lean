@@ -2,7 +2,7 @@
   ADBC backend: ReadTable + RenderTable instances for SomeTable
 -/
 import Tc.Render
-import Tv.Types
+import Tc.Types
 
 namespace Tc
 

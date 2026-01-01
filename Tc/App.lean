@@ -2,11 +2,11 @@
   Test app for typeclass-based navigation
   CSV: pure Lean MemTable, other: Backend (DuckDB+PRQL)
 -/
-import Tc.Data.ADBC
+import Tc.Data.ADBC.Table
 import Tc.Data.MemTable
 import Tc.Key
-import Tv.Backend
-import Tv.Term
+import Tc.Data.ADBC.Backend
+import Tc.Term
 
 open Tc
 
@@ -36,7 +36,7 @@ def runViewer {t : Type} [ReadTable t] [RenderTable t] (tbl : t) : IO Unit := do
     if hr : nRows > 0 then
       have hWidths : (ReadTable.colWidths tbl).size = nCols := sorry
       let cumW : CumW nCols := hWidths ▸ mkCumW (ReadTable.colWidths tbl)
-      let nav : NavState nRows nCols t := ⟨tbl, rfl, rfl, NavAxis.default hr, NavAxis.default hc, #[]⟩
+      let nav : NavState nRows nCols t := { tbl, hRows := rfl, hCols := rfl, row := NavAxis.default hr, col := NavAxis.default hc, group := #[], hGroup := Array.all_empty }
       mainLoop nav (ViewState.default hc) cumW
     else IO.eprintln "No rows"
   else IO.eprintln "No columns"

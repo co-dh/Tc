@@ -8,12 +8,7 @@
 -/
 import Tc.Offset
 import Tc.Data.Table
-
--- Toggle element in array: remove if present, append if not
-namespace Array
-def toggle [BEq α] (x : α) (a : Array α) : Array α :=
-  if a.contains x then a.erase x else a.push x
-end Array
+import Tc.Types
 
 -- Clamp Fin by delta, staying in [0, n)
 namespace Fin
@@ -63,7 +58,7 @@ theorem dispOrder_size (group colNames : Array String)
 -- Get column name at display index (group ⊆ colNames required)
 def colAt (group colNames : Array String) (i : Fin colNames.size)
     (h : group.all (colNames.contains ·)) : String :=
-  (dispOrder group colNames)[i.val]'(by simp [dispOrder_size group colNames h]; exact i.isLt)
+  (dispOrder group colNames)[i.val]'(by simp [dispOrder_size group colNames h])
 
 -- NavState: generic over table type + navigation state
 -- nRows/nCols are type params (not phantom) because Fin needs compile-time bounds.
@@ -97,7 +92,8 @@ def selColIdxs (nav : NavState nRows nCols t) : Array Nat :=
 
 -- Current column name
 def curColName (nav : NavState nRows nCols t) : String :=
-  colAt nav.group nav.colNames (nav.hCols ▸ nav.col.cur) nav.hGroup
+  let i : Fin (ReadTable.colNames nav.tbl).size := ⟨nav.col.cur.val, nav.hCols.symm ▸ nav.col.cur.isLt⟩
+  colAt nav.group nav.colNames i nav.hGroup
 
 -- Current column index (in original order)
 def curColIdx (nav : NavState nRows nCols t) : Nat :=
