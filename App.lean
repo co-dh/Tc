@@ -47,39 +47,37 @@ def render {n : Nat} (st : SomeTable) (t : Table n) (nav : NavState n t) : IO Un
   let status := s!"r{nav.row.cur}/{t.nRows} c{nav.col.cur.val}/{n} grp={nKeys} sel={selRows.size}"
   Term.print 0 (h - 1) Term.cyan Term.default status
   -- help
-  Term.print (w - 30) (h - 1) Term.yellow Term.default "hjkl:nav spc:sel !:grp q:quit"
+  Term.print (w - 28) (h - 1) Term.yellow Term.default "hjkl:nav stu:sel !:grp q:quit"
   Term.present
 
--- Map key to command
+-- Map key to command (s/t/u=select/toggle/unselect)
 def keyToCmd (ev : Term.Event) : Option String :=
   if ev.type != Term.eventKey then none
+  -- Ctrl+D/U for page down/up
+  else if ev.ch == Term.ctrlD then some "r>"
+  else if ev.ch == Term.ctrlU then some "r<"
+  -- Arrow keys
+  else if ev.key == Term.keyArrowDown  then some "r+"
+  else if ev.key == Term.keyArrowUp    then some "r-"
+  else if ev.key == Term.keyArrowRight then some "c+"
+  else if ev.key == Term.keyArrowLeft  then some "c-"
+  else if ev.key == Term.keyPageDown   then some "r>"
+  else if ev.key == Term.keyPageUp     then some "r<"
+  else if ev.key == Term.keyHome       then some "r0"
+  else if ev.key == Term.keyEnd        then some "r$"
+  -- Character keys
   else if ev.ch != 0 then
     match Char.ofNat ev.ch.toNat with
     | 'j' => some "r+"  | 'k' => some "r-"
+    | 'h' => some "c-"  | 'l' => some "c+"
     | 'g' => some "r0"  | 'G' => some "r$"
-    | 'l' => some "c+"  | 'h' => some "c-"
     | '0' => some "c0"  | '$' => some "c$"
     | 'H' => some "c<"  | 'L' => some "c>"
-    | ' ' => some "R^"
-    | 'v' => some "R+"  | 'V' => some "R-"
-    | 'a' => some "R$"  | 'd' => some "R0"
-    | '~' => some "R~"
-    | 's' => some "C^"
-    | 'S' => some "C$"  | 'x' => some "C0"
-    | 'I' => some "C~"
+    | 's' => some "R+"  | 't' => some "R^"  | 'u' => some "R-"
+    | 'S' => some "C+"  | 'T' => some "C^"  | 'U' => some "C-"
     | '!' => some "G^"
-    | '@' => some "G$"  | '#' => some "G0"
     | _ => none
-  else
-    if ev.key == Term.keyArrowDown  then some "r+"
-    else if ev.key == Term.keyArrowUp    then some "r-"
-    else if ev.key == Term.keyArrowRight then some "c+"
-    else if ev.key == Term.keyArrowLeft  then some "c-"
-    else if ev.key == Term.keyPageDown   then some "r>"
-    else if ev.key == Term.keyPageUp     then some "r<"
-    else if ev.key == Term.keyHome       then some "r0"
-    else if ev.key == Term.keyEnd        then some "r$"
-    else none
+  else none
 
 -- Main loop
 partial def mainLoop {n : Nat} (st : SomeTable) (t : Table n) (nav : NavState n t)
