@@ -5,7 +5,7 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                        Nav n                            │
-│  (struct: nRows, colNames, hNames)                      │
+│  nRows : Nat, colNames : Array String, hNames : proof   │
 └─────────────────────┬───────────────────────────────────┘
                       │ parameterizes
                       ▼
@@ -14,17 +14,14 @@
 │  ┌──────────────────────┐  ┌──────────────────────────┐ │
 │  │       RowNav         │  │      ColNav n            │ │
 │  │  cur : Nat           │  │  cur : Fin n             │ │
-│  │  sels : OrdSet Nat   │  │  sels : OrdSet String    │ │
-│  │         │            │  │         │                │ │
-│  │    CurOps class      │  │    CurOps class          │ │
-│  └─────────┬────────────┘  └─────────┬────────────────┘ │
-│            │                         │                  │
-│            └────────┬────────────────┘                  │
-│                     ▼                                   │
-│              OrdSet (struct)                            │
-│              SetOps (class: toggle)                     │
+│  │  sels: OrdSet Nat ───┼──┼─ sels: OrdSet String ────┤ │
+│  │    (CurOps)          │  │    (CurOps)              │ │
+│  └──────────────────────┘  └──────────────────────────┘ │
 │                                                         │
-│              group : OrdSet String                      │
+│  group : OrdSet String ─────────────────────────────────┤ │
+│                                                         │
+│  3 OrdSets total: row.sels, col.sels, group             │
+│  All use SetOps (toggle only)                           │
 └─────────────────────────────────────────────────────────┘
                       │
                       ▼ (view layer)
