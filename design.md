@@ -4,15 +4,31 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                      NavState n                         │
-│  nRows, colNames, hNames, hGroup                        │
+│  ReadTable α                   ModifyTable α            │
+│    nRows, colNames, colWidths    delRows, delCols       │
+│    cell                                                 │
+├─────────────────────────────────────────────────────────┤
+│  RenderTable α [ReadTable α]                            │
+│    render : NavState → view params → IO Unit            │
+└───────────────────────────┬─────────────────────────────┘
+                            │ instance
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│  Backends: SomeTable (ADBC), KdbTable, MemTable, ...    │
+└───────────────────────────┬─────────────────────────────┘
+                            │ tbl field
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│            NavState nRows nCols t [ReadTable t]         │
+│  tbl : t, hRows, hCols, hGroup                          │
+│  nRows/nCols are type params for Fin bounds             │
+│  hRows/hCols prove they match ReadTable.nRows/nCols     │
 │  ┌──────────────────────────────────────────────────┐   │
 │  │  NavAxis n elem  (single CurOps instance)        │   │
-│  │    cur  : Fin n                                  │   │
-│  │    sels : Array elem                             │   │
+│  │    cur  : Fin n,  sels : Array elem              │   │
 │  ├──────────────────────────────────────────────────┤   │
-│  │  RowNav m = NavAxis m Nat      (row)             │   │
-│  │  ColNav n = NavAxis n String   (col)             │   │
+│  │  RowNav = NavAxis nRows Nat                      │   │
+│  │  ColNav = NavAxis nCols String                   │   │
 │  └──────────────────────────────────────────────────┘   │
 │  group : Array String                                   │
 │  helpers: nKeys, selRows, selColIdxs, curColIdx, etc    │
@@ -20,20 +36,22 @@
                       │
                       ▼ (view layer)
 ┌─────────────────────────────────────────────────────────┐
-│                    ViewState n                          │
+│                    ViewState nCols                      │
 │  rowOff : Nat          (first visible row)              │
-│  colOff : Fin n        (first visible col)              │
+│  colOff : Fin nCols    (first visible col)              │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ## Classes
 
-| Class   | Methods               | Purpose                    |
-|---------|-----------------------|----------------------------|
-| CurOps  | pos : α → Fin bound   | Get cursor position        |
-|         | setPos : Fin → α → α  | Set cursor position        |
-|         | move : Int → α → α    | Move by delta (default)    |
-|         | find : (e→Bool) → α   | Search (default no-op)     |
+| Class       | Methods               | Purpose                    |
+|-------------|-----------------------|----------------------------|
+| ReadTable   | nRows, colNames       | Read-only table access     |
+|             | colWidths, cell       |                            |
+| ModifyTable | delRows, delCols      | Table mutations            |
+| RenderTable | render                | Render to terminal         |
+| CurOps      | pos, setPos           | Cursor operations          |
+|             | move, find (defaults) |                            |
 
 ## Object
 

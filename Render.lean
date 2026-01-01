@@ -3,7 +3,6 @@
   ViewState holds scroll offsets (view concern, not navigation state)
 -/
 import Tc.Nav
-import Tv.Backend
 import Tv.Term
 
 open Tc
@@ -33,23 +32,26 @@ def reservedLines : Nat := 3
 -- Column page size (fixed, since widths vary)
 def colPageSize : Nat := 5
 
+-- RenderTable: tables that can render themselves
+class RenderTable (α : Type) [ReadTable α] where
+  render : {nRows nCols : Nat} → NavState nRows nCols α
+         → (colOff rowStart rowEnd : Nat) → (styles : Array UInt32) → IO Unit
+
 -- Render table to terminal, returns updated ViewState with adjusted offsets
-def render {n : Nat} (st : SomeTable) (nav : NavState n)
-    (view : ViewState n) (cumW : CumW n) : IO (ViewState n) := do
+def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
+    (nav : NavState nRows nCols t) (view : ViewState nCols) (cumW : CumW nCols)
+    : IO (ViewState nCols) := do
   Term.clear
   let h ← Term.height
   let w ← Term.width
   let visRows := h.toNat - reservedLines
-  -- adjust row offset
+  -- adjust offsets
   let rowOff := adjOff nav.row.cur view.rowOff visRows
-  -- adjust col offset
   let colOff := adjColOff nav.col.cur view.colOff cumW w.toNat
-  -- render
-  let _ ← st.render nav.dispColIdxs nav.nKeys colOff.val
-    rowOff (min nav.nRows (rowOff + visRows)) nav.row.cur nav.curColIdx
-    nav.selColIdxs nav.selRows styles 50 20 3
+  -- render via RenderTable
+  RenderTable.render nav colOff.val rowOff (min nRows (rowOff + visRows)) styles
   -- status
-  let status := s!"r{nav.row.cur}/{nav.nRows} c{nav.col.cur.val}/{n} grp={nav.nKeys} sel={nav.selRows.size}"
+  let status := s!"r{nav.row.cur}/{nRows} c{nav.col.cur.val}/{nCols} grp={nav.nKeys} sel={nav.selRows.size}"
   Term.print 0 (h - 1) Term.cyan Term.default status
   -- help
   let help := "hjkl:nav HJKL:pg g?:end t/T:sel !:grp q:q"

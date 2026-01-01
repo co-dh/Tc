@@ -2,11 +2,12 @@
   Typeclass-based navigation state for tabular viewer.
 
   Key abstractions:
-  - NavState: dims + row/col navigation + group
+  - NavState: generic over table type + navigation state
   - NavAxis: cursor (Fin) + selections (Array)
   - CurOps: typeclass for cursor operations
 -/
 import Tc.Offset
+import Tc.Data.Table
 
 -- Toggle element in array: remove if present, append if not
 namespace Array
@@ -64,38 +65,46 @@ def colAt (group colNames : Array String) (i : Fin colNames.size)
     (h : group.all (colNames.contains ·)) : String :=
   (dispOrder group colNames)[i.val]'(by simp [dispOrder_size group colNames h]; exact i.isLt)
 
--- NavState: query dims + row/column navigation
-structure NavState (n : Nat) where
-  nRows    : Nat                      -- total row count
-  colNames : Array String             -- column names in data order
-  hNames   : colNames.size = n        -- proof names matches n
-  row      : RowNav nRows
-  col      : ColNav n
-  group    : Array String := #[]      -- group columns (displayed first)
-  hGroup   : group.all (colNames.contains ·) := by decide  -- group ⊆ colNames
+-- NavState: generic over table type + navigation state
+-- nRows/nCols are type params (not phantom) because Fin needs compile-time bounds.
+-- ReadTable.nRows tbl is runtime (depends on tbl field), can't use directly in Fin.
+-- So we lift values to type level, then prove they match table via hRows/hCols.
+structure NavState (nRows nCols : Nat) (t : Type) [ReadTable t] where
+  tbl    : t                                              -- underlying table
+  hRows  : ReadTable.nRows tbl = nRows                    -- row count matches
+  hCols  : (ReadTable.colNames tbl).size = nCols          -- col count matches
+  row    : RowNav nRows
+  col    : ColNav nCols
+  group  : Array String := #[]                            -- grouped columns
+  hGroup : group.all ((ReadTable.colNames tbl).contains ·) := by decide
 
 namespace NavState
 
+variable {t : Type} [ReadTable t]
+
+-- Column names from table
+def colNames (nav : NavState nRows nCols t) : Array String := ReadTable.colNames nav.tbl
+
 -- Number of grouped columns
-def nKeys (nav : NavState n) : Nat := nav.group.size
+def nKeys (nav : NavState nRows nCols t) : Nat := nav.group.size
 
 -- Selected row indices
-def selRows (nav : NavState n) : Array Nat := nav.row.sels
+def selRows (nav : NavState nRows nCols t) : Array Nat := nav.row.sels
 
 -- Selected column indices (in original order)
-def selColIdxs (nav : NavState n) : Array Nat :=
+def selColIdxs (nav : NavState nRows nCols t) : Array Nat :=
   nav.col.sels.filterMap fun name => nav.colNames.findIdx? (· == name)
 
 -- Current column name
-def curColName (nav : NavState n) : String :=
-  colAt nav.group nav.colNames (nav.hNames ▸ nav.col.cur) nav.hGroup
+def curColName (nav : NavState nRows nCols t) : String :=
+  colAt nav.group nav.colNames (nav.hCols ▸ nav.col.cur) nav.hGroup
 
 -- Current column index (in original order)
-def curColIdx (nav : NavState n) : Nat :=
+def curColIdx (nav : NavState nRows nCols t) : Nat :=
   nav.colNames.findIdx? (· == nav.curColName) |>.getD 0
 
 -- Column indices in display order
-def dispColIdxs (nav : NavState n) : Array Nat :=
+def dispColIdxs (nav : NavState nRows nCols t) : Array Nat :=
   (dispOrder nav.group nav.colNames).filterMap fun name => nav.colNames.findIdx? (· == name)
 
 end NavState
@@ -124,15 +133,16 @@ def curVerb (α : Type) (bound : Nat) (elem : Type) [CurOps α bound elem]
 
 -- Dispatch 2-char command (object + verb) to NavState
 -- rowPg/colPg = half screen for page up/down
-def dispatch {n : Nat} (cmd : String) (nav : NavState n) (rowPg colPg : Nat) : NavState n :=
+def dispatch {nRows nCols : Nat} {t : Type} [ReadTable t]
+    (cmd : String) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : NavState nRows nCols t :=
   let chars := cmd.toList
   if h : chars.length = 2 then
     let obj := chars[0]'(by omega)
     let v := chars[1]'(by omega)
-    let curCol := colAt nav.group nav.colNames (nav.hNames ▸ nav.col.cur) nav.hGroup
+    let curCol := nav.curColName
     match obj with
-    | 'r' => { nav with row := curVerb (RowNav nav.nRows) nav.nRows Nat rowPg v nav.row }
-    | 'c' => { nav with col := curVerb (ColNav n) n String colPg v nav.col }
+    | 'r' => { nav with row := curVerb (RowNav nRows) nRows Nat rowPg v nav.row }
+    | 'c' => { nav with col := curVerb (ColNav nCols) nCols String colPg v nav.col }
     | 'R' => { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
     | 'C' => { nav with col := { nav.col with sels := nav.col.sels.toggle curCol } }
     | 'G' => { nav with group := nav.group.toggle curCol, hGroup := sorry }
