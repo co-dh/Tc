@@ -16,6 +16,10 @@ partial def mainLoop {n : Nat} (st : SomeTable) (t : Nav n) (nav : NavState n t)
     (view : ViewState n) (cumW : CumW n) (gPrefix : Bool := false) : IO Unit := do
   let view' ← render st t nav view cumW
   let ev ← Term.pollEvent
+  -- page sizes: half screen
+  let h ← Term.height
+  let rowPg := (h.toNat - 2) / 2  -- half visible rows
+  let colPg := 5                   -- cols vary in width, use fixed
   if ev.type == Term.eventKey then
     if ev.ch == 'q'.toNat.toUInt32 || ev.key == Term.keyEsc then return
     -- Check for g prefix
@@ -23,7 +27,7 @@ partial def mainLoop {n : Nat} (st : SomeTable) (t : Nav n) (nav : NavState n t)
       mainLoop st t nav view' cumW true
       return
   match keyToCmd ev gPrefix with
-  | some cmd => mainLoop st t (dispatch cmd t nav) view' cumW
+  | some cmd => mainLoop st t (dispatch cmd t nav rowPg colPg) view' cumW
   | none => mainLoop st t nav view' cumW
 
 -- Entry point

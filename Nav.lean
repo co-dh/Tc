@@ -132,27 +132,24 @@ theorem group_at_front (g : OrdSet String) (colNames : Array String) (i : Nat)
 
 /-! ## Dispatch -/
 
--- Page size for page up/down
-def pageSize : Nat := 10
-
--- Apply verb to RowNav cursor
-def rowVerb (bound : Nat) (v : Char) (r : RowNav) : RowNav :=
+-- Apply verb to RowNav cursor (pg = half screen)
+def rowVerb (bound : Nat) (pg : Nat) (v : Char) (r : RowNav) : RowNav :=
   match v with
   | '+' => @CurOps.move RowNav bound Nat _ 1 r
   | '-' => @CurOps.move RowNav bound Nat _ (-1) r
-  | '<' => @CurOps.move RowNav bound Nat _ (-pageSize) r
-  | '>' => @CurOps.move RowNav bound Nat _ pageSize r
+  | '<' => @CurOps.move RowNav bound Nat _ (-(pg : Int)) r
+  | '>' => @CurOps.move RowNav bound Nat _ pg r
   | '0' => @CurOps.move RowNav bound Nat _ (-(r.cur : Int)) r
   | '$' => @CurOps.move RowNav bound Nat _ (bound - 1 - r.cur : Int) r
   | _   => r
 
--- Apply verb to ColNav cursor
-def colVerb {n : Nat} (v : Char) (c : ColNav n) : ColNav n :=
+-- Apply verb to ColNav cursor (pg = half visible cols)
+def colVerb {n : Nat} (pg : Nat) (v : Char) (c : ColNav n) : ColNav n :=
   match v with
   | '+' => @CurOps.move (ColNav n) n String _ 1 c
   | '-' => @CurOps.move (ColNav n) n String _ (-1) c
-  | '<' => @CurOps.move (ColNav n) n String _ (-(pageSize : Int)) c
-  | '>' => @CurOps.move (ColNav n) n String _ pageSize c
+  | '<' => @CurOps.move (ColNav n) n String _ (-(pg : Int)) c
+  | '>' => @CurOps.move (ColNav n) n String _ pg c
   | '0' => @CurOps.move (ColNav n) n String _ (-(c.cur.val : Int)) c
   | '$' => @CurOps.move (ColNav n) n String _ (n - 1 - c.cur.val : Int) c
   | _   => c
@@ -169,15 +166,17 @@ def setVerb [BEq α] (v : Char) (e : α) (s : OrdSet α) : OrdSet α :=
   | _   => s
 
 -- Dispatch 2-char command (object + verb) to NavState
-def dispatch {n : Nat} (cmd : String) (t : Nav n) (nav : NavState n t) : NavState n t :=
+-- rowPg/colPg = half screen for page up/down
+def dispatch {n : Nat} (cmd : String) (t : Nav n) (nav : NavState n t)
+    (rowPg colPg : Nat) : NavState n t :=
   let chars := cmd.toList
   if h : chars.length = 2 then
     let obj := chars[0]'(by omega)
     let v := chars[1]'(by omega)
     let curCol := colAt nav.group t.colNames nav.col.cur.val
     match obj with
-    | 'r' => { nav with row := rowVerb t.nRows v nav.row }
-    | 'c' => { nav with col := colVerb v nav.col }
+    | 'r' => { nav with row := rowVerb t.nRows rowPg v nav.row }
+    | 'c' => { nav with col := colVerb colPg v nav.col }
     | 'R' => { nav with row := { nav.row with sels := setVerb v nav.row.cur nav.row.sels } }
     | 'C' => match curCol with
              | some c => { nav with col := { nav.col with sels := setVerb v c nav.col.sels } }
