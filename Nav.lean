@@ -10,6 +10,14 @@
 -/
 import Tc.Offset
 
+-- Clamp Fin by delta, staying in [0, n)
+namespace Fin
+def clamp (f : Fin n) (d : Int) : Fin n :=
+  let v := ((f.val : Int) + d).toNat
+  let v' := min v (n - 1)
+  ⟨v', Nat.lt_of_le_of_lt (Nat.min_le_right _ _) (Nat.sub_lt f.pos Nat.one_pos)⟩
+end Fin
+
 namespace Tc
 
 /-! ## Classes -/
@@ -70,18 +78,6 @@ structure NavState (n : Nat) (t : Nav n) where
 
 -- Row: map from column name to cell value
 abbrev Row := String → String
-
-end Tc
-
--- Clamp Fin by delta, staying in [0, n)
-namespace Fin
-def clamp (f : Fin n) (d : Int) : Fin n :=
-  let v := ((f.val : Int) + d).toNat
-  let v' := min v (n - 1)
-  ⟨v', Nat.lt_of_le_of_lt (Nat.min_le_right _ _) (Nat.sub_lt f.pos Nat.one_pos)⟩
-end Fin
-
-namespace Tc
 
 /-! ## Instances -/
 
