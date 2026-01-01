@@ -4,21 +4,15 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                        Nav n                            │
+│                      NavState n                         │
 │  nRows : Nat, colNames : Array String, hNames : proof   │
-└─────────────────────┬───────────────────────────────────┘
-                      │ parameterizes
-                      ▼
-┌─────────────────────────────────────────────────────────┐
-│                    NavState n t                         │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │  NavAxis n elem  (generic)                       │   │
+│  │  NavAxis n elem  (generic, single CurOps inst)   │   │
 │  │    cur  : Fin n                                  │   │
 │  │    sels : OrdSet elem                            │   │
-│  │    (single CurOps instance)                      │   │
 │  ├──────────────────────────────────────────────────┤   │
-│  │  RowNav m = NavAxis m Nat      (row.cur, sels)   │   │
-│  │  ColNav n = NavAxis n String   (col.cur, sels)   │   │
+│  │  RowNav m = NavAxis m Nat      (row)             │   │
+│  │  ColNav n = NavAxis n String   (col)             │   │
 │  └──────────────────────────────────────────────────┘   │
 │  group : OrdSet String                                  │
 │                                                         │
@@ -81,19 +75,20 @@
 
 | Struct    | Purpose                                    |
 |-----------|--------------------------------------------|
-| Nav n     | Query dims (nRows, colNames, proof)        |
-| OrdSet    | Ordered set of selected elements           |
+| NavState  | Dims + RowNav + ColNav + group             |
 | NavAxis   | Generic axis: cur (Fin n) + sels (OrdSet)  |
 | RowNav m  | NavAxis m Nat (type alias)                 |
 | ColNav n  | NavAxis n String (type alias)              |
-| NavState  | Composes RowNav + ColNav + group           |
+| OrdSet    | Ordered set of selected elements           |
 | ViewState | Scroll offsets (view concern)              |
 
 ## Key Design Decisions
 
-**Separation**: NavState = navigation logic, ViewState = scroll offsets.
+**NavState**: Contains dims (nRows, colNames) + navigation (row, col, group). Single structure.
 
 **NavAxis**: Generic `NavAxis n elem` with single CurOps instance. RowNav/ColNav are type aliases.
+
+**ViewState**: Scroll offsets only. Separate from NavState.
 
 **Fin bounds**: Cursor uses `Fin n` for type-safe bounds. `Fin.clamp` handles delta movement.
 

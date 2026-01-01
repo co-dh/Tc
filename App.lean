@@ -1,5 +1,5 @@
 /-
-  Test app for typeclass-based navigation (Tc/Nav.lean)
+  Test app for typeclass-based navigation
   Loads CSV via Backend (DuckDB+PRQL), renders with termbox2
 -/
 import Tc.Nav
@@ -12,9 +12,9 @@ import Tv.Types
 open Tc
 
 -- Main loop with g-prefix state
-partial def mainLoop {n : Nat} (st : SomeTable) (t : Nav n) (nav : NavState n t)
+partial def mainLoop {n : Nat} (st : SomeTable) (nav : NavState n)
     (view : ViewState n) (cumW : CumW n) (gPrefix : Bool := false) : IO Unit := do
-  let view' ← render st t nav view cumW
+  let view' ← render st nav view cumW
   let ev ← Term.pollEvent
   -- page sizes: half screen
   let h ← Term.height
@@ -24,11 +24,11 @@ partial def mainLoop {n : Nat} (st : SomeTable) (t : Nav n) (nav : NavState n t)
     if ev.ch == 'q'.toNat.toUInt32 || ev.key == Term.keyEsc then return
     -- Check for g prefix
     if ev.ch == 'g'.toNat.toUInt32 && !gPrefix then
-      mainLoop st t nav view' cumW true
+      mainLoop st nav view' cumW true
       return
   match keyToCmd ev gPrefix with
-  | some cmd => mainLoop st t (dispatch cmd t nav rowPg colPg) view' cumW
-  | none => mainLoop st t nav view' cumW
+  | some cmd => mainLoop st (dispatch cmd nav rowPg colPg) view' cumW
+  | none => mainLoop st nav view' cumW
 
 -- Entry point
 def main (args : List String) : IO Unit := do
@@ -41,17 +41,16 @@ def main (args : List String) : IO Unit := do
   let prql := s!"from `{path}` | take 100000"
   let some st ← Backend.query (Backend.mkLimited prql 100000)
     | Term.shutdown; Backend.shutdown; IO.eprintln "Query failed"; return
-  -- build Nav with proofs
+  -- build NavState with proofs
   let nc := st.colNames.size
   if hc : nc > 0 then
     if hr : st.nRows > 0 then
-      let t : Nav nc := ⟨st.nRows, st.colNames, rfl⟩
       -- colWidths for rendering (same size as colNames from SomeTable)
       have hWidths : st.colWidths.size = nc := sorry
       let cumW : CumW nc := hWidths ▸ mkCumW st.colWidths
-      let nav : NavState nc t := ⟨NavAxis.default hr, NavAxis.default hc, {}⟩
+      let nav : NavState nc := ⟨st.nRows, st.colNames, rfl, NavAxis.default hr, NavAxis.default hc, {}⟩
       let view : ViewState nc := ViewState.default hc
-      mainLoop st t nav view cumW
+      mainLoop st nav view cumW
     else
       IO.eprintln "No rows"
   else

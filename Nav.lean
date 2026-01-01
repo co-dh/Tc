@@ -2,11 +2,9 @@
   Typeclass-based navigation state for tabular viewer.
 
   Key abstractions:
-  - Nav: dimensions from data source (nRows, colNames)
-  - OrdSet: ordered set with invert flag for selections
-  - RowNav/ColNav: cursor + selection for row/col (no offset - that's view state)
-  - Cursor: get/set/move/search typeclass
-  - NavState: composes RowNav + ColNav
+  - NavState: dims + row/col navigation + group
+  - NavAxis: cursor (Fin) + selections (OrdSet)
+  - CurOps/SetOps: typeclasses for cursor and set operations
 -/
 import Tc.Offset
 
@@ -36,12 +34,6 @@ class SetOps (α : Type) (elem : Type) where
 
 /-! ## Structures -/
 
--- Nav: query result dimensions from data source, parameterized by column count
-structure Nav (nCols : Nat) where
-  nRows : Nat                            -- total row count
-  colNames : Array String                -- column names in data order
-  hNames : colNames.size = nCols         -- proof names matches nCols
-
 -- OrdSet: ordered set of selected elements
 structure OrdSet (α : Type) [BEq α] where
   arr : Array α := #[]   -- selected elements
@@ -66,11 +58,14 @@ def dispOrder (group : OrdSet String) (colNames : Array String) : Array String :
 def colAt (group : OrdSet String) (colNames : Array String) (i : Nat) : Option String :=
   (dispOrder group colNames)[i]?
 
--- NavState: composes row and column navigation
-structure NavState (n : Nat) (t : Nav n) where
-  row   : RowNav t.nRows
-  col   : ColNav n
-  group : OrdSet String := {}  -- group columns (displayed first)
+-- NavState: query dims + row/column navigation
+structure NavState (n : Nat) where
+  nRows    : Nat                      -- total row count
+  colNames : Array String             -- column names in data order
+  hNames   : colNames.size = n        -- proof names matches n
+  row      : RowNav nRows
+  col      : ColNav n
+  group    : OrdSet String := {}      -- group columns (displayed first)
 
 /-! ## Instances -/
 
@@ -108,15 +103,14 @@ def setVerb [BEq α] (v : Char) (e : α) (s : OrdSet α) : OrdSet α :=
 
 -- Dispatch 2-char command (object + verb) to NavState
 -- rowPg/colPg = half screen for page up/down
-def dispatch {n : Nat} (cmd : String) (t : Nav n) (nav : NavState n t)
-    (rowPg colPg : Nat) : NavState n t :=
+def dispatch {n : Nat} (cmd : String) (nav : NavState n) (rowPg colPg : Nat) : NavState n :=
   let chars := cmd.toList
   if h : chars.length = 2 then
     let obj := chars[0]'(by omega)
     let v := chars[1]'(by omega)
-    let curCol := colAt nav.group t.colNames nav.col.cur.val
+    let curCol := colAt nav.group nav.colNames nav.col.cur.val
     match obj with
-    | 'r' => { nav with row := curVerb (RowNav t.nRows) t.nRows Nat rowPg v nav.row }
+    | 'r' => { nav with row := curVerb (RowNav nav.nRows) nav.nRows Nat rowPg v nav.row }
     | 'c' => { nav with col := curVerb (ColNav n) n String colPg v nav.col }
     | 'R' => { nav with row := { nav.row with sels := setVerb v nav.row.cur.val nav.row.sels } }
     | 'C' => match curCol with
