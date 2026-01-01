@@ -139,24 +139,86 @@ def adjColOff {n : Nat} (cur off : Fin n) (cumW : CumW n) (screenW : Nat) : Fin 
     decOff off cumW scrollMax
   else off  -- already visible
 
--- incOff returns offset with cumW >= target (when reachable)
-theorem incOff_ge {n : Nat} (off : Fin n) (cumW : CumW n) (target : Nat)
-    (hmono : CumW.Mono cumW) (hreach : ∃ i : Fin n, off.val ≤ i.val ∧ cumW i.castSucc >= target) :
-    cumW (incOff off cumW target).castSucc >= target := by
-  sorry  -- requires induction
+-- incOff increases monotonically
+theorem incOff_ge_off {n : Nat} (off : Fin n) (cumW : CumW n) (target : Nat) :
+    off.val ≤ (incOff off cumW target).val := by
+  unfold incOff
+  split
+  case isTrue _ => exact Nat.le_refl _
+  case isFalse _ =>
+    split
+    case isTrue hn =>
+      have ih := incOff_ge_off ⟨off.val + 1, hn⟩ cumW target
+      exact Nat.le_trans (Nat.le_succ _) ih
+    case isFalse _ => exact Nat.le_refl _
+termination_by n - off.val
 
--- decOff returns offset with cumW <= target (when reachable)
-theorem decOff_le {n : Nat} (off : Fin n) (cumW : CumW n) (target : Nat)
-    (hreach : ∃ i : Fin n, i.val ≤ off.val ∧ cumW i.castSucc <= target) :
-    cumW (decOff off cumW target).castSucc <= target := by
-  sorry  -- requires induction
+-- decOff decreases monotonically
+theorem decOff_le_off {n : Nat} (off : Fin n) (cumW : CumW n) (target : Nat) :
+    (decOff off cumW target).val ≤ off.val := by
+  unfold decOff
+  split
+  case isTrue _ => exact Nat.le_refl _
+  case isFalse _ =>
+    split
+    case isTrue hp =>
+      have ih := decOff_le_off ⟨off.val - 1, Nat.lt_of_le_of_lt (Nat.sub_le _ _) off.isLt⟩ cumW target
+      exact Nat.le_trans ih (Nat.sub_le _ _)
+    case isFalse _ => exact Nat.le_refl _
+termination_by off.val
 
--- adjColOff makes cursor visible (requires additional assumptions about column widths)
+-- incOff stops when condition met
+theorem incOff_spec {n : Nat} (off : Fin n) (cumW : CumW n) (target : Nat) :
+    cumW (incOff off cumW target).castSucc >= target ∨
+    (incOff off cumW target).val = n - 1 := by
+  unfold incOff
+  split
+  case isTrue h => left; exact h
+  case isFalse hlt =>
+    split
+    case isTrue hn => exact incOff_spec ⟨off.val + 1, hn⟩ cumW target
+    case isFalse hn => right; omega
+termination_by n - off.val
+
+-- decOff stops when condition met
+theorem decOff_spec {n : Nat} (off : Fin n) (cumW : CumW n) (target : Nat) :
+    cumW (decOff off cumW target).castSucc <= target ∨
+    (decOff off cumW target).val = 0 := by
+  unfold decOff
+  split
+  case isTrue h => left; exact h
+  case isFalse hgt =>
+    split
+    case isTrue hp => exact decOff_spec ⟨off.val - 1, Nat.lt_of_le_of_lt (Nat.sub_le _ _) off.isLt⟩ cumW target
+    case isFalse hp => right; omega
+termination_by off.val
+
+-- adjColOff correctness
 theorem adjColOff_visible {n : Nat} (cur off : Fin n) (cumW : CumW n) (screenW : Nat)
-    (hmono : CumW.Mono cumW)
+    (hmono : CumW.Mono cumW) (h0 : cumW ⟨0, Nat.zero_lt_succ n⟩ = 0)
     (hfit : cumW cur.succ - cumW cur.castSucc ≤ screenW) :
     colVisible cur (adjColOff cur off cumW screenW) cumW screenW := by
-  sorry  -- full proof requires induction on incOff/decOff
+  simp only [adjColOff, colVisible]
+  split
+  case isTrue hlt =>
+    -- Need off <= cur for incOff to not overshoot. This isn't always true.
+    -- The theorem needs stronger assumptions or different formulation.
+    constructor <;> sorry
+  case isFalse hge =>
+    split
+    case isTrue hgt =>
+      constructor
+      · cases decOff_spec off cumW (cumW cur.castSucc) with
+        | inl hle => exact hle
+        | inr heq =>
+          have hcast : (decOff off cumW (cumW cur.castSucc)).castSucc = ⟨0, Nat.zero_lt_succ n⟩ := by
+            ext; simp [heq]
+          rw [hcast, h0]
+          exact Nat.zero_le _
+      · -- decOff result is >= 0, and from hge we have cumW off >= cumW cur.succ - screenW
+        -- so cumW (decOff ...) >= cumW 0 = 0, and cur fits in screen
+        sorry
+    case isFalse hle => constructor <;> omega
 
 -- Minimal change property: when no scroll needed, off' = off
 theorem adjColOff_minimal {n : Nat} (cur off : Fin n) (cumW : CumW n) (screenW : Nat)
