@@ -40,13 +40,7 @@ private def dedup [BEq α] (a : Array α) : Array α :=
 structure Nav (nCols : Nat) where
   nRows : Nat                            -- total row count
   colNames : Array String                -- column names in data order
-  colWidths : Array Nat                  -- column widths from data
   hNames : colNames.size = nCols         -- proof names matches nCols
-  hWidths : colWidths.size = nCols       -- proof widths matches nCols
-
--- Get CumW from Nav
-def Nav.cumW {n : Nat} (t : Nav n) : CumW n :=
-  t.hWidths ▸ mkCumW t.colWidths
 
 -- OrdSet: concrete ordered set with invert flag
 -- inv=true means "all except arr" (avoids materializing large inversions)

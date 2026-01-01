@@ -40,10 +40,10 @@ def main (args : List String) : IO Unit := do
   -- build Nav with proofs
   let nc := st.colNames.size
   if h : nc > 0 then
-    -- colWidths comes from same source as colNames, assume same size
+    let t : Nav nc := ⟨st.nRows, st.colNames, rfl⟩
+    -- colWidths for rendering (same size as colNames from SomeTable)
     have hWidths : st.colWidths.size = nc := sorry
-    let t : Nav nc := ⟨st.nRows, st.colNames, st.colWidths, rfl, hWidths⟩
-    let cumW := t.cumW
+    let cumW : CumW nc := hWidths ▸ mkCumW st.colWidths
     let nav : NavState nc t := ⟨{}, ColNav.default h, {}⟩
     let view : ViewState nc := ViewState.default h
     mainLoop st t nav view cumW
