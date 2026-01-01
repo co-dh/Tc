@@ -15,26 +15,24 @@ namespace Tc
 
 -- Ops: unified verb-based operations for navigation
 -- α = state type, bound = max position (for cursors), elem = element type
+-- page = visible items on screen (for offset adjustment in cursor ops)
 class Ops (α : Type) (bound : Nat) (elem : Type) where
-  plus   : Option elem → α → α        -- + : move +1 / add elem
-  minus  : Option elem → α → α        -- - : move -1 / remove elem
+  plus   : elem → Nat → α → α         -- + : move +1 / add elem
+  minus  : elem → Nat → α → α         -- - : move -1 / remove elem
   pageUp : Nat → α → α                -- < : move -page
   pageDn : Nat → α → α                -- > : move +page
-  home   : α → α                      -- 0 : first / clear
-  end_   : α → α                      -- $ : last / all
+  home   : Nat → α → α                -- 0 : first / clear
+  end_   : Nat → α → α                -- $ : last / all
   find   : (elem → Bool) → α → α      -- / : search
-  toggle : Option elem → α → α        -- ^ : toggle elem
+  toggle : elem → α → α               -- ^ : toggle elem
   invert : α → α                      -- ~ : invert
   mem    : elem → α → Bool            -- ? : membership (internal)
 
 /-! ## Private helpers -/
 
--- Clamp value to [0, bound)
-private def clamp (n : Int) (bound : Nat) : Nat :=
-  if bound = 0 then 0
-  else if n < 0 then 0
-  else if n.toNat >= bound then bound - 1
-  else n.toNat
+-- Clamp value to [lo, hi)
+def clamp (val lo hi : Nat) : Nat :=
+  if hi ≤ lo then lo else max lo (min val (hi - 1))
 
 -- Remove duplicates keeping first occurrence
 private def dedup [BEq α] (a : Array α) : Array α :=
@@ -55,112 +53,88 @@ structure OrdSet (α : Type) [BEq α] where
   arr : Array α := #[]   -- selected elements
   inv : Bool := false    -- true = inverted (all except arr)
 
--- RowNav: row cursor, offset, and selection
-structure RowNav where
+-- Nav: cursor, offset, and selection (generic over elem type)
+structure Nav (α : Type) [BEq α] where
   cur  : Nat := 0           -- cursor position
-  off  : Nat := 0           -- first visible row (scroll offset)
-  sels : OrdSet Nat := {}   -- selected row indices
+  off  : Nat := 0           -- first visible (scroll offset)
+  sels : OrdSet α := {}     -- selected elements
 
--- DispIdx: index into display order (group first, then rest)
--- Newtype for type safety - can't mix with raw Nat
-structure DispIdx where
-  val : Nat := 0
-  deriving BEq, Repr
-
--- Clamp DispIdx to [0, bound)
-private def clampDisp (n : Int) (bound : Nat) : DispIdx :=
-  ⟨clamp n bound⟩
-
--- ColNav: column cursor, offset, selections, and group columns
--- Display order = group.arr ++ (colNames - group)
-structure ColNav where
-  cur   : DispIdx := {}         -- cursor position in display order
-  off   : DispIdx := {}         -- first visible col (scroll offset)
-  sels  : OrdSet String := {}   -- selected column names
-  group : OrdSet String := {}   -- group columns (displayed first)
+-- Row/Col nav aliases
+abbrev RowNav := Nav Nat
+abbrev ColNav := Nav String
 
 -- Compute display order: group first, then rest
-def ColNav.dispOrder (c : ColNav) (colNames : Array String) : Array String :=
-  c.group.arr ++ colNames.filter (!c.group.arr.contains ·)
+def dispOrder (group : OrdSet String) (colNames : Array String) : Array String :=
+  group.arr ++ colNames.filter (!group.arr.contains ·)
 
 -- Get column name at display index
-def ColNav.colAt (c : ColNav) (colNames : Array String) (i : DispIdx) : Option String :=
-  (c.dispOrder colNames)[i.val]?
+def colAt (group : OrdSet String) (colNames : Array String) (i : Nat) : Option String :=
+  (dispOrder group colNames)[i]?
 
 -- NavState: composes row and column navigation
 structure NavState (t : Table) where
-  row : RowNav := {}
-  col : ColNav := {}
+  row   : RowNav := {}
+  col   : ColNav := {}
+  group : OrdSet String := {}  -- group columns (displayed first)
 
--- Adjust offset to keep cursor on screen: off <= cur < off + page
--- page = screen capacity (e.g., terminal has 20 rows, page=20)
+-- Adjust offset to keep cursor visible: off ≤ cur < off + page
 def adjOff (cur off page : Nat) : Nat :=
-  min cur (max off (cur + 1 - page))
+  clamp off (cur + 1 - page) (cur + 1)
 
 -- Row: map from column name to cell value
 abbrev Row := String → String
 
 /-! ## Instances -/
 
--- RowNav Ops: cursor operations (elem ignored for +/-/^)
-instance : Ops RowNav bound Row where
-  plus   := fun _ r => { r with cur := clamp (r.cur + 1) bound }
-  minus  := fun _ r => { r with cur := clamp (r.cur - 1) bound }
-  pageUp := fun n r => { r with cur := clamp (r.cur - n) bound }
-  pageDn := fun n r => { r with cur := clamp (r.cur + n) bound }
-  home   := fun r => { r with cur := 0 }
-  end_   := fun r => { r with cur := clamp (bound - 1) bound }
-  find   := fun _ r => r  -- TODO
-  toggle := fun _ r => r  -- no-op for cursor
-  invert := fun r => r    -- no-op for cursor
+-- Nav Ops: cursor + offset adjustment (works for RowNav and ColNav)
+instance [BEq α] : Ops (Nav α) bound α where
+  plus   := fun _ pg n => move bound pg n (n.cur + 1)
+  minus  := fun _ pg n => move bound pg n (n.cur - 1)
+  pageUp := fun pg n => move bound pg n (n.cur - pg)
+  pageDn := fun pg n => move bound pg n (n.cur + pg)
+  home   := fun pg n => move bound pg n 0
+  end_   := fun pg n => move bound pg n (bound - 1)
+  find   := fun _ n => n  -- TODO
+  toggle := fun _ n => n  -- no-op for cursor
+  invert := fun n => n    -- no-op for cursor
   mem    := fun _ _ => false
+where
+  move (bound pg : Nat) (n : Nav α) (newCur : Nat) : Nav α :=
+    let c := clamp newCur 0 bound
+    { n with cur := c, off := adjOff c n.off pg }
 
--- ColNav Ops: cursor operations (elem ignored for +/-/^)
-instance : Ops ColNav bound String where
-  plus   := fun _ c => { c with cur := clampDisp (c.cur.val + 1) bound }
-  minus  := fun _ c => { c with cur := clampDisp (c.cur.val - 1) bound }
-  pageUp := fun n c => { c with cur := clampDisp (c.cur.val - n) bound }
-  pageDn := fun n c => { c with cur := clampDisp (c.cur.val + n) bound }
-  home   := fun c => { c with cur := ⟨0⟩ }
-  end_   := fun c => { c with cur := clampDisp (bound - 1) bound }
-  find   := fun _ c => c  -- TODO
-  toggle := fun _ c => c  -- no-op for cursor
-  invert := fun c => c    -- no-op for cursor
-  mem    := fun _ _ => false
-
--- OrdSet Ops: set operations (bound=0 unused, elem required for +/-/^)
+-- OrdSet Ops: set operations (page ignored)
 instance [BEq α] : Ops (OrdSet α) 0 α where
-  plus   := fun e s => match e with
-    | some x => { s with arr := dedup (s.arr.push x) }
-    | none => s
-  minus  := fun e s => match e with
-    | some x => { s with arr := s.arr.erase x }
-    | none => s
+  plus   := fun x _ s => { s with arr := dedup (s.arr.push x) }
+  minus  := fun x _ s => { s with arr := s.arr.erase x }
   pageUp := fun _ s => s  -- no-op for set
   pageDn := fun _ s => s  -- no-op for set
-  home   := fun _ => ⟨#[], false⟩  -- clear
-  end_   := fun _ => ⟨#[], true⟩   -- select all (inverted empty)
+  home   := fun _ _ => ⟨#[], false⟩  -- clear
+  end_   := fun _ _ => ⟨#[], true⟩   -- select all (inverted empty)
   find   := fun _ s => s  -- no-op for set
-  toggle := fun e s => match e with
-    | some x => if s.arr.contains x
-                then { s with arr := s.arr.erase x }
-                else { s with arr := s.arr.push x }
-    | none => s
+  toggle := fun x s => if s.arr.contains x
+                       then { s with arr := s.arr.erase x }
+                       else { s with arr := s.arr.push x }
   invert := fun s => { s with inv := !s.inv }
   mem    := fun x s => s.arr.contains x != s.inv
 
 /-! ## Theorems -/
 
--- clamp always returns value < bound (when bound > 0)
-theorem clamp_lt_bound (n : Int) (bound : Nat) (h : bound > 0) : clamp n bound < bound := by
-  unfold clamp
+-- clamp returns value in [lo, hi)
+theorem clamp_bounds (val lo hi : Nat) (h : lo < hi) :
+    lo ≤ clamp val lo hi ∧ clamp val lo hi < hi := by
+  unfold clamp; simp [Nat.not_le.mpr h]; omega
+
+-- adjOff keeps cursor visible: off' ≤ cur < off' + page
+theorem adjOff_visible (cur off page : Nat) (hp : 0 < page) :
+    let off' := adjOff cur off page
+    off' ≤ cur ∧ cur < off' + page := by
+  simp only [adjOff, clamp]
   split
-  · omega
-  · split
-    · omega
-    · split
-      · omega
-      · omega
+  · -- hi ≤ lo: impossible when page > 0
+    omega
+  · -- normal case
+    constructor <;> omega
 
 -- invert twice returns to original
 theorem OrdSet.invert_invert [BEq α] (s : OrdSet α) :
@@ -169,37 +143,36 @@ theorem OrdSet.invert_invert [BEq α] (s : OrdSet α) :
 
 -- home (clear) produces empty set
 theorem OrdSet.home_empty [BEq α] (s : OrdSet α) :
-    @Ops.home (OrdSet α) 0 α _ s = ({} : OrdSet α) := by
+    @Ops.home (OrdSet α) 0 α _ 0 s = ({} : OrdSet α) := by
   rfl
 
 -- group columns are at front of display order
-theorem ColNav.group_at_front (c : ColNav) (colNames : Array String) (i : Nat)
-    (h : i < c.group.arr.size) :
-    (c.dispOrder colNames)[i]? = c.group.arr[i]? := by
+theorem group_at_front (g : OrdSet String) (colNames : Array String) (i : Nat)
+    (h : i < g.arr.size) :
+    (dispOrder g colNames)[i]? = g.arr[i]? := by
   simp only [dispOrder]
   rw [Array.getElem?_append_left h]
 
 /-! ## Dispatch -/
 
--- Apply verb to cursor (generic)
-def curVerb (α : Type) (bound : Nat) (elem : Type) [inst : Ops α bound elem]
-    (v : Char) (page : Nat) (x : α) : α :=
+-- Apply verb to Nav cursor (elem ignored, just for typeclass)
+def navVerb [BEq α] [Inhabited α] (bound pg : Nat) (v : Char) (n : Nav α) : Nav α :=
   match v with
-  | '+' => @Ops.plus α bound elem inst none x
-  | '-' => @Ops.minus α bound elem inst none x
-  | '<' => @Ops.pageUp α bound elem inst page x
-  | '>' => @Ops.pageDn α bound elem inst page x
-  | '0' => @Ops.home α bound elem inst x
-  | '$' => @Ops.end_ α bound elem inst x
-  | _   => x
+  | '+' => @Ops.plus (Nav α) bound α _ default pg n
+  | '-' => @Ops.minus (Nav α) bound α _ default pg n
+  | '<' => @Ops.pageUp (Nav α) bound α _ pg n
+  | '>' => @Ops.pageDn (Nav α) bound α _ pg n
+  | '0' => @Ops.home (Nav α) bound α _ pg n
+  | '$' => @Ops.end_ (Nav α) bound α _ pg n
+  | _   => n
 
 -- Apply verb to OrdSet
-def setVerb [BEq α] (v : Char) (e : Option α) (s : OrdSet α) : OrdSet α :=
+def setVerb [BEq α] (v : Char) (e : α) (s : OrdSet α) : OrdSet α :=
   match v with
-  | '+' => @Ops.plus (OrdSet α) 0 α _ e s
-  | '-' => @Ops.minus (OrdSet α) 0 α _ e s
-  | '0' => @Ops.home (OrdSet α) 0 α _ s
-  | '$' => @Ops.end_ (OrdSet α) 0 α _ s
+  | '+' => @Ops.plus (OrdSet α) 0 α _ e 0 s
+  | '-' => @Ops.minus (OrdSet α) 0 α _ e 0 s
+  | '0' => @Ops.home (OrdSet α) 0 α _ 0 s
+  | '$' => @Ops.end_ (OrdSet α) 0 α _ 0 s
   | '^' => @Ops.toggle (OrdSet α) 0 α _ e s
   | '~' => @Ops.invert (OrdSet α) 0 α _ s
   | _   => s
@@ -211,14 +184,18 @@ def dispatch (cmd : String) (t : Table) (nav : NavState t) (page : Nat := 10) : 
     let obj := chars[0]'(by omega)
     let v := chars[1]'(by omega)
     let nr := t.nRows
-    let nc := (nav.col.dispOrder t.colNames).size
-    let curCol := nav.col.colAt t.colNames nav.col.cur
+    let nc := (dispOrder nav.group t.colNames).size
+    let curCol := colAt nav.group t.colNames nav.col.cur
     match obj with
-    | 'r' => { nav with row := curVerb RowNav nr Row v page nav.row }
-    | 'c' => { nav with col := curVerb ColNav nc String v page nav.col }
-    | 'R' => { nav with row := { nav.row with sels := setVerb v (some nav.row.cur) nav.row.sels } }
-    | 'C' => { nav with col := { nav.col with sels := setVerb v curCol nav.col.sels } }
-    | 'G' => { nav with col := { nav.col with group := setVerb v curCol nav.col.group } }
+    | 'r' => { nav with row := navVerb nr page v nav.row }
+    | 'c' => { nav with col := navVerb nc page v nav.col }
+    | 'R' => { nav with row := { nav.row with sels := setVerb v nav.row.cur nav.row.sels } }
+    | 'C' => match curCol with
+             | some c => { nav with col := { nav.col with sels := setVerb v c nav.col.sels } }
+             | none => nav
+    | 'G' => match curCol with
+             | some c => { nav with group := setVerb v c nav.group }
+             | none => nav
     | _   => nav
   else nav
 

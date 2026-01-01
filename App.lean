@@ -30,21 +30,21 @@ def render (st : SomeTable) (t : Table) (nav : NavState t) : IO Unit := do
   let r0 := if nav.row.cur < visRows then 0 else nav.row.cur - visRows + 1
   let r1 := min t.nRows (r0 + visRows)
   -- col indices in display order
-  let dispCols := nav.col.dispOrder t.colNames
+  let dispCols := dispOrder nav.group t.colNames
   let colIdxs := dispCols.filterMap fun name => t.colNames.findIdx? (· == name)
-  let nKeys := nav.col.group.arr.size
+  let nKeys := nav.group.arr.size
   -- selected rows/cols
   let selRows := if nav.row.sels.inv then #[] else nav.row.sels.arr
   let selColIdxs := nav.col.sels.arr.filterMap fun name => t.colNames.findIdx? (· == name)
   -- cursor col in original order
-  let curColName := nav.col.colAt t.colNames nav.col.cur
+  let curColName := colAt nav.group t.colNames nav.col.cur
   let curColIdx := curColName.bind (fun n => t.colNames.findIdx? (· == n)) |>.getD 0
   -- render
-  let _ ← st.render colIdxs nKeys nav.col.off.val
+  let _ ← st.render colIdxs nKeys nav.col.off
     r0 r1 nav.row.cur curColIdx
     selColIdxs selRows styles 50 20 3
   -- status
-  let status := s!"r{nav.row.cur}/{t.nRows} c{nav.col.cur.val}/{t.nCols} grp={nKeys} sel={selRows.size}"
+  let status := s!"r{nav.row.cur}/{t.nRows} c{nav.col.cur}/{t.nCols} grp={nKeys} sel={selRows.size}"
   Term.print 0 (h - 1) Term.cyan Term.default status
   -- help
   Term.print (w - 30) (h - 1) Term.yellow Term.default "hjkl:nav spc:sel !:grp q:quit"
