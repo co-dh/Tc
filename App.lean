@@ -43,14 +43,17 @@ def main (args : List String) : IO Unit := do
     | Term.shutdown; Backend.shutdown; IO.eprintln "Query failed"; return
   -- build Nav with proofs
   let nc := st.colNames.size
-  if h : nc > 0 then
-    let t : Nav nc := ⟨st.nRows, st.colNames, rfl⟩
-    -- colWidths for rendering (same size as colNames from SomeTable)
-    have hWidths : st.colWidths.size = nc := sorry
-    let cumW : CumW nc := hWidths ▸ mkCumW st.colWidths
-    let nav : NavState nc t := ⟨{}, ColNav.default h, {}⟩
-    let view : ViewState nc := ViewState.default h
-    mainLoop st t nav view cumW
+  if hc : nc > 0 then
+    if hr : st.nRows > 0 then
+      let t : Nav nc := ⟨st.nRows, st.colNames, rfl⟩
+      -- colWidths for rendering (same size as colNames from SomeTable)
+      have hWidths : st.colWidths.size = nc := sorry
+      let cumW : CumW nc := hWidths ▸ mkCumW st.colWidths
+      let nav : NavState nc t := ⟨RowNav.default hr, ColNav.default hc, {}⟩
+      let view : ViewState nc := ViewState.default hc
+      mainLoop st t nav view cumW
+    else
+      IO.eprintln "No rows"
   else
     IO.eprintln "No columns"
   -- cleanup

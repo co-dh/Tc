@@ -38,10 +38,13 @@ structure OrdSet (α : Type) [BEq α] where
   arr : Array α := #[]   -- selected elements
   inv : Bool := false    -- true = inverted (all except arr)
 
--- Row navigation: cursor + selection (offset is view state)
-structure RowNav where
-  cur  : Nat := 0           -- cursor position
+-- Row navigation: cursor as Fin m + selection (offset is view state)
+structure RowNav (m : Nat) where
+  cur  : Fin m              -- cursor position bounded by nRows
   sels : OrdSet Nat := {}   -- selected row indices
+
+-- Default RowNav for m > 0
+def RowNav.default (h : m > 0) : RowNav m := ⟨⟨0, h⟩, {}⟩
 
 -- Column navigation: cursor as Fin n + selection (offset is view state)
 structure ColNav (n : Nat) where
@@ -61,28 +64,35 @@ def colAt (group : OrdSet String) (colNames : Array String) (i : Nat) : Option S
 
 -- NavState: composes row and column navigation
 structure NavState (n : Nat) (t : Nav n) where
-  row   : RowNav := {}
+  row   : RowNav t.nRows
   col   : ColNav n
   group : OrdSet String := {}  -- group columns (displayed first)
 
 -- Row: map from column name to cell value
 abbrev Row := String → String
 
+end Tc
+
+-- Clamp Fin by delta, staying in [0, n)
+namespace Fin
+def clamp (f : Fin n) (d : Int) : Fin n :=
+  let v := ((f.val : Int) + d).toNat
+  let v' := min v (n - 1)
+  ⟨v', Nat.lt_of_le_of_lt (Nat.min_le_right _ _) (Nat.sub_lt f.pos Nat.one_pos)⟩
+end Fin
+
+namespace Tc
+
 /-! ## Instances -/
 
--- RowNav CurOps: move by delta, clamped to [0, bound)
-instance : CurOps RowNav bound Nat where
-  move := fun d r =>
-    let v := ((r.cur : Int) + d).toNat  -- neg -> 0
-    { r with cur := clamp v 0 bound }
+-- RowNav CurOps: move by delta, clamped to [0, m)
+instance : CurOps (RowNav m) m Nat where
+  move := fun d r => { r with cur := r.cur.clamp d }
   find := fun _ r => r
 
 -- ColNav CurOps: move by delta, clamped to [0, n)
 instance : CurOps (ColNav n) n String where
-  move := fun d c =>
-    let v := ((c.cur.val : Int) + d).toNat
-    let v' := min v (n - 1)
-    { c with cur := ⟨v', Nat.lt_of_le_of_lt (Nat.min_le_right _ _) (Nat.sub_lt c.cur.pos Nat.one_pos)⟩ }
+  move := fun d c => { c with cur := c.cur.clamp d }
   find := fun _ c => c
 
 -- OrdSet SetOps: toggle only
@@ -106,23 +116,23 @@ theorem group_at_front (g : OrdSet String) (colNames : Array String) (i : Nat)
 /-! ## Dispatch -/
 
 -- Apply verb to RowNav cursor (pg = half screen)
-def rowVerb (bound : Nat) (pg : Nat) (v : Char) (r : RowNav) : RowNav :=
+def rowVerb {m : Nat} (pg : Nat) (v : Char) (r : RowNav m) : RowNav m :=
   match v with
-  | '+' => @CurOps.move RowNav bound Nat _ 1 r
-  | '-' => @CurOps.move RowNav bound Nat _ (-1) r
-  | '<' => @CurOps.move RowNav bound Nat _ (-(pg : Int)) r
-  | '>' => @CurOps.move RowNav bound Nat _ pg r
-  | '0' => @CurOps.move RowNav bound Nat _ (-(r.cur : Int)) r
-  | '$' => @CurOps.move RowNav bound Nat _ (bound - 1 - r.cur : Int) r
+  | '+' => @CurOps.move (RowNav m) m Nat _ (1 : Int) r
+  | '-' => @CurOps.move (RowNav m) m Nat _ (-1 : Int) r
+  | '<' => @CurOps.move (RowNav m) m Nat _ (-(pg : Int)) r
+  | '>' => @CurOps.move (RowNav m) m Nat _ (pg : Int) r
+  | '0' => @CurOps.move (RowNav m) m Nat _ (-(r.cur.val : Int)) r
+  | '$' => @CurOps.move (RowNav m) m Nat _ (m - 1 - r.cur.val : Int) r
   | _   => r
 
 -- Apply verb to ColNav cursor (pg = half visible cols)
 def colVerb {n : Nat} (pg : Nat) (v : Char) (c : ColNav n) : ColNav n :=
   match v with
-  | '+' => @CurOps.move (ColNav n) n String _ 1 c
-  | '-' => @CurOps.move (ColNav n) n String _ (-1) c
+  | '+' => @CurOps.move (ColNav n) n String _ (1 : Int) c
+  | '-' => @CurOps.move (ColNav n) n String _ (-1 : Int) c
   | '<' => @CurOps.move (ColNav n) n String _ (-(pg : Int)) c
-  | '>' => @CurOps.move (ColNav n) n String _ pg c
+  | '>' => @CurOps.move (ColNav n) n String _ (pg : Int) c
   | '0' => @CurOps.move (ColNav n) n String _ (-(c.cur.val : Int)) c
   | '$' => @CurOps.move (ColNav n) n String _ (n - 1 - c.cur.val : Int) c
   | _   => c
@@ -143,9 +153,9 @@ def dispatch {n : Nat} (cmd : String) (t : Nav n) (nav : NavState n t)
     let v := chars[1]'(by omega)
     let curCol := colAt nav.group t.colNames nav.col.cur.val
     match obj with
-    | 'r' => { nav with row := rowVerb t.nRows rowPg v nav.row }
+    | 'r' => { nav with row := rowVerb rowPg v nav.row }
     | 'c' => { nav with col := colVerb colPg v nav.col }
-    | 'R' => { nav with row := { nav.row with sels := setVerb v nav.row.cur nav.row.sels } }
+    | 'R' => { nav with row := { nav.row with sels := setVerb v nav.row.cur.val nav.row.sels } }
     | 'C' => match curCol with
              | some c => { nav with col := { nav.col with sels := setVerb v c nav.col.sels } }
              | none => nav
