@@ -13,12 +13,11 @@ instance : ReadTable SomeTable where
   colWidths:= (·.colWidths)
   cell     := fun t r c => (t.getIdx r c).toString
 
--- RenderTable instance for SomeTable
+-- RenderTable instance for SomeTable (uses C render)
 instance : RenderTable SomeTable where
-  render nav colOff r0 r1 styles := do
+  render nav colOff r0 r1 st := do
     let _ ← nav.tbl.render nav.dispColIdxs nav.nKeys colOff
-      r0 r1 nav.row.cur nav.curColIdx
-      nav.selColIdxs nav.selRows styles 50 20 3
+      r0 r1 nav.curRow nav.curColIdx nav.selColIdxs nav.selRows st 50 20 3
     pure ()
 
 end Tc

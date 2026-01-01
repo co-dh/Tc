@@ -25,7 +25,7 @@ partial def mainLoop {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t
       mainLoop nav view' cumW true
       return
   match keyToCmd ev gPrefix with
-  | some cmd => mainLoop (dispatch cmd nav rowPg colPg) view' cumW
+  | some cmd => mainLoop (nav.dispatch cmd rowPg colPg) view' cumW
   | none => mainLoop nav view' cumW
 
 -- Run viewer with any ReadTable/RenderTable
@@ -36,7 +36,7 @@ def runViewer {t : Type} [ReadTable t] [RenderTable t] (tbl : t) : IO Unit := do
     if hr : nRows > 0 then
       have hWidths : (ReadTable.colWidths tbl).size = nCols := sorry
       let cumW : CumW nCols := hWidths ▸ mkCumW (ReadTable.colWidths tbl)
-      let nav : NavState nRows nCols t := { tbl, hRows := rfl, hCols := rfl, row := NavAxis.default hr, col := NavAxis.default hc, group := #[], hGroup := Array.all_empty }
+      let nav := NavState.new tbl rfl rfl hr hc
       mainLoop nav (ViewState.default hc) cumW
     else IO.eprintln "No rows"
   else IO.eprintln "No columns"

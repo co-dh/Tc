@@ -69,41 +69,36 @@ instance : ReadTable MemTable where
   colWidths := (·.widths)
   cell      := fun t r c => (MemTable.cell t r c).toString
 
--- Render MemTable to terminal (pure Lean)
+-- Render MemTable to terminal using shared render logic
 instance : RenderTable MemTable where
-  render nav colOff r0 r1 styles := do
-    let t := nav.tbl
-    let dispIdxs := nav.dispColIdxs
+  render nav colOff r0 r1 st := do
     let w ← Term.width
-    -- header row (y=0)
+    -- build visible column info: (origIdx, x, width)
+    let mut cols : Array ColInfo := #[]
     let mut x : UInt32 := 0
-    for di in dispIdxs do
+    for di in nav.dispColIdxs do
       if di < colOff then continue
       if x >= w then break
-      let name := t.names.getD di ""
-      let cw := t.widths.getD di 10
-      let fg := if nav.selColIdxs.contains di then Term.magenta else Term.cyan
-      Term.printPad x 0 cw.toUInt32 fg Term.default name
-      x := x + cw.toUInt32 + 1
+      let cw := (nav.tbl.widths.getD di 10).toUInt32
+      cols := cols.push (di, x, cw)
+      x := x + cw + 1
+    -- separator x: after last visible key column
+    let visKeys := min nav.nKeys cols.size
+    let sepX : UInt32 := if visKeys > 0 then
+      let (_, sx, sw) := cols.getD (visKeys - 1) (0, 0, 0); sx + sw else 0
+    -- header (y=0) and footer (y=nDataRows+1)
+    let yFoot := (r1 - r0 + 1).toUInt32
+    renderHdrRow nav.tbl.names cols nav.selColIdxs nav.curColIdx st 0
+    renderHdrRow nav.tbl.names cols nav.selColIdxs nav.curColIdx st yFoot
+    renderSep sepX 0 st; renderSep sepX yFoot st
     -- data rows
     for row in [r0:r1] do
       let y := (row - r0 + 1).toUInt32
-      x := 0
-      for di in dispIdxs do
-        if di < colOff then continue
-        if x >= w then break
-        let cell := (MemTable.cell t row di).toString
-        let cw := t.widths.getD di 10
-        let isCur := row == nav.row.cur.val && di == nav.curColIdx
-        let isSelRow := nav.selRows.contains row
-        let isSelCol := nav.selColIdxs.contains di
-        let (fg, bg) := match (isCur, isSelRow, isSelCol) with
-          | (true, _, _) => (styles.getD 0 Term.black, styles.getD 1 Term.white)
-          | (_, true, _) => (styles.getD 2 Term.black, styles.getD 3 Term.green)
-          | (_, _, true) => (styles.getD 6 Term.magenta, styles.getD 7 Term.default)
-          | _ => (Term.default, Term.default)
-        Term.printPad x y cw.toUInt32 fg bg cell
-        x := x + cw.toUInt32 + 1
+      for (di, cx, cw) in cols do
+        let si := cellStyle (row == nav.curRow && di == nav.curColIdx) (nav.selRows.contains row)
+                            (nav.selColIdxs.contains di) (row == nav.curRow) (di == nav.curColIdx)
+        renderCell cx y cw (styleFg st si) (styleBg st si) (MemTable.cell nav.tbl row di).toString
+      renderSep sepX y st
     pure ()
 
 end Tc
