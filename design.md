@@ -11,17 +11,18 @@
                       ▼
 ┌─────────────────────────────────────────────────────────┐
 │                    NavState n t                         │
-│  ┌──────────────────────┐  ┌──────────────────────────┐ │
-│  │    RowNav t.nRows    │  │      ColNav n            │ │
-│  │  cur : Fin m         │  │  cur : Fin n             │ │
-│  │  sels: OrdSet Nat ───┼──┼─ sels: OrdSet String ────┤ │
-│  │    (CurOps)          │  │    (CurOps)              │ │
-│  └──────────────────────┘  └──────────────────────────┘ │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │  NavAxis n elem  (generic)                       │   │
+│  │    cur  : Fin n                                  │   │
+│  │    sels : OrdSet elem                            │   │
+│  │    (single CurOps instance)                      │   │
+│  ├──────────────────────────────────────────────────┤   │
+│  │  RowNav m = NavAxis m Nat      (row.cur, sels)   │   │
+│  │  ColNav n = NavAxis n String   (col.cur, sels)   │   │
+│  └──────────────────────────────────────────────────┘   │
+│  group : OrdSet String                                  │
 │                                                         │
-│  group : OrdSet String ─────────────────────────────────┤ │
-│                                                         │
-│  3 OrdSets total: row.sels, col.sels, group             │
-│  All use SetOps (toggle only)                           │
+│  3 OrdSets: row.sels, col.sels, group (SetOps toggle)   │
 └─────────────────────────────────────────────────────────┘
                       │
                       ▼ (view layer)
@@ -34,11 +35,13 @@
 
 ## Classes
 
-| Class   | Methods              | Purpose                    |
-|---------|----------------------|----------------------------|
-| CurOps  | move : Int → α → α   | Cursor movement by delta   |
-|         | find : (e→Bool) → α  | Search (placeholder)       |
-| SetOps  | toggle : e → α → α   | Toggle element in set      |
+| Class   | Methods               | Purpose                    |
+|---------|-----------------------|----------------------------|
+| CurOps  | pos : α → Fin bound   | Get cursor position        |
+|         | setPos : Fin → α → α  | Set cursor position        |
+|         | move : Int → α → α    | Move by delta (default)    |
+|         | find : (e→Bool) → α   | Search (default no-op)     |
+| SetOps  | toggle : e → α → α    | Toggle element in set      |
 
 ## Object
 
@@ -80,8 +83,9 @@
 |-----------|--------------------------------------------|
 | Nav n     | Query dims (nRows, colNames, proof)        |
 | OrdSet    | Ordered set of selected elements           |
-| RowNav m  | Row cursor (Fin m) + selections            |
-| ColNav n  | Column cursor (Fin n) + selections         |
+| NavAxis   | Generic axis: cur (Fin n) + sels (OrdSet)  |
+| RowNav m  | NavAxis m Nat (type alias)                 |
+| ColNav n  | NavAxis n String (type alias)              |
 | NavState  | Composes RowNav + ColNav + group           |
 | ViewState | Scroll offsets (view concern)              |
 
@@ -89,9 +93,11 @@
 
 **Separation**: NavState = navigation logic, ViewState = scroll offsets.
 
-**Fin bounds**: Both RowNav and ColNav use `Fin` for type-safe cursor bounds. `Fin.clamp` handles delta movement.
+**NavAxis**: Generic `NavAxis n elem` with single CurOps instance. RowNav/ColNav are type aliases.
 
-**CurOps.move**: Unified movement by Int delta, clamped. Home = move(-cur), end = move(bound-1-cur).
+**Fin bounds**: Cursor uses `Fin n` for type-safe bounds. `Fin.clamp` handles delta movement.
+
+**CurOps defaults**: `move` and `find` have default implementations using `pos`/`setPos`.
 
 **SetOps.toggle**: Only toggle needed. Add/remove/clear/all/invert removed.
 
