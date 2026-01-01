@@ -45,13 +45,13 @@
 
 ## Object
 
-| Symbol | Target        |
-|--------|---------------|
-| r      | row cursor    |
-| c      | col cursor    |
-| R      | row.sels      |
-| C      | col.sels      |
-| G      | group         |
+| Symbol | Target     | Description                  |
+|--------|------------|------------------------------|
+| r      | row.cur    | Current row position         |
+| c      | col.cur    | Current column position      |
+| R      | row.sels   | Selected row indices         |
+| C      | col.sels   | Selected column names        |
+| G      | group      | Columns pinned to left       |
 
 ## Verb
 
