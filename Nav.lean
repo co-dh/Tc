@@ -25,9 +25,10 @@ namespace Tc
 -- CurOps: cursor movement
 -- α = state type, bound = max position, elem = element type (for find)
 class CurOps (α : Type) (bound : Nat) (elem : Type) where
-  pos  : α → Nat                      -- get cursor position
-  move : Int → α → α                  -- move by delta, clamped to [0, bound)
-  find : (elem → Bool) → α → α        -- / : search
+  pos    : α → Fin bound                           -- get cursor
+  setPos : Fin bound → α → α                       -- set cursor
+  move   : Int → α → α := fun d a => setPos ((pos a).clamp d) a  -- default
+  find   : (elem → Bool) → α → α := fun _ a => a   -- default no-op
 
 -- SetOps: set operations (just toggle)
 class SetOps (α : Type) (elem : Type) where
@@ -80,17 +81,15 @@ abbrev Row := String → String
 
 /-! ## Instances -/
 
--- RowNav CurOps: move by delta, clamped to [0, m)
+-- RowNav CurOps
 instance : CurOps (RowNav m) m Nat where
-  pos  := fun r => r.cur.val
-  move := fun d r => { r with cur := r.cur.clamp d }
-  find := fun _ r => r
+  pos    := (·.cur)
+  setPos := fun f r => { r with cur := f }
 
--- ColNav CurOps: move by delta, clamped to [0, n)
+-- ColNav CurOps
 instance : CurOps (ColNav n) n String where
-  pos  := fun c => c.cur.val
-  move := fun d c => { c with cur := c.cur.clamp d }
-  find := fun _ c => c
+  pos    := (·.cur)
+  setPos := fun f c => { c with cur := f }
 
 -- OrdSet SetOps: toggle only
 instance [BEq α] : SetOps (OrdSet α) α where
@@ -112,13 +111,14 @@ theorem group_at_front (g : OrdSet String) (colNames : Array String) (i : Nat)
 -- Apply verb to cursor (pg = page size)
 def curVerb (α : Type) (bound : Nat) (elem : Type) [CurOps α bound elem]
     (pg : Nat) (v : Char) (a : α) : α :=
+  let p := (@CurOps.pos α bound elem _ a).val
   match v with
   | '+' => @CurOps.move α bound elem _ (1 : Int) a
   | '-' => @CurOps.move α bound elem _ (-1 : Int) a
   | '<' => @CurOps.move α bound elem _ (-(pg : Int)) a
   | '>' => @CurOps.move α bound elem _ (pg : Int) a
-  | '0' => @CurOps.move α bound elem _ (-(@CurOps.pos α bound elem _ a : Int)) a
-  | '$' => @CurOps.move α bound elem _ (bound - 1 - @CurOps.pos α bound elem _ a : Int) a
+  | '0' => @CurOps.move α bound elem _ (-(p : Int)) a
+  | '$' => @CurOps.move α bound elem _ (bound - 1 - p : Int) a
   | _   => a
 
 -- Apply verb to OrdSet (toggle only)
