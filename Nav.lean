@@ -25,6 +25,7 @@ namespace Tc
 -- CurOps: cursor movement
 -- α = state type, bound = max position, elem = element type (for find)
 class CurOps (α : Type) (bound : Nat) (elem : Type) where
+  pos  : α → Nat                      -- get cursor position
   move : Int → α → α                  -- move by delta, clamped to [0, bound)
   find : (elem → Bool) → α → α        -- / : search
 
@@ -81,11 +82,13 @@ abbrev Row := String → String
 
 -- RowNav CurOps: move by delta, clamped to [0, m)
 instance : CurOps (RowNav m) m Nat where
+  pos  := fun r => r.cur.val
   move := fun d r => { r with cur := r.cur.clamp d }
   find := fun _ r => r
 
 -- ColNav CurOps: move by delta, clamped to [0, n)
 instance : CurOps (ColNav n) n String where
+  pos  := fun c => c.cur.val
   move := fun d c => { c with cur := c.cur.clamp d }
   find := fun _ c => c
 
@@ -106,27 +109,17 @@ theorem group_at_front (g : OrdSet String) (colNames : Array String) (i : Nat)
 
 /-! ## Dispatch -/
 
--- Apply verb to RowNav cursor (pg = half screen)
-def rowVerb {m : Nat} (pg : Nat) (v : Char) (r : RowNav m) : RowNav m :=
+-- Apply verb to cursor (pg = page size)
+def curVerb (α : Type) (bound : Nat) (elem : Type) [CurOps α bound elem]
+    (pg : Nat) (v : Char) (a : α) : α :=
   match v with
-  | '+' => @CurOps.move (RowNav m) m Nat _ (1 : Int) r
-  | '-' => @CurOps.move (RowNav m) m Nat _ (-1 : Int) r
-  | '<' => @CurOps.move (RowNav m) m Nat _ (-(pg : Int)) r
-  | '>' => @CurOps.move (RowNav m) m Nat _ (pg : Int) r
-  | '0' => @CurOps.move (RowNav m) m Nat _ (-(r.cur.val : Int)) r
-  | '$' => @CurOps.move (RowNav m) m Nat _ (m - 1 - r.cur.val : Int) r
-  | _   => r
-
--- Apply verb to ColNav cursor (pg = half visible cols)
-def colVerb {n : Nat} (pg : Nat) (v : Char) (c : ColNav n) : ColNav n :=
-  match v with
-  | '+' => @CurOps.move (ColNav n) n String _ (1 : Int) c
-  | '-' => @CurOps.move (ColNav n) n String _ (-1 : Int) c
-  | '<' => @CurOps.move (ColNav n) n String _ (-(pg : Int)) c
-  | '>' => @CurOps.move (ColNav n) n String _ (pg : Int) c
-  | '0' => @CurOps.move (ColNav n) n String _ (-(c.cur.val : Int)) c
-  | '$' => @CurOps.move (ColNav n) n String _ (n - 1 - c.cur.val : Int) c
-  | _   => c
+  | '+' => @CurOps.move α bound elem _ (1 : Int) a
+  | '-' => @CurOps.move α bound elem _ (-1 : Int) a
+  | '<' => @CurOps.move α bound elem _ (-(pg : Int)) a
+  | '>' => @CurOps.move α bound elem _ (pg : Int) a
+  | '0' => @CurOps.move α bound elem _ (-(@CurOps.pos α bound elem _ a : Int)) a
+  | '$' => @CurOps.move α bound elem _ (bound - 1 - @CurOps.pos α bound elem _ a : Int) a
+  | _   => a
 
 -- Apply verb to OrdSet (toggle only)
 def setVerb [BEq α] (v : Char) (e : α) (s : OrdSet α) : OrdSet α :=
@@ -144,8 +137,8 @@ def dispatch {n : Nat} (cmd : String) (t : Nav n) (nav : NavState n t)
     let v := chars[1]'(by omega)
     let curCol := colAt nav.group t.colNames nav.col.cur.val
     match obj with
-    | 'r' => { nav with row := rowVerb rowPg v nav.row }
-    | 'c' => { nav with col := colVerb colPg v nav.col }
+    | 'r' => { nav with row := curVerb (RowNav t.nRows) t.nRows Nat rowPg v nav.row }
+    | 'c' => { nav with col := curVerb (ColNav n) n String colPg v nav.col }
     | 'R' => { nav with row := { nav.row with sels := setVerb v nav.row.cur.val nav.row.sels } }
     | 'C' => match curCol with
              | some c => { nav with col := { nav.col with sels := setVerb v c nav.col.sels } }
