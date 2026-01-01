@@ -80,23 +80,20 @@ opaque pollEvent : IO Event
 @[extern "lean_tb_buffer_str"]
 opaque bufferStr : IO String
 
--- | Print string at position with colors
-def print (x y : UInt32) (fg bg : UInt32) (s : String) : IO Unit := do
-  let mut cx := x
-  for c in s.toList do
-    setCell cx y c.toNat.toUInt32 fg bg
-    cx := cx + 1
+-- | Batch print with padding (C FFI - fast)
+@[extern "lean_tb_print_pad"]
+opaque printPadC : UInt32 → UInt32 → UInt32 → UInt32 → UInt32 → @& String → UInt8 → IO Unit
 
 -- | Print string left-aligned, truncated/padded to width
-def printPad (x y w : UInt32) (fg bg : UInt32) (s : String) : IO Unit := do
-  let padded := s.take w.toNat ++ String.ofList (List.replicate (w.toNat - min s.length w.toNat) ' ')
-  print x y fg bg padded
+def printPad (x y w : UInt32) (fg bg : UInt32) (s : String) : IO Unit :=
+  printPadC x y w fg bg s 0
 
 -- | Print string right-aligned, truncated/padded to width
-def printPadR (x y w : UInt32) (fg bg : UInt32) (s : String) : IO Unit := do
-  let len := min s.length w.toNat
-  let pad := w.toNat - len
-  let padded := String.ofList (List.replicate pad ' ') ++ s.take w.toNat
-  print x y fg bg padded
+def printPadR (x y w : UInt32) (fg bg : UInt32) (s : String) : IO Unit :=
+  printPadC x y w fg bg s 1
+
+-- | Print string at position (for backwards compat)
+def print (x y : UInt32) (fg bg : UInt32) (s : String) : IO Unit :=
+  printPadC x y s.length.toUInt32 fg bg s 0
 
 end Term

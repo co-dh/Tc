@@ -65,6 +65,28 @@ lean_obj_res lean_tb_poll_event(lean_obj_arg world) {
     return lean_io_result_mk_ok(obj);
 }
 
+// tb_print_pad(x, y, w, fg, bg, str, right_align) -> Unit
+// Prints string left/right aligned, padded to width - all in C
+lean_obj_res lean_tb_print_pad(uint32_t x, uint32_t y, uint32_t w,
+                                uint32_t fg, uint32_t bg,
+                                lean_obj_arg str, uint8_t right, lean_obj_arg world) {
+    const char *s = lean_string_cstr(str);
+    size_t len = 0;
+    for (const char *p = s; *p && len < w; p++, len++) {}  // count up to w
+    size_t pad = w > len ? w - len : 0;
+    uint32_t cx = x;
+    if (right) {  // right align: pad first
+        for (size_t i = 0; i < pad; i++) tb_set_cell((int)cx++, (int)y, ' ', fg, bg);
+    }
+    for (const char *p = s; *p && (cx - x) < w; p++) {
+        tb_set_cell((int)cx++, (int)y, (uint32_t)(unsigned char)*p, fg, bg);
+    }
+    if (!right) {  // left align: pad after
+        for (size_t i = 0; i < pad; i++) tb_set_cell((int)cx++, (int)y, ' ', fg, bg);
+    }
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 // tb_buffer_str() -> String (screen as string, no escape sequences)
 lean_obj_res lean_tb_buffer_str(lean_obj_arg world) {
     int w = tb_width();
