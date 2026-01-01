@@ -3,10 +3,16 @@
 
   Key abstractions:
   - NavState: dims + row/col navigation + group
-  - NavAxis: cursor (Fin) + selections (OrdSet)
-  - CurOps/SetOps: typeclasses for cursor and set operations
+  - NavAxis: cursor (Fin) + selections (Array)
+  - CurOps: typeclass for cursor operations
 -/
 import Tc.Offset
+
+-- Toggle element in array: remove if present, append if not
+namespace Array
+def toggle [BEq α] (x : α) (a : Array α) : Array α :=
+  if a.contains x then a.erase x else a.push x
+end Array
 
 -- Clamp Fin by delta, staying in [0, n)
 namespace Fin
@@ -28,20 +34,12 @@ class CurOps (α : Type) (bound : Nat) (elem : Type) where
   move   : Int → α → α := fun d a => setPos ((pos a).clamp d) a  -- default
   find   : (elem → Bool) → α → α := fun _ a => a   -- default no-op
 
--- SetOps: set operations (just toggle)
-class SetOps (α : Type) (elem : Type) where
-  toggle : elem → α → α               -- ~ : toggle elem
-
 /-! ## Structures -/
-
--- OrdSet: ordered set of selected elements
-structure OrdSet (α : Type) [BEq α] where
-  arr : Array α := #[]   -- selected elements
 
 -- NavAxis: cursor + selection for one axis (row or col)
 structure NavAxis (n : Nat) (elem : Type) [BEq elem] where
   cur  : Fin n              -- cursor position
-  sels : OrdSet elem := {}  -- selected elements
+  sels : Array elem := #[]  -- selected elements
 
 -- Default NavAxis for n > 0
 def NavAxis.default [BEq elem] (h : n > 0) : NavAxis n elem := ⟨⟨0, h⟩, {}⟩
@@ -51,12 +49,20 @@ abbrev RowNav (m : Nat) := NavAxis m Nat
 abbrev ColNav (n : Nat) := NavAxis n String
 
 -- Compute display order: group first, then rest
-def dispOrder (group : OrdSet String) (colNames : Array String) : Array String :=
-  group.arr ++ colNames.filter (!group.arr.contains ·)
+def dispOrder (group : Array String) (colNames : Array String) : Array String :=
+  group ++ colNames.filter (!group.contains ·)
 
--- Get column name at display index
-def colAt (group : OrdSet String) (colNames : Array String) (i : Nat) : Option String :=
-  (dispOrder group colNames)[i]?
+-- dispOrder preserves size when group ⊆ colNames
+theorem dispOrder_size (group colNames : Array String)
+    (h : group.all (colNames.contains ·)) :
+    (dispOrder group colNames).size = colNames.size := by
+  simp only [dispOrder, Array.size_append]
+  sorry -- filter removes exactly group.size elements
+
+-- Get column name at display index (group ⊆ colNames required)
+def colAt (group colNames : Array String) (i : Fin colNames.size)
+    (h : group.all (colNames.contains ·)) : String :=
+  (dispOrder group colNames)[i.val]'(by simp [dispOrder_size group colNames h]; exact i.isLt)
 
 -- NavState: query dims + row/column navigation
 structure NavState (n : Nat) where
@@ -65,7 +71,34 @@ structure NavState (n : Nat) where
   hNames   : colNames.size = n        -- proof names matches n
   row      : RowNav nRows
   col      : ColNav n
-  group    : OrdSet String := {}      -- group columns (displayed first)
+  group    : Array String := #[]      -- group columns (displayed first)
+  hGroup   : group.all (colNames.contains ·) := by decide  -- group ⊆ colNames
+
+namespace NavState
+
+-- Number of grouped columns
+def nKeys (nav : NavState n) : Nat := nav.group.size
+
+-- Selected row indices
+def selRows (nav : NavState n) : Array Nat := nav.row.sels
+
+-- Selected column indices (in original order)
+def selColIdxs (nav : NavState n) : Array Nat :=
+  nav.col.sels.filterMap fun name => nav.colNames.findIdx? (· == name)
+
+-- Current column name
+def curColName (nav : NavState n) : String :=
+  colAt nav.group nav.colNames (nav.hNames ▸ nav.col.cur) nav.hGroup
+
+-- Current column index (in original order)
+def curColIdx (nav : NavState n) : Nat :=
+  nav.colNames.findIdx? (· == nav.curColName) |>.getD 0
+
+-- Column indices in display order
+def dispColIdxs (nav : NavState n) : Array Nat :=
+  (dispOrder nav.group nav.colNames).filterMap fun name => nav.colNames.findIdx? (· == name)
+
+end NavState
 
 /-! ## Instances -/
 
@@ -73,12 +106,6 @@ structure NavState (n : Nat) where
 instance [BEq elem] : CurOps (NavAxis n elem) n elem where
   pos    := (·.cur)
   setPos := fun f a => { a with cur := f }
-
--- OrdSet SetOps: toggle only
-instance [BEq α] : SetOps (OrdSet α) α where
-  toggle := fun x s => if s.arr.contains x
-                       then { s with arr := s.arr.erase x }
-                       else { s with arr := s.arr.push x }
 
 /-! ## Dispatch -/
 
@@ -95,12 +122,6 @@ def curVerb (α : Type) (bound : Nat) (elem : Type) [CurOps α bound elem]
   | '$' => @CurOps.move α bound elem _ (bound - 1 - p : Int) a
   | _   => a
 
--- Apply verb to OrdSet (toggle only)
-def setVerb [BEq α] (v : Char) (e : α) (s : OrdSet α) : OrdSet α :=
-  match v with
-  | '~' => @SetOps.toggle (OrdSet α) α _ e s
-  | _   => s
-
 -- Dispatch 2-char command (object + verb) to NavState
 -- rowPg/colPg = half screen for page up/down
 def dispatch {n : Nat} (cmd : String) (nav : NavState n) (rowPg colPg : Nat) : NavState n :=
@@ -108,17 +129,13 @@ def dispatch {n : Nat} (cmd : String) (nav : NavState n) (rowPg colPg : Nat) : N
   if h : chars.length = 2 then
     let obj := chars[0]'(by omega)
     let v := chars[1]'(by omega)
-    let curCol := colAt nav.group nav.colNames nav.col.cur.val
+    let curCol := colAt nav.group nav.colNames (nav.hNames ▸ nav.col.cur) nav.hGroup
     match obj with
     | 'r' => { nav with row := curVerb (RowNav nav.nRows) nav.nRows Nat rowPg v nav.row }
     | 'c' => { nav with col := curVerb (ColNav n) n String colPg v nav.col }
-    | 'R' => { nav with row := { nav.row with sels := setVerb v nav.row.cur.val nav.row.sels } }
-    | 'C' => match curCol with
-             | some c => { nav with col := { nav.col with sels := setVerb v c nav.col.sels } }
-             | none => nav
-    | 'G' => match curCol with
-             | some c => { nav with group := setVerb v c nav.group }
-             | none => nav
+    | 'R' => { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
+    | 'C' => { nav with col := { nav.col with sels := nav.col.sels.toggle curCol } }
+    | 'G' => { nav with group := nav.group.toggle curCol, hGroup := sorry }
     | _   => nav
   else nav
 

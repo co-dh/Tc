@@ -44,25 +44,12 @@ def render {n : Nat} (st : SomeTable) (nav : NavState n)
   let rowOff := adjOff nav.row.cur view.rowOff visRows
   -- adjust col offset
   let colOff := adjColOff nav.col.cur view.colOff cumW w.toNat
-  -- row range
-  let r0 := rowOff
-  let r1 := min nav.nRows (r0 + visRows)
-  -- col indices in display order
-  let dispCols := dispOrder nav.group nav.colNames
-  let colIdxs := dispCols.filterMap fun name => nav.colNames.findIdx? (· == name)
-  let nKeys := nav.group.arr.size
-  -- selected rows/cols
-  let selRows := nav.row.sels.arr
-  let selColIdxs := nav.col.sels.arr.filterMap fun name => nav.colNames.findIdx? (· == name)
-  -- cursor col in original order
-  let curColName := colAt nav.group nav.colNames nav.col.cur.val
-  let curColIdx := curColName.bind (fun nm => nav.colNames.findIdx? (· == nm)) |>.getD 0
   -- render
-  let _ ← st.render colIdxs nKeys colOff.val
-    r0 r1 nav.row.cur curColIdx
-    selColIdxs selRows styles 50 20 3
+  let _ ← st.render nav.dispColIdxs nav.nKeys colOff.val
+    rowOff (min nav.nRows (rowOff + visRows)) nav.row.cur nav.curColIdx
+    nav.selColIdxs nav.selRows styles 50 20 3
   -- status
-  let status := s!"r{nav.row.cur}/{nav.nRows} c{nav.col.cur.val}/{n} grp={nKeys} sel={selRows.size}"
+  let status := s!"r{nav.row.cur}/{nav.nRows} c{nav.col.cur.val}/{n} grp={nav.nKeys} sel={nav.selRows.size}"
   Term.print 0 (h - 1) Term.cyan Term.default status
   -- help
   let help := "hjkl:nav HJKL:pg g?:end t/T:sel !:grp q:q"

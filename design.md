@@ -5,18 +5,17 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                      NavState n                         │
-│  nRows : Nat, colNames : Array String, hNames : proof   │
+│  nRows, colNames, hNames, hGroup                        │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │  NavAxis n elem  (generic, single CurOps inst)   │   │
+│  │  NavAxis n elem  (single CurOps instance)        │   │
 │  │    cur  : Fin n                                  │   │
-│  │    sels : OrdSet elem                            │   │
+│  │    sels : Array elem                             │   │
 │  ├──────────────────────────────────────────────────┤   │
 │  │  RowNav m = NavAxis m Nat      (row)             │   │
 │  │  ColNav n = NavAxis n String   (col)             │   │
 │  └──────────────────────────────────────────────────┘   │
-│  group : OrdSet String                                  │
-│                                                         │
-│  3 OrdSets: row.sels, col.sels, group (SetOps toggle)   │
+│  group : Array String                                   │
+│  helpers: nKeys, selRows, selColIdxs, curColIdx, etc    │
 └─────────────────────────────────────────────────────────┘
                       │
                       ▼ (view layer)
@@ -35,7 +34,6 @@
 |         | setPos : Fin → α → α  | Set cursor position        |
 |         | move : Int → α → α    | Move by delta (default)    |
 |         | find : (e→Bool) → α   | Search (default no-op)     |
-| SetOps  | toggle : e → α → α    | Toggle element in set      |
 
 ## Object
 
@@ -75,11 +73,10 @@
 
 | Struct    | Purpose                                    |
 |-----------|--------------------------------------------|
-| NavState  | Dims + RowNav + ColNav + group             |
-| NavAxis   | Generic axis: cur (Fin n) + sels (OrdSet)  |
+| NavState  | Dims + RowNav + ColNav + group + helpers   |
+| NavAxis   | Generic axis: cur (Fin n) + sels (Array)   |
 | RowNav m  | NavAxis m Nat (type alias)                 |
 | ColNav n  | NavAxis n String (type alias)              |
-| OrdSet    | Ordered set of selected elements           |
 | ViewState | Scroll offsets (view concern)              |
 
 ## Key Design Decisions
@@ -94,6 +91,6 @@
 
 **CurOps defaults**: `move` and `find` have default implementations using `pos`/`setPos`.
 
-**SetOps.toggle**: Only toggle needed. Add/remove/clear/all/invert removed.
+**Array.toggle**: Selection uses plain Array with `toggle` extension. No wrapper type.
 
 **Display order**: Group columns first via `dispOrder`.
