@@ -72,9 +72,6 @@ structure NavState (n : Nat) (t : Nav n) where
   col   : ColNav n
   group : OrdSet String := {}  -- group columns (displayed first)
 
--- Row: map from column name to cell value
-abbrev Row := String → String
-
 /-! ## Instances -/
 
 -- NavAxis CurOps (covers RowNav and ColNav)
@@ -87,15 +84,6 @@ instance [BEq α] : SetOps (OrdSet α) α where
   toggle := fun x s => if s.arr.contains x
                        then { s with arr := s.arr.erase x }
                        else { s with arr := s.arr.push x }
-
-/-! ## Theorems -/
-
--- group columns are at front of display order
-theorem group_at_front (g : OrdSet String) (colNames : Array String) (i : Nat)
-    (h : i < g.arr.size) :
-    (dispOrder g colNames)[i]? = g.arr[i]? := by
-  simp only [dispOrder]
-  rw [Array.getElem?_append_left h]
 
 /-! ## Dispatch -/
 
