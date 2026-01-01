@@ -52,13 +52,9 @@ def keyToCmd (ev : Term.Event) (gPrefix : Bool) : Option String :=
         else if ev.key == Term.keyPageUp   then some "r<"
         else if ev.key == Term.keyHome     then some "r0"
         else if ev.key == Term.keyEnd      then some "r$"
-        -- Selection: s/t/u row, S/T/U col
-        else if ev.ch == 's'.toNat.toUInt32 then some "R+"
+        -- Selection toggle: t row, T col
         else if ev.ch == 't'.toNat.toUInt32 then some "R^"
-        else if ev.ch == 'u'.toNat.toUInt32 then some "R-"
-        else if ev.ch == 'S'.toNat.toUInt32 then some "C+"
         else if ev.ch == 'T'.toNat.toUInt32 then some "C^"
-        else if ev.ch == 'U'.toNat.toUInt32 then some "C-"
-        -- Group
+        -- Group toggle
         else if ev.ch == '!'.toNat.toUInt32 then some "G^"
         else none

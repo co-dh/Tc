@@ -65,6 +65,7 @@ def render {n : Nat} (st : SomeTable) (t : Nav n) (nav : NavState n t)
   let status := s!"r{nav.row.cur}/{t.nRows} c{nav.col.cur.val}/{n} grp={nKeys} sel={selRows.size}"
   Term.print 0 (h - 1) Term.cyan Term.default status
   -- help
-  Term.print (w - 36) (h - 1) Term.yellow Term.default "hjkl:nav HJKL:pg g?:end stu:sel q:quit"
+  let help := "hjkl:nav HJKL:pg g?:end t/T:sel !:grp q:q"
+  Term.print (w - help.length.toUInt32) (h - 1) Term.yellow Term.default help
   Term.present
   pure ⟨rowOff, colOff⟩
