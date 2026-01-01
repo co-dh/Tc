@@ -15,14 +15,14 @@ namespace Tc
 /-! ## Classes -/
 
 -- Ops: unified verb-based operations for navigation
--- α = state type, elem = element type
-class Ops (α : Type) (elem : Type) where
+-- α = state type, bound = max position (for cursors), elem = element type
+class Ops (α : Type) (bound : Nat) (elem : Type) where
   plus   : elem → α → α               -- + : move +1 / add elem
   minus  : elem → α → α               -- - : move -1 / remove elem
   pageUp : Nat → α → α                -- < : move -page
   pageDn : Nat → α → α                -- > : move +page
   home   : α → α                      -- 0 : first / clear
-  end_   : Nat → α → α                -- $ : last / all (takes bound)
+  end_   : α → α                      -- $ : last / all
   find   : (elem → Bool) → α → α      -- / : search
   toggle : elem → α → α               -- ^ : toggle elem
   invert : α → α                      -- ~ : invert
@@ -86,21 +86,21 @@ abbrev Row := String → String
 
 /-! ## Instances -/
 
--- RowNav Ops: cursor movement (bound passed to end_)
-instance : Ops RowNav Nat where
-  plus   := fun _ r => { r with cur := r.cur + 1 }
-  minus  := fun _ r => { r with cur := r.cur - 1 }
-  pageUp := fun pg r => { r with cur := r.cur - pg }
-  pageDn := fun pg r => { r with cur := r.cur + pg }
+-- RowNav Ops: cursor movement (offset handled by view layer)
+instance : Ops RowNav bound Nat where
+  plus   := fun _ r => { r with cur := clamp (r.cur + 1) 0 bound }
+  minus  := fun _ r => { r with cur := clamp (r.cur - 1) 0 bound }
+  pageUp := fun pg r => { r with cur := clamp (r.cur - pg) 0 bound }
+  pageDn := fun pg r => { r with cur := clamp (r.cur + pg) 0 bound }
   home   := fun r => { r with cur := 0 }
-  end_   := fun bound r => { r with cur := bound - 1 }
+  end_   := fun r => { r with cur := clamp (bound - 1) 0 bound }
   find   := fun _ r => r
   toggle := fun _ r => r
   invert := fun r => r
   mem    := fun _ _ => false
 
--- ColNav Ops: cursor movement (n is column count)
-instance : Ops (ColNav n) String where
+-- ColNav Ops: cursor movement (offset handled by view layer)
+instance : Ops (ColNav n) n String where
   plus   := fun _ c => if h : c.cur.val + 1 < n
     then { c with cur := ⟨c.cur.val + 1, h⟩ } else c
   minus  := fun _ c => if c.cur.val > 0
@@ -113,20 +113,20 @@ instance : Ops (ColNav n) String where
     { c with cur := ⟨v, Nat.lt_of_le_of_lt (Nat.min_le_right _ _) (Nat.sub_lt c.cur.pos Nat.one_pos)⟩ }
   home   := fun c => if h : n > 0
     then { c with cur := ⟨0, h⟩ } else c
-  end_   := fun _ c => { c with cur := ⟨n - 1, Nat.sub_lt c.cur.pos Nat.one_pos⟩ }
+  end_   := fun c => { c with cur := ⟨n - 1, Nat.sub_lt c.cur.pos Nat.one_pos⟩ }
   find   := fun _ c => c
   toggle := fun _ c => c
   invert := fun c => c
   mem    := fun _ _ => false
 
 -- OrdSet Ops: set operations
-instance [BEq α] : Ops (OrdSet α) α where
+instance [BEq α] : Ops (OrdSet α) 0 α where
   plus   := fun x s => { s with arr := dedup (s.arr.push x) }
   minus  := fun x s => { s with arr := s.arr.erase x }
   pageUp := fun _ s => s  -- no-op for set
   pageDn := fun _ s => s  -- no-op for set
   home   := fun _ => ⟨#[], false⟩  -- clear
-  end_   := fun _ _ => ⟨#[], true⟩   -- select all (inverted empty)
+  end_   := fun _ => ⟨#[], true⟩   -- select all (inverted empty)
   find   := fun _ s => s  -- no-op for set
   toggle := fun x s => if s.arr.contains x
                        then { s with arr := s.arr.erase x }
@@ -138,12 +138,12 @@ instance [BEq α] : Ops (OrdSet α) α where
 
 -- invert twice returns to original
 theorem OrdSet.invert_invert [BEq α] (s : OrdSet α) :
-    @Ops.invert (OrdSet α) α _ (@Ops.invert (OrdSet α) α _ s) = s := by
+    @Ops.invert (OrdSet α) 0 α _ (@Ops.invert (OrdSet α) 0 α _ s) = s := by
   simp only [Ops.invert, Bool.not_not]
 
 -- home (clear) produces empty set
 theorem OrdSet.home_empty [BEq α] (s : OrdSet α) :
-    @Ops.home (OrdSet α) α _ s = ({} : OrdSet α) := by
+    @Ops.home (OrdSet α) 0 α _ s = ({} : OrdSet α) := by
   rfl
 
 -- group columns are at front of display order
@@ -158,34 +158,34 @@ theorem group_at_front (g : OrdSet String) (colNames : Array String) (i : Nat)
 -- Apply verb to RowNav cursor
 def rowVerb (bound : Nat) (v : Char) (r : RowNav) : RowNav :=
   match v with
-  | '+' => (Ops.plus (α := RowNav) (elem := Nat)) 0 r
-  | '-' => (Ops.minus (α := RowNav) (elem := Nat)) 0 r
-  | '<' => (Ops.pageUp (α := RowNav) (elem := Nat)) 10 r
-  | '>' => (Ops.pageDn (α := RowNav) (elem := Nat)) 10 r
-  | '0' => (Ops.home (α := RowNav) (elem := Nat)) r
-  | '$' => (Ops.end_ (α := RowNav) (elem := Nat)) bound r
+  | '+' => @Ops.plus RowNav bound Nat _ 0 r
+  | '-' => @Ops.minus RowNav bound Nat _ 0 r
+  | '<' => @Ops.pageUp RowNav bound Nat _ 10 r
+  | '>' => @Ops.pageDn RowNav bound Nat _ 10 r
+  | '0' => @Ops.home RowNav bound Nat _ r
+  | '$' => @Ops.end_ RowNav bound Nat _ r
   | _   => r
 
 -- Apply verb to ColNav cursor
 def colVerb {n : Nat} (v : Char) (c : ColNav n) : ColNav n :=
   match v with
-  | '+' => (Ops.plus (α := ColNav n) (elem := String)) "" c
-  | '-' => (Ops.minus (α := ColNav n) (elem := String)) "" c
-  | '<' => (Ops.pageUp (α := ColNav n) (elem := String)) 10 c
-  | '>' => (Ops.pageDn (α := ColNav n) (elem := String)) 10 c
-  | '0' => (Ops.home (α := ColNav n) (elem := String)) c
-  | '$' => (Ops.end_ (α := ColNav n) (elem := String)) n c
+  | '+' => @Ops.plus (ColNav n) n String _ "" c
+  | '-' => @Ops.minus (ColNav n) n String _ "" c
+  | '<' => @Ops.pageUp (ColNav n) n String _ 10 c
+  | '>' => @Ops.pageDn (ColNav n) n String _ 10 c
+  | '0' => @Ops.home (ColNav n) n String _ c
+  | '$' => @Ops.end_ (ColNav n) n String _ c
   | _   => c
 
 -- Apply verb to OrdSet
 def setVerb [BEq α] (v : Char) (e : α) (s : OrdSet α) : OrdSet α :=
   match v with
-  | '+' => (Ops.plus (α := OrdSet α) (elem := α)) e s
-  | '-' => (Ops.minus (α := OrdSet α) (elem := α)) e s
-  | '0' => (Ops.home (α := OrdSet α) (elem := α)) s
-  | '$' => (Ops.end_ (α := OrdSet α) (elem := α)) 0 s
-  | '^' => (Ops.toggle (α := OrdSet α) (elem := α)) e s
-  | '~' => (Ops.invert (α := OrdSet α) (elem := α)) s
+  | '+' => @Ops.plus (OrdSet α) 0 α _ e s
+  | '-' => @Ops.minus (OrdSet α) 0 α _ e s
+  | '0' => @Ops.home (OrdSet α) 0 α _ s
+  | '$' => @Ops.end_ (OrdSet α) 0 α _ s
+  | '^' => @Ops.toggle (OrdSet α) 0 α _ e s
+  | '~' => @Ops.invert (OrdSet α) 0 α _ s
   | _   => s
 
 -- Dispatch 2-char command (object + verb) to NavState
