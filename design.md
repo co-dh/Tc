@@ -79,7 +79,7 @@
 | Struct    | Purpose                                    |
 |-----------|--------------------------------------------|
 | Nav n     | Query dims (nRows, colNames, proof)        |
-| OrdSet    | Ordered set with invert flag               |
+| OrdSet    | Ordered set of selected elements           |
 | RowNav m  | Row cursor (Fin m) + selections            |
 | ColNav n  | Column cursor (Fin n) + selections         |
 | NavState  | Composes RowNav + ColNav + group           |
@@ -94,7 +94,5 @@
 **CurOps.move**: Unified movement by Int delta, clamped. Home = move(-cur), end = move(bound-1-cur).
 
 **SetOps.toggle**: Only toggle needed. Add/remove/clear/all/invert removed.
-
-**OrdSet.inv**: Invert flag avoids materializing large inverted selections.
 
 **Display order**: Group columns first via `dispOrder`.

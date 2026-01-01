@@ -40,11 +40,9 @@ structure Nav (nCols : Nat) where
   colNames : Array String                -- column names in data order
   hNames : colNames.size = nCols         -- proof names matches nCols
 
--- OrdSet: concrete ordered set with invert flag
--- inv=true means "all except arr" (avoids materializing large inversions)
+-- OrdSet: ordered set of selected elements
 structure OrdSet (α : Type) [BEq α] where
   arr : Array α := #[]   -- selected elements
-  inv : Bool := false    -- true = inverted (all except arr)
 
 -- Row navigation: cursor as Fin m + selection (offset is view state)
 structure RowNav (m : Nat) where
@@ -98,7 +96,7 @@ instance [BEq α] : SetOps (OrdSet α) α where
                        else { s with arr := s.arr.push x }
 
 -- OrdSet membership (not in class, used internally)
-def OrdSet.mem [BEq α] (x : α) (s : OrdSet α) : Bool := s.arr.contains x != s.inv
+def OrdSet.mem [BEq α] (x : α) (s : OrdSet α) : Bool := s.arr.contains x
 
 /-! ## Theorems -/
 

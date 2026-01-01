@@ -52,7 +52,7 @@ def render {n : Nat} (st : SomeTable) (t : Nav n) (nav : NavState n t)
   let colIdxs := dispCols.filterMap fun name => t.colNames.findIdx? (· == name)
   let nKeys := nav.group.arr.size
   -- selected rows/cols
-  let selRows := if nav.row.sels.inv then #[] else nav.row.sels.arr
+  let selRows := nav.row.sels.arr
   let selColIdxs := nav.col.sels.arr.filterMap fun name => t.colNames.findIdx? (· == name)
   -- cursor col in original order
   let curColName := colAt nav.group t.colNames nav.col.cur.val
