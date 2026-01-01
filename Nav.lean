@@ -95,9 +95,6 @@ instance [BEq α] : SetOps (OrdSet α) α where
                        then { s with arr := s.arr.erase x }
                        else { s with arr := s.arr.push x }
 
--- OrdSet membership (not in class, used internally)
-def OrdSet.mem [BEq α] (x : α) (s : OrdSet α) : Bool := s.arr.contains x
-
 /-! ## Theorems -/
 
 -- group columns are at front of display order
