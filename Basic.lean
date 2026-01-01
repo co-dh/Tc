@@ -40,12 +40,26 @@ private def dedup [BEq α] (a : Array α) : Array α :=
 
 /-! ## Structures -/
 
--- Table: query result dimensions from data source
-structure Table where
-  nRows : Nat              -- total row count
-  colNames : Array String  -- column names in data order
+-- Cumulative width function for n columns: cumW i = total width of columns 0..i-1
+abbrev CumW (n : Nat) := Fin (n + 1) → Nat
 
-def Table.nCols (t : Table) : Nat := t.colNames.size
+-- Build CumW from widths array
+def mkCumW (widths : Array Nat) : CumW widths.size := fun i =>
+  -- cumW[i] = sum of widths[0..i-1] + i (for separators)
+  widths.foldl (init := (0, 0)) (fun (idx, acc) w =>
+    if idx < i.val then (idx + 1, acc + w + 1) else (idx + 1, acc)) |>.2
+
+-- Table: query result dimensions from data source, parameterized by column count
+structure Table (nCols : Nat) where
+  nRows : Nat                            -- total row count
+  colNames : Array String                -- column names in data order
+  colWidths : Array Nat                  -- column widths from data
+  hNames : colNames.size = nCols         -- proof names matches nCols
+  hWidths : colWidths.size = nCols       -- proof widths matches nCols
+
+-- Get CumW from table
+def Table.cumW {n : Nat} (t : Table n) : CumW n :=
+  t.hWidths ▸ mkCumW t.colWidths
 
 -- OrdSet: concrete ordered set with invert flag
 -- inv=true means "all except arr" (avoids materializing large inversions)
@@ -53,15 +67,20 @@ structure OrdSet (α : Type) [BEq α] where
   arr : Array α := #[]   -- selected elements
   inv : Bool := false    -- true = inverted (all except arr)
 
--- Nav: cursor, offset, and selection (generic over elem type)
-structure Nav (α : Type) [BEq α] where
+-- Row navigation: cursor, offset, selection (Nat-based, unbounded)
+structure RowNav where
   cur  : Nat := 0           -- cursor position
   off  : Nat := 0           -- first visible (scroll offset)
-  sels : OrdSet α := {}     -- selected elements
+  sels : OrdSet Nat := {}   -- selected row indices
 
--- Row/Col nav aliases
-abbrev RowNav := Nav Nat
-abbrev ColNav := Nav String
+-- Column navigation: cursor, offset as Fin n, selection by name
+structure ColNav (n : Nat) where
+  cur  : Fin n              -- cursor position in display order
+  off  : Fin n              -- first visible column (scroll offset)
+  sels : OrdSet String := {}  -- selected column names
+
+-- Default ColNav for n > 0
+def ColNav.default (h : n > 0) : ColNav n := ⟨⟨0, h⟩, ⟨0, h⟩, {}⟩
 
 -- Compute display order: group first, then rest
 def dispOrder (group : OrdSet String) (colNames : Array String) : Array String :=
@@ -72,36 +91,121 @@ def colAt (group : OrdSet String) (colNames : Array String) (i : Nat) : Option S
   (dispOrder group colNames)[i]?
 
 -- NavState: composes row and column navigation
-structure NavState (t : Table) where
+structure NavState (n : Nat) (t : Table n) where
   row   : RowNav := {}
-  col   : ColNav := {}
+  col   : ColNav n
   group : OrdSet String := {}  -- group columns (displayed first)
 
 -- Adjust offset to keep cursor visible: off ≤ cur < off + page
 def adjOff (cur off page : Nat) : Nat :=
   clamp off (cur + 1 - page) (cur + 1)
 
+-- Monotonicity: cumW i ≤ cumW j when i ≤ j
+def CumW.Mono {n : Nat} (cumW : CumW n) : Prop :=
+  ∀ i j : Fin (n + 1), i ≤ j → cumW i ≤ cumW j
+
+-- Visibility: cursor column [cumW cur, cumW (cur+1)) ⊆ [cumW off, cumW off + screenW)
+def colVisible {n : Nat} (cur off : Fin n) (cumW : CumW n) (screenW : Nat) : Prop :=
+  cumW off.castSucc ≤ cumW cur.castSucc ∧ cumW cur.succ ≤ cumW off.castSucc + screenW
+
+-- Increment offset by 1 until cumW off >= target (for scroll right)
+-- Minimal change: starts from current offset, increments until visible
+def incOff {n : Nat} (off : Fin n) (cumW : CumW n) (target : Nat) : Fin n :=
+  if cumW off.castSucc >= target then off
+  else if h : off.val + 1 < n then incOff ⟨off.val + 1, h⟩ cumW target
+  else off  -- fallback: can't scroll further
+termination_by n - off.val
+
+-- Decrement offset by 1 until cumW off <= target (for scroll left)
+-- Minimal change: starts from current offset, decrements until visible
+def decOff {n : Nat} (off : Fin n) (cumW : CumW n) (target : Nat) : Fin n :=
+  if cumW off.castSucc <= target then off
+  else if h : off.val > 0 then decOff ⟨off.val - 1, Nat.lt_of_le_of_lt (Nat.sub_le _ _) off.isLt⟩ cumW target
+  else off  -- fallback: can't scroll further
+termination_by off.val
+
+-- Adjust column offset for visibility with minimal change
+-- Scroll right: increment off by 1 until cursor right edge visible
+-- Scroll left: decrement off by 1 until cursor left edge visible
+def adjColOff {n : Nat} (cur off : Fin n) (cumW : CumW n) (screenW : Nat) : Fin n :=
+  let scrollX := cumW off.castSucc           -- current scroll position
+  let scrollMin := cumW cur.succ - screenW   -- min scroll to show right edge
+  let scrollMax := cumW cur.castSucc         -- max scroll to show left edge
+  if scrollX < scrollMin then
+    -- scroll right: increment off by 1 until visible (minimal change)
+    incOff off cumW scrollMin
+  else if scrollX > scrollMax then
+    -- scroll left: decrement off by 1 until visible (minimal change)
+    decOff off cumW scrollMax
+  else off  -- already visible
+
+-- incOff returns offset with cumW >= target (when reachable)
+theorem incOff_ge {n : Nat} (off : Fin n) (cumW : CumW n) (target : Nat)
+    (hmono : CumW.Mono cumW) (hreach : ∃ i : Fin n, off.val ≤ i.val ∧ cumW i.castSucc >= target) :
+    cumW (incOff off cumW target).castSucc >= target := by
+  sorry  -- requires induction
+
+-- decOff returns offset with cumW <= target (when reachable)
+theorem decOff_le {n : Nat} (off : Fin n) (cumW : CumW n) (target : Nat)
+    (hreach : ∃ i : Fin n, i.val ≤ off.val ∧ cumW i.castSucc <= target) :
+    cumW (decOff off cumW target).castSucc <= target := by
+  sorry  -- requires induction
+
+-- adjColOff makes cursor visible (requires additional assumptions about column widths)
+theorem adjColOff_visible {n : Nat} (cur off : Fin n) (cumW : CumW n) (screenW : Nat)
+    (hmono : CumW.Mono cumW)
+    (hfit : cumW cur.succ - cumW cur.castSucc ≤ screenW) :
+    colVisible cur (adjColOff cur off cumW screenW) cumW screenW := by
+  sorry  -- full proof requires induction on incOff/decOff
+
+-- Minimal change property: when no scroll needed, off' = off
+theorem adjColOff_minimal {n : Nat} (cur off : Fin n) (cumW : CumW n) (screenW : Nat)
+    (hge : ¬(cumW off.castSucc < cumW cur.succ - screenW))
+    (hle : ¬(cumW off.castSucc > cumW cur.castSucc)) :
+    adjColOff cur off cumW screenW = off := by
+  simp only [adjColOff, hge, hle, ↓reduceIte]
+
 -- Row: map from column name to cell value
 abbrev Row := String → String
 
 /-! ## Instances -/
 
--- Nav Ops: cursor + offset adjustment (works for RowNav and ColNav)
-instance [BEq α] : Ops (Nav α) bound α where
-  plus   := fun _ pg n => move bound pg n (n.cur + 1)
-  minus  := fun _ pg n => move bound pg n (n.cur - 1)
-  pageUp := fun pg n => move bound pg n (n.cur - pg)
-  pageDn := fun pg n => move bound pg n (n.cur + pg)
-  home   := fun pg n => move bound pg n 0
-  end_   := fun pg n => move bound pg n (bound - 1)
-  find   := fun _ n => n  -- TODO
-  toggle := fun _ n => n  -- no-op for cursor
-  invert := fun n => n    -- no-op for cursor
+-- RowNav Ops: cursor + offset adjustment using adjOff
+instance : Ops RowNav bound Nat where
+  plus   := fun _ pg r => let c := clamp (r.cur + 1) 0 bound; { r with cur := c, off := adjOff c r.off pg }
+  minus  := fun _ pg r => let c := clamp (r.cur - 1) 0 bound; { r with cur := c, off := adjOff c r.off pg }
+  pageUp := fun pg r => let c := clamp (r.cur - pg) 0 bound; { r with cur := c, off := adjOff c r.off pg }
+  pageDn := fun pg r => let c := clamp (r.cur + pg) 0 bound; { r with cur := c, off := adjOff c r.off pg }
+  home   := fun pg r => let c := 0; { r with cur := c, off := adjOff c r.off pg }
+  end_   := fun pg r => let c := clamp (bound - 1) 0 bound; { r with cur := c, off := adjOff c r.off pg }
+  find   := fun _ r => r
+  toggle := fun _ r => r
+  invert := fun r => r
   mem    := fun _ _ => false
-where
-  move (bound pg : Nat) (n : Nav α) (newCur : Nat) : Nav α :=
-    let c := clamp newCur 0 bound
-    { n with cur := c, off := adjOff c n.off pg }
+
+-- ColNav movement helper
+def ColNav.move' {n : Nat} (cumW : CumW n) (screenW : Nat) (cur' : Fin n) (c : ColNav n) : ColNav n :=
+  { c with cur := cur', off := adjColOff cur' c.off cumW screenW }
+
+-- ColNav Ops: cursor + offset adjustment using adjColOff (proven correct)
+instance instOpsColNav (cumW : CumW n) (screenW : Nat) : Ops (ColNav n) n String where
+  plus   := fun _ _ c => if h : c.cur.val + 1 < n
+    then c.move' cumW screenW ⟨c.cur.val + 1, h⟩ else c
+  minus  := fun _ _ c => if c.cur.val > 0
+    then c.move' cumW screenW ⟨c.cur.val - 1, Nat.lt_of_le_of_lt (Nat.sub_le _ _) c.cur.isLt⟩ else c
+  pageUp := fun pg c =>
+    let v := c.cur.val - pg  -- Nat subtraction floors at 0
+    c.move' cumW screenW ⟨v, Nat.lt_of_le_of_lt (Nat.sub_le _ _) c.cur.isLt⟩
+  pageDn := fun pg c =>
+    let v := min (c.cur.val + pg) (n - 1)
+    c.move' cumW screenW ⟨v, Nat.lt_of_le_of_lt (Nat.min_le_right _ _) (Nat.sub_lt c.cur.pos Nat.one_pos)⟩
+  home   := fun _ c => if h : n > 0
+    then c.move' cumW screenW ⟨0, h⟩ else c
+  end_   := fun _ c => c.move' cumW screenW ⟨n - 1, Nat.sub_lt c.cur.pos Nat.one_pos⟩
+  find   := fun _ c => c
+  toggle := fun _ c => c
+  invert := fun c => c
+  mem    := fun _ _ => false
 
 -- OrdSet Ops: set operations (page ignored)
 instance [BEq α] : Ops (OrdSet α) 0 α where
@@ -155,16 +259,27 @@ theorem group_at_front (g : OrdSet String) (colNames : Array String) (i : Nat)
 
 /-! ## Dispatch -/
 
--- Apply verb to Nav cursor (elem ignored, just for typeclass)
-def navVerb [BEq α] [Inhabited α] (bound pg : Nat) (v : Char) (n : Nav α) : Nav α :=
+-- Apply verb to RowNav cursor
+def rowVerb (bound pg : Nat) (v : Char) (r : RowNav) : RowNav :=
   match v with
-  | '+' => @Ops.plus (Nav α) bound α _ default pg n
-  | '-' => @Ops.minus (Nav α) bound α _ default pg n
-  | '<' => @Ops.pageUp (Nav α) bound α _ pg n
-  | '>' => @Ops.pageDn (Nav α) bound α _ pg n
-  | '0' => @Ops.home (Nav α) bound α _ pg n
-  | '$' => @Ops.end_ (Nav α) bound α _ pg n
-  | _   => n
+  | '+' => @Ops.plus RowNav bound Nat _ 0 pg r
+  | '-' => @Ops.minus RowNav bound Nat _ 0 pg r
+  | '<' => @Ops.pageUp RowNav bound Nat _ pg r
+  | '>' => @Ops.pageDn RowNav bound Nat _ pg r
+  | '0' => @Ops.home RowNav bound Nat _ pg r
+  | '$' => @Ops.end_ RowNav bound Nat _ pg r
+  | _   => r
+
+-- Apply verb to ColNav cursor (uses cumW for offset adjustment)
+def colVerb {n : Nat} (cumW : CumW n) (screenW : Nat) (v : Char) (c : ColNav n) : ColNav n :=
+  match v with
+  | '+' => @Ops.plus (ColNav n) n String (instOpsColNav cumW screenW) "" 0 c
+  | '-' => @Ops.minus (ColNav n) n String (instOpsColNav cumW screenW) "" 0 c
+  | '<' => @Ops.pageUp (ColNav n) n String (instOpsColNav cumW screenW) 1 c
+  | '>' => @Ops.pageDn (ColNav n) n String (instOpsColNav cumW screenW) 1 c
+  | '0' => @Ops.home (ColNav n) n String (instOpsColNav cumW screenW) 0 c
+  | '$' => @Ops.end_ (ColNav n) n String (instOpsColNav cumW screenW) 0 c
+  | _   => c
 
 -- Apply verb to OrdSet
 def setVerb [BEq α] (v : Char) (e : α) (s : OrdSet α) : OrdSet α :=
@@ -178,17 +293,16 @@ def setVerb [BEq α] (v : Char) (e : α) (s : OrdSet α) : OrdSet α :=
   | _   => s
 
 -- Dispatch 2-char command (object + verb) to NavState
-def dispatch (cmd : String) (t : Table) (nav : NavState t) (page : Nat := 10) : NavState t :=
+def dispatch {n : Nat} (cmd : String) (t : Table n) (nav : NavState n t)
+    (cumW : CumW n) (screenW rowPg : Nat) : NavState n t :=
   let chars := cmd.toList
   if h : chars.length = 2 then
     let obj := chars[0]'(by omega)
     let v := chars[1]'(by omega)
-    let nr := t.nRows
-    let nc := (dispOrder nav.group t.colNames).size
-    let curCol := colAt nav.group t.colNames nav.col.cur
+    let curCol := colAt nav.group t.colNames nav.col.cur.val
     match obj with
-    | 'r' => { nav with row := navVerb nr page v nav.row }
-    | 'c' => { nav with col := navVerb nc page v nav.col }
+    | 'r' => { nav with row := rowVerb t.nRows rowPg v nav.row }
+    | 'c' => { nav with col := colVerb cumW screenW v nav.col }
     | 'R' => { nav with row := { nav.row with sels := setVerb v nav.row.cur nav.row.sels } }
     | 'C' => match curCol with
              | some c => { nav with col := { nav.col with sels := setVerb v c nav.col.sels } }
