@@ -77,9 +77,9 @@ def renderSep (sepX : UInt32) (y : UInt32) (st : Array UInt32) : IO Unit :=
   if sepX > 0 then Term.setCell sepX y '|'.toNat.toUInt32 (styleFg st stDefault) (styleBg st stDefault)
   else pure ()
 
--- Render data cell
-def renderCell (x y w : UInt32) (fg bg : UInt32) (text : String) : IO Unit :=
-  Term.printPad x y w fg bg text
+-- Render data cell (right-align if numeric)
+def renderCell (x y w : UInt32) (fg bg : UInt32) (text : String) (isNum : Bool) : IO Unit :=
+  if isNum then Term.printPadR x y w fg bg text else Term.printPad x y w fg bg text
 
 -- RenderTable: tables that can render themselves
 class RenderTable (α : Type) [ReadTable α] where

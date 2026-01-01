@@ -95,9 +95,10 @@ instance : RenderTable MemTable where
     for row in [r0:r1] do
       let y := (row - r0 + 1).toUInt32
       for (di, cx, cw) in cols do
+        let c := MemTable.cell nav.tbl row di
         let si := cellStyle (row == nav.curRow && di == nav.curColIdx) (nav.selRows.contains row)
                             (nav.selColIdxs.contains di) (row == nav.curRow) (di == nav.curColIdx)
-        renderCell cx y cw (styleFg st si) (styleBg st si) (MemTable.cell nav.tbl row di).toString
+        renderCell cx y cw (styleFg st si) (styleBg st si) c.toString c.isNum
       renderSep sepX y st
     pure ()
 
