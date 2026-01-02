@@ -203,14 +203,40 @@ def getIdx (t : SomeTable) (_ _ : Nat) : Cell := .null
 def info (t : SomeTable) : DisplayInfo :=
   ⟨t.colNames, t.colWidths, t.nRows, t.nCols⟩
 
--- | Render table to terminal (batch-by-batch in C)
--- Returns visible columns: Array (colIdx, x, width)
-def render (t : SomeTable) (colIdxs : Array Nat) (nKeyCols colOff : Nat)
-           (r0 r1 curRow curCol : Nat) (selColIdxs selRows : Array Nat)
-           (styles : Array UInt32) (maxWStr maxWOther decimals : UInt8) : IO (Array (Nat × Nat × Nat)) :=
-  Adbc.renderTable t.qr colIdxs nKeyCols.toUInt64 colOff.toUInt64
-    r0.toUInt64 r1.toUInt64 curRow.toUInt64 curCol.toUInt64
-    selColIdxs selRows styles maxWStr maxWOther decimals
+-- | Extract column slice [r0, r1) as typed Column
+@[inline] unsafe def getColImpl (t : SomeTable) (col r0 r1 : Nat) : Column :=
+  let fmt := t.colFmts.getD col '?'
+  match fmt with
+  | 'l' | 'i' | 's' | 'c' =>
+    let data := Id.run do
+      let mut arr : Array Int64 := #[]
+      for r in [r0:r1] do
+        match unsafeIO (Adbc.cellInt t.qr r.toUInt64 col.toUInt64) with
+        | .ok v => arr := arr.push v.toInt64
+        | .error _ => arr := arr.push 0
+      arr
+    .ints data
+  | 'g' | 'f' | 'd' =>
+    let data := Id.run do
+      let mut arr : Array Float := #[]
+      for r in [r0:r1] do
+        match unsafeIO (Adbc.cellFloat t.qr r.toUInt64 col.toUInt64) with
+        | .ok v => arr := arr.push v
+        | .error _ => arr := arr.push 0.0
+      arr
+    .floats data
+  | _ =>
+    let data := Id.run do
+      let mut arr : Array String := #[]
+      for r in [r0:r1] do
+        match unsafeIO (Adbc.cellStr t.qr r.toUInt64 col.toUInt64) with
+        | .ok v => arr := arr.push v
+        | .error _ => arr := arr.push ""
+      arr
+    .strs data
+
+@[implemented_by getColImpl]
+def getCol (_ : SomeTable) (_ _ _ : Nat) : Column := .strs #[]
 
 -- | Empty table
 def empty : IO SomeTable := do

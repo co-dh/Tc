@@ -55,21 +55,4 @@ opaque cellIsNull : @& QueryResult → UInt64 → UInt64 → IO Bool
 @[extern "lean_qr_col_widths"]
 opaque colWidths : @& QueryResult → IO (Array Nat)
 
--- | Render table directly to terminal (batch-by-batch)
--- colIdxs: column indices in display order (key cols first)
--- nKeyCols: number of key columns
--- r0, r1: row range
--- curRow, curCol: cursor position
--- selColIdxs: selected column indices
--- selRows: selected row indices
--- styles: 14 UInt32 values (7 states × (fg|attrs, bg))
--- maxWStr, maxWOther: max column widths
--- decimals: decimal places for floats
--- returns: Array (colIdx, x, width) of visible columns
-@[extern "lean_render_table_arrow"]
-opaque renderTable : @& QueryResult → @& Array Nat → UInt64 → UInt64 →
-                     UInt64 → UInt64 → UInt64 → UInt64 →
-                     @& Array Nat → @& Array Nat →
-                     @& Array UInt32 → UInt8 → UInt8 → UInt8 → IO (Array (Nat × Nat × Nat))
-
 end Adbc
