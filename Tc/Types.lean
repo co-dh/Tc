@@ -189,10 +189,10 @@ def ofQueryResult (qr : Adbc.QueryResult) : IO SomeTable := do
   match unsafeIO (do
     if ← Adbc.cellIsNull t.qr r c then return Cell.null
     match t.colFmts.getD col '?' with
-    | 'l' | 'i' | 's' | 'c' => return Cell.int   (← Adbc.cellInt t.qr r c).toInt64
-    | 'g' | 'f' | 'd'       => return Cell.float (← Adbc.cellFloat t.qr r c)
-    | 'b'                   => return Cell.bool  ((← Adbc.cellStr t.qr r c) == "true")
-    | _                     => return Cell.str   (← Adbc.cellStr t.qr r c)) with
+    | 'l' | 'i' | 's' | 'c' | 'L' | 'I' | 'S' | 'C' => return Cell.int (← Adbc.cellInt t.qr r c).toInt64
+    | 'g' | 'f' | 'd' => return Cell.float (← Adbc.cellFloat t.qr r c)
+    | 'b'             => return Cell.bool  ((← Adbc.cellStr t.qr r c) == "true")
+    | _               => return Cell.str   (← Adbc.cellStr t.qr r c)) with
   | Except.ok cell => cell
   | Except.error _ => Cell.null
 
@@ -204,10 +204,11 @@ def info (t : SomeTable) : DisplayInfo :=
   ⟨t.colNames, t.colWidths, t.nRows, t.nCols⟩
 
 -- | Extract column slice [r0, r1) as typed Column
+-- Arrow formats: l/i/s/c = signed int64/32/16/8, L/I/S/C = unsigned, g/f = float64/32
 @[inline] unsafe def getColImpl (t : SomeTable) (col r0 r1 : Nat) : Column :=
   let fmt := t.colFmts.getD col '?'
   match fmt with
-  | 'l' | 'i' | 's' | 'c' =>
+  | 'l' | 'i' | 's' | 'c' | 'L' | 'I' | 'S' | 'C' =>
     let data := Id.run do
       let mut arr : Array Int64 := #[]
       for r in [r0:r1] do

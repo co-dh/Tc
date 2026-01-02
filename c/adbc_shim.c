@@ -415,15 +415,21 @@ lean_obj_res lean_qr_cell_str(b_lean_obj_arg qr_obj, uint64_t row, uint64_t col,
 }
 
 // | Get cell as Int (0 for null/non-int)
+// Handles signed (l/i/s/c) and unsigned (L/I/S/C) integer types
 lean_obj_res lean_qr_cell_int(b_lean_obj_arg qr_obj, uint64_t row, uint64_t col, lean_obj_arg world) {
     QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
     CellInfo c = get_cell(qr, row, col);
     if (!c.arr || is_null(c.arr, c.lr)) return lean_io_result_mk_ok(lean_int64_to_int(0));
     int64_t val = 0;
-    if (c.fmt[0] == 'l')      val = ((const int64_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
-    else if (c.fmt[0] == 'i') val = ((const int32_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
-    else if (c.fmt[0] == 's') val = ((const int16_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
-    else if (c.fmt[0] == 'c') val = ((const int8_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
+    char f = c.fmt[0];
+    if (f == 'l')      val = ((const int64_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
+    else if (f == 'L') val = (int64_t)((const uint64_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
+    else if (f == 'i') val = ((const int32_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
+    else if (f == 'I') val = ((const uint32_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
+    else if (f == 's') val = ((const int16_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
+    else if (f == 'S') val = ((const uint16_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
+    else if (f == 'c') val = ((const int8_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
+    else if (f == 'C') val = ((const uint8_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
     return lean_io_result_mk_ok(lean_int64_to_int(val));
 }
 
@@ -464,25 +470,18 @@ static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t
     if (!buf) { buf = tmp; buflen = sizeof(tmp); }  // length-only mode
     if (is_null(arr, lr)) { buf[0] = '\0'; return 0; }
 
-    if (fmt[0] == 'l') {  // int64
-        return snprintf(buf, buflen, "%ld", ((const int64_t*)arr->buffers[1])[arr->offset + lr]);
-    }
-    if (fmt[0] == 'i') {  // int32
-        return snprintf(buf, buflen, "%d", ((const int32_t*)arr->buffers[1])[arr->offset + lr]);
-    }
-    if (fmt[0] == 's') {  // int16
-        return snprintf(buf, buflen, "%d", ((const int16_t*)arr->buffers[1])[arr->offset + lr]);
-    }
-    if (fmt[0] == 'c') {  // int8
-        return snprintf(buf, buflen, "%d", ((const int8_t*)arr->buffers[1])[arr->offset + lr]);
-    }
-    if (fmt[0] == 'g') {  // float64
-        return snprintf(buf, buflen, "%.*f", decimals, ((const double*)arr->buffers[1])[arr->offset + lr]);
-    }
-    if (fmt[0] == 'f') {  // float32
-        return snprintf(buf, buflen, "%.*f", decimals, ((const float*)arr->buffers[1])[arr->offset + lr]);
-    }
-    if (fmt[0] == 'u' || fmt[0] == 'z') {  // utf8, binary
+    char f = fmt[0];
+    if (f == 'l') return snprintf(buf, buflen, "%ld", ((const int64_t*)arr->buffers[1])[arr->offset + lr]);
+    if (f == 'L') return snprintf(buf, buflen, "%lu", ((const uint64_t*)arr->buffers[1])[arr->offset + lr]);
+    if (f == 'i') return snprintf(buf, buflen, "%d", ((const int32_t*)arr->buffers[1])[arr->offset + lr]);
+    if (f == 'I') return snprintf(buf, buflen, "%u", ((const uint32_t*)arr->buffers[1])[arr->offset + lr]);
+    if (f == 's') return snprintf(buf, buflen, "%d", ((const int16_t*)arr->buffers[1])[arr->offset + lr]);
+    if (f == 'S') return snprintf(buf, buflen, "%u", ((const uint16_t*)arr->buffers[1])[arr->offset + lr]);
+    if (f == 'c') return snprintf(buf, buflen, "%d", ((const int8_t*)arr->buffers[1])[arr->offset + lr]);
+    if (f == 'C') return snprintf(buf, buflen, "%u", ((const uint8_t*)arr->buffers[1])[arr->offset + lr]);
+    if (f == 'g') return snprintf(buf, buflen, "%.*f", decimals, ((const double*)arr->buffers[1])[arr->offset + lr]);
+    if (f == 'f') return snprintf(buf, buflen, "%.*f", decimals, ((const float*)arr->buffers[1])[arr->offset + lr]);
+    if (f == 'u' || f == 'z') {  // utf8, binary
         const int32_t* off = (const int32_t*)arr->buffers[1];
         const char* data = (const char*)arr->buffers[2];
         int64_t idx = arr->offset + lr;
@@ -492,7 +491,7 @@ static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t
         buf[len] = '\0';
         return len;
     }
-    if (fmt[0] == 'U' || fmt[0] == 'Z') {  // large utf8
+    if (f == 'U' || f == 'Z') {  // large utf8
         const int64_t* off = (const int64_t*)arr->buffers[1];
         const char* data = (const char*)arr->buffers[2];
         int64_t idx = arr->offset + lr;
@@ -502,12 +501,12 @@ static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t
         buf[len] = '\0';
         return len;
     }
-    if (fmt[0] == 'b') {  // bool
+    if (f == 'b') {  // bool
         const uint8_t* data = (const uint8_t*)arr->buffers[1];
         int64_t idx = arr->offset + lr;
         return snprintf(buf, buflen, "%s", ((data[idx/8] >> (idx%8)) & 1) ? "true" : "false");
     }
-    if (fmt[0] == 'd' && fmt[1] == ':') {  // decimal
+    if (f == 'd' && fmt[1] == ':') {  // decimal
         int scale = 0;
         const char* p = fmt + 2;
         while (*p && *p != ',') p++;
@@ -516,14 +515,14 @@ static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t
         for (int i = 0; i < scale; i++) val /= 10.0;
         return snprintf(buf, buflen, "%.*f", scale, val);
     }
-    if (fmt[0] == 't' && fmt[1] == 's') {  // timestamp (us since epoch)
+    if (f == 't' && fmt[1] == 's') {  // timestamp (us since epoch)
         int64_t us = ((const int64_t*)arr->buffers[1])[arr->offset + lr];
         time_t secs = us / 1000000;
         struct tm* tm = gmtime(&secs);
         return snprintf(buf, buflen, "%04d-%02d-%02d %02d:%02d:%02d",
                  tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec);
     }
-    if (fmt[0] == 't' && fmt[1] == 't') {  // time (us since midnight)
+    if (f == 't' && fmt[1] == 't') {  // time (us since midnight)
         int64_t s = ((const int64_t*)arr->buffers[1])[arr->offset + lr] / 1000000;
         return snprintf(buf, buflen, "%02d:%02d:%02d", (int)((s/3600)%24), (int)((s/60)%60), (int)(s%60));
     }
