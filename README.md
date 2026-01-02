@@ -1,10 +1,18 @@
-# tc - Typeclass Navigation Test App
+# tc - Tabular Viewer in Lean
 
-Test app for typeclass-based navigation with VisiData-style keybindings.
+VisiData-style terminal CSV viewer with typeclass-based navigation.
+
+## Features
+
+- Typed column storage (int64, float, string)
+- Zero-copy rendering via C FFI
+- Column grouping (key columns)
+- Row/column selection
+- Column deletion
 
 ## Keybindings
 
-### Cursor
+### Navigation
 
 | Key           | Action |
 |---------------|--------|
@@ -21,27 +29,24 @@ Test app for typeclass-based navigation with VisiData-style keybindings.
 | `gh` / `g←`   | First  |
 | `gl` / `g→`   | Last   |
 
-### Row Selection
+### Selection
 
-| Key | Action   |
-|-----|----------|
-| `s` | Select   |
-| `t` | Toggle   |
-| `u` | Unselect |
-
-### Column Selection
-
-| Key | Action   |
-|-----|----------|
-| `S` | Select   |
-| `T` | Toggle   |
-| `U` | Unselect |
+| Key | Action        |
+|-----|---------------|
+| `t` | Toggle column |
+| `T` | Toggle row    |
 
 ### Grouping
 
 | Key | Action            |
 |-----|-------------------|
 | `!` | Toggle key column |
+
+### Editing
+
+| Key | Action                          |
+|-----|---------------------------------|
+| `d` | Delete column (+ selected cols) |
 
 ### Other
 
