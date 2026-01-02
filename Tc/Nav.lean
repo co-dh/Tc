@@ -45,25 +45,28 @@ instance [BEq elem] : CurOps (NavAxis n elem) n elem where
   pos    := (·.cur)
   setPos := fun f a => { a with cur := f }
 
--- Type aliases
+-- Type aliases: Row uses Nat (index), Col uses String (name, stable across deletion)
 abbrev RowNav (m : Nat) := NavAxis m Nat
 abbrev ColNav (n : Nat) := NavAxis n String
 
--- Compute display order: group first, then rest
-def dispOrder (group : Array String) (colNames : Array String) : Array String :=
-  group ++ colNames.filter (!group.contains ·)
+-- Find index of element in array (O(n) linear scan)
+def Array.idxOf? [BEq α] (a : Array α) (x : α) : Option Nat :=
+  a.findIdx? (· == x)
 
--- dispOrder preserves size when group ⊆ colNames
-theorem dispOrder_size (group colNames : Array String)
-    (h : group.all (colNames.contains ·)) :
-    (dispOrder group colNames).size = colNames.size := by
+-- Compute display order: group names first, then rest (by name lookup)
+def dispOrder (group : Array String) (names : Array String) : Array Nat :=
+  let gIdxs := group.filterMap names.idxOf?
+  gIdxs ++ (Array.range names.size).filter (!gIdxs.contains ·)
+
+-- dispOrder preserves size (modulo valid group names)
+theorem dispOrder_size (group : Array String) (names : Array String) :
+    (dispOrder group names).size = names.size := by
   simp only [dispOrder, Array.size_append]
-  sorry -- filter removes exactly group.size elements
+  sorry -- filter removes exactly valid group.size elements
 
--- Get column name at display index (group ⊆ colNames required)
-def colAt (group colNames : Array String) (i : Fin colNames.size)
-    (h : group.all (colNames.contains ·)) : String :=
-  (dispOrder group colNames)[i.val]'(by simp [dispOrder_size group colNames h])
+-- Get column index at display position
+def colIdxAt (group : Array String) (names : Array String) (i : Nat) : Nat :=
+  (dispOrder group names).getD i 0
 
 -- NavState: generic over table type + navigation state
 -- nRows/nCols are type params (not phantom) because Fin needs compile-time bounds.
@@ -76,8 +79,7 @@ structure NavState (nRows nCols : Nat) (t : Type) [ReadTable t] where
   private hCols_ : (ReadTable.colNames tbl_).size = nCols         -- col count matches
   private row_   : RowNav nRows
   private col_   : ColNav nCols
-  private group_ : Array String := #[]                            -- grouped columns
-  private hGroup_: group_.all ((ReadTable.colNames tbl_).contains ·) := by decide
+  private group_ : Array String := #[]                            -- grouped column names (stable)
 
 namespace NavState
 
@@ -91,37 +93,33 @@ def colNames (nav : NavState nRows nCols t) : Array String := ReadTable.colNames
 def nKeys (nav : NavState nRows nCols t) : Nat := nav.group_.size
 def selRows (nav : NavState nRows nCols t) : Array Nat := nav.row_.sels
 
--- Selected column names
-def selCols (nav : NavState nRows nCols t) : Array String := nav.col_.sels
-
--- Selected column indices (in original order)
+-- Selected column indices (convert names to indices via lookup)
 def selColIdxs (nav : NavState nRows nCols t) : Array Nat :=
-  nav.col_.sels.filterMap fun name => nav.colNames.findIdx? (· == name)
-
--- Current column name in display order
-def curColName (nav : NavState nRows nCols t) : String :=
-  let i : Fin (ReadTable.colNames nav.tbl_).size := ⟨nav.col_.cur.val, nav.hCols_.symm ▸ nav.col_.cur.isLt⟩
-  colAt nav.group_ nav.colNames i nav.hGroup_
-
--- Current column index (in original order)
-def curColIdx (nav : NavState nRows nCols t) : Nat :=
-  nav.colNames.findIdx? (· == nav.curColName) |>.getD 0
+  nav.col_.sels.filterMap nav.colNames.idxOf?
 
 -- Column indices in display order
 def dispColIdxs (nav : NavState nRows nCols t) : Array Nat :=
-  (dispOrder nav.group_ nav.colNames).filterMap fun name => nav.colNames.findIdx? (· == name)
+  dispOrder nav.group_ nav.colNames
+
+-- Current column index (in original order)
+def curColIdx (nav : NavState nRows nCols t) : Nat :=
+  colIdxAt nav.group_ nav.colNames nav.col_.cur.val
+
+-- Current column name in display order
+def curColName (nav : NavState nRows nCols t) : String :=
+  nav.colNames.getD nav.curColIdx ""
 
 -- Constructor for external use
 def new (tbl : t) (hRows : ReadTable.nRows tbl = nRows) (hCols : (ReadTable.colNames tbl).size = nCols)
     (hr : nRows > 0) (hc : nCols > 0) : NavState nRows nCols t :=
-  ⟨tbl, hRows, hCols, NavAxis.default hr, NavAxis.default hc, #[], Array.all_empty⟩
+  ⟨tbl, hRows, hCols, NavAxis.default hr, NavAxis.default hc, #[]⟩
 
 -- Constructor with initial column cursor (clamped to valid range)
 def newAt (tbl : t) (hRows : ReadTable.nRows tbl = nRows) (hCols : (ReadTable.colNames tbl).size = nCols)
     (hr : nRows > 0) (hc : nCols > 0) (col : Nat) : NavState nRows nCols t :=
   let c := min col (nCols - 1)
   have hlt : c < nCols := Nat.lt_of_le_of_lt (Nat.min_le_right ..) (Nat.sub_lt hc Nat.one_pos)
-  ⟨tbl, hRows, hCols, NavAxis.default hr, ⟨⟨c, hlt⟩, #[]⟩, #[], Array.all_empty⟩
+  ⟨tbl, hRows, hCols, NavAxis.default hr, ⟨⟨c, hlt⟩, #[]⟩, #[]⟩
 
 -- Apply verb to cursor (pg = page size)
 private def curVerb (α : Type) (bound : Nat) (elem : Type) [CurOps α bound elem]
@@ -143,13 +141,12 @@ def dispatch (cmd : String) (nav : NavState nRows nCols t) (rowPg colPg : Nat) :
   if h : chars.length = 2 then
     let obj := chars[0]'(by omega)
     let v := chars[1]'(by omega)
-    let curCol := nav.curColName
     match obj with
     | 'r' => { nav with row_ := curVerb (RowNav nRows) nRows Nat rowPg v nav.row_ }
     | 'c' => { nav with col_ := curVerb (ColNav nCols) nCols String colPg v nav.col_ }
     | 'R' => { nav with row_ := { nav.row_ with sels := nav.row_.sels.toggle nav.row_.cur.val } }
-    | 'C' => { nav with col_ := { nav.col_ with sels := nav.col_.sels.toggle curCol } }
-    | 'G' => { nav with group_ := nav.group_.toggle curCol, hGroup_ := sorry }
+    | 'C' => { nav with col_ := { nav.col_ with sels := nav.col_.sels.toggle nav.curColName } }
+    | 'G' => { nav with group_ := nav.group_.toggle nav.curColName }
     | _   => nav
   else nav
 

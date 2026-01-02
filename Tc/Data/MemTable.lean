@@ -88,10 +88,10 @@ instance : ReadTable MemTable where
 
 -- ModifyTable instance for MemTable
 instance : ModifyTable MemTable where
-  delCols := fun colNames t =>
-    let keep := fun n => !colNames.contains n
-    let keepIdxs := t.names.mapIdx (fun i n => if keep n then some i else none) |>.filterMap id
-    { names  := t.names.filter keep
+  delCols := fun delIdxs t =>
+    let keep := fun i => !delIdxs.contains i
+    let keepIdxs := (Array.range t.names.size).filter keep
+    { names  := keepIdxs.map fun i => t.names.getD i ""
       cols   := keepIdxs.map fun i => t.cols.getD i default
       widths := keepIdxs.map fun i => t.widths.getD i 0 }
 
@@ -108,13 +108,11 @@ instance : RenderTable MemTable where
       if x >= w.toNat then break
       visColIdxs := visColIdxs.push di
       x := x + (nav.tbl.widths.getD di 10) + 1
-    -- extract visible column data as Cell arrays (for C render)
-    let visCols := visColIdxs.map fun di =>
-      let col := nav.tbl.cols.getD di default
-      (Array.range (r1 - r0)).map fun i => col.get (r0 + i)
-    -- call C render
+    -- pass visible columns directly (C reads typed data, no Cell alloc)
+    let visCols := visColIdxs.map fun di => nav.tbl.cols.getD di default
+    -- call C render (r0, r1 = visible row range)
     Term.renderTable visCols nav.tbl.names nav.tbl.widths visColIdxs
-      nav.nKeys.toUInt64 colOff.toUInt64 r0.toUInt64 nav.curRow.toUInt64 nav.curColIdx.toUInt64
+      nav.nKeys.toUInt64 colOff.toUInt64 r0.toUInt64 r1.toUInt64 nav.curRow.toUInt64 nav.curColIdx.toUInt64
       nav.selColIdxs nav.selRows st
 
 end Tc

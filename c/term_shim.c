@@ -130,12 +130,10 @@ lean_obj_res lean_tb_render_col(uint32_t x, uint32_t w, uint32_t y0,
 #define STYLE_DEFAULT    6
 #define NUM_STYLES       7
 
-// | Cell type tags (matches Lean Cell inductive)
-#define CELL_NULL  0
-#define CELL_INT   1
-#define CELL_FLOAT 2
-#define CELL_STR   3
-#define CELL_BOOL  4
+// | Column type tags (matches Lean Column inductive)
+#define COL_INTS   0
+#define COL_FLOATS 1
+#define COL_STRS   2
 
 // | Format integer with comma separators
 static int fmt_int_comma(char* buf, size_t buflen, int64_t v) {
@@ -157,35 +155,38 @@ static int fmt_int_comma(char* buf, size_t buflen, int64_t v) {
     return len;
 }
 
-// | Format Cell to buffer (Cell.null is scalar, others are ctors)
-static int format_cell(lean_obj_arg cell, char* buf, size_t buflen) {
-    // .null is represented as scalar 0
-    if (lean_is_scalar(cell)) { buf[0] = '\0'; return 0; }
-    unsigned tag = lean_obj_tag(cell);
+// | Format value from Column at row index
+static int format_col_cell(lean_obj_arg col, size_t row, char* buf, size_t buflen) {
+    unsigned tag = lean_obj_tag(col);
+    lean_obj_arg data = lean_ctor_get(col, 0);
     switch (tag) {
-    case CELL_INT: {
-        // Int64 stored as unboxed uint64 in ctor field
-        int64_t n = (int64_t)lean_ctor_get_uint64(cell, 0);
-        return fmt_int_comma(buf, buflen, n);
+    case COL_INTS: {
+        int64_t v = (int64_t)lean_unbox_uint64(lean_array_get_core(data, row));
+        return fmt_int_comma(buf, buflen, v);
     }
-    case CELL_FLOAT: return snprintf(buf, buflen, "%.3f", lean_ctor_get_float(cell, 0));
-    case CELL_STR: {
-        const char* s = lean_string_cstr(lean_ctor_get(cell, 0));
+    case COL_FLOATS: {
+        // Float stored as boxed object in array
+        lean_obj_arg fbox = lean_array_get_core(data, row);
+        double f = lean_ctor_get_float(fbox, 0);
+        if (f != f) { buf[0] = '\0'; return 0; }  // NaN = null
+        return snprintf(buf, buflen, "%.3f", f);
+    }
+    case COL_STRS: {
+        const char* s = lean_string_cstr(lean_array_get_core(data, row));
+        if (!s[0]) { buf[0] = '\0'; return 0; }  // empty = null
         size_t len = strlen(s);
         if (len >= buflen) len = buflen - 1;
         memcpy(buf, s, len); buf[len] = '\0';
         return len;
     }
-    case CELL_BOOL: return snprintf(buf, buflen, "%s", lean_ctor_get_uint8(cell, 0) ? "true" : "false");
     default: buf[0] = '\0'; return 0;
     }
 }
 
-// | Check if cell is numeric
-static int cell_is_num(lean_obj_arg cell) {
-    if (lean_is_scalar(cell)) return 0;  // .null
-    unsigned tag = lean_obj_tag(cell);
-    return tag == CELL_INT || tag == CELL_FLOAT;
+// | Check if column is numeric (for right-align)
+static int col_is_num(lean_obj_arg col) {
+    unsigned tag = lean_obj_tag(col);
+    return tag == COL_INTS || tag == COL_FLOATS;
 }
 
 // | Print padded string
@@ -219,18 +220,18 @@ static void build_sel_bits(b_lean_obj_arg arr, size_t n, uint64_t* bits) {
 }
 #define IS_SEL(bits, v) ((v) < 256 && ((bits)[(v)/64] & (1ULL << ((v)%64))))
 
-// | Unified table render - works with Array (Array Cell)
-// cols: column-major cell data (only visible columns, indexed 0..visCols-1)
+// | Unified table render - reads Column directly (no Cell alloc)
+// cols: Array Column (visible columns only)
 // colIdxs: original column indices for each visible column
-// r0: starting row in original table (for selection check)
+// r0, r1: row range to render
 lean_obj_res lean_render_table(
-    b_lean_obj_arg cols,      // Array (Array Cell) - visible columns only
+    b_lean_obj_arg cols,      // Array Column - visible columns
     b_lean_obj_arg names,     // Array String - all column names
     b_lean_obj_arg widths,    // Array Nat - all column widths
     b_lean_obj_arg colIdxs,   // Array Nat - original indices of visible cols
     uint64_t nKeys,           // number of key columns (for separator)
     uint64_t colOff,          // column offset (for separator calc)
-    uint64_t r0,              // first row index (in original table)
+    uint64_t r0, uint64_t r1, // row range [r0, r1)
     uint64_t curRow, uint64_t curCol,
     b_lean_obj_arg selCols,
     b_lean_obj_arg selRows,
@@ -239,7 +240,7 @@ lean_obj_res lean_render_table(
 {
     int screenW = tb_width();
     size_t nVisCols = lean_array_size(cols);
-    size_t nRows = nVisCols > 0 ? lean_array_size(lean_array_get_core(cols, 0)) : 0;
+    size_t nRows = r1 - r0;  // visible row count
     char buf[64];
 
     // extract styles
@@ -289,10 +290,10 @@ lean_obj_res lean_render_table(
         tb_set_cell(sepX, yFoot, '|', stFg[STYLE_DEFAULT], stBg[STYLE_DEFAULT]);
     }
 
-    // render data rows
+    // render data rows (r0..r1 in original table, 0..nRows in screen)
     for (size_t ri = 0; ri < nRows; ri++) {
-        uint64_t row = r0 + ri;
-        int y = ri + 1;
+        uint64_t row = r0 + ri;  // original table row
+        int y = ri + 1;          // screen y
         int isSelRow = IS_SEL(rowBits, row);
         int isCurRow = (row == curRow);
 
@@ -303,9 +304,8 @@ lean_obj_res lean_render_table(
             int si = get_style(isCurRow && isCurCol, isSelRow, isSel, isCurRow, isCurCol);
 
             lean_obj_arg col = lean_array_get_core(cols, c);
-            lean_obj_arg cell = lean_array_get_core(col, ri);
-            format_cell(cell, buf, sizeof(buf));
-            print_pad(xs[c], y, ws[c], stFg[si], stBg[si], buf, cell_is_num(cell));
+            format_col_cell(col, row, buf, sizeof(buf));  // read from Column at original row
+            print_pad(xs[c], y, ws[c], stFg[si], stBg[si], buf, col_is_num(col));
         }
         if (sepX > 0) tb_set_cell(sepX, y, '|', stFg[STYLE_DEFAULT], stBg[STYLE_DEFAULT]);
     }

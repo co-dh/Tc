@@ -18,6 +18,6 @@ def ReadTable.nCols [ReadTable α] (a : α) : Nat := (ReadTable.colNames a).size
 
 -- Mutable table operations (column-only; row deletion via SQL filter)
 class ModifyTable (α : Type) where
-  delCols : Array String → α → α              -- delete columns by names
+  delCols : Array Nat → α → α              -- delete columns by indices
 
 end Tc

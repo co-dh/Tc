@@ -10,10 +10,10 @@ import Tc.Term
 
 open Tc
 
--- Loop result: quit or delete columns
+-- Loop result: quit or modify table
 inductive LoopAction (t : Type) where
   | quit
-  | delCols (names : Array String) (curCol : Nat) (tbl : t)
+  | del (idxs : Array Nat) (curCol : Nat) (tbl : t)
 
 -- Main loop with g-prefix state
 partial def mainLoop {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
@@ -31,8 +31,8 @@ partial def mainLoop {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t
   match keyToCmd ev gPrefix with
   | some "d~" =>
     -- Delete selected cols, or cursor col if none selected
-    let cols := if nav.selCols.isEmpty then #[nav.curColName] else nav.selCols
-    return .delCols cols nav.curCol nav.tbl
+    let idxs := if nav.selColIdxs.isEmpty then #[nav.curColIdx] else nav.selColIdxs
+    return .del idxs nav.curCol nav.tbl
   | some cmd => mainLoop (nav.dispatch cmd rowPg colPg) view' cumW
   | none => mainLoop nav view' cumW
 
@@ -62,7 +62,7 @@ partial def runViewerMod {t : Type} [ReadTable t] [RenderTable t] [ModifyTable t
       let nav := NavState.newAt tbl rfl rfl hr hc initCol
       match ← mainLoop nav (ViewState.default hc) cumW with
       | .quit => pure ()
-      | .delCols names col _ => runViewerMod (ModifyTable.delCols names tbl) col
+      | .del idxs col _ => runViewerMod (ModifyTable.delCols idxs tbl) col
     else IO.eprintln "No rows"
   else IO.eprintln "No columns"
 

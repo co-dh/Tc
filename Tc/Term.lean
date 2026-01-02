@@ -89,10 +89,11 @@ opaque printPadC : UInt32 → UInt32 → UInt32 → UInt32 → UInt32 → @& Str
 opaque renderCol : UInt32 → UInt32 → UInt32 → @& Array UInt32 → @& Array UInt32
                  → @& Array String → @& Array UInt8 → IO Unit
 
--- | Unified table render (C does formatting, no Lean string alloc)
+-- | Unified table render (C reads Column directly, no Cell alloc)
+-- cols, names, widths, colIdxs, nKeys, colOff, r0, r1, curRow, curCol, selCols, selRows, styles
 @[extern "lean_render_table"]
-opaque renderTable : @& Array (Array Cell) → @& Array String → @& Array Nat
-                   → @& Array Nat → UInt64 → UInt64 → UInt64 → UInt64 → UInt64
+opaque renderTable : @& Array Column → @& Array String → @& Array Nat
+                   → @& Array Nat → UInt64 → UInt64 → UInt64 → UInt64 → UInt64 → UInt64
                    → @& Array Nat → @& Array Nat → @& Array UInt32 → IO Unit
 
 -- | Print string left-aligned, truncated/padded to width
