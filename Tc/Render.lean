@@ -24,8 +24,9 @@ def stSelCol   : Nat := 3  -- selected col
 def stCurRow   : Nat := 4  -- cursor row
 def stCurCol   : Nat := 5  -- cursor col
 def stDefault  : Nat := 6  -- default
+def stHeader   : Nat := 7  -- header
 
--- Styles: fg, bg pairs for 7 states
+-- Styles: fg, bg pairs for 8 states
 def styles : Array UInt32 := #[
   Term.black, Term.white,     -- cursor
   Term.black, Term.green,     -- selected row
@@ -33,7 +34,8 @@ def styles : Array UInt32 := #[
   Term.magenta, Term.default, -- selected col
   Term.default, Term.default, -- cursor row
   Term.yellow, Term.default,  -- cursor col
-  Term.default, Term.default  -- default
+  Term.default, Term.default, -- default
+  Term.white, Term.blue       -- header
 ]
 
 -- Get fg/bg pair from styles array

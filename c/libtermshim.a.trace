@@ -1,0 +1,12 @@
+{"synthetic": false,
+ "schemaVersion": "2025-09-10",
+ "outputs": "409f02ed39bdd54c.art",
+ "log":
+ [{"message": ".> make -C /home/dh/repo/Tc/c libtermshim.a", "level": "trace"},
+  {"message":
+   "stdout:\nmake: Entering directory '/home/dh/repo/Tc/c'\ncc -g -fPIC -I/home/dh/.elan/toolchains/leanprover--lean4---v4.26.0/include -c term_shim.c -o term_shim.o\nar rcs libtermshim.a term_shim.o\nmake: Leaving directory '/home/dh/repo/Tc/c'",
+   "level": "info"}],
+ "inputs":
+ [["/home/dh/repo/Tc/c/term_shim.c", "242d64acbc25e384"],
+  ["<nil>", "00000000000006bb"]],
+ "depHash": "2a4a86c11ca4ce7a"}

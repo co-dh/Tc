@@ -128,7 +128,8 @@ lean_obj_res lean_tb_render_col(uint32_t x, uint32_t w, uint32_t y0,
 #define STYLE_CUR_ROW    4
 #define STYLE_CUR_COL    5
 #define STYLE_DEFAULT    6
-#define NUM_STYLES       7
+#define STYLE_HEADER     7
+#define NUM_STYLES       8
 
 // | Column type tags (matches Lean Column inductive)
 #define COL_INTS   0
@@ -280,7 +281,7 @@ lean_obj_res lean_render_table(
         const char* name = lean_string_cstr(lean_array_get_core(names, origIdx));
         int isSel = IS_SEL(colBits, origIdx);
         int isCur = (origIdx == curCol);
-        int si = isCur ? STYLE_CURSOR : (isSel ? STYLE_SEL_COL : STYLE_DEFAULT);
+        int si = isCur ? STYLE_CURSOR : (isSel ? STYLE_SEL_COL : STYLE_HEADER);
         uint32_t fg = stFg[si] | TB_BOLD | TB_UNDERLINE;
         print_pad(xs[c], 0, ws[c], fg, stBg[si], name, 0);
         print_pad(xs[c], yFoot, ws[c], fg, stBg[si], name, 0);
