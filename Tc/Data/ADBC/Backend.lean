@@ -62,7 +62,7 @@ def queryCount (prql : String) : IO (Option Nat) := do
   pure <| (← query (mkLimited countPrql 1)).map fun st =>
     if st.nRows > 0 then
       match st.getIdx 0 0 with
-      | .int cnt => cnt.toNat
+      | .int cnt => cnt.toInt.toNat
       | _ => 0
     else 0
 

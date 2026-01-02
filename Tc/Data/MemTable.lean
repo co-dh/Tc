@@ -21,10 +21,14 @@ structure MemTable where
 namespace MemTable
 
 -- Parse cell value (detect type)
+-- Uses Int64 to avoid MPZ boxing; values beyond i64 range kept as strings
 def parseCell (s : String) : Cell :=
   if s.isEmpty then .null
-  else if let some n := s.toInt? then .int n
-  else .str s
+  else match s.toInt? with
+    | some n =>
+      let i := n.toInt64
+      if i.toInt == n then .int i else .str s
+    | none => .str s
 
 -- Transpose rows to columns
 def transpose (rows : Array (Array Cell)) (nc : Nat) : Array (Array Cell) := Id.run do

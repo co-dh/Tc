@@ -25,9 +25,10 @@ def Array.toggle [BEq α] (arr : Array α) (x : α) : Array α :=
   if arr.contains x then arr.filter (· != x) else arr.push x
 
 -- | Cell value (sum type)
+-- Uses Int64 to guarantee scalar representation (no MPZ boxing)
 inductive Cell where
   | null
-  | int (v : Int)
+  | int (v : Int64)
   | float (v : Float)
   | str (v : String)
   | bool (v : Bool)
@@ -36,8 +37,9 @@ inductive Cell where
 namespace Cell
 
 -- | Format integer with comma separators
-def fmtInt (n : Int) : String :=
-  let s := s!"{n.natAbs}"
+def fmtInt (n : Int64) : String :=
+  let v := n.toInt
+  let s := s!"{v.natAbs}"
   let chars := s.toList.reverse
   let rec go (cs : List Char) (acc : List Char) (cnt : Nat) : List Char :=
     match cs with
@@ -46,7 +48,7 @@ def fmtInt (n : Int) : String :=
       let acc' := if cnt > 0 && cnt % 3 = 0 then c :: ',' :: acc else c :: acc
       go rest acc' (cnt + 1)
   let digits := go chars [] 0
-  if n < 0 then "-" ++ String.ofList digits else String.ofList digits
+  if v < 0 then "-" ++ String.ofList digits else String.ofList digits
 
 -- | Theorem: fmtInt preserves digit order (no reversal)
 theorem fmtInt_123 : fmtInt 123 = "123" := by native_decide
@@ -60,7 +62,7 @@ def isNum : Cell → Bool
   | _        => false
 
 -- | Theorem: int is numeric
-theorem int_isNum (n : Int) : (Cell.int n).isNum = true := rfl
+theorem int_isNum (n : Int64) : (Cell.int n).isNum = true := rfl
 
 -- | Theorem: float is numeric (must right-align)
 theorem float_isNum (f : Float) : (Cell.float f).isNum = true := rfl
@@ -104,7 +106,7 @@ instance : ToString Cell where toString := toString
 def str? : Cell → Option String | .str s => some s | _ => none
 
 -- | Extract int value
-def int? : Cell → Option Int | .int n => some n | _ => none
+def int? : Cell → Option Int64 | .int n => some n | _ => none
 
 end Cell
 
@@ -151,7 +153,7 @@ def ofQueryResult (qr : Adbc.QueryResult) : IO SomeTable := do
   match unsafeIO (do
     if ← Adbc.cellIsNull t.qr r c then return Cell.null
     match t.colFmts.getD col '?' with
-    | 'l' | 'i' | 's' | 'c' => return Cell.int   (← Adbc.cellInt t.qr r c)
+    | 'l' | 'i' | 's' | 'c' => return Cell.int   (← Adbc.cellInt t.qr r c).toInt64
     | 'g' | 'f' | 'd'       => return Cell.float (← Adbc.cellFloat t.qr r c)
     | 'b'                   => return Cell.bool  ((← Adbc.cellStr t.qr r c) == "true")
     | _                     => return Cell.str   (← Adbc.cellStr t.qr r c)) with

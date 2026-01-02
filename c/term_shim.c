@@ -164,14 +164,9 @@ static int format_cell(lean_obj_arg cell, char* buf, size_t buflen) {
     unsigned tag = lean_obj_tag(cell);
     switch (tag) {
     case CELL_INT: {
-        lean_obj_arg v = lean_ctor_get(cell, 0);
-        if (lean_is_scalar(v)) {
-            int64_t n = lean_scalar_to_int64(v);
-            return fmt_int_comma(buf, buflen, n);
-        } else {
-            // Big int - just print "INT" for now
-            return snprintf(buf, buflen, "INT");
-        }
+        // Int64 stored as unboxed uint64 in ctor field
+        int64_t n = (int64_t)lean_ctor_get_uint64(cell, 0);
+        return fmt_int_comma(buf, buflen, n);
     }
     case CELL_FLOAT: return snprintf(buf, buflen, "%.3f", lean_unbox_float(lean_ctor_get(cell, 0)));
     case CELL_STR: {
