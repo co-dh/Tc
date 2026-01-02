@@ -116,6 +116,13 @@ def new (tbl : t) (hRows : ReadTable.nRows tbl = nRows) (hCols : (ReadTable.colN
     (hr : nRows > 0) (hc : nCols > 0) : NavState nRows nCols t :=
   ⟨tbl, hRows, hCols, NavAxis.default hr, NavAxis.default hc, #[], Array.all_empty⟩
 
+-- Constructor with initial column cursor (clamped to valid range)
+def newAt (tbl : t) (hRows : ReadTable.nRows tbl = nRows) (hCols : (ReadTable.colNames tbl).size = nCols)
+    (hr : nRows > 0) (hc : nCols > 0) (col : Nat) : NavState nRows nCols t :=
+  let c := min col (nCols - 1)
+  have hlt : c < nCols := Nat.lt_of_le_of_lt (Nat.min_le_right ..) (Nat.sub_lt hc Nat.one_pos)
+  ⟨tbl, hRows, hCols, NavAxis.default hr, ⟨⟨c, hlt⟩, #[]⟩, #[], Array.all_empty⟩
+
 -- Apply verb to cursor (pg = page size)
 private def curVerb (α : Type) (bound : Nat) (elem : Type) [CurOps α bound elem]
     (pg : Nat) (v : Char) (a : α) : α :=

@@ -13,7 +13,7 @@ open Tc
 -- Loop result: quit or delete columns
 inductive LoopAction (t : Type) where
   | quit
-  | delCols (names : Array String) (tbl : t)
+  | delCols (names : Array String) (curCol : Nat) (tbl : t)
 
 -- Main loop with g-prefix state
 partial def mainLoop {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
@@ -32,7 +32,7 @@ partial def mainLoop {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t
   | some "d~" =>
     -- Delete selected cols, or cursor col if none selected
     let cols := if nav.selCols.isEmpty then #[nav.curColName] else nav.selCols
-    return .delCols cols nav.tbl
+    return .delCols cols nav.curCol nav.tbl
   | some cmd => mainLoop (nav.dispatch cmd rowPg colPg) view' cumW
   | none => mainLoop nav view' cumW
 
@@ -52,17 +52,17 @@ def runViewer {t : Type} [ReadTable t] [RenderTable t] (tbl : t) : IO Unit := do
 
 -- Run viewer with delete support (ModifyTable)
 partial def runViewerMod {t : Type} [ReadTable t] [RenderTable t] [ModifyTable t]
-    (tbl : t) : IO Unit := do
+    (tbl : t) (initCol : Nat := 0) : IO Unit := do
   let nCols := (ReadTable.colNames tbl).size
   let nRows := ReadTable.nRows tbl
   if hc : nCols > 0 then
     if hr : nRows > 0 then
       have hWidths : (ReadTable.colWidths tbl).size = nCols := sorry
       let cumW : CumW nCols := hWidths ▸ mkCumW (ReadTable.colWidths tbl)
-      let nav := NavState.new tbl rfl rfl hr hc
+      let nav := NavState.newAt tbl rfl rfl hr hc initCol
       match ← mainLoop nav (ViewState.default hc) cumW with
       | .quit => pure ()
-      | .delCols names oldTbl => runViewerMod (ModifyTable.delCols names oldTbl)
+      | .delCols names col _ => runViewerMod (ModifyTable.delCols names tbl) col
     else IO.eprintln "No rows"
   else IO.eprintln "No columns"
 
