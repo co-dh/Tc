@@ -79,18 +79,14 @@ def nRows (t : MemTable) : Nat := (t.cols.getD 0 default).size
 
 end MemTable
 
--- ReadTable instance for MemTable
-instance : ReadTable MemTable where
+-- ModifyTable instance for MemTable (extends ReadTable)
+instance : ModifyTable MemTable where
   nRows     := MemTable.nRows
   colNames  := (·.names)
   colWidths := (·.widths)
   cell      := fun t r c => (MemTable.cell t r c).toString
-
--- ModifyTable instance for MemTable
-instance : ModifyTable MemTable where
-  delCols := fun delIdxs t =>
-    let keep := fun i => !delIdxs.contains i
-    let keepIdxs := (Array.range t.names.size).filter keep
+  delCols   := fun delIdxs t =>
+    let keepIdxs := (Array.range t.names.size).filter (!delIdxs.contains ·)
     { names  := keepIdxs.map fun i => t.names.getD i ""
       cols   := keepIdxs.map fun i => t.cols.getD i default
       widths := keepIdxs.map fun i => t.widths.getD i 0 }

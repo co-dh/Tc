@@ -91,6 +91,7 @@ def curRow (nav : NavState nRows nCols t) : Nat := nav.row_.cur.val
 def curCol (nav : NavState nRows nCols t) : Nat := nav.col_.cur.val  -- display index
 def colNames (nav : NavState nRows nCols t) : Array String := ReadTable.colNames nav.tbl_
 def nKeys (nav : NavState nRows nCols t) : Nat := nav.group_.size
+def group (nav : NavState nRows nCols t) : Array String := nav.group_
 def selRows (nav : NavState nRows nCols t) : Array Nat := nav.row_.sels
 
 -- Selected column indices (convert names to indices via lookup)
@@ -114,12 +115,12 @@ def new (tbl : t) (hRows : ReadTable.nRows tbl = nRows) (hCols : (ReadTable.colN
     (hr : nRows > 0) (hc : nCols > 0) : NavState nRows nCols t :=
   ⟨tbl, hRows, hCols, NavAxis.default hr, NavAxis.default hc, #[]⟩
 
--- Constructor with initial column cursor (clamped to valid range)
+-- Constructor with initial column cursor and group (clamped to valid range)
 def newAt (tbl : t) (hRows : ReadTable.nRows tbl = nRows) (hCols : (ReadTable.colNames tbl).size = nCols)
-    (hr : nRows > 0) (hc : nCols > 0) (col : Nat) : NavState nRows nCols t :=
+    (hr : nRows > 0) (hc : nCols > 0) (col : Nat) (grp : Array String := #[]) : NavState nRows nCols t :=
   let c := min col (nCols - 1)
   have hlt : c < nCols := Nat.lt_of_le_of_lt (Nat.min_le_right ..) (Nat.sub_lt hc Nat.one_pos)
-  ⟨tbl, hRows, hCols, NavAxis.default hr, ⟨⟨c, hlt⟩, #[]⟩, #[]⟩
+  ⟨tbl, hRows, hCols, NavAxis.default hr, ⟨⟨c, hlt⟩, #[]⟩, grp⟩
 
 -- Apply verb to cursor (pg = page size)
 private def curVerb (α : Type) (bound : Nat) (elem : Type) [CurOps α bound elem]

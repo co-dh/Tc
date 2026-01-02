@@ -17,7 +17,15 @@ class ReadTable (α : Type) where
 def ReadTable.nCols [ReadTable α] (a : α) : Nat := (ReadTable.colNames a).size
 
 -- Mutable table operations (column-only; row deletion via SQL filter)
-class ModifyTable (α : Type) where
+class ModifyTable (α : Type) extends ReadTable α where
   delCols : Array Nat → α → α              -- delete columns by indices
+
+-- Delete columns at cursor + selections, return new table and filtered group
+def ModifyTable.del [ModifyTable α] (tbl : α) (cursor : Nat) (sels : Array Nat) (grp : Array String)
+    : α × Array String :=
+  let idxs := if sels.contains cursor then sels else sels.push cursor
+  let names := ReadTable.colNames tbl
+  let delNames := idxs.map (names.getD · "")
+  (delCols idxs tbl, grp.filter (!delNames.contains ·))
 
 end Tc
