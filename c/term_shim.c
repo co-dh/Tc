@@ -280,7 +280,7 @@ lean_obj_res lean_render_table(
         int isSel = IS_SEL(colBits, origIdx);
         int isCur = (origIdx == curCol);
         int si = isCur ? STYLE_CURSOR : (isSel ? STYLE_SEL_COL : STYLE_DEFAULT);
-        uint32_t fg = stFg[si] | 0x02000000;  // underline
+        uint32_t fg = stFg[si] | TB_BOLD | TB_UNDERLINE;
         print_pad(xs[c], 0, ws[c], fg, stBg[si], name, 0);
         print_pad(xs[c], yFoot, ws[c], fg, stBg[si], name, 0);
     }
