@@ -1,3 +1,7 @@
 .lake/
 *.o
 *.a
+*.hash
+*.trace
+data
+perf.data*
