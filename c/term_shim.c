@@ -168,7 +168,7 @@ static int format_cell(lean_obj_arg cell, char* buf, size_t buflen) {
         int64_t n = (int64_t)lean_ctor_get_uint64(cell, 0);
         return fmt_int_comma(buf, buflen, n);
     }
-    case CELL_FLOAT: return snprintf(buf, buflen, "%.3f", lean_unbox_float(lean_ctor_get(cell, 0)));
+    case CELL_FLOAT: return snprintf(buf, buflen, "%.3f", lean_ctor_get_float(cell, 0));
     case CELL_STR: {
         const char* s = lean_string_cstr(lean_ctor_get(cell, 0));
         size_t len = strlen(s);
@@ -176,7 +176,7 @@ static int format_cell(lean_obj_arg cell, char* buf, size_t buflen) {
         memcpy(buf, s, len); buf[len] = '\0';
         return len;
     }
-    case CELL_BOOL: return snprintf(buf, buflen, "%s", lean_unbox(lean_ctor_get(cell, 0)) ? "true" : "false");
+    case CELL_BOOL: return snprintf(buf, buflen, "%s", lean_ctor_get_uint8(cell, 0) ? "true" : "false");
     default: buf[0] = '\0'; return 0;
     }
 }
@@ -340,4 +340,12 @@ lean_obj_res lean_tb_buffer_str(lean_obj_arg world) {
     lean_object *res = lean_mk_string(str);
     free(str);
     return lean_io_result_mk_ok(res);
+}
+
+// String -> Float (returns NaN on parse failure)
+double lean_string_to_float(b_lean_obj_arg s) {
+    const char *str = lean_string_cstr(s);
+    char *end;
+    double v = strtod(str, &end);
+    return (end == str || *end != '\0') ? __builtin_nan("") : v;
 }

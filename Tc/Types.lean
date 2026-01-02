@@ -34,6 +34,42 @@ inductive Cell where
   | bool (v : Bool)
   deriving Repr, Inhabited
 
+-- | Column: uniform typed storage (one type per column)
+-- More efficient than Array Cell (no per-cell tag overhead)
+-- ints: no null support; floats: NaN = null; strs: empty = null
+inductive Column where
+  | ints   (data : Array Int64)
+  | floats (data : Array Float)
+  | strs   (data : Array String)
+  deriving Repr, Inhabited
+
+namespace Column
+
+-- | Get cell at row index
+def get (col : Column) (i : Nat) : Cell :=
+  match col with
+  | .ints data => .int (data.getD i 0)
+  | .floats data =>
+    let f := data.getD i 0
+    if f.isNaN then .null else .float f
+  | .strs data =>
+    let s := data.getD i ""
+    if s.isEmpty then .null else .str s
+
+-- | Row count
+def size : Column → Nat
+  | .ints data => data.size
+  | .floats data => data.size
+  | .strs data => data.size
+
+-- | Is column numeric (for right-alignment)
+def isNum : Column → Bool
+  | .ints _ => true
+  | .floats _ => true
+  | .strs _ => false
+
+end Column
+
 namespace Cell
 
 -- | Format integer with comma separators

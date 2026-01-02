@@ -91,6 +91,9 @@ def colNames (nav : NavState nRows nCols t) : Array String := ReadTable.colNames
 def nKeys (nav : NavState nRows nCols t) : Nat := nav.group_.size
 def selRows (nav : NavState nRows nCols t) : Array Nat := nav.row_.sels
 
+-- Selected column names
+def selCols (nav : NavState nRows nCols t) : Array String := nav.col_.sels
+
 -- Selected column indices (in original order)
 def selColIdxs (nav : NavState nRows nCols t) : Array Nat :=
   nav.col_.sels.filterMap fun name => nav.colNames.findIdx? (· == name)

@@ -57,4 +57,6 @@ def keyToCmd (ev : Term.Event) (gPrefix : Bool) : Option String :=
         else if ev.ch == 'T'.toNat.toUInt32 then some "R~"
         -- Group toggle
         else if ev.ch == '!'.toNat.toUInt32 then some "G~"
+        -- Delete columns: d
+        else if ev.ch == 'd'.toNat.toUInt32 then some "d~"
         else none

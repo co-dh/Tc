@@ -10,25 +10,33 @@ import Tc.Term
 
 open Tc
 
+-- Loop result: quit or delete columns
+inductive LoopAction (t : Type) where
+  | quit
+  | delCols (names : Array String) (tbl : t)
+
 -- Main loop with g-prefix state
 partial def mainLoop {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
     (nav : NavState nRows nCols t) (view : ViewState nCols) (cumW : CumW nCols)
-    (gPrefix : Bool := false) : IO Unit := do
+    (gPrefix : Bool := false) : IO (LoopAction t) := do
   let view' ← render nav view cumW
   let ev ← Term.pollEvent
   let h ← Term.height
   let rowPg := (h.toNat - reservedLines) / 2
   let colPg := colPageSize
   if ev.type == Term.eventKey then
-    if ev.ch == 'q'.toNat.toUInt32 || ev.key == Term.keyEsc then return
+    if ev.ch == 'q'.toNat.toUInt32 || ev.key == Term.keyEsc then return .quit
     if ev.ch == 'g'.toNat.toUInt32 && !gPrefix then
-      mainLoop nav view' cumW true
-      return
+      return ← mainLoop nav view' cumW true
   match keyToCmd ev gPrefix with
+  | some "d~" =>
+    -- Delete selected cols, or cursor col if none selected
+    let cols := if nav.selCols.isEmpty then #[nav.curColName] else nav.selCols
+    return .delCols cols nav.tbl
   | some cmd => mainLoop (nav.dispatch cmd rowPg colPg) view' cumW
   | none => mainLoop nav view' cumW
 
--- Run viewer with any ReadTable/RenderTable
+-- Run viewer (read-only, no delete support)
 def runViewer {t : Type} [ReadTable t] [RenderTable t] (tbl : t) : IO Unit := do
   let nCols := (ReadTable.colNames tbl).size
   let nRows := ReadTable.nRows tbl
@@ -37,7 +45,24 @@ def runViewer {t : Type} [ReadTable t] [RenderTable t] (tbl : t) : IO Unit := do
       have hWidths : (ReadTable.colWidths tbl).size = nCols := sorry
       let cumW : CumW nCols := hWidths ▸ mkCumW (ReadTable.colWidths tbl)
       let nav := NavState.new tbl rfl rfl hr hc
-      mainLoop nav (ViewState.default hc) cumW
+      let _ ← mainLoop nav (ViewState.default hc) cumW
+      pure ()
+    else IO.eprintln "No rows"
+  else IO.eprintln "No columns"
+
+-- Run viewer with delete support (ModifyTable)
+partial def runViewerMod {t : Type} [ReadTable t] [RenderTable t] [ModifyTable t]
+    (tbl : t) : IO Unit := do
+  let nCols := (ReadTable.colNames tbl).size
+  let nRows := ReadTable.nRows tbl
+  if hc : nCols > 0 then
+    if hr : nRows > 0 then
+      have hWidths : (ReadTable.colWidths tbl).size = nCols := sorry
+      let cumW : CumW nCols := hWidths ▸ mkCumW (ReadTable.colWidths tbl)
+      let nav := NavState.new tbl rfl rfl hr hc
+      match ← mainLoop nav (ViewState.default hc) cumW with
+      | .quit => pure ()
+      | .delCols names oldTbl => runViewerMod (ModifyTable.delCols names oldTbl)
     else IO.eprintln "No rows"
   else IO.eprintln "No columns"
 
@@ -45,11 +70,11 @@ def runViewer {t : Type} [ReadTable t] [RenderTable t] (tbl : t) : IO Unit := do
 def main (args : List String) : IO Unit := do
   let path := args.head? |>.getD "data.csv"
   let _ ← Term.init
-  -- CSV: use MemTable, otherwise: use Backend
+  -- CSV: use MemTable (with delete support), otherwise: use Backend (read-only)
   if path.endsWith ".csv" then
     match ← MemTable.load path with
     | .error e => Term.shutdown; IO.eprintln s!"CSV parse error: {e}"
-    | .ok tbl  => runViewer tbl; Term.shutdown
+    | .ok tbl  => runViewerMod tbl; Term.shutdown
   else
     let ok ← Backend.init
     if !ok then Term.shutdown; IO.eprintln "Backend init failed"; return

@@ -1,7 +1,7 @@
 /-
   Table typeclasses for data backends.
   ReadTable: read-only access (nRows, colNames, cell, render)
-  ModifyTable: mutations (delRows, delCols)
+  ModifyTable: column deletion (row deletion via SQL filter)
 -/
 
 namespace Tc
@@ -16,9 +16,8 @@ class ReadTable (α : Type) where
 -- Derived: column count from colNames.size
 def ReadTable.nCols [ReadTable α] (a : α) : Nat := (ReadTable.colNames a).size
 
--- Mutable table operations
+-- Mutable table operations (column-only; row deletion via SQL filter)
 class ModifyTable (α : Type) where
-  delRows : Array Nat → α → α                 -- delete rows by indices
   delCols : Array String → α → α              -- delete columns by names
 
 end Tc

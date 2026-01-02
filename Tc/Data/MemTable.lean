@@ -1,8 +1,9 @@
 /-
-  In-memory table: column-major with typed cells
+  In-memory table: column-major with typed columns
 -/
 import Tc.Data.CSV
 import Tc.Data.Table
+import Tc.Error
 import Tc.Nav
 import Tc.Render
 import Tc.Term
@@ -12,36 +13,41 @@ namespace Tc
 
 /-! ## MemTable -/
 
--- In-memory table: column-major storage
+-- In-memory table: typed column storage
 structure MemTable where
   names  : Array String
-  cols   : Array (Array Cell)  -- column-major
+  cols   : Array Column
   widths : Array Nat
 
 namespace MemTable
 
--- Parse cell value (detect type)
--- Uses Int64 to avoid MPZ boxing; values beyond i64 range kept as strings
-def parseCell (s : String) : Cell :=
-  if s.isEmpty then .null
-  else match s.toInt? with
-    | some n =>
-      let i := n.toInt64
-      if i.toInt == n then .int i else .str s
-    | none => .str s
+-- Parse string to float (returns NaN on failure)
+@[extern "lean_string_to_float"]
+opaque stringToFloat : @& String → Float
 
--- Transpose rows to columns
-def transpose (rows : Array (Array Cell)) (nc : Nat) : Array (Array Cell) := Id.run do
-  let mut cols : Array (Array Cell) := (List.replicate nc #[]).toArray
-  for r in rows do
-    for i in [:nc] do
-      cols := cols.modify i (·.push (r.getD i .null))
-  cols
+-- Detect column type from first non-empty value
+def detectType (vals : Array String) : Char :=
+  match vals.find? (·.length > 0) with
+  | none => 's'  -- default to string
+  | some v =>
+    if v.toInt?.isSome then 'i'
+    else if v.contains '.' then 'f'  -- assume float if has decimal point
+    else 's'
 
--- Compute column width from column data
-def calcWidth (name : String) (col : Array Cell) : Nat :=
+-- Build typed column from string values
+def buildColumn (vals : Array String) : Column :=
+  match detectType vals with
+  | 'i' => .ints (vals.map fun s => s.toInt?.getD 0 |>.toInt64)
+  | 'f' => .floats (vals.map stringToFloat)
+  | _ => .strs vals
+
+-- Compute column width
+def calcWidth (name : String) (col : Column) : Nat :=
   let w0 := name.length
-  let wMax := col.foldl (fun mx c => max mx c.toString.length) w0
+  let wMax := match col with
+    | .ints data => data.foldl (fun mx v => max mx (Cell.fmtInt v).length) w0
+    | .floats data => data.foldl (fun mx v => max mx s!"{v}".length) w0
+    | .strs data => data.foldl (fun mx s => max mx s.length) w0
   min wMax 50
 
 -- Load CSV file into MemTable
@@ -53,16 +59,23 @@ def load (path : String) : IO (Except String MemTable) := do
   | hdr :: rest =>
     let names := hdr
     let nc := names.size
-    let rows := rest.map (·.map parseCell) |>.toArray
-    let cols := transpose rows nc
-    let widths := names.mapIdx fun i n => calcWidth n (cols.getD i #[])
+    -- transpose: build array of string values per column
+    let strCols : Array (Array String) := Id.run do
+      let mut cols := (List.replicate nc #[]).toArray
+      for row in rest do
+        for i in [:nc] do
+          cols := cols.modify i (·.push (row.getD i ""))
+      cols
+    -- build typed columns
+    let cols := strCols.map buildColumn
+    let widths := cols.mapIdx fun i c => calcWidth (names.getD i "") c
     pure (.ok ⟨names, cols, widths⟩)
 
 -- Get cell at (row, col)
-def cell (t : MemTable) (r c : Nat) : Cell := (t.cols.getD c #[]).getD r .null
+def cell (t : MemTable) (r c : Nat) : Cell := (t.cols.getD c default).get r
 
 -- Row count
-def nRows (t : MemTable) : Nat := (t.cols.getD 0 #[]).size
+def nRows (t : MemTable) : Nat := (t.cols.getD 0 default).size
 
 end MemTable
 
@@ -73,22 +86,32 @@ instance : ReadTable MemTable where
   colWidths := (·.widths)
   cell      := fun t r c => (MemTable.cell t r c).toString
 
+-- ModifyTable instance for MemTable
+instance : ModifyTable MemTable where
+  delCols := fun colNames t =>
+    let keep := fun n => !colNames.contains n
+    let keepIdxs := t.names.mapIdx (fun i n => if keep n then some i else none) |>.filterMap id
+    { names  := t.names.filter keep
+      cols   := keepIdxs.map fun i => t.cols.getD i default
+      widths := keepIdxs.map fun i => t.widths.getD i 0 }
+
 -- Render MemTable using unified C render (no Lean string alloc)
 instance : RenderTable MemTable where
   render nav colOff r0 r1 st := do
     let w ← Term.width
-    -- find visible columns
+    -- find visible columns (skip first colOff display columns)
     let mut visColIdxs : Array Nat := #[]
     let mut x : Nat := 0
-    for di in nav.dispColIdxs do
-      if di < colOff then continue
+    for h : dispPos in [:nav.dispColIdxs.size] do
+      let di := nav.dispColIdxs[dispPos]
+      if dispPos < colOff then continue
       if x >= w.toNat then break
       visColIdxs := visColIdxs.push di
       x := x + (nav.tbl.widths.getD di 10) + 1
-    -- extract visible column data (slice rows r0..r1)
+    -- extract visible column data as Cell arrays (for C render)
     let visCols := visColIdxs.map fun di =>
-      let col := nav.tbl.cols.getD di #[]
-      (Array.range (r1 - r0)).map fun i => col.getD (r0 + i) .null
+      let col := nav.tbl.cols.getD di default
+      (Array.range (r1 - r0)).map fun i => col.get (r0 + i)
     -- call C render
     Term.renderTable visCols nav.tbl.names nav.tbl.widths visColIdxs
       nav.nKeys.toUInt64 colOff.toUInt64 r0.toUInt64 nav.curRow.toUInt64 nav.curColIdx.toUInt64
