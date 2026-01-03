@@ -52,5 +52,32 @@ def new {nr nc : Nat} {τ : Type} [ir : ReadTable τ] [im : ModifyTable τ] [iv 
 @[inline] def dispatch (v : View) (cmd : Cmd) (rowPg colPg : Nat) : View :=
   { v with nav := @NavState.dispatch v.t v.instR v.nRows v.nCols cmd v.nav rowPg colPg }
 
+-- | Create View from table + path (returns none if empty)
+def fromTbl {τ : Type} [ReadTable τ] [ModifyTable τ] [RenderTable τ]
+    (tbl : τ) (path : String) (col : Nat := 0) (grp : Array String := #[]) (row : Nat := 0)
+    : Option View := do
+  let nCols := (ReadTable.colNames tbl).size
+  let nRows := ReadTable.nRows tbl
+  if hc : nCols > 0 then
+    if hr : nRows > 0 then some (View.new (NavState.newAt tbl rfl rfl hr hc col grp row) path)
+    else none
+  else none
+
+-- | Execute Cmd, returns Option View (none if table becomes empty after del)
+def exec (v : View) (cmd : Cmd) (rowPg colPg : Nat) : Option View :=
+  match cmd with
+  | .col .del =>
+    let tbl' := @ModifyTable.del v.t v.instM v.tbl v.curColIdx v.selColIdxs v.getGroup
+    @fromTbl v.t v.instR v.instM v.instV tbl'.1 v.path v.curDispCol tbl'.2 0
+  | .colSel .sortAsc =>
+    let grpIdxs := v.getGroup.filterMap v.colNames.idxOf?
+    let tbl' := @ModifyTable.sort v.t v.instM v.tbl v.curColIdx grpIdxs true
+    @fromTbl v.t v.instR v.instM v.instV tbl' v.path v.curColIdx v.getGroup v.curRow
+  | .colSel .sortDesc =>
+    let grpIdxs := v.getGroup.filterMap v.colNames.idxOf?
+    let tbl' := @ModifyTable.sort v.t v.instM v.tbl v.curColIdx grpIdxs false
+    @fromTbl v.t v.instR v.instM v.instV tbl' v.path v.curColIdx v.getGroup v.curRow
+  | _ => some (v.dispatch cmd rowPg colPg)
+
 end View
 end Tc

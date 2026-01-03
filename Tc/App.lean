@@ -12,49 +12,6 @@ import Tc.ViewStack
 
 open Tc
 
--- | Result of del/sort: new table + cursor info
-structure RebuildInfo where
-  t : Type
-  instR : ReadTable t
-  instM : ModifyTable t
-  instV : RenderTable t
-  tbl : t
-  col : Nat
-  row : Nat
-  grp : Array String
-
--- | Execute Cmd on View, returns (updated View, rebuildInfo if table changed)
-def execCmd (v : View) (cmd : Cmd) (rowPg colPg : Nat) : View × Option RebuildInfo :=
-  match cmd with
-  | .col .del =>
-    let tbl' := @ModifyTable.del v.t v.instM v.tbl v.curColIdx v.selColIdxs v.getGroup
-    (v, some ⟨v.t, v.instR, v.instM, v.instV, tbl'.1, v.curDispCol, 0, tbl'.2⟩)
-  | .colSel .sortAsc =>
-    let grpIdxs := v.getGroup.filterMap v.colNames.idxOf?
-    let tbl' := @ModifyTable.sort v.t v.instM v.tbl v.curColIdx grpIdxs true
-    (v, some ⟨v.t, v.instR, v.instM, v.instV, tbl', v.curColIdx, v.curRow, v.getGroup⟩)
-  | .colSel .sortDesc =>
-    let grpIdxs := v.getGroup.filterMap v.colNames.idxOf?
-    let tbl' := @ModifyTable.sort v.t v.instM v.tbl v.curColIdx grpIdxs false
-    (v, some ⟨v.t, v.instR, v.instM, v.instV, tbl', v.curColIdx, v.curRow, v.getGroup⟩)
-  | _ => (v.dispatch cmd rowPg colPg, none)
-
--- | Create View from table + path
-def mkView {τ : Type} [ReadTable τ] [ModifyTable τ] [RenderTable τ]
-    (tbl : τ) (path : String) (col : Nat := 0) (grp : Array String := #[]) (row : Nat := 0)
-    : Option View := do
-  let nCols := (ReadTable.colNames tbl).size
-  let nRows := ReadTable.nRows tbl
-  if hc : nCols > 0 then
-    if hr : nRows > 0 then
-      some (View.new (NavState.newAt tbl rfl rfl hr hc col grp row) path)
-    else none
-  else none
-
--- | Rebuild View from RebuildInfo
-def rebuildView (path : String) (info : RebuildInfo) : Option View :=
-  @mkView info.t info.instR info.instM info.instV info.tbl path info.col info.grp info.row
-
 -- | Main loop with ViewStack
 partial def mainLoop (stk : ViewStack) (vs : ViewState) (gPrefix : Bool := false) : IO Unit := do
   let vs' ← stk.cur.doRender vs
@@ -82,14 +39,10 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (gPrefix : Bool := false
     | none => return
   | some (.stk .toggle) => mainLoop stk.swap vs'          -- s~ = swap
   | some (.stk .copy)   => mainLoop stk.dup vs'           -- sc = dup
-  | some cmd =>
-    let (v', info) := execCmd stk.cur cmd rowPg colPg
-    match info with
-    | some ri =>
-      match rebuildView stk.cur.path ri with
-      | some v'' => mainLoop (stk.setCur v'') ViewState.default
-      | none => return  -- table empty after del
-    | none => mainLoop (stk.setCur v') vs'
+  | some cmd => match stk.cur.exec cmd rowPg colPg with
+    | some v' => let vs'' := if cmd matches .col .del | .colSel _ then ViewState.default else vs'
+                 mainLoop (stk.setCur v') vs''
+    | none => return  -- table empty after del
   | none => mainLoop stk vs'
 
 -- | Parse -c <cmd> from args
@@ -107,8 +60,7 @@ def main (args : List String) : IO Unit := do
   if path.endsWith ".csv" then
     match ← MemTable.load path with
     | .error e => Term.shutdown; IO.eprintln s!"CSV parse error: {e}"
-    | .ok tbl =>
-      match mkView tbl path with
+    | .ok tbl => match View.fromTbl tbl path with
       | some v => mainLoop ⟨v, #[]⟩ ViewState.default; Term.shutdown
       | none => Term.shutdown; IO.eprintln "Empty table"
   else
@@ -116,7 +68,6 @@ def main (args : List String) : IO Unit := do
     if !ok then Term.shutdown; IO.eprintln "Backend init failed"; return
     match ← AdbcTable.fromFile path with
     | none => Term.shutdown; Backend.shutdown; IO.eprintln "Query failed"
-    | some tbl =>
-      match mkView tbl path with
+    | some tbl => match View.fromTbl tbl path with
       | some v => mainLoop ⟨v, #[]⟩ ViewState.default; Term.shutdown; Backend.shutdown
       | none => Term.shutdown; Backend.shutdown; IO.eprintln "Empty table"
