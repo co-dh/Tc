@@ -76,6 +76,12 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (gPrefix : Bool := false
     if c == 'g' && !gPrefix then return ← mainLoop stk vs' true
   -- regular Cmd
   match evToCmd ev gPrefix with
+  | some (.stk .next)   => mainLoop stk.dup vs'           -- s+ = push (dup for now)
+  | some (.stk .prev)   => match stk.pop with             -- s- = pop
+    | some stk' => mainLoop stk' ViewState.default
+    | none => return
+  | some (.stk .toggle) => mainLoop stk.swap vs'          -- s~ = swap
+  | some (.stk .copy)   => mainLoop stk.dup vs'           -- sc = dup
   | some cmd =>
     let (v', info) := execCmd stk.cur cmd rowPg colPg
     match info with

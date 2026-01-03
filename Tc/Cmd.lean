@@ -14,6 +14,7 @@ inductive Verb where
   | toggle                                        -- toggle selection
   | del                                           -- delete
   | sortAsc | sortDesc                            -- sort
+  | copy                                          -- copy/dup
   deriving Repr, BEq, DecidableEq
 
 namespace Verb
@@ -22,13 +23,13 @@ namespace Verb
 def toChar : Verb → Char
   | .next => '+' | .prev => '-' | .pgNext => '>' | .pgPrev => '<'
   | .home => '0' | .end_ => '$' | .toggle => '~' | .del => 'd'
-  | .sortAsc => '[' | .sortDesc => ']'
+  | .sortAsc => '[' | .sortDesc => ']' | .copy => 'c'
 
 -- | Char to verb
 def ofChar? : Char → Option Verb
   | '+' => some .next | '-' => some .prev | '>' => some .pgNext | '<' => some .pgPrev
   | '0' => some .home | '$' => some .end_ | '~' => some .toggle | 'd' => some .del
-  | '[' => some .sortAsc | ']' => some .sortDesc
+  | '[' => some .sortAsc | ']' => some .sortDesc | 'c' => some .copy
   | _ => none
 
 instance : ToString Verb where toString v := v.toChar.toString
@@ -47,22 +48,23 @@ inductive Cmd where
   | rowSel (v : Verb)  -- rowSel toggle
   | colSel (v : Verb)  -- colSel toggle/sortAsc/sortDesc
   | grp (v : Verb)     -- grp toggle
+  | stk (v : Verb)     -- stk +push/-pop/~swap/cdup
   deriving Repr, BEq, DecidableEq
 
 namespace Cmd
 
--- | Obj chars: r=row, c=col, R=rowSel, C=colSel, g=grp
+-- | Obj chars: r=row, c=col, R=rowSel, C=colSel, g=grp, s=stk
 private def objs : Array (Char × (Verb → Cmd)) := #[
-  ('r', .row), ('c', .col), ('R', .rowSel), ('C', .colSel), ('g', .grp)
+  ('r', .row), ('c', .col), ('R', .rowSel), ('C', .colSel), ('g', .grp), ('s', .stk)
 ]
 
 -- | Get obj char for Cmd
 private def objChar : Cmd → Char
-  | .row _ => 'r' | .col _ => 'c' | .rowSel _ => 'R' | .colSel _ => 'C' | .grp _ => 'g'
+  | .row _ => 'r' | .col _ => 'c' | .rowSel _ => 'R' | .colSel _ => 'C' | .grp _ => 'g' | .stk _ => 's'
 
 -- | Get verb from Cmd
 private def verb : Cmd → Verb
-  | .row v | .col v | .rowSel v | .colSel v | .grp v => v
+  | .row v | .col v | .rowSel v | .colSel v | .grp v | .stk v => v
 
 instance : ToString Cmd where toString c := s!"{c.objChar}{c.verb.toChar}"
 
@@ -85,5 +87,6 @@ theorem parse_toString (c : Cmd) : Parse.parse? (toString c) = some c := by
   | rowSel v => cases v <;> native_decide
   | colSel v => cases v <;> native_decide
   | grp v => cases v <;> native_decide
+  | stk v => cases v <;> native_decide
 
 end Cmd

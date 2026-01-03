@@ -66,11 +66,12 @@ Sorts by key (group) columns if any, otherwise by current column.
 |-----|---------------------------------|
 | `d` | Delete column (+ selected cols) |
 
-### Other
+### ViewStack
 
-| Key         | Action |
-|-------------|--------|
-| `q` / `Esc` | Quit   |
+| Key         | Action              |
+|-------------|---------------------|
+| `q` / `Esc` | Pop view (quit if last) |
+| `S`         | Swap top two views  |
 
 ## Build
 
@@ -83,7 +84,7 @@ lake build tc
 ```bash
 .lake/build/bin/tc data.csv                    # CSV file
 .lake/build/bin/tc data.parquet                # Parquet file (via DuckDB)
-.lake/build/bin/tc data.csv -c "rn rn cn gt"   # play commands then interactive
+.lake/build/bin/tc data.csv -c "r+ r+ c+ g~"   # play commands then interactive
 ```
 
 ## Command String
@@ -92,10 +93,13 @@ Commands follow Obj+Verb pattern (2 chars each, space-separated):
 
 | Obj | Verb | Meaning |
 |-----|------|---------|
-| `r` | `n/p/N/P/h/e` | row next/prev/pgNext/pgPrev/home/end |
-| `c` | `n/p/N/P/h/e/d` | col next/prev/pgNext/pgPrev/home/end/del |
-| `R` | `t` | rowSel toggle |
-| `C` | `t/[/]` | colSel toggle/sortAsc/sortDesc |
-| `g` | `t` | grp toggle |
+| `r` | `+/-/>/<` | row next/prev/pgNext/pgPrev |
+| `r` | `0/$` | row home/end |
+| `c` | `+/-/>/<` | col next/prev/pgNext/pgPrev |
+| `c` | `0/$/d` | col home/end/del |
+| `R` | `~` | rowSel toggle |
+| `C` | `~/[/]` | colSel toggle/sortAsc/sortDesc |
+| `g` | `~` | grp toggle |
+| `s` | `+/-/~/c` | stk push/pop/swap/dup |
 
-Example: `rn rn cn Ct C[` = down, down, right, toggle col selection, sort ascending by selected
+Example: `r+ r+ c+ C~ C[` = down, down, right, toggle col selection, sort ascending
