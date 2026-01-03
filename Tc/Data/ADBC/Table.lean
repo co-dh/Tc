@@ -1,5 +1,5 @@
 /-
-  ADBC backend: ReadTable + RenderTable instances for SomeTable
+  ADBC backend: ReadTable + RenderTable instances for AdbcTable
 -/
 import Tc.Error
 import Tc.Render
@@ -8,15 +8,15 @@ import Tc.Types
 
 namespace Tc
 
--- ReadTable instance for SomeTable (ADBC/DuckDB backend)
-instance : ReadTable SomeTable where
+-- ReadTable instance for AdbcTable (ADBC/DuckDB backend)
+instance : ReadTable AdbcTable where
   nRows    := (·.nRows)
   colNames := (·.colNames)
 
--- RenderTable instance for SomeTable
+-- RenderTable instance for AdbcTable
 -- First render (inWidths empty): extract all rows for width calc
 -- Subsequent renders: extract only visible slice [r0, r1)
-instance : RenderTable SomeTable where
+instance : RenderTable AdbcTable where
   render nav inWidths colOff r0 r1 st := do
     if inWidths.isEmpty then
       -- first render: full data for width computation

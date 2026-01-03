@@ -137,4 +137,4 @@ def main (args : List String) : IO Unit := do
     let prql := s!"from `{path}` | take 100000"
     match ← Backend.query (Backend.mkLimited prql 100000) with
     | none     => Term.shutdown; Backend.shutdown; IO.eprintln "Query failed"
-    | some stbl => runViewerMod (MemTable.ofSomeTable stbl) 0 #[] cmdStr; Term.shutdown; Backend.shutdown
+    | some stbl => runViewerMod (MemTable.ofAdbcTable stbl) 0 #[] cmdStr; Term.shutdown; Backend.shutdown

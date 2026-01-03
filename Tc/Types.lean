@@ -78,17 +78,17 @@ structure DisplayInfo where
   nCols    : Nat
 
 -- | Zero-copy table: data stays in Arrow/C memory, accessed via FFI
-structure SomeTable where
+structure AdbcTable where
   qr       : Adbc.QueryResult   -- arrow data (opaque, C memory)
   colNames : Array String       -- cached column names
   colFmts  : Array Char         -- cached format chars per column
   nRows    : Nat
   nCols    : Nat
 
-namespace SomeTable
+namespace AdbcTable
 
--- | Build SomeTable from QueryResult (caches metadata, no cell copies)
-def ofQueryResult (qr : Adbc.QueryResult) : IO SomeTable := do
+-- | Build AdbcTable from QueryResult (caches metadata, no cell copies)
+def ofQueryResult (qr : Adbc.QueryResult) : IO AdbcTable := do
   let nc ← Adbc.ncols qr
   let nr ← Adbc.nrows qr
   let mut names : Array String := #[]
@@ -101,7 +101,7 @@ def ofQueryResult (qr : Adbc.QueryResult) : IO SomeTable := do
   pure ⟨qr, names, fmts, nr.toNat, nc.toNat⟩
 
 -- | Get cell at (row, col) - pure interface via unsafeIO
-@[inline] unsafe def getIdxImpl (t : SomeTable) (row col : Nat) : Cell :=
+@[inline] unsafe def getIdxImpl (t : AdbcTable) (row col : Nat) : Cell :=
   let r := row.toUInt64
   let c := col.toUInt64
   match unsafeIO (do
@@ -115,15 +115,15 @@ def ofQueryResult (qr : Adbc.QueryResult) : IO SomeTable := do
   | Except.error _ => Cell.null
 
 @[implemented_by getIdxImpl]
-def getIdx (t : SomeTable) (_ _ : Nat) : Cell := .null
+def getIdx (t : AdbcTable) (_ _ : Nat) : Cell := .null
 
 -- | Get DisplayInfo
-def info (t : SomeTable) : DisplayInfo :=
+def info (t : AdbcTable) : DisplayInfo :=
   ⟨t.colNames, t.nRows, t.nCols⟩
 
 -- | Extract column slice [r0, r1) as typed Column
 -- Arrow formats: l/i/s/c = signed int64/32/16/8, L/I/S/C = unsigned, g/f = float64/32
-@[inline] unsafe def getColImpl (t : SomeTable) (col r0 r1 : Nat) : Column :=
+@[inline] unsafe def getColImpl (t : AdbcTable) (col r0 r1 : Nat) : Column :=
   let fmt := t.colFmts.getD col '?'
   match fmt with
   | 'l' | 'i' | 's' | 'c' | 'L' | 'I' | 'S' | 'C' =>
@@ -155,14 +155,14 @@ def info (t : SomeTable) : DisplayInfo :=
     .strs data
 
 @[implemented_by getColImpl]
-def getCol (_ : SomeTable) (_ _ _ : Nat) : Column := .strs #[]
+def getCol (_ : AdbcTable) (_ _ _ : Nat) : Column := .strs #[]
 
 -- | Empty table
-def empty : IO SomeTable := do
+def empty : IO AdbcTable := do
   let qr ← Adbc.query "SELECT 1 WHERE 1=0"
   ofQueryResult qr
 
-end SomeTable
+end AdbcTable
 
 -- | All pure key operations (no IO needed)
 inductive PureKey where
@@ -174,7 +174,7 @@ inductive PureKey where
   | bang | spc | incDec (inc : Bool) | q | esc
   -- views (push new view)
   | F | backslash (expr : String) | s (cols : Array String)
-  | M (metaTbl : SomeTable) | pushFile (path : String)
+  | M (metaTbl : AdbcTable) | pushFile (path : String)
   -- input modes
   | inputRename
   -- agg (funcs as strings: "count", "sum", "average", "min", "max", "stddev")

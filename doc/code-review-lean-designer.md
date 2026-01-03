@@ -179,13 +179,13 @@ abbrev ViewM := StateT (NavState × ViewState × Bool) IO
 
 ## Summary
 
-| Aspect | Rating | Notes |
-|--------|--------|-------|
-| Type Safety | 4/5 | Good `Fin` use, but `sorry` holes undermine guarantees |
-| Typeclass Design | 5/5 | Clean hierarchy, minimal surface |
-| Naming | 3/5 | `curCol`/`curColIdx` confusion |
-| Performance | 4/5 | Zero-copy FFI is excellent; needs more `@[inline]` |
-| Idiomatic Lean | 4/5 | Good overall; could use `StateT` for loops |
+| Aspect           | Rating | Notes                                                  |
+|--------          |--------|-------                                                 |
+| Type Safety      | 4/5    | Good `Fin` use, but `sorry` holes undermine guarantees |
+| Typeclass Design | 5/5    | Clean hierarchy, minimal surface                       |
+| Naming           | 3/5    | `curCol`/`curColIdx` confusion                         |
+| Performance      | 4/5    | Zero-copy FFI is excellent; needs more `@[inline]`     |
+| Idiomatic Lean   | 4/5    | Good overall; could use `StateT` for loops             |
 
 ## Priority Fixes
 

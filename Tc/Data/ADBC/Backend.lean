@@ -18,10 +18,10 @@ def init : IO Bool := do
 -- | Shutdown backend
 def shutdown : IO Unit := Adbc.shutdown
 
--- | Execute raw SQL, return SomeTable (zero-copy)
-def execSql (sql : String) : IO SomeTable := do
+-- | Execute raw SQL, return AdbcTable (zero-copy)
+def execSql (sql : String) : IO AdbcTable := do
   let qr ← Adbc.query sql
-  SomeTable.ofQueryResult qr
+  AdbcTable.ofQueryResult qr
 
 -- | Log to /tmp/tv.log
 def logPrql (prql : String) : IO Unit := do
@@ -41,7 +41,7 @@ structure LimitedQuery where
   proof : hasLimit prql = true
 
 -- | Execute PRQL query (logs error, returns Option)
-def query (q : LimitedQuery) : IO (Option SomeTable) := do
+def query (q : LimitedQuery) : IO (Option AdbcTable) := do
   logPrql q.prql
   let some sql ← Prql.compile q.prql | return none
   try return some (← execSql sql)
