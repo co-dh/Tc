@@ -73,42 +73,31 @@ def colIdxAt (group : Array String) (names : Array String) (i : Nat) : Nat :=
 -- ReadTable.nRows tbl is runtime (depends on tbl field), can't use directly in Fin.
 -- So we lift values to type level, then prove they match table via hRows/hCols.
 structure NavState (nRows nCols : Nat) (t : Type) [ReadTable t] where
-  private mk ::
-  private tbl_   : t                                              -- underlying table
-  private hRows_ : ReadTable.nRows tbl_ = nRows                   -- row count matches
-  private hCols_ : (ReadTable.colNames tbl_).size = nCols         -- col count matches
-  private row_   : RowNav nRows
-  private col_   : ColNav nCols
-  private group_ : Array String := #[]                            -- grouped column names (stable)
+  tbl   : t                                              -- underlying table
+  hRows : ReadTable.nRows tbl = nRows                    -- row count matches
+  hCols : (ReadTable.colNames tbl).size = nCols          -- col count matches
+  row   : RowNav nRows
+  col   : ColNav nCols
+  grp   : Array String := #[]                            -- grouped column names (stable)
 
 namespace NavState
 
 variable {t : Type} [ReadTable t]
 
--- Accessors
-def tbl        (nav : NavState nRows nCols t) : t := nav.tbl_
-def curRow     (nav : NavState nRows nCols t) : Nat := nav.row_.cur.val
-def curDispCol (nav : NavState nRows nCols t) : Nat := nav.col_.cur.val  -- display index
-def colNames   (nav : NavState nRows nCols t) : Array String := ReadTable.colNames nav.tbl_
-def nKeys      (nav : NavState nRows nCols t) : Nat := nav.group_.size
-def group      (nav : NavState nRows nCols t) : Array String := nav.group_
-def selRows    (nav : NavState nRows nCols t) : Array Nat := nav.row_.sels
+-- | Column names from table
+def colNames (nav : NavState nRows nCols t) : Array String := ReadTable.colNames nav.tbl
 
--- Selected column indices (convert names to indices via lookup)
-def selColIdxs (nav : NavState nRows nCols t) : Array Nat :=
-  nav.col_.sels.filterMap nav.colNames.idxOf?
+-- | Column indices in display order (group cols first)
+def dispColIdxs (nav : NavState nRows nCols t) : Array Nat := dispOrder nav.grp nav.colNames
 
--- Column indices in display order
-def dispColIdxs (nav : NavState nRows nCols t) : Array Nat :=
-  dispOrder nav.group_ nav.colNames
+-- | Current column index in data order
+def curColIdx (nav : NavState nRows nCols t) : Nat := colIdxAt nav.grp nav.colNames nav.col.cur.val
 
--- Current column index (in original order)
-def curColIdx (nav : NavState nRows nCols t) : Nat :=
-  colIdxAt nav.group_ nav.colNames nav.col_.cur.val
+-- | Current column name
+def curColName (nav : NavState nRows nCols t) : String := nav.colNames.getD nav.curColIdx ""
 
--- Current column name in display order
-def curColName (nav : NavState nRows nCols t) : String :=
-  nav.colNames.getD nav.curColIdx ""
+-- | Selected column indices
+def selColIdxs (nav : NavState nRows nCols t) : Array Nat := nav.col.sels.filterMap nav.colNames.idxOf?
 
 -- Constructor for external use
 def new (tbl : t) (hRows : ReadTable.nRows tbl = nRows) (hCols : (ReadTable.colNames tbl).size = nCols)
@@ -140,19 +129,19 @@ private def toEnd (cur : Fin n) (v : Verb) : Fin n :=
 -- Execute Cmd, returns Option NavState (always some for nav commands)
 def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option (NavState nRows nCols t) :=
   match cmd with
-  | .row v    => some { nav with row_ := { nav.row_ with cur := step nav.row_.cur v } }
+  | .row v    => some { nav with row := { nav.row with cur := step nav.row.cur v } }
   | .col v    => match v with
     | .del => none  -- handled by View.exec
-    | _ => some { nav with col_ := { nav.col_ with cur := step nav.col_.cur v } }
-  | .rowSel .toggle => some { nav with row_ := { nav.row_ with sels := nav.row_.sels.toggle nav.row_.cur.val } }
-  | .colSel .toggle => some { nav with col_ := { nav.col_ with sels := nav.col_.sels.toggle nav.curColName } }
-  | .grp .toggle    => some { nav with group_ := nav.group_.toggle nav.curColName }
+    | _ => some { nav with col := { nav.col with cur := step nav.col.cur v } }
+  | .rowSel .toggle => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
+  | .colSel .toggle => some { nav with col := { nav.col with sels := nav.col.sels.toggle nav.curColName } }
+  | .grp .toggle    => some { nav with grp := nav.grp.toggle nav.curColName }
   | .colSel .sortAsc | .colSel .sortDesc => none  -- handled by View.exec
-  | .hPage v => some { nav with col_ := { nav.col_ with cur := page nav.col_.cur v colPg } }
-  | .vPage v => some { nav with row_ := { nav.row_ with cur := page nav.row_.cur v rowPg } }
-  | .hor v => some { nav with col_ := { nav.col_ with cur := toEnd nav.col_.cur v } }
-  | .ver v => some { nav with row_ := { nav.row_ with cur := toEnd nav.row_.cur v } }
-  | .prec _ | .width _ => some nav  -- TODO: handled by View
+  | .hPage v => some { nav with col := { nav.col with cur := page nav.col.cur v colPg } }
+  | .vPage v => some { nav with row := { nav.row with cur := page nav.row.cur v rowPg } }
+  | .hor v => some { nav with col := { nav.col with cur := toEnd nav.col.cur v } }
+  | .ver v => some { nav with row := { nav.row with cur := toEnd nav.row.cur v } }
+  | .prec _ | .width _ => some nav  -- handled by View
   | _ => some nav
 
 end NavState

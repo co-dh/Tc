@@ -77,11 +77,11 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
   let w ← Term.width
   let visRows := h.toNat - reservedLines
   -- adjust row offset
-  let rowOff := adjOff nav.curRow view.rowOff visRows
+  let rowOff := adjOff nav.row.cur.val view.rowOff visRows
   -- first render: use colOff=0, no scroll adjust (no widths yet)
   -- subsequent: use cached widths for scroll (widths in orig order, dispColIdxs for lookup)
   let colOff := if view.widths.isEmpty then 0
-                else adjColOff nav.curDispCol view.colOff view.widths nav.dispColIdxs w.toNat
+                else adjColOff nav.col.cur.val view.colOff view.widths nav.dispColIdxs w.toNat
   -- compute move direction: 1 = moved right, -1 = moved left, 0 = same
   let moveDir : Int := if nav.curColIdx > view.lastCol then 1
                        else if nav.curColIdx < view.lastCol then -1
@@ -99,7 +99,7 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
   let colName := nav.colNames.getD nav.curColIdx ""
   let adj := (if precAdj != 0 then s!" p{precAdj}" else "") ++
              (if widthAdj != 0 then s!" w{widthAdj}" else "")
-  let status := s!"{colName} r{nav.curRow}/{rowInfo} c{nav.curColIdx}/{nCols} grp={nav.nKeys} sel={nav.selRows.size}{adj}"
+  let status := s!"{colName} r{nav.row.cur.val}/{rowInfo} c{nav.curColIdx}/{nCols} grp={nav.grp.size} sel={nav.row.sels.size}{adj}"
   Term.print 0 (h - 1) Term.cyan Term.default status
   -- help
   let help := "hjkl:nav HJKL:pg +/-:adj t/T:sel !:grp q:q"

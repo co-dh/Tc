@@ -154,16 +154,16 @@ instance : RenderTable AdbcTable where
     if inWidths.isEmpty then
       let cols := (Array.range nav.tbl.nCols).map fun c => nav.tbl.getCol c 0 nav.tbl.nRows
       Term.renderTable cols nav.tbl.colNames nav.tbl.colFmts inWidths nav.dispColIdxs
-        nav.tbl.nRows.toUInt64 nav.nKeys.toUInt64 colOff.toUInt64
-        0 nav.tbl.nRows.toUInt64 nav.curRow.toUInt64 nav.curColIdx.toUInt64
-        moveDir.toInt64 nav.selColIdxs nav.selRows st precAdj.toInt64 widthAdj.toInt64
+        nav.tbl.nRows.toUInt64 nav.grp.size.toUInt64 colOff.toUInt64
+        0 nav.tbl.nRows.toUInt64 nav.row.cur.val.toUInt64 nav.curColIdx.toUInt64
+        moveDir.toInt64 nav.selColIdxs nav.row.sels st precAdj.toInt64 widthAdj.toInt64
     else
       let cols := (Array.range nav.tbl.nCols).map fun c => nav.tbl.getCol c r0 r1
-      let adjCur := nav.curRow - r0
-      let adjSel := nav.selRows.filterMap fun r =>
+      let adjCur := nav.row.cur.val - r0
+      let adjSel := nav.row.sels.filterMap fun r =>
         if r >= r0 && r < r1 then some (r - r0) else none
       Term.renderTable cols nav.tbl.colNames nav.tbl.colFmts inWidths nav.dispColIdxs
-        nav.tbl.nRows.toUInt64 nav.nKeys.toUInt64 colOff.toUInt64
+        nav.tbl.nRows.toUInt64 nav.grp.size.toUInt64 colOff.toUInt64
         0 (r1 - r0).toUInt64 adjCur.toUInt64 nav.curColIdx.toUInt64
         moveDir.toInt64 nav.selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
 

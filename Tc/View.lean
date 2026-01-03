@@ -44,14 +44,6 @@ def new {nr nc : Nat} {τ : Type} [ir : ReadTable τ] [im : ModifyTable τ] [iv 
 @[inline] def doRender (v : View) (vs : ViewState) : IO ViewState :=
   @render v.nRows v.nCols v.t v.instR v.instV v.nav vs v.precAdj v.widthAdj
 
-@[inline] def tbl (v        : View) : v.t          := @NavState.tbl        v.t v.instR v.nRows v.nCols v.nav
-@[inline] def colNames (v   : View) : Array String := @ReadTable.colNames  v.t v.instR v.tbl
-@[inline] def curRow (v     : View) : Nat          := @NavState.curRow     v.t v.instR v.nRows v.nCols v.nav
-@[inline] def curDispCol (v : View) : Nat          := @NavState.curDispCol v.t v.instR v.nRows v.nCols v.nav
-@[inline] def curColIdx (v  : View) : Nat          := @NavState.curColIdx  v.t v.instR v.nRows v.nCols v.nav
-@[inline] def getGroup (v   : View) : Array String := @NavState.group      v.t v.instR v.nRows v.nCols v.nav
-@[inline] def selColIdxs (v : View) : Array Nat    := @NavState.selColIdxs v.t v.instR v.nRows v.nCols v.nav
-
 -- | Create View from table + path (returns none if empty)
 def fromTbl {τ : Type} [ReadTable τ] [ModifyTable τ] [RenderTable τ] [QueryMeta τ]
     (tbl : τ) (path : String) (col : Nat := 0) (grp : Array String := #[]) (row : Nat := 0)
@@ -72,18 +64,21 @@ private def preserve (v : View) (v' : Option View) : Option View :=
 
 -- | Execute Cmd, returns Option View (none if table becomes empty after del)
 def exec (v : View) (cmd : Cmd) (rowPg colPg : Nat) : Option View :=
-  let mk tbl col grp row := preserve v (@fromTbl v.t v.instR v.instM v.instV v.instQ tbl v.path col grp row)
+  letI : ReadTable v.t := v.instR; letI : ModifyTable v.t := v.instM
+  letI : RenderTable v.t := v.instV; letI : QueryMeta v.t := v.instQ
+  let n := v.nav; let names := ReadTable.colNames n.tbl
+  let curCol := colIdxAt n.grp names n.col.cur.val
+  let mk tbl col grp row := preserve v (fromTbl tbl v.path col grp row)
   match cmd with
   | .colSel .del =>
-    let (tbl', grp') := @ModifyTable.del v.t v.instM v.tbl v.curColIdx v.selColIdxs v.getGroup
-    mk tbl' v.curDispCol grp' 0
+    let (tbl', grp') := ModifyTable.del n.tbl curCol (n.col.sels.filterMap names.idxOf?) n.grp
+    mk tbl' n.col.cur.val grp' 0
   | .colSel .sortAsc | .colSel .sortDesc =>
-    let grpIdxs := v.getGroup.filterMap v.colNames.idxOf?
-    let tbl' := @ModifyTable.sort v.t v.instM v.tbl v.curColIdx grpIdxs (cmd == .colSel .sortAsc)
-    mk tbl' v.curColIdx v.getGroup v.curRow
+    let tbl' := ModifyTable.sort n.tbl curCol (n.grp.filterMap names.idxOf?) (cmd == .colSel .sortAsc)
+    mk tbl' curCol n.grp n.row.cur.val
   | .prec verb  => some { v with precAdj := v.precAdj + verbDelta verb }
   | .width verb => some { v with widthAdj := v.widthAdj + verbDelta verb }
-  | _ => match @NavState.exec v.t v.instR v.nRows v.nCols cmd v.nav rowPg colPg with
+  | _ => match NavState.exec cmd n rowPg colPg with
     | some nav' => some { v with nav := nav' }
     | none => none
 

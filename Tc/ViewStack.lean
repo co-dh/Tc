@@ -48,9 +48,8 @@ def dup (s : ViewStack) : ViewStack :=
 
 -- | Push column metadata view (IO via unsafe)
 @[inline] unsafe def pushMetaImpl (s : ViewStack) : Option ViewStack :=
-  match unsafeIO (do
-    let m ← @QueryMeta.queryMeta s.cur.t s.cur.instQ s.cur.tbl
-    pure (Meta.toMemTable m)) with
+  letI : ReadTable s.cur.t := s.cur.instR; letI : QueryMeta s.cur.t := s.cur.instQ
+  match unsafeIO (QueryMeta.queryMeta s.cur.nav.tbl <&> Meta.toMemTable) with
   | .ok tbl => match View.fromTbl tbl s.cur.path with
     | some v => some (s.push { v with vkind := .colMeta, disp := "meta" })
     | none => none
