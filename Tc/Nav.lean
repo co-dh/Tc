@@ -15,7 +15,7 @@ inductive Verb where
   | next | prev | pgNext | pgPrev | home | end_  -- movement
   | toggle                                        -- toggle
   | del                                           -- delete
-  deriving Repr, BEq
+  deriving Repr, BEq, DecidableEq
 
 namespace Verb
 -- Verb to char: n/p/N/P/h/e/t/d
@@ -28,6 +28,10 @@ def ofChar? : Char → Option Verb
   | 'n' => some .next | 'p' => some .prev | 'N' => some .pgNext | 'P' => some .pgPrev
   | 'h' => some .home | 'e' => some .end_ | 't' => some .toggle | 'd' => some .del
   | _ => none
+
+-- Isomorphism: ofChar? ∘ toChar = some
+theorem ofChar_toChar (v : Verb) : ofChar? (toChar v) = some v := by
+  cases v <;> rfl
 end Verb
 
 -- Command: Obj Verb pattern
@@ -37,7 +41,7 @@ inductive Cmd where
   | rowSel (v : Verb)  -- rowSel toggle
   | colSel (v : Verb)  -- colSel toggle
   | grp (v : Verb)     -- grp toggle
-  deriving Repr, BEq
+  deriving Repr, BEq, DecidableEq
 
 namespace Cmd
 -- Cmd to string: "rn" "cp" "st" etc
@@ -66,6 +70,15 @@ def ofString? (s : String) : Option Cmd :=
 -- Parse space-separated command string
 def parseMany (s : String) : Array Cmd :=
   (s.splitOn " ").toArray.filterMap ofString?
+
+-- Isomorphism: ofString? ∘ toString = some
+theorem ofString_toString (c : Cmd) : ofString? (toString c) = some c := by
+  cases c with
+  | row v => cases v <;> native_decide
+  | col v => cases v <;> native_decide
+  | rowSel v => cases v <;> native_decide
+  | colSel v => cases v <;> native_decide
+  | grp v => cases v <;> native_decide
 end Cmd
 
 -- Clamp Fin by delta, staying in [0, n)
