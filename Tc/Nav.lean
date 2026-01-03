@@ -136,17 +136,18 @@ private def move (cur : Fin n) (v : Verb) (pg : Nat) : Fin n :=
   | .end_   => cur.clamp (n - 1 - cur.val : Int)
   | _       => cur  -- toggle/del not applicable
 
--- Dispatch Cmd: object first, then verb
-def dispatch (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : NavState nRows nCols t :=
+-- Execute Cmd, returns Option NavState (always some for nav commands)
+def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option (NavState nRows nCols t) :=
   match cmd with
-  | .row v    => { nav with row_ := { nav.row_ with cur := move nav.row_.cur v rowPg } }
+  | .row v    => some { nav with row_ := { nav.row_ with cur := move nav.row_.cur v rowPg } }
   | .col v    => match v with
-    | .del => nav  -- handled in App.lean
-    | _ => { nav with col_ := { nav.col_ with cur := move nav.col_.cur v colPg } }
-  | .rowSel .toggle => { nav with row_ := { nav.row_ with sels := nav.row_.sels.toggle nav.row_.cur.val } }
-  | .colSel .toggle => { nav with col_ := { nav.col_ with sels := nav.col_.sels.toggle nav.curColName } }
-  | .grp .toggle    => { nav with group_ := nav.group_.toggle nav.curColName }
-  | _ => nav
+    | .del => none  -- handled by View.exec
+    | _ => some { nav with col_ := { nav.col_ with cur := move nav.col_.cur v colPg } }
+  | .rowSel .toggle => some { nav with row_ := { nav.row_ with sels := nav.row_.sels.toggle nav.row_.cur.val } }
+  | .colSel .toggle => some { nav with col_ := { nav.col_ with sels := nav.col_.sels.toggle nav.curColName } }
+  | .grp .toggle    => some { nav with group_ := nav.group_.toggle nav.curColName }
+  | .colSel .sortAsc | .colSel .sortDesc => none  -- handled by View.exec
+  | _ => some nav
 
 end NavState
 

@@ -7,9 +7,6 @@ import Tc.Term
 
 open Tc
 
--- Special keys: quit (q/Esc), g-prefix
-inductive SpecialKey where | quit | gPrefix deriving BEq
-
 -- Lookup in (key, value) array
 private def lookup [BEq α] (tbl : Array (α × β)) (k : α) : Option β :=
   tbl.findSome? fun (k', v) => if k == k' then some v else none
@@ -25,17 +22,19 @@ private def navDirs : Array (Char × Bool × Bool) := #[
   ('j', true, true), ('k', true, false), ('l', false, true), ('h', false, false)
 ]
 
--- Special key → Cmd (PageUp/Down, Home/End)
+-- Special key → Cmd (PageUp/Down, Home/End, Esc)
 private def keyCmds : Array (UInt16 × Cmd) := #[
   (Term.keyPageDown, .row .pgNext), (Term.keyPageUp, .row .pgPrev),
-  (Term.keyHome, .row .home), (Term.keyEnd, .row .end_)
+  (Term.keyHome, .row .home), (Term.keyEnd, .row .end_),
+  (Term.keyEsc, .stk .dec)  -- Esc = pop/quit
 ]
 
--- Other char → Cmd (selection, group, delete, sort)
+-- Other char → Cmd (selection, group, delete, sort, stack)
 private def charCmds : Array (Char × Cmd) := #[
   ('t', .colSel .toggle), ('T', .rowSel .toggle),
   ('!', .grp .toggle), ('d', .col .del),
-  ('[', .colSel .sortAsc), (']', .colSel .sortDesc)
+  ('[', .colSel .sortAsc), (']', .colSel .sortDesc),
+  ('q', .stk .dec), ('S', .stk .toggle)  -- stack: q=pop, S=swap
 ]
 
 -- Normalize event to char (arrow→hjkl, or raw char)
@@ -67,9 +66,3 @@ def evToCmd (ev : Term.Event) (gPrefix : Bool) : Option Cmd :=
   else
     navCmd c shift <|> lookup charCmds c <|> lookup keyCmds ev.key
 
--- Check for special keys (quit, g-prefix)
-def evToSpecial (ev : Term.Event) : Option SpecialKey :=
-  if ev.type != Term.eventKey then none
-  else if ev.ch == 'q'.toNat.toUInt32 || ev.key == Term.keyEsc then some .quit
-  else if ev.ch == 'g'.toNat.toUInt32 then some .gPrefix
-  else none

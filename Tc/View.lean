@@ -49,9 +49,6 @@ def new {nr nc : Nat} {τ : Type} [ir : ReadTable τ] [im : ModifyTable τ] [iv 
 @[inline] def getGroup (v : View) : Array String := @NavState.group v.t v.instR v.nRows v.nCols v.nav
 @[inline] def selColIdxs (v : View) : Array Nat := @NavState.selColIdxs v.t v.instR v.nRows v.nCols v.nav
 
-@[inline] def dispatch (v : View) (cmd : Cmd) (rowPg colPg : Nat) : View :=
-  { v with nav := @NavState.dispatch v.t v.instR v.nRows v.nCols cmd v.nav rowPg colPg }
-
 -- | Create View from table + path (returns none if empty)
 def fromTbl {τ : Type} [ReadTable τ] [ModifyTable τ] [RenderTable τ]
     (tbl : τ) (path : String) (col : Nat := 0) (grp : Array String := #[]) (row : Nat := 0)
@@ -77,7 +74,9 @@ def exec (v : View) (cmd : Cmd) (rowPg colPg : Nat) : Option View :=
     let grpIdxs := v.getGroup.filterMap v.colNames.idxOf?
     let tbl' := @ModifyTable.sort v.t v.instM v.tbl v.curColIdx grpIdxs false
     @fromTbl v.t v.instR v.instM v.instV tbl' v.path v.curColIdx v.getGroup v.curRow
-  | _ => some (v.dispatch cmd rowPg colPg)
+  | _ => match @NavState.exec v.t v.instR v.nRows v.nCols cmd v.nav rowPg colPg with
+    | some nav' => some { v with nav := nav' }
+    | none => none  -- shouldn't happen for nav commands
 
 end View
 end Tc

@@ -47,5 +47,14 @@ def dup (s : ViewStack) : ViewStack :=
 -- | Tab names for display (current first)
 def tabNames (s : ViewStack) : Array String := s.views.map (·.tabName)
 
+-- | Execute stk command, returns Option ViewStack (none = quit)
+def exec (s : ViewStack) (v : Verb) : Option ViewStack :=
+  match v with
+  | .inc    => some s.dup   -- push (dup for now)
+  | .dec    => s.pop        -- pop, none = quit
+  | .toggle => some s.swap  -- swap
+  | .dup    => some s.dup   -- dup
+  | _       => some s       -- ignore other verbs
+
 end ViewStack
 end Tc

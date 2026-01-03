@@ -21,26 +21,14 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (gPrefix : Bool := false
   let h ← Term.height
   let rowPg := (h.toNat - reservedLines) / 2
   let colPg := colPageSize
-  -- check special keys
-  if ev.type == Term.eventKey then
-    let c := Char.ofNat ev.ch.toNat
-    -- q = pop/quit
-    if c == 'q' || ev.key == Term.keyEsc then
-      match stk.pop with
-      | none => return
-      | some stk' => return ← mainLoop stk' ViewState.default
-    -- S = swap
-    if c == 'S' then return ← mainLoop stk.swap vs'
-    -- g prefix
-    if c == 'g' && !gPrefix then return ← mainLoop stk vs' true
-  -- regular Cmd
+  -- g prefix
+  if ev.type == Term.eventKey && ev.ch == 'g'.toNat.toUInt32 && !gPrefix then
+    return ← mainLoop stk vs' true
+  -- dispatch Cmd
   match evToCmd ev gPrefix with
-  | some (.stk .inc)   => mainLoop stk.dup vs'           -- s+ = push (dup for now)
-  | some (.stk .dec)   => match stk.pop with             -- s- = pop
-    | some stk' => mainLoop stk' ViewState.default
-    | none => return
-  | some (.stk .toggle) => mainLoop stk.swap vs'          -- s~ = swap
-  | some (.stk .dup)   => mainLoop stk.dup vs'           -- sc = dup
+  | some (.stk v) => match stk.exec v with
+    | some stk' => mainLoop stk' (if v == .dec then ViewState.default else vs')
+    | none => return  -- quit
   | some cmd => match stk.cur.exec cmd rowPg colPg with
     | some v' => let vs'' := if cmd matches .col .del | .colSel _ then ViewState.default else vs'
                  mainLoop (stk.setCur v') vs''
