@@ -64,4 +64,19 @@ lake build tc
 
 ```bash
 .lake/build/bin/tc data.csv
+.lake/build/bin/tc data.csv -c "rn rn cn gt"  # play commands then interactive
 ```
+
+## Command String
+
+Commands follow Obj+Verb pattern (2 chars each, space-separated):
+
+| Obj | Verb | Meaning |
+|-----|------|---------|
+| `r` | `n/p/N/P/h/e` | row next/prev/pgNext/pgPrev/home/end |
+| `c` | `n/p/N/P/h/e/d` | col next/prev/pgNext/pgPrev/home/end/del |
+| `R` | `t` | rowSel toggle |
+| `C` | `t` | colSel toggle |
+| `g` | `t` | grp toggle |
+
+Example: `rn rn cn Ct gt` = down, down, right, toggle col selection, toggle group
