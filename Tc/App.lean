@@ -2,13 +2,14 @@
   App with ViewStack support
   CSV: pure Lean MemTable, other: Backend (DuckDB+PRQL)
 -/
-import Tc.Data.ADBC.Table
-import Tc.Data.MemTable
+import Tc.Data.ADBC.Meta
+import Tc.Data.Mem.Meta
 import Tc.Key
 import Tc.Data.ADBC.Backend
 import Tc.Render
 import Tc.Term
 import Tc.ViewStack
+import Tc.Meta
 
 open Tc
 
@@ -25,6 +26,13 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (verbPfx : Option Verb :
   if ev.type == Term.eventKey && verbPfx.isNone then
     if ev.ch == '+'.toNat.toUInt32 then return ← mainLoop stk vs' (some .inc)
     if ev.ch == '-'.toNat.toUInt32 then return ← mainLoop stk vs' (some .dec)
+    -- M key: push meta view
+    if ev.ch == 'M'.toNat.toUInt32 then
+      let metaData ← @QueryMeta.queryMeta stk.cur.t stk.cur.instQ stk.cur.tbl
+      let metaTbl := Meta.toMemTable metaData
+      match View.fromTbl metaTbl stk.cur.path with
+      | some v => return ← mainLoop (stk.push { v with vkind := .colMeta, disp := "meta" }) ViewState.default
+      | none => return ← mainLoop stk vs'
   -- dispatch Cmd to ViewStack
   match evToCmd ev verbPfx with
   | some cmd => match stk.exec cmd rowPg colPg with

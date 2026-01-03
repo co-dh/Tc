@@ -94,11 +94,6 @@ def info (t : AdbcTable) : DisplayInfo :=
 @[implemented_by getColImpl]
 def getCol (_ : AdbcTable) (_ _ _ : Nat) : Column := .strs #[]
 
-end AdbcTable
-
-
-namespace AdbcTable
-
 -- | Query total row count using cnt function
 def queryCount (query : Prql.Query) : IO Nat := do
   let prql := s!"{query.render} | cnt"
@@ -131,7 +126,7 @@ def fromFile (path : String) : IO (Option AdbcTable) := do
   let sortCols := idxs.mapIdx fun i idx =>
     let name := t.colNames.getD idx ""
     let isLast := i + 1 == n
-    (name, if isLast then asc else true)  -- group cols always asc, last uses asc param
+    (name, if isLast then asc else true)
   let newQuery := t.query.pipe (.sort sortCols)
   match unsafeIO (requery newQuery t.totalRows) with
   | .ok (some t') => t'
@@ -154,18 +149,18 @@ def delCols (_ : AdbcTable) (_ : Array Nat) : AdbcTable := sorry
 
 end AdbcTable
 
--- ReadTable instance for AdbcTable
+-- | ReadTable instance for AdbcTable
 instance : ReadTable AdbcTable where
   nRows     := (·.nRows)
   colNames  := (·.colNames)
   totalRows := (·.totalRows)
 
--- ModifyTable instance (uses ReadTable above)
+-- | ModifyTable instance for AdbcTable
 instance : ModifyTable AdbcTable where
   delCols := fun delIdxs t => AdbcTable.delCols t delIdxs
   sortBy  := fun idxs asc t => AdbcTable.sortBy t idxs asc
 
--- RenderTable instance for AdbcTable
+-- | RenderTable instance for AdbcTable
 instance : RenderTable AdbcTable where
   render nav inWidths colOff r0 r1 moveDir st precAdj widthAdj := do
     if inWidths.isEmpty then

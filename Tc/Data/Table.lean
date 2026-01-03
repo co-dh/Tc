@@ -12,6 +12,14 @@ class ReadTable (α : Type) where
   colNames  : α → Array String                -- column names (size = nCols)
   totalRows : α → Nat := nRows                -- total rows (for ADBC: actual count)
 
+-- Meta tuple type alias
+abbrev MetaTuple := Array String × Array String × Array Int64 × Array Int64 × Array Int64 × Array String × Array String
+-- (names, types, cnts, dists, nullPcts, mins, maxs)
+
+-- Meta query (separate from ReadTable to avoid circular deps)
+class QueryMeta (α : Type) where
+  queryMeta : α → IO MetaTuple
+
 -- Derived: column count from colNames.size
 def ReadTable.nCols [ReadTable α] (a : α) : Nat := (ReadTable.colNames a).size
 
