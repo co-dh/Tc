@@ -15,6 +15,8 @@ open Tc
 -- | Main loop with ViewStack
 partial def mainLoop (stk : ViewStack) (vs : ViewState) (gPrefix : Bool := false) : IO Unit := do
   let vs' ← stk.cur.doRender vs
+  renderTabLine stk.tabNames 0  -- current is index 0
+  Term.present
   let ev ← Term.pollEvent
   let h ← Term.height
   let rowPg := (h.toNat - reservedLines) / 2

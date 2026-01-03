@@ -21,8 +21,8 @@ def ViewState.default : ViewState := ⟨0, 0, #[], 0⟩
 -- Max column width cap
 def maxColWidth : Nat := 50
 
--- Reserved lines: 1 header + 1 footer + 1 status
-def reservedLines : Nat := 3
+-- Reserved lines: 1 header + 1 footer + 1 tab + 1 status
+def reservedLines : Nat := 4
 
 -- Column page size (fixed, since widths vary)
 def colPageSize : Nat := 5
@@ -100,5 +100,15 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
   -- help
   let help := "hjkl:nav HJKL:pg g?:end t/T:sel !:grp q:q"
   Term.print (w - help.length.toUInt32) (h - 1) Term.yellow Term.default help
-  Term.present
   pure ⟨rowOff, colOff, widths, nav.curColIdx⟩
+
+-- | Render tab line: [current] | parent1 | parent2 ...
+def renderTabLine (tabs : Array String) (curIdx : Nat) : IO Unit := do
+  let h ← Term.height
+  let w ← Term.width
+  let marked := tabs.mapIdx fun i t => if i == curIdx then s!"[{t}]" else t
+  let line := marked.toList |> String.intercalate " │ "
+  Term.print 0 (h - 2) Term.white Term.blue line
+  -- pad rest of line with bg color
+  if line.length < w.toNat then
+    Term.print line.length.toUInt32 (h - 2) Term.white Term.blue ("".pushn ' ' (w.toNat - line.length))

@@ -44,5 +44,8 @@ def swap (s : ViewStack) : ViewStack :=
 def dup (s : ViewStack) : ViewStack :=
   { s with parents := #[s.cur] ++ s.parents }
 
+-- | Tab names for display (current first)
+def tabNames (s : ViewStack) : Array String := s.views.map (·.tabName)
+
 end ViewStack
 end Tc
