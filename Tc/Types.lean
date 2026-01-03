@@ -51,81 +51,17 @@ def size : Column → Nat
   | .floats data => data.size
   | .strs data => data.size
 
--- | Is column numeric (for right-alignment)
-def isNum : Column → Bool
-  | .ints _ => true
-  | .floats _ => true
-  | .strs _ => false
-
 end Column
 
 namespace Cell
 
--- | Format integer with comma separators
-def fmtInt (n : Int64) : String :=
-  let v := n.toInt
-  let s := s!"{v.natAbs}"
-  let chars := s.toList.reverse
-  let rec go (cs : List Char) (acc : List Char) (cnt : Nat) : List Char :=
-    match cs with
-    | [] => acc
-    | c :: rest =>
-      let acc' := if cnt > 0 && cnt % 3 = 0 then c :: ',' :: acc else c :: acc
-      go rest acc' (cnt + 1)
-  let digits := go chars [] 0
-  if v < 0 then "-" ++ String.ofList digits else String.ofList digits
-
--- | Theorem: fmtInt preserves digit order (no reversal)
-theorem fmtInt_123 : fmtInt 123 = "123" := by native_decide
-theorem fmtInt_1234 : fmtInt 1234 = "1,234" := by native_decide
-theorem fmtInt_2015 : fmtInt 2015 = "2,015" := by native_decide
-
--- | Check if cell is numeric (for right-alignment)
-def isNum : Cell → Bool
-  | .int _   => true
-  | .float _ => true
-  | _        => false
-
--- | Theorem: int is numeric
-theorem int_isNum (n : Int64) : (Cell.int n).isNum = true := rfl
-
--- | Theorem: float is numeric (must right-align)
-theorem float_isNum (f : Float) : (Cell.float f).isNum = true := rfl
-
--- | Theorem: str is not numeric
-theorem str_not_isNum (s : String) : (Cell.str s).isNum = false := rfl
-
--- | Format float with n decimal places
-def fmtFloat (f : Float) (n : Nat) : String :=
-  let s := s!"{f}"
-  match s.splitOn "." with
-  | [intPart, decPart] =>
-    if n == 0 then intPart
-    else intPart ++ "." ++ decPart.take n
-  | _ => s
-
-def toString : Cell → String
-  | .null    => ""
-  | .int n   => fmtInt n
-  | .float f => s!"{f}"
-  | .str s   => s
-  | .bool b  => if b then "true" else "false"
-
--- | Raw string value (no formatting, for PRQL filters)
+-- | Raw string value (for PRQL filters)
 def toRaw : Cell → String
   | .null    => ""
   | .int n   => s!"{n}"
   | .float f => s!"{f}"
   | .str s   => s
   | .bool b  => if b then "true" else "false"
-
--- | Format cell with decimal precision
-def toStringD (c : Cell) (decimals : Nat) : String :=
-  match c with
-  | .float f => fmtFloat f decimals
-  | _ => c.toString
-
-instance : ToString Cell where toString := toString
 
 -- | Extract string value
 def str? : Cell → Option String | .str s => some s | _ => none
