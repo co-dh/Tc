@@ -15,6 +15,10 @@ VisiData-style terminal CSV viewer with typeclass-based navigation.
 - Column deletion
 - Multi-column sorting (asc/desc)
 
+## Known Limitations
+
+- Duration columns display as raw int64 (DuckDB ADBC limitation)
+
 ## Keybindings
 
 ### Navigation
@@ -54,7 +58,7 @@ VisiData-style terminal CSV viewer with typeclass-based navigation.
 | `[` | Sort ascending by column   |
 | `]` | Sort descending by column  |
 
-Sorts by selected columns if any, otherwise by current column.
+Sorts by key (group) columns if any, otherwise by current column.
 
 ### Editing
 

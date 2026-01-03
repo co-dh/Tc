@@ -495,7 +495,7 @@ static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t
         float val; memcpy(&val, &f32, 4);
         return snprintf(buf, buflen, "%.*f", decimals, (double)val);
     }
-    if (f == 'u' || f == 'z') {  // utf8, binary
+    if (f == 'u') {  // utf8
         const int32_t* off = (const int32_t*)arr->buffers[1];
         const char* data = (const char*)arr->buffers[2];
         int64_t idx = arr->offset + lr;
@@ -505,7 +505,19 @@ static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t
         buf[len] = '\0';
         return len;
     }
-    if (f == 'U' || f == 'Z') {  // large utf8
+    if (f == 'z') {  // binary: show hex (max 8 bytes)
+        const int32_t* off = (const int32_t*)arr->buffers[1];
+        const uint8_t* data = (const uint8_t*)arr->buffers[2];
+        int64_t idx = arr->offset + lr;
+        int32_t len = off[idx + 1] - off[idx];
+        int show = len > 8 ? 8 : len;
+        int pos = 0;
+        for (int i = 0; i < show && (size_t)pos < buflen - 3; i++)
+            pos += snprintf(buf + pos, buflen - pos, "%02x", data[off[idx] + i]);
+        if (len > 8 && (size_t)pos < buflen - 3) pos += snprintf(buf + pos, buflen - pos, "..");
+        return pos;
+    }
+    if (f == 'U') {  // large utf8
         const int64_t* off = (const int64_t*)arr->buffers[1];
         const char* data = (const char*)arr->buffers[2];
         int64_t idx = arr->offset + lr;
@@ -514,6 +526,18 @@ static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t
         memcpy(buf, data + off[idx], len);
         buf[len] = '\0';
         return len;
+    }
+    if (f == 'Z') {  // large binary: show hex (max 8 bytes)
+        const int64_t* off = (const int64_t*)arr->buffers[1];
+        const uint8_t* data = (const uint8_t*)arr->buffers[2];
+        int64_t idx = arr->offset + lr;
+        int64_t len = off[idx + 1] - off[idx];
+        int show = len > 8 ? 8 : len;
+        int pos = 0;
+        for (int i = 0; i < show && (size_t)pos < buflen - 3; i++)
+            pos += snprintf(buf + pos, buflen - pos, "%02x", data[off[idx] + i]);
+        if (len > 8 && (size_t)pos < buflen - 3) pos += snprintf(buf + pos, buflen - pos, "..");
+        return pos;
     }
     if (f == 'b') {  // bool
         const uint8_t* data = (const uint8_t*)arr->buffers[1];
@@ -602,12 +626,16 @@ static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t
     if (f == '+' && fmt[1] == 's') {  // struct: handled by format_cell_full
         return snprintf(buf, buflen, "{%d}", (int)arr->n_children);
     }
-    if (f == 'D') {  // duration (us)
-        int64_t us = ((const int64_t*)arr->buffers[1])[arr->offset + lr];
-        if (us < 0) { us = -us; buf[0] = '-'; buf++; buflen--; }
-        int64_t s = us / 1000000;
-        int ms = (us % 1000000) / 1000;
-        return 1 + snprintf(buf, buflen, "%ld.%03d s", (long)s, ms);
+    if (f == 't' && fmt[1] == 'D') {  // duration: tDu=us, tDn=ns, tDm=ms, tDs=s
+        char unit = fmt[2];
+        int64_t v = ((const int64_t*)arr->buffers[1])[arr->offset + lr];
+        int neg = v < 0; if (neg) v = -v;
+        int64_t s, ms;
+        if (unit == 'n') { s = v / 1000000000; ms = (v % 1000000000) / 1000000; }       // ns
+        else if (unit == 'u') { s = v / 1000000; ms = (v % 1000000) / 1000; }           // us
+        else if (unit == 'm') { s = v / 1000; ms = v % 1000; }                          // ms
+        else { s = v; ms = 0; }                                                          // s
+        return snprintf(buf, buflen, "%s%ld.%03ld s", neg ? "-" : "", (long)s, (long)ms);
     }
     buf[0] = '\0';
     return 0;

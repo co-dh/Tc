@@ -299,14 +299,14 @@ lean_obj_res lean_render_table(
     build_sel_bits(selCols, lean_array_size(selCols), colBits);
     build_sel_bits(selRows, lean_array_size(selRows), rowBits);
 
-    // compute or use widths for ALL columns (+1 for type char/trailing space)
+    // compute or use widths for ALL columns (+2 for leading/trailing space)
     int* allWidths = malloc(nCols * sizeof(int));
     int needCompute = lean_array_size(inWidths) == 0;
     for (size_t c = 0; c < nCols; c++) {
         if (needCompute) {
             lean_obj_arg col = lean_array_get_core(allCols, c);
             const char* name = lean_string_cstr(lean_array_get_core(names, c));
-            allWidths[c] = compute_col_width(col, name, 0, nTotalRows) + 1;  // +1 for type/space
+            allWidths[c] = compute_col_width(col, name, 0, nTotalRows) + 2;  // +2 for leading/trailing space
         } else {
             allWidths[c] = lean_unbox(lean_array_get_core(inWidths, c));
         }
@@ -342,10 +342,15 @@ lean_obj_res lean_render_table(
         int isCur = (origIdx == curCol);
         int si = isCur ? STYLE_CURSOR : (isSel ? STYLE_SEL_COL : STYLE_HEADER);
         uint32_t fg = stFg[si] | TB_BOLD | TB_UNDERLINE;
-        // print header with 1 char reserved for type
-        int hw = ws[c] > 1 ? ws[c] - 1 : ws[c];
-        print_pad(xs[c], 0, hw, fg, stBg[si], name, 0);
-        print_pad(xs[c], yFoot, hw, fg, stBg[si], name, 0);
+        // leading space
+        tb_set_cell(xs[c], 0, ' ', fg, stBg[si]);
+        tb_set_cell(xs[c], yFoot, ' ', fg, stBg[si]);
+        // print header with 2 chars reserved for leading space + type char
+        int hw = ws[c] > 2 ? ws[c] - 2 : 0;
+        if (hw > 0) {
+            print_pad(xs[c] + 1, 0, hw, fg, stBg[si], name, 0);
+            print_pad(xs[c] + 1, yFoot, hw, fg, stBg[si], name, 0);
+        }
         // type char at last position (VisiData style: # int, % float, ? bool, @ date)
         lean_obj_arg col = lean_array_get_core(allCols, origIdx);
         char tc = (origIdx < nFmts)
@@ -378,9 +383,11 @@ lean_obj_res lean_render_table(
 
             lean_obj_arg col = lean_array_get_core(allCols, origIdx);
             format_col_cell(col, row, buf, sizeof(buf));
-            // print cell with 1 char reserved for trailing space
-            int cw = ws[c] > 1 ? ws[c] - 1 : ws[c];
-            print_pad(xs[c], y, cw, stFg[si], stBg[si], buf, col_is_num(col));
+            // leading space
+            tb_set_cell(xs[c], y, ' ', stFg[si], stBg[si]);
+            // print cell with 2 chars reserved for leading+trailing space
+            int cw = ws[c] > 2 ? ws[c] - 2 : 0;
+            if (cw > 0) print_pad(xs[c] + 1, y, cw, stFg[si], stBg[si], buf, col_is_num(col));
             // trailing space
             tb_set_cell(xs[c] + ws[c] - 1, y, ' ', stFg[si], stBg[si]);
             // separator after each column except last

@@ -97,6 +97,11 @@ def sort (t : MemTable) (idxs : Array Nat) (asc : Bool) : MemTable :=
     | .strs data => .strs (perm.map fun i => data.getD i "")
   { t with cols := cols' }
 
+-- | Convert SomeTable (ADBC/Arrow) to MemTable for modification support
+def ofSomeTable (st : SomeTable) : MemTable :=
+  let cols := (Array.range st.nCols).map fun c => st.getCol c 0 st.nRows
+  ⟨st.colNames, cols⟩
+
 end MemTable
 
 -- ModifyTable instance for MemTable (extends ReadTable)

@@ -14,7 +14,7 @@ open Tc
 inductive LoopAction (t : Type) where
   | quit
   | del (curCol : Nat) (grp : Array String) (tbl : t)
-  | sort (tbl : t)  -- sorted table (reset row cursor)
+  | sort (curRow : Nat) (tbl : t)  -- sorted table, keep row cursor
 
 -- Execute single Cmd, return new nav or LoopAction for del/sort
 def execCmd {nRows nCols : Nat} {t : Type} [ModifyTable t]
@@ -24,8 +24,12 @@ def execCmd {nRows nCols : Nat} {t : Type} [ModifyTable t]
   | .col .del =>
     let (tbl', grp') := ModifyTable.del nav.tbl nav.curColIdx nav.selColIdxs nav.group
     .inr (.del nav.curDispCol grp' tbl')
-  | .colSel .sortAsc => .inr (.sort (ModifyTable.sort nav.tbl nav.curColIdx nav.selColIdxs true))
-  | .colSel .sortDesc => .inr (.sort (ModifyTable.sort nav.tbl nav.curColIdx nav.selColIdxs false))
+  | .colSel .sortAsc =>
+    let grpIdxs := nav.group.filterMap nav.colNames.idxOf?  -- group column indices
+    .inr (.sort nav.curRow (ModifyTable.sort nav.tbl nav.curColIdx grpIdxs true))
+  | .colSel .sortDesc =>
+    let grpIdxs := nav.group.filterMap nav.colNames.idxOf?
+    .inr (.sort nav.curRow (ModifyTable.sort nav.tbl nav.curColIdx grpIdxs false))
   | _ => .inl (nav.dispatch cmd rowPg colPg)
 
 -- Main loop: Cmd-driven with g-prefix state
@@ -94,19 +98,19 @@ def runViewer {t : Type} [ReadTable t] [RenderTable t] (tbl : t) : IO Unit := do
 -- Run viewer with delete support, optionally play command string first
 partial def runViewerMod {t : Type} [ModifyTable t] [RenderTable t]
     (tbl : t) (initCol : Nat := 0) (grp : Array String := #[])
-    (cmdStr : String := "") : IO Unit := do
+    (cmdStr : String := "") (initRow : Nat := 0) : IO Unit := do
   let nCols := (ReadTable.colNames tbl).size
   let nRows := ReadTable.nRows tbl
   if hc : nCols > 0 then
     if hr : nRows > 0 then
-      let nav := NavState.newAt tbl rfl rfl hr hc initCol grp
+      let nav := NavState.newAt tbl rfl rfl hr hc initCol grp initRow
       let cmds := Cmd.parseMany cmdStr
       let act ← if cmds.isEmpty then mainLoop nav ViewState.default
                 else playCmds cmds 0 nav ViewState.default
       match act with
       | .quit => pure ()
       | .del col grp' tbl' => runViewerMod tbl' col grp' ""
-      | .sort tbl' => runViewerMod tbl' initCol grp ""  -- keep col/grp, reset row
+      | .sort row tbl' => runViewerMod tbl' initCol grp "" row  -- keep col/grp/row
     else IO.eprintln "No rows"
   else IO.eprintln "No columns"
 
@@ -133,4 +137,4 @@ def main (args : List String) : IO Unit := do
     let prql := s!"from `{path}` | take 100000"
     match ← Backend.query (Backend.mkLimited prql 100000) with
     | none     => Term.shutdown; Backend.shutdown; IO.eprintln "Query failed"
-    | some tbl => runViewer tbl; Term.shutdown; Backend.shutdown
+    | some stbl => runViewerMod (MemTable.ofSomeTable stbl) 0 #[] cmdStr; Term.shutdown; Backend.shutdown

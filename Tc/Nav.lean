@@ -189,12 +189,15 @@ def new (tbl : t) (hRows : ReadTable.nRows tbl = nRows) (hCols : (ReadTable.colN
     (hr : nRows > 0) (hc : nCols > 0) : NavState nRows nCols t :=
   ⟨tbl, hRows, hCols, NavAxis.default hr, NavAxis.default hc, #[]⟩
 
--- Constructor with initial column cursor and group (clamped to valid range)
+-- Constructor with initial row/col cursor and group (clamped to valid range)
 def newAt (tbl : t) (hRows : ReadTable.nRows tbl = nRows) (hCols : (ReadTable.colNames tbl).size = nCols)
-    (hr : nRows > 0) (hc : nCols > 0) (col : Nat) (grp : Array String := #[]) : NavState nRows nCols t :=
+    (hr : nRows > 0) (hc : nCols > 0) (col : Nat) (grp : Array String := #[]) (row : Nat := 0)
+    : NavState nRows nCols t :=
   let c := min col (nCols - 1)
-  have hlt : c < nCols := Nat.lt_of_le_of_lt (Nat.min_le_right ..) (Nat.sub_lt hc Nat.one_pos)
-  ⟨tbl, hRows, hCols, NavAxis.default hr, ⟨⟨c, hlt⟩, #[]⟩, grp⟩
+  let r := min row (nRows - 1)
+  have hltc : c < nCols := Nat.lt_of_le_of_lt (Nat.min_le_right ..) (Nat.sub_lt hc Nat.one_pos)
+  have hltr : r < nRows := Nat.lt_of_le_of_lt (Nat.min_le_right ..) (Nat.sub_lt hr Nat.one_pos)
+  ⟨tbl, hRows, hCols, ⟨⟨r, hltr⟩, #[]⟩, ⟨⟨c, hltc⟩, #[]⟩, grp⟩
 
 -- Move cursor by verb (generic over axis)
 private def move (cur : Fin n) (v : Verb) (pg : Nat) : Fin n :=
