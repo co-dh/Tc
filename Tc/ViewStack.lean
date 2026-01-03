@@ -47,14 +47,17 @@ def dup (s : ViewStack) : ViewStack :=
 -- | Tab names for display (current first)
 def tabNames (s : ViewStack) : Array String := s.views.map (·.tabName)
 
--- | Execute stk command, returns Option ViewStack (none = quit)
-def exec (s : ViewStack) (v : Verb) : Option ViewStack :=
-  match v with
-  | .inc    => some s.dup   -- push (dup for now)
-  | .dec    => s.pop        -- pop, none = quit
-  | .toggle => some s.swap  -- swap
-  | .dup    => some s.dup   -- dup
-  | _       => some s       -- ignore other verbs
+-- | Execute Cmd, returns Option ViewStack (none = quit or table empty)
+def exec (s : ViewStack) (cmd : Cmd) (rowPg colPg : Nat) : Option ViewStack :=
+  match cmd with
+  | .stk .inc    => some s.dup   -- push (dup for now)
+  | .stk .dec    => s.pop        -- pop, none = quit
+  | .stk .toggle => some s.swap  -- swap
+  | .stk .dup    => some s.dup   -- dup
+  | .stk _       => some s       -- ignore other stk verbs
+  | _ => match s.cur.exec cmd rowPg colPg with  -- delegate to View
+    | some v' => some (s.setCur v')
+    | none => none  -- table empty after del
 
 end ViewStack
 end Tc

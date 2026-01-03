@@ -24,15 +24,12 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (gPrefix : Bool := false
   -- g prefix
   if ev.type == Term.eventKey && ev.ch == 'g'.toNat.toUInt32 && !gPrefix then
     return ← mainLoop stk vs' true
-  -- dispatch Cmd
+  -- dispatch Cmd to ViewStack
   match evToCmd ev gPrefix with
-  | some (.stk v) => match stk.exec v with
-    | some stk' => mainLoop stk' (if v == .dec then ViewState.default else vs')
-    | none => return  -- quit
-  | some cmd => match stk.cur.exec cmd rowPg colPg with
-    | some v' => let vs'' := if cmd matches .col .del | .colSel _ then ViewState.default else vs'
-                 mainLoop (stk.setCur v') vs''
-    | none => return  -- table empty after del
+  | some cmd => match stk.exec cmd rowPg colPg with
+    | some stk' => let vs'' := if cmd matches .stk .dec | .col .del | .colSel _ then ViewState.default else vs'
+                   mainLoop stk' vs''
+    | none => return  -- quit or table empty
   | none => mainLoop stk vs'
 
 -- | Parse -c <cmd> from args
