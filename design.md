@@ -1,114 +1,92 @@
-# Tc/ Typeclass Navigation Design
+# Tc Design
 
-## Diagram
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  ReadTable α                   ModifyTable α            │
-│    nRows, colNames, colWidths    delRows, delCols       │
-│    cell                                                 │
+│  ReadTable α              ModifyTable α [ReadTable α]   │
+│    nRows, colNames          delRows, delCols            │
+│    colWidths, cell                                      │
 ├─────────────────────────────────────────────────────────┤
 │  RenderTable α [ReadTable α]                            │
-│    render : NavState → view params → IO Unit            │
+│    render : NavState → ViewState → IO ViewState         │
 └───────────────────────────┬─────────────────────────────┘
                             │ instance
                             ▼
 ┌─────────────────────────────────────────────────────────┐
-│  Backends: SomeTable (ADBC), KdbTable, MemTable, ...    │
+│  Backends: AdbcTable, MemTable                          │
 └───────────────────────────┬─────────────────────────────┘
-                            │ tbl field
+                            │ wrapped by
                             ▼
 ┌─────────────────────────────────────────────────────────┐
-│            NavState nRows nCols t [ReadTable t]         │
-│  tbl : t, hRows, hCols, hGroup                          │
-│  nRows/nCols are type params for Fin bounds             │
-│  hRows/hCols prove they match ReadTable.nRows/nCols     │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │  NavAxis n elem  (single CurOps instance)        │   │
-│  │    cur  : Fin n,  sels : Array elem              │   │
-│  ├──────────────────────────────────────────────────┤   │
-│  │  RowNav = NavAxis nRows Nat                      │   │
-│  │  ColNav = NavAxis nCols String                   │   │
-│  └──────────────────────────────────────────────────┘   │
-│  group : Array String                                   │
-│  helpers: nKeys, selRows, selColIdxs, curColIdx, etc    │
+│  View (existential wrapper)                             │
+│    hides table type, exposes exec/doRender              │
+├─────────────────────────────────────────────────────────┤
+│  ViewStack                                              │
+│    cur : View, parents : Array View                     │
+│    exec dispatches Cmd to View or handles stk commands  │
 └─────────────────────────────────────────────────────────┘
-                      │
-                      ▼ (view layer)
+                            │
+                            ▼
 ┌─────────────────────────────────────────────────────────┐
-│                    ViewState nCols                      │
-│  rowOff : Nat          (first visible row)              │
-│  colOff : Fin nCols    (first visible col)              │
+│  App.mainLoop                                           │
+│    evToCmd → ViewStack.exec → View.doRender             │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ## Classes
 
-| Class       | Methods               | Purpose                    |
-|-------------|-----------------------|----------------------------|
-| ReadTable   | nRows, colNames       | Read-only table access     |
-|             | colWidths, cell       |                            |
-| ModifyTable | delRows, delCols      | Table mutations            |
-| RenderTable | render                | Render to terminal         |
-| CurOps      | pos, setPos           | Cursor operations          |
-|             | move, find (defaults) |                            |
+| Class       | Methods            | Purpose                    |
+|-------------|--------------------|----------------------------|
+| ReadTable   | nRows, colNames    | Read-only table access     |
+|             | colWidths, cell    |                            |
+| ModifyTable | delRows, delCols   | Table mutations            |
+| RenderTable | render             | Render to terminal         |
 
-## Object
+## Obj/Verb Matrix
 
-| Symbol | Target     | Description                  |
-|--------|------------|------------------------------|
-| r      | row.cur    | Current row position         |
-| c      | col.cur    | Current column position      |
-| R      | row.sels   | Selected row indices         |
-| C      | col.sels   | Selected column names        |
-| G      | group      | Columns pinned to left       |
+Commands follow `Obj Verb` pattern. Not all combinations are valid.
 
-## Verb
-
-| Op | r/c (cursor) | R/C/G (set) |
-|----|--------------|-------------|
-| +  | move +1      |             |
-| -  | move -1      |             |
-| <  | move -page   |             |
-| >  | move +page   |             |
-| 0  | move to 0    |             |
-| $  | move to end  |             |
-| ~  |              | toggle      |
-
-## Keys
-
-| Key  | Command | Action              |
-|------|---------|---------------------|
-| hjkl | r±/c±   | Step nav            |
-| HJKL | r</>/c  | Page nav            |
-| g+dir| r0/$/c  | Home/end            |
-| t    | R^      | Toggle row select   |
-| T    | C^      | Toggle col select   |
-| !    | G^      | Toggle group        |
-| q    |         | Quit                |
+```
+                 │ i │ d │ t │ d │ a │ d │ d │
+                 │ n │ e │ o │ e │ s │ s │ u │
+                 │ c │ c │ g │ l │ c │ c │ p │
+Char │ Obj       │ + │ - │ ~ │ d │ [ │ ] │ c │ Description
+─────┼───────────┼───┼───┼───┼───┼───┼───┼───┼──────────────────
+ r   │ row       │ j │ k │   │   │   │   │   │ Row cursor
+ c   │ col       │ l │ h │   │ d │   │   │   │ Column cursor
+ R   │ rowSel    │   │   │ T │   │   │   │   │ Row selection
+ C   │ colSel    │   │   │ t │   │ [ │ ] │   │ Column selection
+ g   │ grp       │   │   │ ! │   │   │   │   │ Group (pin left)
+ s   │ stk       │   │ q │ S │   │   │   │   │ View stack
+ h   │ hPage     │ L │ H │   │   │   │   │   │ Horizontal page
+ v   │ vPage     │ J │ K │   │   │   │   │   │ Vertical page
+ H   │ hor       │+l │+h │   │   │   │   │   │ Horizontal end
+ V   │ ver       │+j │+k │   │   │   │   │   │ Vertical end
+ p   │ prec      │+p │-p │   │   │   │   │   │ Display precision
+ w   │ width     │+w │-w │   │   │   │   │   │ Column width
+```
 
 ## Structures
 
-| Struct    | Purpose                                    |
-|-----------|--------------------------------------------|
-| NavState  | Dims + RowNav + ColNav + group + helpers   |
-| NavAxis   | Generic axis: cur (Fin n) + sels (Array)   |
-| RowNav m  | NavAxis m Nat (type alias)                 |
-| ColNav n  | NavAxis n String (type alias)              |
-| ViewState | Scroll offsets (view concern)              |
+| Struct    | Purpose                                      |
+|-----------|----------------------------------------------|
+| Verb      | Action type: inc/dec/toggle/del/sort/dup     |
+| Cmd       | Object + Verb command pattern                |
+| NavState  | Table + row/col cursors + selections + group |
+| NavAxis   | Generic axis: cur (Fin n) + sels (Array)     |
+| View      | Existential wrapper hiding table type        |
+| ViewStack | Non-empty stack of Views (cur + parents)     |
+| ViewState | Scroll offsets for rendering                 |
 
-## Key Design Decisions
+## Design Notes
 
-**NavState**: Contains dims (nRows, colNames) + navigation (row, col, group). Single structure.
+**Obj/Verb pattern**: Commands are `Cmd obj verb`. Verbs are reusable (+/-/~/d/[/]/c).
 
-**NavAxis**: Generic `NavAxis n elem` with single CurOps instance. RowNav/ColNav are type aliases.
+**View existential**: Wraps `NavState nRows nCols t` to hide type params, enabling heterogeneous stack.
 
-**ViewState**: Scroll offsets only. Separate from NavState.
+**ViewStack dispatch**: `stk` commands handled by stack, others delegated to `View.exec`.
 
 **Fin bounds**: Cursor uses `Fin n` for type-safe bounds. `Fin.clamp` handles delta movement.
 
-**CurOps defaults**: `move` and `find` have default implementations using `pos`/`setPos`.
-
-**Array.toggle**: Selection uses plain Array with `toggle` extension. No wrapper type.
-
-**Display order**: Group columns first via `dispOrder`.
+**Group columns**: Pinned left via `dispOrder`. Selection uses `Array.toggle`.

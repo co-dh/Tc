@@ -125,28 +125,34 @@ def newAt (tbl : t) (hRows : ReadTable.nRows tbl = nRows) (hCols : (ReadTable.co
   have hltr : r < nRows := Nat.lt_of_le_of_lt (Nat.min_le_right ..) (Nat.sub_lt hr Nat.one_pos)
   ⟨tbl, hRows, hCols, ⟨⟨r, hltr⟩, #[]⟩, ⟨⟨c, hltc⟩, #[]⟩, grp⟩
 
--- Move cursor by verb (generic over axis)
-private def move (cur : Fin n) (v : Verb) (pg : Nat) : Fin n :=
-  match v with
-  | .inc   => cur.clamp 1
-  | .dec   => cur.clamp (-1)
-  | .pgNext => cur.clamp pg
-  | .pgPrev => cur.clamp (-(pg : Int))
-  | .home   => cur.clamp (-(cur.val : Int))
-  | .end_   => cur.clamp (n - 1 - cur.val : Int)
-  | _       => cur  -- toggle/del not applicable
+-- Move cursor: inc=+1, dec=-1
+private def step (cur : Fin n) (v : Verb) : Fin n :=
+  cur.clamp (if v == .inc then 1 else -1)
+
+-- Move cursor by page
+private def page (cur : Fin n) (v : Verb) (pg : Nat) : Fin n :=
+  cur.clamp (if v == .inc then pg else -(pg : Int))
+
+-- Move cursor to end: inc=end, dec=home
+private def toEnd (cur : Fin n) (v : Verb) : Fin n :=
+  cur.clamp (if v == .inc then (n - 1 - cur.val : Int) else -(cur.val : Int))
 
 -- Execute Cmd, returns Option NavState (always some for nav commands)
 def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option (NavState nRows nCols t) :=
   match cmd with
-  | .row v    => some { nav with row_ := { nav.row_ with cur := move nav.row_.cur v rowPg } }
+  | .row v    => some { nav with row_ := { nav.row_ with cur := step nav.row_.cur v } }
   | .col v    => match v with
     | .del => none  -- handled by View.exec
-    | _ => some { nav with col_ := { nav.col_ with cur := move nav.col_.cur v colPg } }
+    | _ => some { nav with col_ := { nav.col_ with cur := step nav.col_.cur v } }
   | .rowSel .toggle => some { nav with row_ := { nav.row_ with sels := nav.row_.sels.toggle nav.row_.cur.val } }
   | .colSel .toggle => some { nav with col_ := { nav.col_ with sels := nav.col_.sels.toggle nav.curColName } }
   | .grp .toggle    => some { nav with group_ := nav.group_.toggle nav.curColName }
   | .colSel .sortAsc | .colSel .sortDesc => none  -- handled by View.exec
+  | .hPage v => some { nav with col_ := { nav.col_ with cur := page nav.col_.cur v colPg } }
+  | .vPage v => some { nav with row_ := { nav.row_ with cur := page nav.row_.cur v rowPg } }
+  | .hor v => some { nav with col_ := { nav.col_ with cur := toEnd nav.col_.cur v } }
+  | .ver v => some { nav with row_ := { nav.row_ with cur := toEnd nav.row_.cur v } }
+  | .prec _ | .width _ => some nav  -- TODO: handled by View
   | _ => some nav
 
 end NavState

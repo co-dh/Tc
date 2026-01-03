@@ -24,8 +24,8 @@ private def navDirs : Array (Char × Bool × Bool) := #[
 
 -- Special key → Cmd (PageUp/Down, Home/End, Esc)
 private def keyCmds : Array (UInt16 × Cmd) := #[
-  (Term.keyPageDown, .row .pgNext), (Term.keyPageUp, .row .pgPrev),
-  (Term.keyHome, .row .home), (Term.keyEnd, .row .end_),
+  (Term.keyPageDown, .vPage .inc), (Term.keyPageUp, .vPage .dec),  -- vPage +=down, -=up
+  (Term.keyHome, .ver .dec), (Term.keyEnd, .ver .inc),  -- ver -=top, +=bottom
   (Term.keyEsc, .stk .dec)  -- Esc = pop/quit
 ]
 
@@ -46,23 +46,27 @@ private def navCmd (c : Char) (shift : Bool) : Option Cmd :=
   navDirs.findSome? fun (ch, isRow, fwd) =>
     if c.toLower == ch then
       let pg := shift || c.isUpper  -- shift or uppercase = page
-      let v := if fwd then (if pg then Verb.pgNext else .inc)
-               else (if pg then Verb.pgPrev else .dec)
-      some (if isRow then .row v else .col v)
+      let v := if fwd then Verb.inc else .dec
+      some (if pg then (if isRow then .vPage v else .hPage v)
+                  else (if isRow then .row v else .col v))
     else none
 
+-- +/- prefix targets: h=hPage, v=vPage, H=hor, V=ver, p=prec, w=width, hjkl=ver/hor
+private def prefixObjs : Array (Char × (Verb → Cmd)) := #[
+  ('h', .hPage), ('v', .vPage), ('H', .hor), ('V', .ver), ('p', .prec), ('w', .width),
+  ('j', .ver), ('k', .ver), ('l', .hor)  -- hjkl maps to ver/hor (end navigation)
+]
+
 -- Convert Term.Event to Cmd
-def evToCmd (ev : Term.Event) (gPrefix : Bool) : Option Cmd :=
+-- verbPfx: none = normal, some .inc = after +, some .dec = after -
+def evToCmd (ev : Term.Event) (verbPfx : Option Verb) : Option Cmd :=
   if ev.type != Term.eventKey then none else
   let c := evToChar ev
   let shift := ev.mod &&& Term.modShift != 0
-  if gPrefix then
-    -- g-prefix: home/end
-    navDirs.findSome? fun (ch, isRow, fwd) =>
-      if c.toLower == ch then
-        some (if isRow then .row (if fwd then .end_ else .home)
-                       else .col (if fwd then .end_ else .home))
-      else none
-  else
+  match verbPfx with
+  | some v =>
+    -- +/- prefix: map to hor/ver/prec/width objects
+    prefixObjs.findSome? fun (ch, mk) => if c.toLower == ch then some (mk v) else none
+  | none =>
     navCmd c shift <|> lookup charCmds c <|> lookup keyCmds ev.key
 

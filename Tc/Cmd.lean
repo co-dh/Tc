@@ -10,25 +10,23 @@ class Parse (α : Type) where
 
 -- | Verb: action type
 inductive Verb where
-  | inc | dec | pgNext | pgPrev | home | end_  -- movement
-  | toggle                                        -- toggle selection
-  | del                                           -- delete
-  | sortAsc | sortDesc                            -- sort
-  | dup                                          -- copy/dup
+  | inc | dec         -- +/- movement or adjustment
+  | toggle            -- toggle selection
+  | del               -- delete
+  | sortAsc | sortDesc  -- sort
+  | dup               -- copy/dup
   deriving Repr, BEq, DecidableEq
 
 namespace Verb
 
 -- | Verb to char
 def toChar : Verb → Char
-  | .inc => '+' | .dec => '-' | .pgNext => '>' | .pgPrev => '<'
-  | .home => '0' | .end_ => '$' | .toggle => '~' | .del => 'd'
+  | .inc => '+' | .dec => '-' | .toggle => '~' | .del => 'd'
   | .sortAsc => '[' | .sortDesc => ']' | .dup => 'c'
 
 -- | Char to verb
 def ofChar? : Char → Option Verb
-  | '+' => some .inc | '-' => some .dec | '>' => some .pgNext | '<' => some .pgPrev
-  | '0' => some .home | '$' => some .end_ | '~' => some .toggle | 'd' => some .del
+  | '+' => some .inc | '-' => some .dec | '~' => some .toggle | 'd' => some .del
   | '[' => some .sortAsc | ']' => some .sortDesc | 'c' => some .dup
   | _ => none
 
@@ -43,28 +41,39 @@ end Verb
 
 -- | Command: Obj + Verb pattern
 inductive Cmd where
-  | row (v : Verb)     -- row next/prev/...
-  | col (v : Verb)     -- col next/prev/.../del
+  | row (v : Verb)     -- row inc/dec (single step)
+  | col (v : Verb)     -- col inc/dec/del (single step)
   | rowSel (v : Verb)  -- rowSel toggle
   | colSel (v : Verb)  -- colSel toggle/sortAsc/sortDesc
   | grp (v : Verb)     -- grp toggle
   | stk (v : Verb)     -- stk +push/-pop/~swap/cdup
+  | hor (v : Verb)     -- hor -=home, +=end (column)
+  | ver (v : Verb)     -- ver -=top, +=bottom (row)
+  | hPage (v : Verb)   -- hPage -=prev, +=next page (column)
+  | vPage (v : Verb)   -- vPage -=prev, +=next page (row)
+  | prec (v : Verb)    -- prec -=dec, +=inc precision
+  | width (v : Verb)   -- width -=dec, +=inc width
   deriving Repr, BEq, DecidableEq
 
 namespace Cmd
 
--- | Obj chars: r=row, c=col, R=rowSel, C=colSel, g=grp, s=stk
+-- | Obj chars: r=row, c=col, R=rowSel, C=colSel, g=grp, s=stk, h=hPage, v=vPage, H=hor, V=ver, p=prec, w=width
 private def objs : Array (Char × (Verb → Cmd)) := #[
-  ('r', .row), ('c', .col), ('R', .rowSel), ('C', .colSel), ('g', .grp), ('s', .stk)
+  ('r', .row), ('c', .col), ('R', .rowSel), ('C', .colSel), ('g', .grp), ('s', .stk),
+  ('h', .hPage), ('v', .vPage), ('H', .hor), ('V', .ver), ('p', .prec), ('w', .width)
 ]
 
 -- | Get obj char for Cmd
 private def objChar : Cmd → Char
-  | .row _ => 'r' | .col _ => 'c' | .rowSel _ => 'R' | .colSel _ => 'C' | .grp _ => 'g' | .stk _ => 's'
+  | .row _ => 'r' | .col _ => 'c' | .rowSel _ => 'R' | .colSel _ => 'C'
+  | .grp _ => 'g' | .stk _ => 's'
+  | .hPage _ => 'h' | .vPage _ => 'v' | .hor _ => 'H' | .ver _ => 'V'
+  | .prec _ => 'p' | .width _ => 'w'
 
 -- | Get verb from Cmd
 private def verb : Cmd → Verb
   | .row v | .col v | .rowSel v | .colSel v | .grp v | .stk v => v
+  | .hor v | .ver v | .hPage v | .vPage v | .prec v | .width v => v
 
 instance : ToString Cmd where toString c := s!"{c.objChar}{c.verb.toChar}"
 
@@ -88,5 +97,11 @@ theorem parse_toString (c : Cmd) : Parse.parse? (toString c) = some c := by
   | colSel v => cases v <;> native_decide
   | grp v => cases v <;> native_decide
   | stk v => cases v <;> native_decide
+  | hor v => cases v <;> native_decide
+  | ver v => cases v <;> native_decide
+  | hPage v => cases v <;> native_decide
+  | vPage v => cases v <;> native_decide
+  | prec v => cases v <;> native_decide
+  | width v => cases v <;> native_decide
 
 end Cmd

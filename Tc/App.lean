@@ -13,7 +13,7 @@ import Tc.ViewStack
 open Tc
 
 -- | Main loop with ViewStack
-partial def mainLoop (stk : ViewStack) (vs : ViewState) (gPrefix : Bool := false) : IO Unit := do
+partial def mainLoop (stk : ViewStack) (vs : ViewState) (verbPfx : Option Verb := none) : IO Unit := do
   let vs' ← stk.cur.doRender vs
   renderTabLine stk.tabNames 0  -- current is index 0
   Term.present
@@ -21,11 +21,12 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (gPrefix : Bool := false
   let h ← Term.height
   let rowPg := (h.toNat - reservedLines) / 2
   let colPg := colPageSize
-  -- g prefix
-  if ev.type == Term.eventKey && ev.ch == 'g'.toNat.toUInt32 && !gPrefix then
-    return ← mainLoop stk vs' true
+  -- +/- prefix for hor/ver/prec/width commands
+  if ev.type == Term.eventKey && verbPfx.isNone then
+    if ev.ch == '+'.toNat.toUInt32 then return ← mainLoop stk vs' (some .inc)
+    if ev.ch == '-'.toNat.toUInt32 then return ← mainLoop stk vs' (some .dec)
   -- dispatch Cmd to ViewStack
-  match evToCmd ev gPrefix with
+  match evToCmd ev verbPfx with
   | some cmd => match stk.exec cmd rowPg colPg with
     | some stk' => let vs'' := if cmd matches .stk .dec | .col .del | .colSel _ then ViewState.default else vs'
                    mainLoop stk' vs''
