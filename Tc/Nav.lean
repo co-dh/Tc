@@ -10,18 +10,20 @@ import Tc.Offset
 import Tc.Data.Table
 import Tc.Types
 
--- Navigation axis
-inductive Axis where | row | col deriving Repr, BEq
+-- Verb: movement + toggle + del
+inductive Verb where
+  | next | prev | pgNext | pgPrev | home | end_  -- movement
+  | toggle                                        -- toggle
+  | del                                           -- delete
+  deriving Repr, BEq
 
--- Movement verb
-inductive Verb where | next | prev | pgNext | pgPrev | home | end_ deriving Repr, BEq
-
--- Type-safe navigation command
-inductive NavCmd where
-  | move (axis : Axis) (verb : Verb)  -- cursor movement
-  | sel (axis : Axis)                 -- toggle selection
-  | grp                               -- toggle group
-  | del                               -- delete columns
+-- Command: Obj Verb pattern
+inductive Cmd where
+  | row (v : Verb)     -- row next/prev/...
+  | col (v : Verb)     -- col next/prev/.../del
+  | rowSel (v : Verb)  -- rowSel toggle
+  | colSel (v : Verb)  -- colSel toggle
+  | grp (v : Verb)     -- grp toggle
   deriving Repr, BEq
 
 -- Clamp Fin by delta, staying in [0, n)
@@ -136,28 +138,28 @@ def newAt (tbl : t) (hRows : ReadTable.nRows tbl = nRows) (hCols : (ReadTable.co
   have hlt : c < nCols := Nat.lt_of_le_of_lt (Nat.min_le_right ..) (Nat.sub_lt hc Nat.one_pos)
   ⟨tbl, hRows, hCols, NavAxis.default hr, ⟨⟨c, hlt⟩, #[]⟩, grp⟩
 
--- Apply verb to cursor (pg = page size)
-private def applyVerb (α : Type) (bound : Nat) (elem : Type) [CurOps α bound elem]
-    (pg : Nat) (v : Verb) (a : α) : α :=
-  let p := (@CurOps.pos α bound elem _ a).val
+-- Move cursor by verb (generic over axis)
+private def move (cur : Fin n) (v : Verb) (pg : Nat) : Fin n :=
   match v with
-  | .next   => @CurOps.move α bound elem _ (1 : Int) a
-  | .prev   => @CurOps.move α bound elem _ (-1 : Int) a
-  | .pgNext => @CurOps.move α bound elem _ (pg : Int) a
-  | .pgPrev => @CurOps.move α bound elem _ (-(pg : Int)) a
-  | .home   => @CurOps.move α bound elem _ (-(p : Int)) a
-  | .end_   => @CurOps.move α bound elem _ (bound - 1 - p : Int) a
+  | .next   => cur.clamp 1
+  | .prev   => cur.clamp (-1)
+  | .pgNext => cur.clamp pg
+  | .pgPrev => cur.clamp (-(pg : Int))
+  | .home   => cur.clamp (-(cur.val : Int))
+  | .end_   => cur.clamp (n - 1 - cur.val : Int)
+  | _       => cur  -- toggle/del not applicable
 
--- Dispatch NavCmd to NavState
--- rowPg/colPg = half screen for page up/down
-def dispatch (cmd : NavCmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : NavState nRows nCols t :=
+-- Dispatch Cmd: object first, then verb
+def dispatch (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : NavState nRows nCols t :=
   match cmd with
-  | .move .row v => { nav with row_ := applyVerb (RowNav nRows) nRows Nat rowPg v nav.row_ }
-  | .move .col v => { nav with col_ := applyVerb (ColNav nCols) nCols String colPg v nav.col_ }
-  | .sel .row => { nav with row_ := { nav.row_ with sels := nav.row_.sels.toggle nav.row_.cur.val } }
-  | .sel .col => { nav with col_ := { nav.col_ with sels := nav.col_.sels.toggle nav.curColName } }
-  | .grp => { nav with group_ := nav.group_.toggle nav.curColName }
-  | .del => nav  -- handled separately in App.lean
+  | .row v    => { nav with row_ := { nav.row_ with cur := move nav.row_.cur v rowPg } }
+  | .col v    => match v with
+    | .del => nav  -- handled in App.lean
+    | _ => { nav with col_ := { nav.col_ with cur := move nav.col_.cur v colPg } }
+  | .rowSel .toggle => { nav with row_ := { nav.row_ with sels := nav.row_.sels.toggle nav.row_.cur.val } }
+  | .colSel .toggle => { nav with col_ := { nav.col_ with sels := nav.col_.sels.toggle nav.curColName } }
+  | .grp .toggle    => { nav with group_ := nav.group_.toggle nav.curColName }
+  | _ => nav
 
 end NavState
 

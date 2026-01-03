@@ -28,7 +28,7 @@ partial def mainLoop {nRows nCols : Nat} {t : Type} [ModifyTable t] [RenderTable
     if ev.ch == 'q'.toNat.toUInt32 || ev.key == Term.keyEsc then return .quit
     if ev.ch == 'g'.toNat.toUInt32 && !gPrefix then return ← mainLoop nav view' true
   match keyToCmd ev gPrefix with
-  | some .del =>
+  | some (.col .del) =>
     let (tbl', grp') := ModifyTable.del nav.tbl nav.curColIdx nav.selColIdxs nav.group
     return .del nav.curDispCol grp' tbl'
   | some cmd => mainLoop (nav.dispatch cmd rowPg colPg) view'
