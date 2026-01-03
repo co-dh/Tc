@@ -59,9 +59,6 @@ def load (path : String) : IO (Except String MemTable) := do
     let cols := strCols.map buildColumn
     pure (.ok ⟨names, cols⟩)
 
--- Get cell at (row, col)
-def cell (t : MemTable) (r c : Nat) : Cell := (t.cols.getD c default).get r
-
 -- Row count
 def nRows (t : MemTable) : Nat := (t.cols.getD 0 default).size
 
@@ -71,7 +68,6 @@ end MemTable
 instance : ModifyTable MemTable where
   nRows    := MemTable.nRows
   colNames := (·.names)
-  cell     := fun t r c => (MemTable.cell t r c).toString
   delCols  := fun delIdxs t =>
     let keepIdxs := (Array.range t.names.size).filter (!delIdxs.contains ·)
     { names := keepIdxs.map fun i => t.names.getD i ""

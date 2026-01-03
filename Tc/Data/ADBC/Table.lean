@@ -12,7 +12,6 @@ namespace Tc
 instance : ReadTable SomeTable where
   nRows    := (·.nRows)
   colNames := (·.colNames)
-  cell     := fun t r c => (t.getIdx r c).toString
 
 -- RenderTable instance for SomeTable
 -- Extracts all columns for width computation (once), then renders

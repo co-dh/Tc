@@ -10,7 +10,6 @@ namespace Tc
 class ReadTable (α : Type) where
   nRows    : α → Nat                          -- total row count
   colNames : α → Array String                 -- column names (size = nCols)
-  cell     : α → Nat → Nat → String           -- cell at (row, col)
 
 -- Derived: column count from colNames.size
 def ReadTable.nCols [ReadTable α] (a : α) : Nat := (ReadTable.colNames a).size
