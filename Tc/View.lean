@@ -73,7 +73,7 @@ private def preserve (v : View) (v' : Option View) : Option View :=
 -- | Execute Cmd, returns Option View (none if table becomes empty after del)
 def exec (v : View) (cmd : Cmd) (rowPg colPg : Nat) : Option View :=
   match cmd with
-  | .col .del =>
+  | .colSel .del =>
     let tbl' := @ModifyTable.del v.t v.instM v.tbl v.curColIdx v.selColIdxs v.getGroup
     preserve v (@fromTbl v.t v.instR v.instM v.instV v.instQ tbl'.1 v.path v.curDispCol tbl'.2 0)
   | .colSel .sortAsc =>

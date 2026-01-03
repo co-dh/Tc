@@ -2,6 +2,8 @@
   ViewStack: non-empty view stack
 -/
 import Tc.View
+import Tc.Meta
+import Tc.Data.Mem.Meta
 
 namespace Tc
 
@@ -44,6 +46,19 @@ def swap (s : ViewStack) : ViewStack :=
 def dup (s : ViewStack) : ViewStack :=
   { s with parents := #[s.cur] ++ s.parents }
 
+-- | Push column metadata view (IO via unsafe)
+@[inline] unsafe def pushMetaImpl (s : ViewStack) : Option ViewStack :=
+  match unsafeIO (do
+    let m ← @QueryMeta.queryMeta s.cur.t s.cur.instQ s.cur.tbl
+    pure (Meta.toMemTable m)) with
+  | .ok tbl => match View.fromTbl tbl s.cur.path with
+    | some v => some (s.push { v with vkind := .colMeta, disp := "meta" })
+    | none => none
+  | .error _ => none
+
+@[implemented_by pushMetaImpl]
+def pushMeta (_ : ViewStack) : Option ViewStack := none
+
 -- | Tab names for display (current first)
 def tabNames (s : ViewStack) : Array String := s.views.map (·.tabName)
 
@@ -55,6 +70,7 @@ def exec (s : ViewStack) (cmd : Cmd) (rowPg colPg : Nat) : Option ViewStack :=
   | .stk .toggle => some s.swap  -- swap
   | .stk .dup    => some s.dup   -- dup
   | .stk _       => some s       -- ignore other stk verbs
+  | .colSel .colMeta => s.pushMeta  -- push meta view
   | _ => match s.cur.exec cmd rowPg colPg with  -- delegate to View
     | some v' => some (s.setCur v')
     | none => none  -- table empty after del

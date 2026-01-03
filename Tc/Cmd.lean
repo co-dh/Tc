@@ -15,6 +15,7 @@ inductive Verb where
   | del               -- delete
   | sortAsc | sortDesc  -- sort
   | dup               -- copy/dup
+  | colMeta           -- column metadata view
   deriving Repr, BEq, DecidableEq
 
 namespace Verb
@@ -22,12 +23,12 @@ namespace Verb
 -- | Verb to char
 def toChar : Verb → Char
   | .inc => '+' | .dec => '-' | .toggle => '~' | .del => 'd'
-  | .sortAsc => '[' | .sortDesc => ']' | .dup => 'c'
+  | .sortAsc => '[' | .sortDesc => ']' | .dup => 'c' | .colMeta => 'M'
 
 -- | Char to verb
 def ofChar? : Char → Option Verb
   | '+' => some .inc | '-' => some .dec | '~' => some .toggle | 'd' => some .del
-  | '[' => some .sortAsc | ']' => some .sortDesc | 'c' => some .dup
+  | '[' => some .sortAsc | ']' => some .sortDesc | 'c' => some .dup | 'M' => some .colMeta
   | _ => none
 
 instance : ToString Verb where toString v := v.toChar.toString

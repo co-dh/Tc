@@ -29,11 +29,12 @@ private def keyCmds : Array (UInt16 × Cmd) := #[
   (Term.keyEsc, .stk .dec)  -- Esc = pop/quit
 ]
 
--- Other char → Cmd (selection, group, delete, sort, stack)
+-- Other char → Cmd (selection, group, colSel ops, stack)
 private def charCmds : Array (Char × Cmd) := #[
   ('t', .colSel .toggle), ('T', .rowSel .toggle),
-  ('!', .grp .toggle), ('d', .col .del),
+  ('!', .grp .toggle), ('d', .colSel .del),
   ('[', .colSel .sortAsc), (']', .colSel .sortDesc),
+  ('M', .colSel .colMeta),
   ('q', .stk .dec), ('S', .stk .toggle)  -- stack: q=pop, S=swap
 ]
 
