@@ -139,3 +139,4 @@
 4. Error display in status bar
 
 ## change the Verb letter to +-<>0$~
+## Backend.lean not used? getIdx not used?

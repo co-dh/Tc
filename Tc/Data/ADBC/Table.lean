@@ -25,6 +25,15 @@ structure AdbcTable where
 
 namespace AdbcTable
 
+-- | Init ADBC backend (DuckDB + shellfs extension)
+def init : IO Bool := do
+  let ok ← Adbc.init
+  if ok then let _ ← Adbc.query "LOAD shellfs"
+  pure ok
+
+-- | Shutdown ADBC backend
+def shutdown : IO Unit := Adbc.shutdown
+
 -- | Build AdbcTable from QueryResult
 def ofQueryResult (qr : Adbc.QueryResult) (query : Prql.Query := default) (total : Nat := 0) : IO AdbcTable := do
   let nc ← Adbc.ncols qr
@@ -37,27 +46,6 @@ def ofQueryResult (qr : Adbc.QueryResult) (query : Prql.Query := default) (total
     let fmt ← Adbc.colFmt qr i.toUInt64
     fmts := fmts.push (if h : fmt.length > 0 then fmt.toList[0] else '?')
   pure ⟨qr, names, fmts, nr.toNat, nc.toNat, query, total⟩
-
--- | Get cell at (row, col) - pure interface via unsafeIO
-@[inline] unsafe def getIdxImpl (t : AdbcTable) (row col : Nat) : Cell :=
-  let r := row.toUInt64
-  let c := col.toUInt64
-  match unsafeIO (do
-    if ← Adbc.cellIsNull t.qr r c then return Cell.null
-    match t.colFmts.getD col '?' with
-    | 'l' | 'i' | 's' | 'c' | 'L' | 'I' | 'S' | 'C' => return Cell.int (← Adbc.cellInt t.qr r c).toInt64
-    | 'g' | 'f' | 'd' => return Cell.float (← Adbc.cellFloat t.qr r c)
-    | 'b'             => return Cell.bool  ((← Adbc.cellStr t.qr r c) == "true")
-    | _               => return Cell.str   (← Adbc.cellStr t.qr r c)) with
-  | Except.ok cell => cell
-  | Except.error _ => Cell.null
-
-@[implemented_by getIdxImpl]
-def getIdx (t : AdbcTable) (_ _ : Nat) : Cell := .null
-
--- | Get DisplayInfo
-def info (t : AdbcTable) : DisplayInfo :=
-  ⟨t.colNames, t.nRows, t.nCols⟩
 
 -- | Extract column slice [r0, r1) as typed Column
 @[inline] unsafe def getColImpl (t : AdbcTable) (col r0 r1 : Nat) : Column :=

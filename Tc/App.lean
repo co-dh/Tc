@@ -5,7 +5,6 @@
 import Tc.Data.ADBC.Meta
 import Tc.Data.Mem.Meta
 import Tc.Key
-import Tc.Data.ADBC.Backend
 import Tc.Render
 import Tc.Term
 import Tc.ViewStack
@@ -60,10 +59,10 @@ def main (args : List String) : IO Unit := do
       | some v => mainLoop ⟨v, #[]⟩ ViewState.default; Term.shutdown
       | none => Term.shutdown; IO.eprintln "Empty table"
   else
-    let ok ← Backend.init
+    let ok ← AdbcTable.init
     if !ok then Term.shutdown; IO.eprintln "Backend init failed"; return
     match ← AdbcTable.fromFile path with
-    | none => Term.shutdown; Backend.shutdown; IO.eprintln "Query failed"
+    | none => Term.shutdown; AdbcTable.shutdown; IO.eprintln "Query failed"
     | some tbl => match View.fromTbl tbl path with
-      | some v => mainLoop ⟨v, #[]⟩ ViewState.default; Term.shutdown; Backend.shutdown
-      | none => Term.shutdown; Backend.shutdown; IO.eprintln "Empty table"
+      | some v => mainLoop ⟨v, #[]⟩ ViewState.default; Term.shutdown; AdbcTable.shutdown
+      | none => Term.shutdown; AdbcTable.shutdown; IO.eprintln "Empty table"

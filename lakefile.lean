@@ -22,7 +22,7 @@ lean_lib Tc where
              `Tc.Term, `Tc.Types, `Tc.Error, `Tc.View, `Tc.ViewStack, `Tc.Meta,
              `Tc.Data.Table, `Tc.Data.CSV,
              `Tc.Data.Mem.Table, `Tc.Data.Mem.Meta,
-             `Tc.Data.ADBC.FFI, `Tc.Data.ADBC.Prql, `Tc.Data.ADBC.Backend,
+             `Tc.Data.ADBC.FFI, `Tc.Data.ADBC.Prql,
              `Tc.Data.ADBC.Table, `Tc.Data.ADBC.Meta]
 
 @[default_target]

@@ -48,9 +48,9 @@
 Commands follow `Obj Verb` pattern. Not all combinations are valid.
 
 ```
-                 │ i │ d │ t │ d │ a │ d │ d │
-                 │ n │ e │ o │ e │ s │ s │ u │
-                 │ c │ c │ g │ l │ c │ c │ p │
+                 │ I │ D │ T │ D │ A │ D │ D │
+                 │ N │ E │ O │ E │ S │ S │ U │
+                 │ C │ C │ G │ L │ C │ C │ P │
 Char │ Obj       │ + │ - │ ~ │ d │ [ │ ] │ c │ Description
 ─────┼───────────┼───┼───┼───┼───┼───┼───┼───┼──────────────────
  r   │ row       │ j │ k │   │   │   │   │   │ Row cursor
