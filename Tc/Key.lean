@@ -1,5 +1,6 @@
 /-
-  Key mapping: Term.Event → Cmd
+  Key mapping: Term.Event → Cmd via lookup tables
+  Arrows normalized to hjkl, then unified processing
 -/
 import Tc.Nav
 import Tc.Term
@@ -9,55 +10,61 @@ open Tc
 -- Special keys: quit (q/Esc), g-prefix
 inductive SpecialKey where | quit | gPrefix deriving BEq
 
--- Arrow key to Cmd (shift = page)
-private def arrowCmd (ev : Term.Event) : Option Cmd :=
-  let shift := ev.mod &&& Term.modShift != 0
-  let v := fun fwd => if shift then (if fwd then Verb.pgNext else .pgPrev)
-                      else (if fwd then Verb.next else .prev)
-  if ev.key == Term.keyArrowDown       then some (.row (v true))
-  else if ev.key == Term.keyArrowUp    then some (.row (v false))
-  else if ev.key == Term.keyArrowRight then some (.col (v true))
-  else if ev.key == Term.keyArrowLeft  then some (.col (v false))
-  else none
+-- Lookup in (key, value) array
+private def lookup [BEq α] (tbl : Array (α × β)) (k : α) : Option β :=
+  tbl.findSome? fun (k', v) => if k == k' then some v else none
 
--- hjkl/HJKL to Cmd (lower=step, upper=page)
-private def hjklCmd (ev : Term.Event) : Option Cmd :=
-  let c := Char.ofNat ev.ch.toNat
-  if c == 'j' then some (.row .next) else if c == 'J' then some (.row .pgNext)
-  else if c == 'k' then some (.row .prev) else if c == 'K' then some (.row .pgPrev)
-  else if c == 'l' then some (.col .next) else if c == 'L' then some (.col .pgNext)
-  else if c == 'h' then some (.col .prev) else if c == 'H' then some (.col .pgPrev)
-  else none
+-- Arrow key → hjkl char
+private def arrowToChar : Array (UInt16 × Char) := #[
+  (Term.keyArrowDown, 'j'), (Term.keyArrowUp, 'k'),
+  (Term.keyArrowRight, 'l'), (Term.keyArrowLeft, 'h')
+]
 
--- Arrow/hjkl to row/col+fwd (for g-prefix)
-private def dirKey (ev : Term.Event) : Option (Bool × Bool) :=
-  let c := Char.ofNat ev.ch.toNat
-  if ev.key == Term.keyArrowDown || c == 'j'       then some (true, true)
-  else if ev.key == Term.keyArrowUp || c == 'k'    then some (true, false)
-  else if ev.key == Term.keyArrowRight || c == 'l' then some (false, true)
-  else if ev.key == Term.keyArrowLeft || c == 'h'  then some (false, false)
-  else none
+-- Navigation chars: (char, isRow, isFwd)
+private def navDirs : Array (Char × Bool × Bool) := #[
+  ('j', true, true), ('k', true, false), ('l', false, true), ('h', false, false)
+]
 
--- Convert Term.Event to Cmd (with g-prefix state)
+-- Special key → Cmd (PageUp/Down, Home/End)
+private def keyCmds : Array (UInt16 × Cmd) := #[
+  (Term.keyPageDown, .row .pgNext), (Term.keyPageUp, .row .pgPrev),
+  (Term.keyHome, .row .home), (Term.keyEnd, .row .end_)
+]
+
+-- Other char → Cmd (selection, group, delete)
+private def charCmds : Array (Char × Cmd) := #[
+  ('t', .colSel .toggle), ('T', .rowSel .toggle),
+  ('!', .grp .toggle), ('d', .col .del)
+]
+
+-- Normalize event to char (arrow→hjkl, or raw char)
+private def evToChar (ev : Term.Event) : Char :=
+  (lookup arrowToChar ev.key).getD (Char.ofNat ev.ch.toNat)
+
+-- Navigation cmd from char + shift state
+private def navCmd (c : Char) (shift : Bool) : Option Cmd :=
+  navDirs.findSome? fun (ch, isRow, fwd) =>
+    if c.toLower == ch then
+      let pg := shift || c.isUpper  -- shift or uppercase = page
+      let v := if fwd then (if pg then Verb.pgNext else .next)
+               else (if pg then Verb.pgPrev else .prev)
+      some (if isRow then .row v else .col v)
+    else none
+
+-- Convert Term.Event to Cmd
 def evToCmd (ev : Term.Event) (gPrefix : Bool) : Option Cmd :=
-  if ev.type != Term.eventKey then none
-  else if gPrefix then
-    match dirKey ev with
-    | some (isRow, fwd) => some (if isRow then .row (if fwd then .end_ else .home)
-                                          else .col (if fwd then .end_ else .home))
-    | none => none
+  if ev.type != Term.eventKey then none else
+  let c := evToChar ev
+  let shift := ev.mod &&& Term.modShift != 0
+  if gPrefix then
+    -- g-prefix: home/end
+    navDirs.findSome? fun (ch, isRow, fwd) =>
+      if c.toLower == ch then
+        some (if isRow then .row (if fwd then .end_ else .home)
+                       else .col (if fwd then .end_ else .home))
+      else none
   else
-    arrowCmd ev <|> hjklCmd ev <|>
-    if ev.key == Term.keyPageDown then some (.row .pgNext)
-    else if ev.key == Term.keyPageUp then some (.row .pgPrev)
-    else if ev.key == Term.keyHome then some (.row .home)
-    else if ev.key == Term.keyEnd then some (.row .end_)
-    else match Char.ofNat ev.ch.toNat with
-      | 't' => some (.colSel .toggle)
-      | 'T' => some (.rowSel .toggle)
-      | '!' => some (.grp .toggle)
-      | 'd' => some (.col .del)
-      | _   => none
+    navCmd c shift <|> lookup charCmds c <|> lookup keyCmds ev.key
 
 -- Check for special keys (quit, g-prefix)
 def evToSpecial (ev : Term.Event) : Option SpecialKey :=
