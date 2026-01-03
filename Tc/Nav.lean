@@ -128,8 +128,8 @@ def newAt (tbl : t) (hRows : ReadTable.nRows tbl = nRows) (hCols : (ReadTable.co
 -- Move cursor by verb (generic over axis)
 private def move (cur : Fin n) (v : Verb) (pg : Nat) : Fin n :=
   match v with
-  | .next   => cur.clamp 1
-  | .prev   => cur.clamp (-1)
+  | .inc   => cur.clamp 1
+  | .dec   => cur.clamp (-1)
   | .pgNext => cur.clamp pg
   | .pgPrev => cur.clamp (-(pg : Int))
   | .home   => cur.clamp (-(cur.val : Int))

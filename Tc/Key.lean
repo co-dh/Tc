@@ -47,8 +47,8 @@ private def navCmd (c : Char) (shift : Bool) : Option Cmd :=
   navDirs.findSome? fun (ch, isRow, fwd) =>
     if c.toLower == ch then
       let pg := shift || c.isUpper  -- shift or uppercase = page
-      let v := if fwd then (if pg then Verb.pgNext else .next)
-               else (if pg then Verb.pgPrev else .prev)
+      let v := if fwd then (if pg then Verb.pgNext else .inc)
+               else (if pg then Verb.pgPrev else .dec)
       some (if isRow then .row v else .col v)
     else none
 

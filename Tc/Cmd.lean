@@ -10,26 +10,26 @@ class Parse (α : Type) where
 
 -- | Verb: action type
 inductive Verb where
-  | next | prev | pgNext | pgPrev | home | end_  -- movement
+  | inc | dec | pgNext | pgPrev | home | end_  -- movement
   | toggle                                        -- toggle selection
   | del                                           -- delete
   | sortAsc | sortDesc                            -- sort
-  | copy                                          -- copy/dup
+  | dup                                          -- copy/dup
   deriving Repr, BEq, DecidableEq
 
 namespace Verb
 
 -- | Verb to char
 def toChar : Verb → Char
-  | .next => '+' | .prev => '-' | .pgNext => '>' | .pgPrev => '<'
+  | .inc => '+' | .dec => '-' | .pgNext => '>' | .pgPrev => '<'
   | .home => '0' | .end_ => '$' | .toggle => '~' | .del => 'd'
-  | .sortAsc => '[' | .sortDesc => ']' | .copy => 'c'
+  | .sortAsc => '[' | .sortDesc => ']' | .dup => 'c'
 
 -- | Char to verb
 def ofChar? : Char → Option Verb
-  | '+' => some .next | '-' => some .prev | '>' => some .pgNext | '<' => some .pgPrev
+  | '+' => some .inc | '-' => some .dec | '>' => some .pgNext | '<' => some .pgPrev
   | '0' => some .home | '$' => some .end_ | '~' => some .toggle | 'd' => some .del
-  | '[' => some .sortAsc | ']' => some .sortDesc | 'c' => some .copy
+  | '[' => some .sortAsc | ']' => some .sortDesc | 'c' => some .dup
   | _ => none
 
 instance : ToString Verb where toString v := v.toChar.toString
