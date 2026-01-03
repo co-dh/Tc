@@ -8,8 +8,9 @@ namespace Tc
 
 -- Read-only table access
 class ReadTable (α : Type) where
-  nRows    : α → Nat                          -- total row count
-  colNames : α → Array String                 -- column names (size = nCols)
+  nRows     : α → Nat                         -- row count in current view
+  colNames  : α → Array String                -- column names (size = nCols)
+  totalRows : α → Nat := nRows                -- total rows (for ADBC: actual count)
 
 -- Derived: column count from colNames.size
 def ReadTable.nCols [ReadTable α] (a : α) : Nat := (ReadTable.colNames a).size
@@ -27,9 +28,8 @@ def ModifyTable.del [ModifyTable α] (tbl : α) (cursor : Nat) (sels : Array Nat
   let delNames := idxs.map (names.getD · "")
   (delCols idxs tbl, grp.filter (!delNames.contains ·))
 
--- Sort table by selected column indices (use cursor if no selections)
-def ModifyTable.sort [ModifyTable α] (tbl : α) (cursor : Nat) (sels : Array Nat) (asc : Bool) : α :=
-  let idxs := if sels.isEmpty then #[cursor] else sels
-  sortBy idxs asc tbl
+-- Sort table by group indices (asc) then cursor column
+def ModifyTable.sort [ModifyTable α] (tbl : α) (cursor : Nat) (grpIdxs : Array Nat) (asc : Bool) : α :=
+  sortBy (grpIdxs.push cursor) asc tbl
 
 end Tc

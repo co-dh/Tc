@@ -136,6 +136,9 @@ lean_obj_res lean_tb_render_col(uint32_t x, uint32_t w, uint32_t y0,
 #define COL_FLOATS 1
 #define COL_STRS   2
 
+// | Minimum header text width (chars shown before truncation)
+#define MIN_HDR_WIDTH 3
+
 // | VisiData-style type chars from Arrow format
 // # int, % float, ? bool, @ date, space string
 static char type_char_fmt(char fmt) {
@@ -217,9 +220,9 @@ static int col_is_num(lean_obj_arg col) {
     return tag == COL_INTS || tag == COL_FLOATS;
 }
 
-// | Compute column width by scanning data (header + r0..r1 range)
-static int compute_col_width(lean_obj_arg col, const char* name, size_t r0, size_t r1) {
-    int w = strlen(name);  // start with header width
+// | Compute column data width (not including header)
+static int compute_data_width(lean_obj_arg col, size_t r0, size_t r1) {
+    int w = 1;  // minimum 1 char
     char buf[256];
     for (size_t r = r0; r < r1; r++) {
         int len = format_col_cell(col, r, buf, sizeof(buf));
@@ -264,6 +267,7 @@ static void build_sel_bits(b_lean_obj_arg arr, size_t n, uint64_t* bits) {
 // fmts: Array Char - format chars for type indicators (empty = use Column tag)
 // colIdxs: display order indices
 // nTotalRows: total rows in table (for width calc)
+// moveDir: -1 = moved left, 0 = none, 1 = moved right (for tooltip direction)
 // inWidths: input widths (empty = compute), returns computed widths
 lean_obj_res lean_render_table(
     b_lean_obj_arg allCols,   // Array Column - ALL columns
@@ -276,6 +280,7 @@ lean_obj_res lean_render_table(
     uint64_t colOff,          // first visible column offset
     uint64_t r0, uint64_t r1, // visible row range [r0, r1)
     uint64_t curRow, uint64_t curCol,
+    int64_t moveDir,          // -1 = left, 0 = none, 1 = right
     b_lean_obj_arg selCols,
     b_lean_obj_arg selRows,
     b_lean_obj_arg styles,
@@ -299,14 +304,15 @@ lean_obj_res lean_render_table(
     build_sel_bits(selCols, lean_array_size(selCols), colBits);
     build_sel_bits(selRows, lean_array_size(selRows), rowBits);
 
-    // compute or use widths for ALL columns (+2 for leading/trailing space)
+    // compute or use widths for ALL columns (+2 for leading space + type char)
+    // use max(data_width, MIN_HDR_WIDTH) + 2 for minimum header visibility
     int* allWidths = malloc(nCols * sizeof(int));
     int needCompute = lean_array_size(inWidths) == 0;
     for (size_t c = 0; c < nCols; c++) {
         if (needCompute) {
             lean_obj_arg col = lean_array_get_core(allCols, c);
-            const char* name = lean_string_cstr(lean_array_get_core(names, c));
-            allWidths[c] = compute_col_width(col, name, 0, nTotalRows) + 2;  // +2 for leading/trailing space
+            int dw = compute_data_width(col, 0, nTotalRows);
+            allWidths[c] = (dw > MIN_HDR_WIDTH ? dw : MIN_HDR_WIDTH) + 2;
         } else {
             allWidths[c] = lean_unbox(lean_array_get_core(inWidths, c));
         }
@@ -397,6 +403,35 @@ lean_obj_res lean_render_table(
                 tb_set_cell(sX, y, sc, stFg[STYLE_DEFAULT], stBg[STYLE_DEFAULT]);
             }
         }
+    }
+
+    // tooltip: show full header name if truncated (overlay on header row)
+    // moveDir > 0 (moved right): tooltip extends left; moveDir < 0: extends right
+    for (size_t c = 0; c < nVisCols; c++) {
+        size_t dispIdx = colOff + c;
+        size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, dispIdx));
+        if (origIdx != curCol) continue;  // only for focused column
+        const char* name = lean_string_cstr(lean_array_get_core(names, origIdx));
+        int nameLen = strlen(name);
+        int colW = ws[c] - 2;  // available width for name (minus leading space + type char)
+        if (nameLen <= colW) break;  // fits, no tooltip needed
+        uint32_t fg = stFg[STYLE_CURSOR] | TB_BOLD | TB_UNDERLINE;
+        if (moveDir > 0) {
+            // moved right: tooltip extends left (so it doesn't cover next column)
+            int endX = xs[c] + ws[c] - 1;  // last char position (type char spot)
+            int startX = endX - nameLen;
+            if (startX < 0) startX = 0;
+            int tipW = endX - startX;
+            for (int i = 0; i < tipW; i++)
+                tb_set_cell(startX + i, 0, (uint32_t)(unsigned char)name[nameLen - tipW + i], fg, stBg[STYLE_CURSOR]);
+        } else {
+            // moved left or no move: tooltip extends right
+            int maxW = screenW - xs[c] - 1;
+            int tipW = nameLen < maxW ? nameLen : maxW;
+            for (int i = 0; i < tipW; i++)
+                tb_set_cell(xs[c] + 1 + i, 0, (uint32_t)(unsigned char)name[i], fg, stBg[STYLE_CURSOR]);
+        }
+        break;
     }
 
     // build return Array Nat for widths

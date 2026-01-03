@@ -69,6 +69,14 @@ def str? : Cell → Option String | .str s => some s | _ => none
 -- | Extract int value
 def int? : Cell → Option Int64 | .int n => some n | _ => none
 
+-- | Format cell value as PRQL literal
+def toPrql : Cell → String
+  | .null => "null"
+  | .int n => s!"{n}"
+  | .float f => s!"{f}"
+  | .str s => s!"'{s}'"
+  | .bool b => if b then "true" else "false"
+
 end Cell
 
 -- | DisplayInfo: metadata for navigation/PRQL building (no cell access)
@@ -77,107 +85,4 @@ structure DisplayInfo where
   nRows    : Nat
   nCols    : Nat
 
--- | Zero-copy table: data stays in Arrow/C memory, accessed via FFI
-structure AdbcTable where
-  qr       : Adbc.QueryResult   -- arrow data (opaque, C memory)
-  colNames : Array String       -- cached column names
-  colFmts  : Array Char         -- cached format chars per column
-  nRows    : Nat
-  nCols    : Nat
 
-namespace AdbcTable
-
--- | Build AdbcTable from QueryResult (caches metadata, no cell copies)
-def ofQueryResult (qr : Adbc.QueryResult) : IO AdbcTable := do
-  let nc ← Adbc.ncols qr
-  let nr ← Adbc.nrows qr
-  let mut names : Array String := #[]
-  let mut fmts : Array Char := #[]
-  for i in [:nc.toNat] do
-    let n ← Adbc.colName qr i.toUInt64
-    names := names.push n
-    let fmt ← Adbc.colFmt qr i.toUInt64
-    fmts := fmts.push (if h : fmt.length > 0 then fmt.toList[0] else '?')
-  pure ⟨qr, names, fmts, nr.toNat, nc.toNat⟩
-
--- | Get cell at (row, col) - pure interface via unsafeIO
-@[inline] unsafe def getIdxImpl (t : AdbcTable) (row col : Nat) : Cell :=
-  let r := row.toUInt64
-  let c := col.toUInt64
-  match unsafeIO (do
-    if ← Adbc.cellIsNull t.qr r c then return Cell.null
-    match t.colFmts.getD col '?' with
-    | 'l' | 'i' | 's' | 'c' | 'L' | 'I' | 'S' | 'C' => return Cell.int (← Adbc.cellInt t.qr r c).toInt64
-    | 'g' | 'f' | 'd' => return Cell.float (← Adbc.cellFloat t.qr r c)
-    | 'b'             => return Cell.bool  ((← Adbc.cellStr t.qr r c) == "true")
-    | _               => return Cell.str   (← Adbc.cellStr t.qr r c)) with
-  | Except.ok cell => cell
-  | Except.error _ => Cell.null
-
-@[implemented_by getIdxImpl]
-def getIdx (t : AdbcTable) (_ _ : Nat) : Cell := .null
-
--- | Get DisplayInfo
-def info (t : AdbcTable) : DisplayInfo :=
-  ⟨t.colNames, t.nRows, t.nCols⟩
-
--- | Extract column slice [r0, r1) as typed Column
--- Arrow formats: l/i/s/c = signed int64/32/16/8, L/I/S/C = unsigned, g/f = float64/32
-@[inline] unsafe def getColImpl (t : AdbcTable) (col r0 r1 : Nat) : Column :=
-  let fmt := t.colFmts.getD col '?'
-  match fmt with
-  | 'l' | 'i' | 's' | 'c' | 'L' | 'I' | 'S' | 'C' =>
-    let data := Id.run do
-      let mut arr : Array Int64 := #[]
-      for r in [r0:r1] do
-        match unsafeIO (Adbc.cellInt t.qr r.toUInt64 col.toUInt64) with
-        | .ok v => arr := arr.push v.toInt64
-        | .error _ => arr := arr.push 0
-      arr
-    .ints data
-  | 'g' | 'f' | 'd' =>
-    let data := Id.run do
-      let mut arr : Array Float := #[]
-      for r in [r0:r1] do
-        match unsafeIO (Adbc.cellFloat t.qr r.toUInt64 col.toUInt64) with
-        | .ok v => arr := arr.push v
-        | .error _ => arr := arr.push 0.0
-      arr
-    .floats data
-  | _ =>
-    let data := Id.run do
-      let mut arr : Array String := #[]
-      for r in [r0:r1] do
-        match unsafeIO (Adbc.cellStr t.qr r.toUInt64 col.toUInt64) with
-        | .ok v => arr := arr.push v
-        | .error _ => arr := arr.push ""
-      arr
-    .strs data
-
-@[implemented_by getColImpl]
-def getCol (_ : AdbcTable) (_ _ _ : Nat) : Column := .strs #[]
-
--- | Empty table
-def empty : IO AdbcTable := do
-  let qr ← Adbc.query "SELECT 1 WHERE 1=0"
-  ofQueryResult qr
-
-end AdbcTable
-
--- | All pure key operations (no IO needed)
-inductive PureKey where
-  -- navigation
-  | j | k | l | h | g | G | _0 | _1 | dollar | c_d | c_u
-  | colJump (idx : Nat)
-  -- view transforms
-  | asc | desc | D | I | dup | swap
-  | bang | spc | incDec (inc : Bool) | q | esc
-  -- views (push new view)
-  | F | backslash (expr : String) | s (cols : Array String)
-  | M (metaTbl : AdbcTable) | pushFile (path : String)
-  -- input modes
-  | inputRename
-  -- agg (funcs as strings: "count", "sum", "average", "min", "max", "stddev")
-  | pushAgg (keys : Array String) (funcs : Array String) (cols : Array String)
-  -- enter key
-  | ret

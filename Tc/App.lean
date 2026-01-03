@@ -6,6 +6,7 @@ import Tc.Data.ADBC.Table
 import Tc.Data.MemTable
 import Tc.Key
 import Tc.Data.ADBC.Backend
+import Tc.Render
 import Tc.Term
 
 open Tc
@@ -14,7 +15,7 @@ open Tc
 inductive LoopAction (t : Type) where
   | quit
   | del (curCol : Nat) (grp : Array String) (tbl : t)
-  | sort (curRow : Nat) (curCol : Nat) (tbl : t)  -- sorted table, keep cursor
+  | sort (curRow : Nat) (curCol : Nat) (grp : Array String) (tbl : t)
 
 -- Execute single Cmd, return new nav or LoopAction for del/sort
 def execCmd {nRows nCols : Nat} {t : Type} [ModifyTable t]
@@ -25,11 +26,11 @@ def execCmd {nRows nCols : Nat} {t : Type} [ModifyTable t]
     let (tbl', grp') := ModifyTable.del nav.tbl nav.curColIdx nav.selColIdxs nav.group
     .inr (.del nav.curDispCol grp' tbl')
   | .colSel .sortAsc =>
-    let grpIdxs := nav.group.filterMap nav.colNames.idxOf?  -- group column indices
-    .inr (.sort nav.curRow nav.curColIdx (ModifyTable.sort nav.tbl nav.curColIdx grpIdxs true))
+    let grpIdxs := nav.group.filterMap nav.colNames.idxOf?
+    .inr (.sort nav.curRow nav.curColIdx nav.group (ModifyTable.sort nav.tbl nav.curColIdx grpIdxs true))
   | .colSel .sortDesc =>
     let grpIdxs := nav.group.filterMap nav.colNames.idxOf?
-    .inr (.sort nav.curRow nav.curColIdx (ModifyTable.sort nav.tbl nav.curColIdx grpIdxs false))
+    .inr (.sort nav.curRow nav.curColIdx nav.group (ModifyTable.sort nav.tbl nav.curColIdx grpIdxs false))
   | _ => .inl (nav.dispatch cmd rowPg colPg)
 
 -- Main loop: Cmd-driven with g-prefix state
@@ -110,7 +111,7 @@ partial def runViewerMod {t : Type} [ModifyTable t] [RenderTable t]
       match act with
       | .quit => pure ()
       | .del col grp' tbl' => runViewerMod tbl' col grp' ""
-      | .sort row col tbl' => runViewerMod tbl' col grp "" row  -- keep cursor
+      | .sort row col grp' tbl' => runViewerMod tbl' col grp' "" row
     else IO.eprintln "No rows"
   else IO.eprintln "No columns"
 
@@ -134,7 +135,6 @@ def main (args : List String) : IO Unit := do
   else
     let ok ← Backend.init
     if !ok then Term.shutdown; IO.eprintln "Backend init failed"; return
-    let prql := s!"from `{path}` | take 100000"
-    match ← Backend.query (Backend.mkLimited prql 100000) with
+    match ← AdbcTable.fromFile path with
     | none     => Term.shutdown; Backend.shutdown; IO.eprintln "Query failed"
-    | some stbl => runViewerMod (MemTable.ofAdbcTable stbl) 0 #[] cmdStr; Term.shutdown; Backend.shutdown
+    | some tbl => runViewerMod tbl 0 #[] cmdStr; Term.shutdown; Backend.shutdown

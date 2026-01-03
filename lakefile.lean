@@ -21,7 +21,8 @@ lean_lib Tc where
   roots := #[`Tc.Offset, `Tc.Nav, `Tc.Render, `Tc.Key, `Tc.App,
              `Tc.Term, `Tc.Types, `Tc.Error,
              `Tc.Data.Table, `Tc.Data.CSV, `Tc.Data.MemTable,
-             `Tc.Data.ADBC.FFI, `Tc.Data.ADBC.Prql, `Tc.Data.ADBC.Backend, `Tc.Data.ADBC.Table]
+             `Tc.Data.ADBC.FFI, `Tc.Data.ADBC.Prql, `Tc.Data.ADBC.Backend,
+             `Tc.Data.ADBC.Table]
 
 @[default_target]
 lean_exe tc where

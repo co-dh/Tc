@@ -3,9 +3,11 @@
   Views store PRQL strings, compile to SQL on demand
 -/
 import Tc.Data.ADBC.FFI
-import Tc.Types
+import Tc.Data.ADBC.Table
 import Tc.Data.ADBC.Prql
 import Tc.Error
+
+open Tc
 
 namespace Backend
 

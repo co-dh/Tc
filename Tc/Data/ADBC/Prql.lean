@@ -86,18 +86,10 @@ def Query.agg (q : Query) (keys : Array String) (funcs : Array Agg) (cols : Arra
   let aggs := funcs.flatMap fun f => cols.map fun c => (f, s!"{f.short}_{c}", c)
   q.pipe (.group keys aggs)
 
--- | Format cell value as PRQL literal
-def cellToPrql : Cell → String
-  | .null => "null"
-  | .int n => s!"{n}"
-  | .float f => s!"{f}"
-  | .str s => s!"'{s}'"
-  | .bool b => if b then "true" else "false"
-
 -- | Build PRQL filter from column names and cell values
 -- Example: cols=#["a","b"], vals=#[.int 1, .str "x"] → "a == 1 && b == 'x'"
 def buildFilter (cols : Array String) (vals : Array Cell) : String :=
-  cols.mapIdx (fun i cn => s!"{quote cn} == {cellToPrql (vals.getD i .null)}")
+  cols.mapIdx (fun i cn => s!"{quote cn} == {(vals.getD i .null).toPrql}")
     |>.toList |> String.intercalate " && "
 
 -- | Parse agg function name to Agg

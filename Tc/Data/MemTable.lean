@@ -97,11 +97,6 @@ def sort (t : MemTable) (idxs : Array Nat) (asc : Bool) : MemTable :=
     | .strs data => .strs (perm.map fun i => data.getD i "")
   { t with cols := cols' }
 
--- | Convert AdbcTable (ADBC/Arrow) to MemTable for modification support
-def ofAdbcTable (st : AdbcTable) : MemTable :=
-  let cols := (Array.range st.nCols).map fun c => st.getCol c 0 st.nRows
-  ⟨st.colNames, cols⟩
-
 end MemTable
 
 -- ModifyTable instance for MemTable (extends ReadTable)
@@ -117,11 +112,11 @@ instance : ModifyTable MemTable where
 -- Render MemTable using unified C render
 -- C computes widths if inWidths is empty, returns computed widths
 instance : RenderTable MemTable where
-  render nav inWidths colOff r0 r1 st :=
+  render nav inWidths colOff r0 r1 moveDir st :=
     -- call C render with all cols, display order, etc. (empty fmts = use Column tag)
     Term.renderTable nav.tbl.cols nav.tbl.names #[] inWidths nav.dispColIdxs
       (MemTable.nRows nav.tbl).toUInt64 nav.nKeys.toUInt64 colOff.toUInt64
       r0.toUInt64 r1.toUInt64 nav.curRow.toUInt64 nav.curColIdx.toUInt64
-      nav.selColIdxs nav.selRows st
+      moveDir.toInt64 nav.selColIdxs nav.selRows st
 
 end Tc
