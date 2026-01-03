@@ -5,17 +5,6 @@
 import Std.Data.HashMap
 import Tc.Data.ADBC.FFI
 
--- | Index into display order (keyCols first, then rest)
-structure DispIdx where val : Nat deriving Repr, Inhabited, BEq
-
--- | Access array by DispIdx
-def Array.getDisp (arr : Array α) (idx : DispIdx) (default : α) : α :=
-  arr.getD idx.val default
-
--- | Find index in array, returns DispIdx
-def Array.findDispIdx? (arr : Array α) (p : α → Bool) : Option DispIdx :=
-  arr.findIdx? p |>.map (⟨·⟩)
-
 -- | Join array of strings with separator
 def Array.join (arr : Array String) (sep : String) : String :=
   String.intercalate sep arr.toList
@@ -46,7 +35,7 @@ inductive Column where
 namespace Column
 
 -- | Get cell at row index
-def get (col : Column) (i : Nat) : Cell :=
+@[inline] def get (col : Column) (i : Nat) : Cell :=
   match col with
   | .ints data => .int (data.getD i 0)
   | .floats data =>
@@ -148,24 +137,19 @@ end Cell
 
 -- | DisplayInfo: metadata for navigation/PRQL building (no cell access)
 structure DisplayInfo where
-  colNames  : Array String
-  colWidths : Array Nat
-  nRows     : Nat
-  nCols     : Nat
+  colNames : Array String
+  nRows    : Nat
+  nCols    : Nat
 
 -- | Zero-copy table: data stays in Arrow/C memory, accessed via FFI
 structure SomeTable where
-  qr        : Adbc.QueryResult   -- arrow data (opaque, C memory)
-  colNames  : Array String       -- cached column names
-  colWidths : Array Nat          -- cached column widths
-  colFmts   : Array Char         -- cached format chars per column
-  nRows     : Nat
-  nCols     : Nat
+  qr       : Adbc.QueryResult   -- arrow data (opaque, C memory)
+  colNames : Array String       -- cached column names
+  colFmts  : Array Char         -- cached format chars per column
+  nRows    : Nat
+  nCols    : Nat
 
 namespace SomeTable
-
--- | Cap for column width
-def maxColWidth : Nat := 50
 
 -- | Build SomeTable from QueryResult (caches metadata, no cell copies)
 def ofQueryResult (qr : Adbc.QueryResult) : IO SomeTable := do
@@ -178,9 +162,7 @@ def ofQueryResult (qr : Adbc.QueryResult) : IO SomeTable := do
     names := names.push n
     let fmt ← Adbc.colFmt qr i.toUInt64
     fmts := fmts.push (if h : fmt.length > 0 then fmt.toList[0] else '?')
-  let widths ← Adbc.colWidths qr
-  let widths := widths.map (min maxColWidth)
-  pure ⟨qr, names, widths, fmts, nr.toNat, nc.toNat⟩
+  pure ⟨qr, names, fmts, nr.toNat, nc.toNat⟩
 
 -- | Get cell at (row, col) - pure interface via unsafeIO
 @[inline] unsafe def getIdxImpl (t : SomeTable) (row col : Nat) : Cell :=
@@ -201,7 +183,7 @@ def getIdx (t : SomeTable) (_ _ : Nat) : Cell := .null
 
 -- | Get DisplayInfo
 def info (t : SomeTable) : DisplayInfo :=
-  ⟨t.colNames, t.colWidths, t.nRows, t.nCols⟩
+  ⟨t.colNames, t.nRows, t.nCols⟩
 
 -- | Extract column slice [r0, r1) as typed Column
 -- Arrow formats: l/i/s/c = signed int64/32/16/8, L/I/S/C = unsigned, g/f = float64/32
@@ -250,7 +232,7 @@ end SomeTable
 inductive PureKey where
   -- navigation
   | j | k | l | h | g | G | _0 | _1 | dollar | c_d | c_u
-  | colJump (idx : DispIdx)
+  | colJump (idx : Nat)
   -- view transforms
   | asc | desc | D | I | dup | swap
   | bang | spc | incDec (inc : Bool) | q | esc

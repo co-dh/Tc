@@ -12,27 +12,19 @@ namespace Tc
 instance : ReadTable SomeTable where
   nRows    := (·.nRows)
   colNames := (·.colNames)
-  colWidths:= (·.colWidths)
   cell     := fun t r c => (t.getIdx r c).toString
 
--- RenderTable instance for SomeTable (uses Term.renderTable)
+-- RenderTable instance for SomeTable
+-- Extracts all columns for width computation (once), then renders
 instance : RenderTable SomeTable where
-  render nav colOff r0 r1 st := do
-    let w ← Term.width
-    -- find visible columns (skip first colOff display columns)
-    let mut visColIdxs : Array Nat := #[]
-    let mut x : Nat := 0
-    for h : dispPos in [:nav.dispColIdxs.size] do
-      let di := nav.dispColIdxs[dispPos]
-      if dispPos < colOff then continue
-      if x >= w.toNat then break
-      visColIdxs := visColIdxs.push di
-      x := x + (nav.tbl.colWidths.getD di 10) + 1
-    -- extract visible columns as typed Column arrays
-    let visCols := visColIdxs.map fun di => nav.tbl.getCol di r0 r1
+  render nav inWidths colOff r0 r1 st := do
+    -- extract all columns (full range for width calc, 0..nRows)
+    let allCols := (Array.range nav.tbl.nCols).map fun c =>
+      nav.tbl.getCol c 0 nav.tbl.nRows
     -- call unified C render
-    Term.renderTable visCols nav.tbl.colNames nav.tbl.colWidths visColIdxs
-      nav.nKeys.toUInt64 colOff.toUInt64 r0.toUInt64 r1.toUInt64 nav.curRow.toUInt64 nav.curColIdx.toUInt64
+    Term.renderTable allCols nav.tbl.colNames inWidths nav.dispColIdxs
+      nav.tbl.nRows.toUInt64 nav.nKeys.toUInt64 colOff.toUInt64
+      r0.toUInt64 r1.toUInt64 nav.curRow.toUInt64 nav.curColIdx.toUInt64
       nav.selColIdxs nav.selRows st
 
 end Tc

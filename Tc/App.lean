@@ -17,39 +17,38 @@ inductive LoopAction (t : Type) where
 
 -- Main loop with g-prefix state
 partial def mainLoop {nRows nCols : Nat} {t : Type} [ModifyTable t] [RenderTable t]
-    (nav : NavState nRows nCols t) (view : ViewState nCols) (cumW : CumW nCols)
-    (gPrefix : Bool := false) : IO (LoopAction t) := do
-  let view' ← render nav view cumW
+    (nav : NavState nRows nCols t) (view : ViewState) (gPrefix : Bool := false)
+    : IO (LoopAction t) := do
+  let view' ← render nav view
   let ev ← Term.pollEvent
   let h ← Term.height
   let rowPg := (h.toNat - reservedLines) / 2
   let colPg := colPageSize
   if ev.type == Term.eventKey then
     if ev.ch == 'q'.toNat.toUInt32 || ev.key == Term.keyEsc then return .quit
-    if ev.ch == 'g'.toNat.toUInt32 && !gPrefix then
-      return ← mainLoop nav view' cumW true
+    if ev.ch == 'g'.toNat.toUInt32 && !gPrefix then return ← mainLoop nav view' true
   match keyToCmd ev gPrefix with
   | some "d~" =>
     let (tbl', grp') := ModifyTable.del nav.tbl nav.curColIdx nav.selColIdxs nav.group
-    return .del nav.curCol grp' tbl'
-  | some cmd => mainLoop (nav.dispatch cmd rowPg colPg) view' cumW
-  | none => mainLoop nav view' cumW
+    return .del nav.curDispCol grp' tbl'
+  | some cmd => mainLoop (nav.dispatch cmd rowPg colPg) view'
+  | none => mainLoop nav view'
 
 -- Read-only loop (no delete support)
 partial def loopRO {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
-    (nav : NavState nRows nCols t) (view : ViewState nCols) (cumW : CumW nCols)
-    (gPrefix : Bool := false) : IO Unit := do
-  let view' ← render nav view cumW
+    (nav : NavState nRows nCols t) (view : ViewState) (gPrefix : Bool := false)
+    : IO Unit := do
+  let view' ← render nav view
   let ev ← Term.pollEvent
   let h ← Term.height
   let rowPg := (h.toNat - reservedLines) / 2
   let colPg := colPageSize
   if ev.type == Term.eventKey then
     if ev.ch == 'q'.toNat.toUInt32 || ev.key == Term.keyEsc then return
-    if ev.ch == 'g'.toNat.toUInt32 && !gPrefix then return ← loopRO nav view' cumW true
+    if ev.ch == 'g'.toNat.toUInt32 && !gPrefix then return ← loopRO nav view' true
   match keyToCmd ev gPrefix with
-  | some cmd => loopRO (nav.dispatch cmd rowPg colPg) view' cumW
-  | none => loopRO nav view' cumW
+  | some cmd => loopRO (nav.dispatch cmd rowPg colPg) view'
+  | none => loopRO nav view'
 
 -- Run viewer (read-only, no delete support)
 def runViewer {t : Type} [ReadTable t] [RenderTable t] (tbl : t) : IO Unit := do
@@ -57,10 +56,8 @@ def runViewer {t : Type} [ReadTable t] [RenderTable t] (tbl : t) : IO Unit := do
   let nRows := ReadTable.nRows tbl
   if hc : nCols > 0 then
     if hr : nRows > 0 then
-      have hWidths : (ReadTable.colWidths tbl).size = nCols := sorry
-      let cumW : CumW nCols := hWidths ▸ mkCumW (ReadTable.colWidths tbl)
       let nav := NavState.new tbl rfl rfl hr hc
-      loopRO nav (ViewState.default hc) cumW
+      loopRO nav ViewState.default
     else IO.eprintln "No rows"
   else IO.eprintln "No columns"
 
@@ -71,10 +68,8 @@ partial def runViewerMod {t : Type} [ModifyTable t] [RenderTable t]
   let nRows := ReadTable.nRows tbl
   if hc : nCols > 0 then
     if hr : nRows > 0 then
-      have hWidths : (ReadTable.colWidths tbl).size = nCols := sorry
-      let cumW : CumW nCols := hWidths ▸ mkCumW (ReadTable.colWidths tbl)
       let nav := NavState.newAt tbl rfl rfl hr hc initCol grp
-      match ← mainLoop nav (ViewState.default hc) cumW with
+      match ← mainLoop nav ViewState.default with
       | .quit => pure ()
       | .del col grp' tbl' => runViewerMod tbl' col grp'
     else IO.eprintln "No rows"

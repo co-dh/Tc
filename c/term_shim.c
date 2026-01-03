@@ -190,6 +190,17 @@ static int col_is_num(lean_obj_arg col) {
     return tag == COL_INTS || tag == COL_FLOATS;
 }
 
+// | Compute column width by scanning data (header + r0..r1 range)
+static int compute_col_width(lean_obj_arg col, const char* name, size_t r0, size_t r1) {
+    int w = strlen(name);  // start with header width
+    char buf[256];
+    for (size_t r = r0; r < r1; r++) {
+        int len = format_col_cell(col, r, buf, sizeof(buf));
+        if (len > w) w = len;
+    }
+    return w;
+}
+
 // | Print padded string
 static void print_pad(int x, int y, int w, uint32_t fg, uint32_t bg, const char* s, int right) {
     int len = strlen(s);
@@ -221,18 +232,20 @@ static void build_sel_bits(b_lean_obj_arg arr, size_t n, uint64_t* bits) {
 }
 #define IS_SEL(bits, v) ((v) < 256 && ((bits)[(v)/64] & (1ULL << ((v)%64))))
 
-// | Unified table render - reads Column directly (no Cell alloc)
-// cols: Array Column (visible columns only)
-// colIdxs: original column indices for each visible column
-// r0, r1: row range to render
+// | Unified table render - reads Column directly, computes widths if needed
+// allCols: Array Column (ALL columns)
+// colIdxs: display order indices
+// nTotalRows: total rows in table (for width calc)
+// inWidths: input widths (empty = compute), returns computed widths
 lean_obj_res lean_render_table(
-    b_lean_obj_arg cols,      // Array Column - visible columns
+    b_lean_obj_arg allCols,   // Array Column - ALL columns
     b_lean_obj_arg names,     // Array String - all column names
-    b_lean_obj_arg widths,    // Array Nat - all column widths
-    b_lean_obj_arg colIdxs,   // Array Nat - original indices of visible cols
+    b_lean_obj_arg inWidths,  // Array Nat - input widths (empty = compute)
+    b_lean_obj_arg colIdxs,   // Array Nat - display order (all cols, keys first)
+    uint64_t nTotalRows,      // total row count
     uint64_t nKeys,           // number of key columns (for separator)
-    uint64_t colOff,          // column offset (for separator calc)
-    uint64_t r0, uint64_t r1, // row range [r0, r1)
+    uint64_t colOff,          // first visible column offset
+    uint64_t r0, uint64_t r1, // visible row range [r0, r1)
     uint64_t curRow, uint64_t curCol,
     b_lean_obj_arg selCols,
     b_lean_obj_arg selRows,
@@ -240,9 +253,9 @@ lean_obj_res lean_render_table(
     lean_obj_arg world)
 {
     int screenW = tb_width();
-    size_t nVisCols = lean_array_size(cols);
+    size_t nCols = lean_array_size(allCols);
     size_t nRows = r1 - r0;  // visible row count
-    char buf[64];
+    char buf[256];
 
     // extract styles
     uint32_t stFg[NUM_STYLES], stBg[NUM_STYLES];
@@ -256,16 +269,32 @@ lean_obj_res lean_render_table(
     build_sel_bits(selCols, lean_array_size(selCols), colBits);
     build_sel_bits(selRows, lean_array_size(selRows), rowBits);
 
-    // compute x positions for visible columns
-    int* xs = malloc(nVisCols * sizeof(int));
-    int* ws = malloc(nVisCols * sizeof(int));
+    // compute or use widths for ALL columns
+    int* allWidths = malloc(nCols * sizeof(int));
+    int needCompute = lean_array_size(inWidths) == 0;
+    for (size_t c = 0; c < nCols; c++) {
+        if (needCompute) {
+            lean_obj_arg col = lean_array_get_core(allCols, c);
+            const char* name = lean_string_cstr(lean_array_get_core(names, c));
+            allWidths[c] = compute_col_width(col, name, 0, nTotalRows);
+        } else {
+            allWidths[c] = lean_unbox(lean_array_get_core(inWidths, c));
+        }
+    }
+
+    // compute x positions for visible columns (starting from colOff)
+    size_t nDispCols = lean_array_size(colIdxs);
+    int* xs = malloc(nDispCols * sizeof(int));
+    int* ws = malloc(nDispCols * sizeof(int));
+    size_t nVisCols = 0;  // actual visible count
     int x = 0;
-    for (size_t c = 0; c < nVisCols && x < screenW; c++) {
+    for (size_t c = colOff; c < nDispCols && x < screenW; c++) {
         size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, c));
-        int w = lean_unbox(lean_array_get_core(widths, origIdx));
+        int w = allWidths[origIdx];
         if (x + w > screenW) w = screenW - x;
-        xs[c] = x;
-        ws[c] = w;
+        xs[nVisCols] = x;
+        ws[nVisCols] = w;
+        nVisCols++;
         x += w + 1;
     }
 
@@ -277,7 +306,8 @@ lean_obj_res lean_render_table(
     // header/footer
     int yFoot = nRows + 1;
     for (size_t c = 0; c < nVisCols; c++) {
-        size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, c));
+        size_t dispIdx = colOff + c;  // index into colIdxs
+        size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, dispIdx));
         const char* name = lean_string_cstr(lean_array_get_core(names, origIdx));
         int isSel = IS_SEL(colBits, origIdx);
         int isCur = (origIdx == curCol);
@@ -299,21 +329,29 @@ lean_obj_res lean_render_table(
         int isCurRow = (row == curRow);
 
         for (size_t c = 0; c < nVisCols; c++) {
-            size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, c));
+            size_t dispIdx = colOff + c;
+            size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, dispIdx));
             int isSel = IS_SEL(colBits, origIdx);
             int isCurCol = (origIdx == curCol);
             int si = get_style(isCurRow && isCurCol, isSelRow, isSel, isCurRow, isCurCol);
 
-            lean_obj_arg col = lean_array_get_core(cols, c);
-            format_col_cell(col, row, buf, sizeof(buf));  // read from Column at original row
+            lean_obj_arg col = lean_array_get_core(allCols, origIdx);
+            format_col_cell(col, row, buf, sizeof(buf));
             print_pad(xs[c], y, ws[c], stFg[si], stBg[si], buf, col_is_num(col));
         }
         if (sepX > 0) tb_set_cell(sepX, y, '|', stFg[STYLE_DEFAULT], stBg[STYLE_DEFAULT]);
     }
 
+    // build return Array Nat for widths
+    lean_object* outWidths = lean_alloc_array(nCols, nCols);
+    for (size_t c = 0; c < nCols; c++) {
+        lean_array_set_core(outWidths, c, lean_box(allWidths[c]));
+    }
+
     free(xs);
     free(ws);
-    return lean_io_result_mk_ok(lean_box(0));
+    free(allWidths);
+    return lean_io_result_mk_ok(outWidths);
 }
 
 // tb_buffer_str() -> String (screen as string, no escape sequences)

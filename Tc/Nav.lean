@@ -88,7 +88,7 @@ variable {t : Type} [ReadTable t]
 -- Accessors
 def tbl (nav : NavState nRows nCols t) : t := nav.tbl_
 def curRow (nav : NavState nRows nCols t) : Nat := nav.row_.cur.val
-def curCol (nav : NavState nRows nCols t) : Nat := nav.col_.cur.val  -- display index
+def curDispCol (nav : NavState nRows nCols t) : Nat := nav.col_.cur.val  -- display index
 def colNames (nav : NavState nRows nCols t) : Array String := ReadTable.colNames nav.tbl_
 def nKeys (nav : NavState nRows nCols t) : Nat := nav.group_.size
 def group (nav : NavState nRows nCols t) : Array String := nav.group_

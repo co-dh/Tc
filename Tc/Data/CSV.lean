@@ -11,7 +11,7 @@ def parse (s : String) (delim : Char := ',') : Array (Array String) :=
   let n := s.length
   let rec go (i : Nat) (st : St) (fld : String) (row : Array String) (rows : Array (Array String)) : Array (Array String) :=
     if i < n then
-      let c := s.get ⟨i⟩
+      let c := String.Pos.Raw.get s ⟨i⟩
       match st with
       | .row =>  -- start of row
         if c == '"' then go (i+1) .quot "" row rows

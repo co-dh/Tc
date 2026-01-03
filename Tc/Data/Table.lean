@@ -10,7 +10,6 @@ namespace Tc
 class ReadTable (α : Type) where
   nRows    : α → Nat                          -- total row count
   colNames : α → Array String                 -- column names (size = nCols)
-  colWidths: α → Array Nat                    -- column widths for rendering
   cell     : α → Nat → Nat → String           -- cell at (row, col)
 
 -- Derived: column count from colNames.size

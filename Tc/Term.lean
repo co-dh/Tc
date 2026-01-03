@@ -89,12 +89,13 @@ opaque printPadC : UInt32 → UInt32 → UInt32 → UInt32 → UInt32 → @& Str
 opaque renderCol : UInt32 → UInt32 → UInt32 → @& Array UInt32 → @& Array UInt32
                  → @& Array String → @& Array UInt8 → IO Unit
 
--- | Unified table render (C reads Column directly, no Cell alloc)
--- cols, names, widths, colIdxs, nKeys, colOff, r0, r1, curRow, curCol, selCols, selRows, styles
+-- | Unified table render (C reads Column directly, computes widths if needed)
+-- allCols, names, inWidths, colIdxs, nTotalRows, nKeys, colOff, r0, r1, curRow, curCol, selCols, selRows, styles
+-- Returns computed widths (Array Nat)
 @[extern "lean_render_table"]
 opaque renderTable : @& Array Column → @& Array String → @& Array Nat
-                   → @& Array Nat → UInt64 → UInt64 → UInt64 → UInt64 → UInt64 → UInt64
-                   → @& Array Nat → @& Array Nat → @& Array UInt32 → IO Unit
+                   → @& Array Nat → UInt64 → UInt64 → UInt64 → UInt64 → UInt64 → UInt64 → UInt64
+                   → @& Array Nat → @& Array Nat → @& Array UInt32 → IO (Array Nat)
 
 -- | Print string left-aligned, truncated/padded to width
 def printPad (x y w : UInt32) (fg bg : UInt32) (s : String) : IO Unit :=
