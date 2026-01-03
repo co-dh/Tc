@@ -14,8 +14,9 @@ open Tc
 inductive LoopAction (t : Type) where
   | quit
   | del (curCol : Nat) (grp : Array String) (tbl : t)
+  | sort (tbl : t)  -- sorted table (reset row cursor)
 
--- Execute single Cmd, return new nav or LoopAction for del
+-- Execute single Cmd, return new nav or LoopAction for del/sort
 def execCmd {nRows nCols : Nat} {t : Type} [ModifyTable t]
     (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat)
     : Sum (NavState nRows nCols t) (LoopAction t) :=
@@ -23,6 +24,8 @@ def execCmd {nRows nCols : Nat} {t : Type} [ModifyTable t]
   | .col .del =>
     let (tbl', grp') := ModifyTable.del nav.tbl nav.curColIdx nav.selColIdxs nav.group
     .inr (.del nav.curDispCol grp' tbl')
+  | .colSel .sortAsc => .inr (.sort (ModifyTable.sort nav.tbl nav.curColIdx nav.selColIdxs true))
+  | .colSel .sortDesc => .inr (.sort (ModifyTable.sort nav.tbl nav.curColIdx nav.selColIdxs false))
   | _ => .inl (nav.dispatch cmd rowPg colPg)
 
 -- Main loop: Cmd-driven with g-prefix state
@@ -103,6 +106,7 @@ partial def runViewerMod {t : Type} [ModifyTable t] [RenderTable t]
       match act with
       | .quit => pure ()
       | .del col grp' tbl' => runViewerMod tbl' col grp' ""
+      | .sort tbl' => runViewerMod tbl' initCol grp ""  -- keep col/grp, reset row
     else IO.eprintln "No rows"
   else IO.eprintln "No columns"
 

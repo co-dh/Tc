@@ -90,10 +90,11 @@ opaque renderCol : UInt32 → UInt32 → UInt32 → @& Array UInt32 → @& Array
                  → @& Array String → @& Array UInt8 → IO Unit
 
 -- | Unified table render (C reads Column directly, computes widths if needed)
--- allCols, names, inWidths, colIdxs, nTotalRows, nKeys, colOff, r0, r1, curRow, curCol, selCols, selRows, styles
+-- allCols, names, fmts, inWidths, colIdxs, nTotalRows, nKeys, colOff, r0, r1, curRow, curCol, selCols, selRows, styles
+-- fmts: format chars for type indicators (empty = use Column tag)
 -- Returns computed widths (Array Nat)
 @[extern "lean_render_table"]
-opaque renderTable : @& Array Column → @& Array String → @& Array Nat
+opaque renderTable : @& Array Column → @& Array String → @& Array Char → @& Array Nat
                    → @& Array Nat → UInt64 → UInt64 → UInt64 → UInt64 → UInt64 → UInt64 → UInt64
                    → @& Array Nat → @& Array Nat → @& Array UInt32 → IO (Array Nat)
 

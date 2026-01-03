@@ -31,10 +31,11 @@ private def keyCmds : Array (UInt16 × Cmd) := #[
   (Term.keyHome, .row .home), (Term.keyEnd, .row .end_)
 ]
 
--- Other char → Cmd (selection, group, delete)
+-- Other char → Cmd (selection, group, delete, sort)
 private def charCmds : Array (Char × Cmd) := #[
   ('t', .colSel .toggle), ('T', .rowSel .toggle),
-  ('!', .grp .toggle), ('d', .col .del)
+  ('!', .grp .toggle), ('d', .col .del),
+  ('[', .colSel .sortAsc), (']', .colSel .sortDesc)
 ]
 
 -- Normalize event to char (arrow→hjkl, or raw char)

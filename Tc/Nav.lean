@@ -10,23 +10,26 @@ import Tc.Offset
 import Tc.Data.Table
 import Tc.Types
 
--- Verb: movement + toggle + del
+-- Verb: movement + toggle + del + sort
 inductive Verb where
   | next | prev | pgNext | pgPrev | home | end_  -- movement
   | toggle                                        -- toggle
   | del                                           -- delete
+  | sortAsc | sortDesc                            -- sort
   deriving Repr, BEq, DecidableEq
 
 namespace Verb
--- Verb to char: n/p/N/P/h/e/t/d
+-- Verb to char: n/p/N/P/h/e/t/d/[/]
 def toChar : Verb → Char
   | .next => 'n' | .prev => 'p' | .pgNext => 'N' | .pgPrev => 'P'
   | .home => 'h' | .end_ => 'e' | .toggle => 't' | .del => 'd'
+  | .sortAsc => '[' | .sortDesc => ']'
 
 -- Char to verb
 def ofChar? : Char → Option Verb
   | 'n' => some .next | 'p' => some .prev | 'N' => some .pgNext | 'P' => some .pgPrev
   | 'h' => some .home | 'e' => some .end_ | 't' => some .toggle | 'd' => some .del
+  | '[' => some .sortAsc | ']' => some .sortDesc
   | _ => none
 
 -- Isomorphism: ofChar? ∘ toChar = some
@@ -39,12 +42,12 @@ inductive Cmd where
   | row (v : Verb)     -- row next/prev/...
   | col (v : Verb)     -- col next/prev/.../del
   | rowSel (v : Verb)  -- rowSel toggle
-  | colSel (v : Verb)  -- colSel toggle
+  | colSel (v : Verb)  -- colSel toggle/sortAsc/sortDesc (sort by selected cols)
   | grp (v : Verb)     -- grp toggle
   deriving Repr, BEq, DecidableEq
 
 namespace Cmd
--- Cmd to string: "rn" "cp" "st" etc
+-- Cmd to string: "rn" "cp" "C[" etc
 def toString : Cmd → String
   | .row v    => s!"r{v.toChar}"
   | .col v    => s!"c{v.toChar}"
@@ -52,7 +55,7 @@ def toString : Cmd → String
   | .colSel v => s!"C{v.toChar}"
   | .grp v    => s!"g{v.toChar}"
 
--- String to cmd: "rn" → row next
+-- String to cmd: "rn" → row next, "C[" → colSel sortAsc
 def ofString? (s : String) : Option Cmd :=
   if s.length != 2 then none else
   let obj := s.toList[0]!

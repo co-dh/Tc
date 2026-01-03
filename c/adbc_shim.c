@@ -387,30 +387,32 @@ static int is_null(struct ArrowArray* arr, int64_t row) {
     return !(validity[idx / 8] & (1 << (idx % 8)));
 }
 
-// | Cell info: batch array + format + local row (NULL arr if invalid)
-typedef struct { struct ArrowArray* arr; const char* fmt; int64_t lr; } CellInfo;
+// | Cell info: batch array + schema + format + local row (NULL arr if invalid)
+typedef struct { struct ArrowArray* arr; struct ArrowSchema* sch; const char* fmt; int64_t lr; } CellInfo;
 
 // | Get cell info (returns NULL arr if out of bounds)
 static CellInfo get_cell(QueryResult* qr, int64_t row, int64_t col) {
-    CellInfo ci = {NULL, NULL, 0};
+    CellInfo ci = {NULL, NULL, NULL, 0};
     int64_t bi;
     if (!find_batch(qr, row, &bi, &ci.lr)) return ci;
     if (col >= qr->schema.n_children) return ci;
     ci.arr = qr->batches[bi].children[col];
-    ci.fmt = qr->schema.children[col]->format;
+    ci.sch = qr->schema.children[col];
+    ci.fmt = ci.sch->format;
     return ci;
 }
 
 // forward decl
 static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t lr, char* buf, size_t buflen, uint8_t decimals);
+static size_t format_cell_full(struct ArrowArray* arr, struct ArrowSchema* sch, int64_t lr, char* buf, size_t buflen, uint8_t decimals);
 
-// | Get cell as string (uses format_cell_batch, 3 decimal places)
+// | Get cell as string (uses format_cell_full with schema, 3 decimal places)
 lean_obj_res lean_qr_cell_str(b_lean_obj_arg qr_obj, uint64_t row, uint64_t col, lean_obj_arg world) {
     QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
     CellInfo c = get_cell(qr, row, col);
     if (!c.arr) return lean_io_result_mk_ok(lean_mk_string(""));
     char buf[CELL_BUF_SIZE];
-    format_cell_batch(c.arr, c.fmt, c.lr, buf, sizeof(buf), 3);
+    format_cell_full(c.arr, c.sch, c.lr, buf, sizeof(buf), 3);
     return lean_io_result_mk_ok(lean_mk_string(buf));
 }
 
@@ -481,6 +483,18 @@ static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t
     if (f == 'C') return snprintf(buf, buflen, "%u", ((const uint8_t*)arr->buffers[1])[arr->offset + lr]);
     if (f == 'g') return snprintf(buf, buflen, "%.*f", decimals, ((const double*)arr->buffers[1])[arr->offset + lr]);
     if (f == 'f') return snprintf(buf, buflen, "%.*f", decimals, ((const float*)arr->buffers[1])[arr->offset + lr]);
+    if (f == 'e') {  // half-float (16-bit) - convert via bit manipulation
+        uint16_t h = ((const uint16_t*)arr->buffers[1])[arr->offset + lr];
+        uint32_t sign = (h & 0x8000) << 16;
+        uint32_t exp = (h >> 10) & 0x1F;
+        uint32_t mant = h & 0x3FF;
+        uint32_t f32;
+        if (exp == 0) f32 = sign | (mant << 13);  // subnormal
+        else if (exp == 31) f32 = sign | 0x7F800000 | (mant << 13);  // inf/nan
+        else f32 = sign | ((exp + 112) << 23) | (mant << 13);  // normal
+        float val; memcpy(&val, &f32, 4);
+        return snprintf(buf, buflen, "%.*f", decimals, (double)val);
+    }
     if (f == 'u' || f == 'z') {  // utf8, binary
         const int32_t* off = (const int32_t*)arr->buffers[1];
         const char* data = (const char*)arr->buffers[2];
@@ -526,8 +540,122 @@ static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t
         int64_t s = ((const int64_t*)arr->buffers[1])[arr->offset + lr] / 1000000;
         return snprintf(buf, buflen, "%02d:%02d:%02d", (int)((s/3600)%24), (int)((s/60)%60), (int)(s%60));
     }
+    if (f == 't' && fmt[1] == 'd') {  // date32 (days since epoch)
+        int32_t days = ((const int32_t*)arr->buffers[1])[arr->offset + lr];
+        time_t secs = (time_t)days * 86400;
+        struct tm* tm = gmtime(&secs);
+        return snprintf(buf, buflen, "%04d-%02d-%02d", tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday);
+    }
+    if (f == '+' && fmt[1] == 'l') {  // list: show [n] v1; v2; v3
+        if (!arr->buffers[1]) { buf[0] = '\0'; return 0; }
+        const int32_t* off = (const int32_t*)arr->buffers[1];
+        int64_t idx = arr->offset + lr;
+        int32_t start = off[idx], end = off[idx + 1];
+        int32_t n = end - start;
+        int pos = snprintf(buf, buflen, "[%d]", n);
+        if (n > 0 && arr->n_children > 0 && arr->children && arr->children[0] && arr->children[0]->buffers[1]) {
+            struct ArrowArray* child = arr->children[0];
+            for (int32_t i = 0; i < n && i < 3 && (size_t)pos < buflen - 10; i++) {
+                pos += snprintf(buf + pos, buflen - pos, "%s", i ? "; " : " ");
+                int64_t v = ((const int64_t*)child->buffers[1])[start + i];
+                pos += snprintf(buf + pos, buflen - pos, "%ld", (long)v);
+            }
+            if (n > 3 && (size_t)pos < buflen - 4) pos += snprintf(buf + pos, buflen - pos, "...");
+        }
+        return pos;
+    }
+    if (f == '+' && fmt[1] == 'L') {  // large_list: show [n] v1; v2; v3
+        if (!arr->buffers[1]) { buf[0] = '\0'; return 0; }
+        const int64_t* off = (const int64_t*)arr->buffers[1];
+        int64_t idx = arr->offset + lr;
+        int64_t start = off[idx], end = off[idx + 1];
+        int64_t n = end - start;
+        int pos = snprintf(buf, buflen, "[%ld]", (long)n);
+        if (n > 0 && arr->n_children > 0 && arr->children && arr->children[0] && arr->children[0]->buffers[1]) {
+            struct ArrowArray* child = arr->children[0];
+            for (int64_t i = 0; i < n && i < 3 && (size_t)pos < buflen - 10; i++) {
+                pos += snprintf(buf + pos, buflen - pos, "%s", i ? "; " : " ");
+                int64_t v = ((const int64_t*)child->buffers[1])[start + i];
+                pos += snprintf(buf + pos, buflen - pos, "%ld", (long)v);
+            }
+            if (n > 3 && (size_t)pos < buflen - 4) pos += snprintf(buf + pos, buflen - pos, "...");
+        }
+        return pos;
+    }
+    if (f == '+' && fmt[1] == 'w') {  // fixed_size_list: show [n] v1; v2
+        int n = 0;
+        const char* p = fmt + 3;  // skip "+w:"
+        while (*p >= '0' && *p <= '9') n = n * 10 + (*p++ - '0');
+        int pos = snprintf(buf, buflen, "[%d]", n);
+        if (n > 0 && arr->n_children > 0 && arr->children && arr->children[0] && arr->children[0]->buffers[1]) {
+            struct ArrowArray* child = arr->children[0];
+            int64_t start = (arr->offset + lr) * n;
+            for (int i = 0; i < n && i < 3 && (size_t)pos < buflen - 10; i++) {
+                pos += snprintf(buf + pos, buflen - pos, "%s", i ? "; " : " ");
+                double v = ((const double*)child->buffers[1])[start + i];
+                pos += snprintf(buf + pos, buflen - pos, "%.3f", v);
+            }
+            if (n > 3 && (size_t)pos < buflen - 4) pos += snprintf(buf + pos, buflen - pos, "...");
+        }
+        return pos;
+    }
+    if (f == '+' && fmt[1] == 's') {  // struct: handled by format_cell_full
+        return snprintf(buf, buflen, "{%d}", (int)arr->n_children);
+    }
+    if (f == 'D') {  // duration (us)
+        int64_t us = ((const int64_t*)arr->buffers[1])[arr->offset + lr];
+        if (us < 0) { us = -us; buf[0] = '-'; buf++; buflen--; }
+        int64_t s = us / 1000000;
+        int ms = (us % 1000000) / 1000;
+        return 1 + snprintf(buf, buflen, "%ld.%03d s", (long)s, ms);
+    }
     buf[0] = '\0';
     return 0;
+}
+
+// | Format cell with schema (handles struct: {n} name=val name=val, max 3 fields)
+static size_t format_cell_full(struct ArrowArray* arr, struct ArrowSchema* sch, int64_t lr, char* buf, size_t buflen, uint8_t decimals) {
+    if (!arr || !sch || !sch->format) { buf[0] = '\0'; return 0; }
+    const char* fmt = sch->format;
+
+    // struct: {n} name=val name=val (max 3 fields, no recursion)
+    if (fmt[0] == '+' && fmt[1] == 's') {
+        int n = arr->n_children;
+        if (!arr->children || !sch->children || n == 0) {
+            return snprintf(buf, buflen, "{%d}", n);
+        }
+        int show = n > 3 ? 3 : n;
+        int pos = snprintf(buf, buflen, "{%d}", n);
+        for (int i = 0; i < show && (size_t)pos < buflen - 10; i++) {
+            struct ArrowArray* ch = arr->children[i];
+            struct ArrowSchema* cs = sch->children[i];
+            if (!ch || !cs || !cs->format) continue;
+            const char* nm = cs->name ? cs->name : "";
+            pos += snprintf(buf + pos, buflen - pos, " %s=", nm);
+            // simple child formatting (no recursion)
+            char cf = cs->format[0];
+            if (cf == 'l' && ch->buffers[1]) {
+                pos += snprintf(buf + pos, buflen - pos, "%ld", (long)((int64_t*)ch->buffers[1])[ch->offset + lr]);
+            } else if ((cf == 'U' || cf == 'u') && ch->buffers[1] && ch->buffers[2]) {
+                const int64_t* off = (cf == 'U') ? (int64_t*)ch->buffers[1] : NULL;
+                const int32_t* off32 = (cf == 'u') ? (int32_t*)ch->buffers[1] : NULL;
+                const char* data = (char*)ch->buffers[2];
+                int64_t idx = ch->offset + lr;
+                int64_t start = off ? off[idx] : off32[idx];
+                int64_t len = off ? (off[idx+1] - start) : (off32[idx+1] - start);
+                if (len > 12) len = 12;
+                pos += snprintf(buf + pos, buflen - pos, "%.*s", (int)len, data + start);
+            } else if (cf == 'b' && ch->buffers[1]) {
+                int v = (((uint8_t*)ch->buffers[1])[(ch->offset + lr)/8] >> ((ch->offset + lr)%8)) & 1;
+                pos += snprintf(buf + pos, buflen - pos, "%s", v ? "T" : "F");
+            } else {
+                pos += snprintf(buf + pos, buflen - pos, "?");
+            }
+        }
+        return pos;
+    }
+
+    return format_cell_batch(arr, fmt, lr, buf, buflen, decimals);
 }
 
 // | Get column widths (max of header and all cells, capped at 50)

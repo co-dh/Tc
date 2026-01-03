@@ -136,6 +136,33 @@ lean_obj_res lean_tb_render_col(uint32_t x, uint32_t w, uint32_t y0,
 #define COL_FLOATS 1
 #define COL_STRS   2
 
+// | VisiData-style type chars from Arrow format
+// # int, % float, ? bool, @ date, space string
+static char type_char_fmt(char fmt) {
+    switch (fmt) {
+    case 'l': case 'i': case 's': case 'c':  // signed int
+    case 'L': case 'I': case 'S': case 'C':  // unsigned int
+        return '#';
+    case 'g': case 'f': case 'e':  // float
+        return '%';
+    case 'b':  // bool
+        return '?';
+    case 't':  // date/time (td/ts/tt)
+        return '@';
+    default:
+        return ' ';
+    }
+}
+
+// | Type char from Column tag (fallback when no format info)
+static char type_char_col(lean_obj_arg col) {
+    switch (lean_obj_tag(col)) {
+    case COL_INTS:   return '#';
+    case COL_FLOATS: return '%';
+    default:         return ' ';
+    }
+}
+
 // | Format integer with comma separators
 static int fmt_int_comma(char* buf, size_t buflen, int64_t v) {
     char tmp[32];
@@ -234,12 +261,14 @@ static void build_sel_bits(b_lean_obj_arg arr, size_t n, uint64_t* bits) {
 
 // | Unified table render - reads Column directly, computes widths if needed
 // allCols: Array Column (ALL columns)
+// fmts: Array Char - format chars for type indicators (empty = use Column tag)
 // colIdxs: display order indices
 // nTotalRows: total rows in table (for width calc)
 // inWidths: input widths (empty = compute), returns computed widths
 lean_obj_res lean_render_table(
     b_lean_obj_arg allCols,   // Array Column - ALL columns
     b_lean_obj_arg names,     // Array String - all column names
+    b_lean_obj_arg fmts,      // Array Char - format chars (empty = use Column tag)
     b_lean_obj_arg inWidths,  // Array Nat - input widths (empty = compute)
     b_lean_obj_arg colIdxs,   // Array Nat - display order (all cols, keys first)
     uint64_t nTotalRows,      // total row count
@@ -255,6 +284,7 @@ lean_obj_res lean_render_table(
     int screenW = tb_width();
     size_t nCols = lean_array_size(allCols);
     size_t nRows = r1 - r0;  // visible row count
+    size_t nFmts = lean_array_size(fmts);  // format chars available?
     char buf[256];
 
     // extract styles
@@ -269,14 +299,14 @@ lean_obj_res lean_render_table(
     build_sel_bits(selCols, lean_array_size(selCols), colBits);
     build_sel_bits(selRows, lean_array_size(selRows), rowBits);
 
-    // compute or use widths for ALL columns
+    // compute or use widths for ALL columns (+1 for type char/trailing space)
     int* allWidths = malloc(nCols * sizeof(int));
     int needCompute = lean_array_size(inWidths) == 0;
     for (size_t c = 0; c < nCols; c++) {
         if (needCompute) {
             lean_obj_arg col = lean_array_get_core(allCols, c);
             const char* name = lean_string_cstr(lean_array_get_core(names, c));
-            allWidths[c] = compute_col_width(col, name, 0, nTotalRows);
+            allWidths[c] = compute_col_width(col, name, 0, nTotalRows) + 1;  // +1 for type/space
         } else {
             allWidths[c] = lean_unbox(lean_array_get_core(inWidths, c));
         }
@@ -298,12 +328,11 @@ lean_obj_res lean_render_table(
         x += w + 1;
     }
 
-    // separator position (after last visible key column)
+    // visible key columns (for double separator ║ after keys)
     size_t visKeys = (colOff < nKeys) ? nKeys - colOff : 0;
     if (visKeys > nVisCols) visKeys = nVisCols;
-    int sepX = visKeys > 0 ? xs[visKeys - 1] + ws[visKeys - 1] : 0;
 
-    // header/footer
+    // header/footer (+ separators and type chars)
     int yFoot = nRows + 1;
     for (size_t c = 0; c < nVisCols; c++) {
         size_t dispIdx = colOff + c;  // index into colIdxs
@@ -313,12 +342,24 @@ lean_obj_res lean_render_table(
         int isCur = (origIdx == curCol);
         int si = isCur ? STYLE_CURSOR : (isSel ? STYLE_SEL_COL : STYLE_HEADER);
         uint32_t fg = stFg[si] | TB_BOLD | TB_UNDERLINE;
-        print_pad(xs[c], 0, ws[c], fg, stBg[si], name, 0);
-        print_pad(xs[c], yFoot, ws[c], fg, stBg[si], name, 0);
-    }
-    if (sepX > 0) {
-        tb_set_cell(sepX, 0, '|', stFg[STYLE_DEFAULT], stBg[STYLE_DEFAULT]);
-        tb_set_cell(sepX, yFoot, '|', stFg[STYLE_DEFAULT], stBg[STYLE_DEFAULT]);
+        // print header with 1 char reserved for type
+        int hw = ws[c] > 1 ? ws[c] - 1 : ws[c];
+        print_pad(xs[c], 0, hw, fg, stBg[si], name, 0);
+        print_pad(xs[c], yFoot, hw, fg, stBg[si], name, 0);
+        // type char at last position (VisiData style: # int, % float, ? bool, @ date)
+        lean_obj_arg col = lean_array_get_core(allCols, origIdx);
+        char tc = (origIdx < nFmts)
+            ? type_char_fmt((char)lean_unbox_uint32(lean_array_get_core(fmts, origIdx)))
+            : type_char_col(col);
+        tb_set_cell(xs[c] + ws[c] - 1, 0, tc, fg, stBg[si]);
+        tb_set_cell(xs[c] + ws[c] - 1, yFoot, tc, fg, stBg[si]);
+        // separator after each column except last
+        if (c + 1 < nVisCols) {
+            int sX = xs[c] + ws[c];  // x after column content
+            uint32_t sc = (c + 1 == visKeys) ? 0x2551 : 0x2502;  // ║ after keys, │ otherwise
+            tb_set_cell(sX, 0, sc, stFg[STYLE_DEFAULT], stBg[STYLE_DEFAULT]);
+            tb_set_cell(sX, yFoot, sc, stFg[STYLE_DEFAULT], stBg[STYLE_DEFAULT]);
+        }
     }
 
     // render data rows (r0..r1 in original table, 0..nRows in screen)
@@ -337,9 +378,18 @@ lean_obj_res lean_render_table(
 
             lean_obj_arg col = lean_array_get_core(allCols, origIdx);
             format_col_cell(col, row, buf, sizeof(buf));
-            print_pad(xs[c], y, ws[c], stFg[si], stBg[si], buf, col_is_num(col));
+            // print cell with 1 char reserved for trailing space
+            int cw = ws[c] > 1 ? ws[c] - 1 : ws[c];
+            print_pad(xs[c], y, cw, stFg[si], stBg[si], buf, col_is_num(col));
+            // trailing space
+            tb_set_cell(xs[c] + ws[c] - 1, y, ' ', stFg[si], stBg[si]);
+            // separator after each column except last
+            if (c + 1 < nVisCols) {
+                int sX = xs[c] + ws[c];
+                uint32_t sc = (c + 1 == visKeys) ? 0x2551 : 0x2502;  // ║ after keys, │ otherwise
+                tb_set_cell(sX, y, sc, stFg[STYLE_DEFAULT], stBg[STYLE_DEFAULT]);
+            }
         }
-        if (sepX > 0) tb_set_cell(sepX, y, '|', stFg[STYLE_DEFAULT], stBg[STYLE_DEFAULT]);
     }
 
     // build return Array Nat for widths

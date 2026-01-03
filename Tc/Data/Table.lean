@@ -17,6 +17,7 @@ def ReadTable.nCols [ReadTable α] (a : α) : Nat := (ReadTable.colNames a).size
 -- Mutable table operations (column-only; row deletion via SQL filter)
 class ModifyTable (α : Type) extends ReadTable α where
   delCols : Array Nat → α → α              -- delete columns by indices
+  sortBy  : Array Nat → Bool → α → α       -- sort by column indices, asc/desc
 
 -- Delete columns at cursor + selections, return new table and filtered group
 def ModifyTable.del [ModifyTable α] (tbl : α) (cursor : Nat) (sels : Array Nat) (grp : Array String)
@@ -25,5 +26,10 @@ def ModifyTable.del [ModifyTable α] (tbl : α) (cursor : Nat) (sels : Array Nat
   let names := ReadTable.colNames tbl
   let delNames := idxs.map (names.getD · "")
   (delCols idxs tbl, grp.filter (!delNames.contains ·))
+
+-- Sort table by selected column indices (use cursor if no selections)
+def ModifyTable.sort [ModifyTable α] (tbl : α) (cursor : Nat) (sels : Array Nat) (asc : Bool) : α :=
+  let idxs := if sels.isEmpty then #[cursor] else sels
+  sortBy idxs asc tbl
 
 end Tc

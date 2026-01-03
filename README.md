@@ -4,11 +4,16 @@ VisiData-style terminal CSV viewer with typeclass-based navigation.
 
 ## Features
 
-- Typed column storage (int64, float, string)
+- CSV and Parquet support (via ADBC/DuckDB)
+- Typed column storage (int64, float, string, bool, date)
 - Zero-copy rendering via C FFI
+- Column separators (│ between cols, ║ after keys)
+- Type indicators: `#` int, `%` float, `?` bool, `@` date
+- Complex types: lists `[n] v1; v2`, structs `{n} name=val`
 - Column grouping (key columns)
 - Row/column selection
 - Column deletion
+- Multi-column sorting (asc/desc)
 
 ## Keybindings
 
@@ -42,6 +47,15 @@ VisiData-style terminal CSV viewer with typeclass-based navigation.
 |-----|-------------------|
 | `!` | Toggle key column |
 
+### Sorting
+
+| Key | Action                     |
+|-----|----------------------------|
+| `[` | Sort ascending by column   |
+| `]` | Sort descending by column  |
+
+Sorts by selected columns if any, otherwise by current column.
+
 ### Editing
 
 | Key | Action                          |
@@ -63,8 +77,9 @@ lake build tc
 ## Run
 
 ```bash
-.lake/build/bin/tc data.csv
-.lake/build/bin/tc data.csv -c "rn rn cn gt"  # play commands then interactive
+.lake/build/bin/tc data.csv                    # CSV file
+.lake/build/bin/tc data.parquet                # Parquet file (via DuckDB)
+.lake/build/bin/tc data.csv -c "rn rn cn gt"   # play commands then interactive
 ```
 
 ## Command String
@@ -76,7 +91,7 @@ Commands follow Obj+Verb pattern (2 chars each, space-separated):
 | `r` | `n/p/N/P/h/e` | row next/prev/pgNext/pgPrev/home/end |
 | `c` | `n/p/N/P/h/e/d` | col next/prev/pgNext/pgPrev/home/end/del |
 | `R` | `t` | rowSel toggle |
-| `C` | `t` | colSel toggle |
+| `C` | `t/[/]` | colSel toggle/sortAsc/sortDesc |
 | `g` | `t` | grp toggle |
 
-Example: `rn rn cn Ct gt` = down, down, right, toggle col selection, toggle group
+Example: `rn rn cn Ct C[` = down, down, right, toggle col selection, sort ascending by selected
