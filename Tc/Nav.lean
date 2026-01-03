@@ -17,6 +17,19 @@ inductive Verb where
   | del                                           -- delete
   deriving Repr, BEq
 
+namespace Verb
+-- Verb to char: n/p/N/P/h/e/t/d
+def toChar : Verb → Char
+  | .next => 'n' | .prev => 'p' | .pgNext => 'N' | .pgPrev => 'P'
+  | .home => 'h' | .end_ => 'e' | .toggle => 't' | .del => 'd'
+
+-- Char to verb
+def ofChar? : Char → Option Verb
+  | 'n' => some .next | 'p' => some .prev | 'N' => some .pgNext | 'P' => some .pgPrev
+  | 'h' => some .home | 'e' => some .end_ | 't' => some .toggle | 'd' => some .del
+  | _ => none
+end Verb
+
 -- Command: Obj Verb pattern
 inductive Cmd where
   | row (v : Verb)     -- row next/prev/...
@@ -25,6 +38,35 @@ inductive Cmd where
   | colSel (v : Verb)  -- colSel toggle
   | grp (v : Verb)     -- grp toggle
   deriving Repr, BEq
+
+namespace Cmd
+-- Cmd to string: "rn" "cp" "st" etc
+def toString : Cmd → String
+  | .row v    => s!"r{v.toChar}"
+  | .col v    => s!"c{v.toChar}"
+  | .rowSel v => s!"R{v.toChar}"
+  | .colSel v => s!"C{v.toChar}"
+  | .grp v    => s!"g{v.toChar}"
+
+-- String to cmd: "rn" → row next
+def ofString? (s : String) : Option Cmd :=
+  if s.length != 2 then none else
+  let obj := s.toList[0]!
+  let vrb := s.toList[1]!
+  match Verb.ofChar? vrb with
+  | none => none
+  | some v => match obj with
+    | 'r' => some (.row v)
+    | 'c' => some (.col v)
+    | 'R' => some (.rowSel v)
+    | 'C' => some (.colSel v)
+    | 'g' => some (.grp v)
+    | _ => none
+
+-- Parse space-separated command string
+def parseMany (s : String) : Array Cmd :=
+  (s.splitOn " ").toArray.filterMap ofString?
+end Cmd
 
 -- Clamp Fin by delta, staying in [0, n)
 namespace Fin
