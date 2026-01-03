@@ -45,25 +45,24 @@ class RenderTable (α : Type) [ReadTable α] where
          → (inWidths : Array Nat) → (colOff rowStart rowEnd : Nat)
          → (styles : Array UInt32) → IO (Array Nat)
 
--- Cumulative width for scroll calculation
-def cumWidth (widths : Array Nat) (i : Nat) : Nat :=
-  widths.foldl (init := (0, 0)) (fun (idx, acc) w =>
-    if idx < i then (idx + 1, acc + min w maxColWidth + 1) else (idx + 1, acc)) |>.2
+-- Cumulative width in display order (dispIdxs maps display->original)
+-- Returns x position where column i starts (sum of widths 0..i-1)
+def cumWidthDisp (widths : Array Nat) (dispIdxs : Array Nat) (i : Nat) : Nat :=
+  (Array.range i).foldl (init := 0) fun acc d =>
+    acc + min (widths.getD (dispIdxs.getD d 0) 0) maxColWidth + 1
 
--- Adjust column offset for visibility (simple version without Fin)
-def adjColOffSimple (cur colOff : Nat) (widths : Array Nat) (screenW : Nat) : Nat :=
-  let cumW := cumWidth widths
-  let scrollX := cumW colOff
-  let scrollMin := cumW (cur + 1) - screenW
-  let scrollMax := cumW cur
-  if scrollX < scrollMin then
-    -- scroll right: find smallest offset where cumW >= scrollMin
-    (List.range widths.size).foldl (init := colOff) fun off i =>
-      if cumW i >= scrollMin && i > off then off else if cumW i >= scrollMin then i else off
-  else if scrollX > scrollMax then
-    -- scroll left: find largest offset where cumW <= scrollMax
-    (List.range (cur + 1)).foldl (init := 0) fun off i =>
-      if cumW i <= scrollMax then i else off
+-- Adjust column offset so cursor is visible
+-- cur = cursor display index, colOff = first visible display index
+def adjColOff (cur colOff : Nat) (widths : Array Nat) (dispIdxs : Array Nat) (screenW : Nat) : Nat :=
+  let cumW := cumWidthDisp widths dispIdxs
+  let curEnd := cumW (cur + 1)  -- right edge of cursor column
+  let offX := cumW colOff       -- left edge of visible area
+  -- scroll right: cursor's right edge past screen
+  if curEnd > offX + screenW then
+    -- find smallest offset where cursor fits: cumW(off) + screenW >= curEnd
+    (List.range (cur + 1)).find? (fun i => cumW i + screenW >= curEnd) |>.getD cur
+  -- scroll left: cursor's left edge before visible area
+  else if cumW cur < offX then cur
   else colOff
 
 -- Render table to terminal, returns updated ViewState
@@ -76,15 +75,15 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
   -- adjust row offset
   let rowOff := adjOff nav.curRow view.rowOff visRows
   -- first render: use colOff=0, no scroll adjust (no widths yet)
-  -- subsequent: use cached widths for scroll
+  -- subsequent: use cached widths for scroll (widths in orig order, dispColIdxs for lookup)
   let colOff := if view.widths.isEmpty then 0
-                else adjColOffSimple nav.curDispCol view.colOff view.widths w.toNat
+                else adjColOff nav.curDispCol view.colOff view.widths nav.dispColIdxs w.toNat
   -- render via RenderTable, get widths back
   let t0 ← IO.monoNanosNow
   let outWidths ← RenderTable.render nav view.widths colOff rowOff (min nRows (rowOff + visRows)) styles
   let t1 ← IO.monoNanosNow
   Log.timing "render" ((t1 - t0) / 1000)
-  -- cap widths
+  -- cap widths (keep in original order for C)
   let widths := outWidths.map (min maxColWidth)
   -- status
   let status := s!"r{nav.curRow}/{nRows} c{nav.curColIdx}/{nCols} grp={nav.nKeys} sel={nav.selRows.size}"
