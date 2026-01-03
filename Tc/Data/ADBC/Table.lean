@@ -167,13 +167,13 @@ instance : ModifyTable AdbcTable where
 
 -- RenderTable instance for AdbcTable
 instance : RenderTable AdbcTable where
-  render nav inWidths colOff r0 r1 moveDir st := do
+  render nav inWidths colOff r0 r1 moveDir st precAdj widthAdj := do
     if inWidths.isEmpty then
       let cols := (Array.range nav.tbl.nCols).map fun c => nav.tbl.getCol c 0 nav.tbl.nRows
       Term.renderTable cols nav.tbl.colNames nav.tbl.colFmts inWidths nav.dispColIdxs
         nav.tbl.nRows.toUInt64 nav.nKeys.toUInt64 colOff.toUInt64
         0 nav.tbl.nRows.toUInt64 nav.curRow.toUInt64 nav.curColIdx.toUInt64
-        moveDir.toInt64 nav.selColIdxs nav.selRows st
+        moveDir.toInt64 nav.selColIdxs nav.selRows st precAdj.toInt64 widthAdj.toInt64
     else
       let cols := (Array.range nav.tbl.nCols).map fun c => nav.tbl.getCol c r0 r1
       let adjCur := nav.curRow - r0
@@ -182,6 +182,6 @@ instance : RenderTable AdbcTable where
       Term.renderTable cols nav.tbl.colNames nav.tbl.colFmts inWidths nav.dispColIdxs
         nav.tbl.nRows.toUInt64 nav.nKeys.toUInt64 colOff.toUInt64
         0 (r1 - r0).toUInt64 adjCur.toUInt64 nav.curColIdx.toUInt64
-        moveDir.toInt64 nav.selColIdxs adjSel st
+        moveDir.toInt64 nav.selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
 
 end Tc

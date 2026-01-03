@@ -42,10 +42,12 @@ def styles : Array UInt32 := #[
 -- RenderTable: tables that can render themselves
 -- Takes input widths (empty = compute), returns computed widths
 -- moveDir: -1 = moved left, 0 = none, 1 = moved right (for tooltip direction)
+-- precAdj/widthAdj: precision and width adjustments from View
 class RenderTable (α : Type) [ReadTable α] where
   render : {nRows nCols : Nat} → NavState nRows nCols α
          → (inWidths : Array Nat) → (colOff rowStart rowEnd : Nat)
-         → (moveDir : Int) → (styles : Array UInt32) → IO (Array Nat)
+         → (moveDir : Int) → (styles : Array UInt32)
+         → (precAdj widthAdj : Int) → IO (Array Nat)
 
 -- Cumulative width in display order (dispIdxs maps display->original)
 -- Returns x position where column i starts (sum of widths 0..i-1)
@@ -69,7 +71,7 @@ def adjColOff (cur colOff : Nat) (widths : Array Nat) (dispIdxs : Array Nat) (sc
 
 -- Render table to terminal, returns updated ViewState
 def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
-    (nav : NavState nRows nCols t) (view : ViewState) : IO ViewState := do
+    (nav : NavState nRows nCols t) (view : ViewState) (precAdj widthAdj : Int) : IO ViewState := do
   Term.clear
   let h ← Term.height
   let w ← Term.width
@@ -86,19 +88,21 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
                        else 0
   -- render via RenderTable, get widths back
   let t0 ← IO.monoNanosNow
-  let outWidths ← RenderTable.render nav view.widths colOff rowOff (min nRows (rowOff + visRows)) moveDir styles
+  let outWidths ← RenderTable.render nav view.widths colOff rowOff (min nRows (rowOff + visRows)) moveDir styles precAdj widthAdj
   let t1 ← IO.monoNanosNow
   Log.timing "render" ((t1 - t0) / 1000)
   -- cap widths (keep in original order for C)
   let widths := outWidths.map (min maxColWidth)
-  -- status: current column name + position info
+  -- status: current column name + position info + precAdj/widthAdj if non-zero
   let total := ReadTable.totalRows nav.tbl
   let rowInfo := if total > nRows then s!"{nRows}/{total}" else s!"{nRows}"
   let colName := nav.colNames.getD nav.curColIdx ""
-  let status := s!"{colName} r{nav.curRow}/{rowInfo} c{nav.curColIdx}/{nCols} grp={nav.nKeys} sel={nav.selRows.size}"
+  let adj := (if precAdj != 0 then s!" p{precAdj}" else "") ++
+             (if widthAdj != 0 then s!" w{widthAdj}" else "")
+  let status := s!"{colName} r{nav.curRow}/{rowInfo} c{nav.curColIdx}/{nCols} grp={nav.nKeys} sel={nav.selRows.size}{adj}"
   Term.print 0 (h - 1) Term.cyan Term.default status
   -- help
-  let help := "hjkl:nav HJKL:pg g?:end t/T:sel !:grp q:q"
+  let help := "hjkl:nav HJKL:pg +/-:adj t/T:sel !:grp q:q"
   Term.print (w - help.length.toUInt32) (h - 1) Term.yellow Term.default help
   pure ⟨rowOff, colOff, widths, nav.curColIdx⟩
 

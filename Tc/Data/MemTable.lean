@@ -112,11 +112,11 @@ instance : ModifyTable MemTable where
 -- Render MemTable using unified C render
 -- C computes widths if inWidths is empty, returns computed widths
 instance : RenderTable MemTable where
-  render nav inWidths colOff r0 r1 moveDir st :=
+  render nav inWidths colOff r0 r1 moveDir st precAdj widthAdj :=
     -- call C render with all cols, display order, etc. (empty fmts = use Column tag)
     Term.renderTable nav.tbl.cols nav.tbl.names #[] inWidths nav.dispColIdxs
       (MemTable.nRows nav.tbl).toUInt64 nav.nKeys.toUInt64 colOff.toUInt64
       r0.toUInt64 r1.toUInt64 nav.curRow.toUInt64 nav.curColIdx.toUInt64
-      moveDir.toInt64 nav.selColIdxs nav.selRows st
+      moveDir.toInt64 nav.selColIdxs nav.selRows st precAdj.toInt64 widthAdj.toInt64
 
 end Tc

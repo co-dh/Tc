@@ -186,8 +186,11 @@ static int fmt_int_comma(char* buf, size_t buflen, int64_t v) {
     return len;
 }
 
-// | Format value from Column at row index
-static int format_col_cell(lean_obj_arg col, size_t row, char* buf, size_t buflen) {
+// | Default float precision
+#define DEFAULT_PREC 3
+
+// | Format value from Column at row index (precAdj adjusts float decimals)
+static int format_col_cell(lean_obj_arg col, size_t row, char* buf, size_t buflen, int precAdj) {
     unsigned tag = lean_obj_tag(col);
     lean_obj_arg data = lean_ctor_get(col, 0);
     switch (tag) {
@@ -200,7 +203,10 @@ static int format_col_cell(lean_obj_arg col, size_t row, char* buf, size_t bufle
         lean_obj_arg fbox = lean_array_get_core(data, row);
         double f = lean_ctor_get_float(fbox, 0);
         if (f != f) { buf[0] = '\0'; return 0; }  // NaN = null
-        return snprintf(buf, buflen, "%.3f", f);
+        int prec = DEFAULT_PREC + precAdj;
+        if (prec < 0) prec = 0;
+        if (prec > 15) prec = 15;
+        return snprintf(buf, buflen, "%.*f", prec, f);
     }
     case COL_STRS: {
         const char* s = lean_string_cstr(lean_array_get_core(data, row));
@@ -221,11 +227,11 @@ static int col_is_num(lean_obj_arg col) {
 }
 
 // | Compute column data width (not including header)
-static int compute_data_width(lean_obj_arg col, size_t r0, size_t r1) {
+static int compute_data_width(lean_obj_arg col, size_t r0, size_t r1, int precAdj) {
     int w = 1;  // minimum 1 char
     char buf[256];
     for (size_t r = r0; r < r1; r++) {
-        int len = format_col_cell(col, r, buf, sizeof(buf));
+        int len = format_col_cell(col, r, buf, sizeof(buf), precAdj);
         if (len > w) w = len;
     }
     return w;
@@ -268,6 +274,7 @@ static void build_sel_bits(b_lean_obj_arg arr, size_t n, uint64_t* bits) {
 // colIdxs: display order indices
 // nTotalRows: total rows in table (for width calc)
 // moveDir: -1 = moved left, 0 = none, 1 = moved right (for tooltip direction)
+// precAdj: precision adjustment for floats, widthAdj: column width offset
 // inWidths: input widths (empty = compute), returns computed widths
 lean_obj_res lean_render_table(
     b_lean_obj_arg allCols,   // Array Column - ALL columns
@@ -284,6 +291,8 @@ lean_obj_res lean_render_table(
     b_lean_obj_arg selCols,
     b_lean_obj_arg selRows,
     b_lean_obj_arg styles,
+    int64_t precAdj,          // precision adjustment for floats
+    int64_t widthAdj,         // column width offset
     lean_obj_arg world)
 {
     int screenW = tb_width();
@@ -306,16 +315,21 @@ lean_obj_res lean_render_table(
 
     // compute or use widths for ALL columns (+2 for leading space + type char)
     // use max(data_width, MIN_HDR_WIDTH) + 2 for minimum header visibility
+    // apply widthAdj offset (clamped to min 3)
     int* allWidths = malloc(nCols * sizeof(int));
     int needCompute = lean_array_size(inWidths) == 0;
     for (size_t c = 0; c < nCols; c++) {
+        int w;
         if (needCompute) {
             lean_obj_arg col = lean_array_get_core(allCols, c);
-            int dw = compute_data_width(col, 0, nTotalRows);
-            allWidths[c] = (dw > MIN_HDR_WIDTH ? dw : MIN_HDR_WIDTH) + 2;
+            int dw = compute_data_width(col, 0, nTotalRows, (int)precAdj);
+            w = (dw > MIN_HDR_WIDTH ? dw : MIN_HDR_WIDTH) + 2;
         } else {
-            allWidths[c] = lean_unbox(lean_array_get_core(inWidths, c));
+            w = lean_unbox(lean_array_get_core(inWidths, c));
         }
+        w += (int)widthAdj;
+        if (w < 3) w = 3;  // minimum width
+        allWidths[c] = w;
     }
 
     // compute x positions for visible columns (starting from colOff)
@@ -388,7 +402,7 @@ lean_obj_res lean_render_table(
             int si = get_style(isCurRow && isCurCol, isSelRow, isSel, isCurRow, isCurCol);
 
             lean_obj_arg col = lean_array_get_core(allCols, origIdx);
-            format_col_cell(col, row, buf, sizeof(buf));
+            format_col_cell(col, row, buf, sizeof(buf), (int)precAdj);
             // leading space
             tb_set_cell(xs[c], y, ' ', stFg[si], stBg[si]);
             // print cell with 2 chars reserved for leading+trailing space

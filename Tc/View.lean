@@ -26,20 +26,22 @@ structure View where
   path : String              -- source file/command (for tab display)
   vkind : ViewKind := .tbl
   disp : String := ""        -- custom display name (overrides filename)
+  precAdj : Int := 0         -- precision adjustment (-=fewer, +=more decimals)
+  widthAdj : Int := 0        -- width adjustment offset (-=narrower, +=wider)
 
 namespace View
 
 -- | Create from NavState + path (infers instances)
 def new {nr nc : Nat} {τ : Type} [ir : ReadTable τ] [im : ModifyTable τ] [iv : RenderTable τ]
     (nav : NavState nr nc τ) (path : String) : View :=
-  ⟨nr, nc, τ, ir, im, iv, nav, path, .tbl, ""⟩
+  ⟨nr, nc, τ, ir, im, iv, nav, path, .tbl, "", 0, 0⟩
 
 -- | Tab display name: custom disp or filename from path
 @[inline] def tabName (v : View) : String :=
   if v.disp.isEmpty then v.path.splitOn "/" |>.getLast? |>.getD v.path else v.disp
 
 @[inline] def doRender (v : View) (vs : ViewState) : IO ViewState :=
-  @render v.nRows v.nCols v.t v.instR v.instV v.nav vs
+  @render v.nRows v.nCols v.t v.instR v.instV v.nav vs v.precAdj v.widthAdj
 
 @[inline] def tbl (v : View) : v.t := @NavState.tbl v.t v.instR v.nRows v.nCols v.nav
 @[inline] def colNames (v : View) : Array String := @ReadTable.colNames v.t v.instR v.tbl
@@ -60,20 +62,29 @@ def fromTbl {τ : Type} [ReadTable τ] [ModifyTable τ] [RenderTable τ]
     else none
   else none
 
+-- | Verb to delta: inc=+1, dec=-1
+private def verbDelta (verb : Verb) : Int := if verb == .inc then 1 else -1
+
+-- | Preserve precAdj/widthAdj when recreating View
+private def preserve (v : View) (v' : Option View) : Option View :=
+  v'.map fun x => { x with precAdj := v.precAdj, widthAdj := v.widthAdj }
+
 -- | Execute Cmd, returns Option View (none if table becomes empty after del)
 def exec (v : View) (cmd : Cmd) (rowPg colPg : Nat) : Option View :=
   match cmd with
   | .col .del =>
     let tbl' := @ModifyTable.del v.t v.instM v.tbl v.curColIdx v.selColIdxs v.getGroup
-    @fromTbl v.t v.instR v.instM v.instV tbl'.1 v.path v.curDispCol tbl'.2 0
+    preserve v (@fromTbl v.t v.instR v.instM v.instV tbl'.1 v.path v.curDispCol tbl'.2 0)
   | .colSel .sortAsc =>
     let grpIdxs := v.getGroup.filterMap v.colNames.idxOf?
     let tbl' := @ModifyTable.sort v.t v.instM v.tbl v.curColIdx grpIdxs true
-    @fromTbl v.t v.instR v.instM v.instV tbl' v.path v.curColIdx v.getGroup v.curRow
+    preserve v (@fromTbl v.t v.instR v.instM v.instV tbl' v.path v.curColIdx v.getGroup v.curRow)
   | .colSel .sortDesc =>
     let grpIdxs := v.getGroup.filterMap v.colNames.idxOf?
     let tbl' := @ModifyTable.sort v.t v.instM v.tbl v.curColIdx grpIdxs false
-    @fromTbl v.t v.instR v.instM v.instV tbl' v.path v.curColIdx v.getGroup v.curRow
+    preserve v (@fromTbl v.t v.instR v.instM v.instV tbl' v.path v.curColIdx v.getGroup v.curRow)
+  | .prec verb => some { v with precAdj := v.precAdj + verbDelta verb }
+  | .width verb => some { v with widthAdj := v.widthAdj + verbDelta verb }
   | _ => match @NavState.exec v.t v.instR v.nRows v.nCols cmd v.nav rowPg colPg with
     | some nav' => some { v with nav := nav' }
     | none => none  -- shouldn't happen for nav commands
