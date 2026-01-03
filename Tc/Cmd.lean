@@ -4,6 +4,10 @@
   - Cmd: Obj + Verb (row, col, rowSel, colSel, grp)
 -/
 
+-- | Parse typeclass (inverse of ToString)
+class Parse (α : Type) where
+  parse? : String → Option α
+
 -- | Verb: action type
 inductive Verb where
   | next | prev | pgNext | pgPrev | home | end_  -- movement
@@ -14,18 +18,21 @@ inductive Verb where
 
 namespace Verb
 
--- | Verb to char: n/p/N/P/h/e/t/d/[/]
+-- | Verb to char
 def toChar : Verb → Char
-  | .next => 'n' | .prev => 'p' | .pgNext => 'N' | .pgPrev => 'P'
-  | .home => 'h' | .end_ => 'e' | .toggle => 't' | .del => 'd'
+  | .next => '+' | .prev => '-' | .pgNext => '>' | .pgPrev => '<'
+  | .home => '0' | .end_ => '$' | .toggle => '~' | .del => 'd'
   | .sortAsc => '[' | .sortDesc => ']'
 
 -- | Char to verb
 def ofChar? : Char → Option Verb
-  | 'n' => some .next | 'p' => some .prev | 'N' => some .pgNext | 'P' => some .pgPrev
-  | 'h' => some .home | 'e' => some .end_ | 't' => some .toggle | 'd' => some .del
+  | '+' => some .next | '-' => some .prev | '>' => some .pgNext | '<' => some .pgPrev
+  | '0' => some .home | '$' => some .end_ | '~' => some .toggle | 'd' => some .del
   | '[' => some .sortAsc | ']' => some .sortDesc
   | _ => none
+
+instance : ToString Verb where toString v := v.toChar.toString
+instance : Parse Verb where parse? s := if s.length == 1 then ofChar? s.toList[0]! else none
 
 -- | Isomorphism: ofChar? ∘ toChar = some
 theorem ofChar_toChar (v : Verb) : ofChar? (toChar v) = some v := by
@@ -44,35 +51,34 @@ inductive Cmd where
 
 namespace Cmd
 
--- | Cmd to string: "rn" "cp" "C[" etc
-def toString : Cmd → String
-  | .row v    => s!"r{v.toChar}"
-  | .col v    => s!"c{v.toChar}"
-  | .rowSel v => s!"R{v.toChar}"
-  | .colSel v => s!"C{v.toChar}"
-  | .grp v    => s!"g{v.toChar}"
+-- | Obj chars: r=row, c=col, R=rowSel, C=colSel, g=grp
+private def objs : Array (Char × (Verb → Cmd)) := #[
+  ('r', .row), ('c', .col), ('R', .rowSel), ('C', .colSel), ('g', .grp)
+]
 
--- | String to cmd: "rn" → row next, "C[" → colSel sortAsc
-def ofString? (s : String) : Option Cmd :=
-  if s.length != 2 then none else
-  let obj := s.toList[0]!
-  let vrb := s.toList[1]!
-  match Verb.ofChar? vrb with
-  | none => none
-  | some v => match obj with
-    | 'r' => some (.row v)
-    | 'c' => some (.col v)
-    | 'R' => some (.rowSel v)
-    | 'C' => some (.colSel v)
-    | 'g' => some (.grp v)
-    | _ => none
+-- | Get obj char for Cmd
+private def objChar : Cmd → Char
+  | .row _ => 'r' | .col _ => 'c' | .rowSel _ => 'R' | .colSel _ => 'C' | .grp _ => 'g'
+
+-- | Get verb from Cmd
+private def verb : Cmd → Verb
+  | .row v | .col v | .rowSel v | .colSel v | .grp v => v
+
+instance : ToString Cmd where toString c := s!"{c.objChar}{c.verb.toChar}"
+
+instance : Parse Cmd where
+  parse? s := do
+    guard (s.length == 2)
+    let v ← Verb.ofChar? s.toList[1]!
+    let (_, mk) ← objs.find? (·.1 == s.toList[0]!)
+    pure (mk v)
 
 -- | Parse space-separated command string
 def parseMany (s : String) : Array Cmd :=
-  (s.splitOn " ").toArray.filterMap ofString?
+  (s.splitOn " ").toArray.filterMap Parse.parse?
 
--- | Isomorphism: ofString? ∘ toString = some
-theorem ofString_toString (c : Cmd) : ofString? (toString c) = some c := by
+-- | Isomorphism: parse? ∘ toString = some
+theorem parse_toString (c : Cmd) : Parse.parse? (toString c) = some c := by
   cases c with
   | row v => cases v <;> native_decide
   | col v => cases v <;> native_decide
