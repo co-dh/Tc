@@ -48,9 +48,10 @@ private def charCmds : Array (Char × Cmd) := #[
   ('q', .stk .dec), ('S', .stk .ent)  -- stack: q=pop, S=swap
 ]
 
--- Normalize event to char (arrow→hjkl, or raw char)
+-- Normalize event to char (arrow→hjkl, Enter→\r, or raw char)
 private def evToChar (ev : Term.Event) : Char :=
-  (lookup arrowToChar ev.key).getD (Char.ofNat ev.ch.toNat)
+  if ev.key == Term.keyEnter then '\r'
+  else (lookup arrowToChar ev.key).getD (Char.ofNat ev.ch.toNat)
 
 -- Navigation cmd from char + shift state
 private def navCmd (c : Char) (shift : Bool) : Option Cmd :=

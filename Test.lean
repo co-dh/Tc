@@ -344,6 +344,16 @@ def test_parquet_meta_0_null_cols : IO Unit := do
   let (_, status) := footer output
   assert (contains status "sel=9") "M0 on parquet selects 9 null columns"
 
+-- | Test M0<ret> groups null columns as key columns
+def test_parquet_meta_0_enter_groups : IO Unit := do
+  log "parquet_meta_0_enter"
+  let output ← runKeys "M0<ret>" "data/nyse/1.parquet"
+  let (tab, status) := footer output
+  -- Should pop meta, return to parent with grp=9 (9 null cols as key)
+  -- Tab must be "[1.parquet]" not "[meta] │ 1.parquet"
+  assert (tab.startsWith "[1.parquet]") "M0<ret> returns to parent view"
+  assert (contains status "grp=9") "M0<ret> groups 9 null columns"
+
 -- === Freq enter tests ===
 
 def test_freq_enter_filters : IO Unit := do
@@ -456,6 +466,7 @@ def main : IO Unit := do
   test_meta_0_enter_sets_keycols
   test_meta_1_enter_sets_keycols
   test_parquet_meta_0_null_cols
+  test_parquet_meta_0_enter_groups
 
   -- Freq enter
   test_freq_enter_filters
