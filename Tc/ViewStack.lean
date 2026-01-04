@@ -55,9 +55,8 @@ def dup (s : ViewStack) : ViewStack :=
 -- | Push column metadata view
 def pushMeta (s : ViewStack) : IO (Option ViewStack) := do
   let tbl ← QueryTable.queryMeta s.cur.nav.tbl <&> Meta.toMemTable
-  pure <| match View.fromTbl (.mem tbl) s.cur.path with
-    | some v => some (s.push { v with vkind := .colMeta, disp := "meta" })
-    | none => none
+  let some v := View.fromTbl (.mem tbl) s.cur.path | return none
+  return some (s.push { v with vkind := .colMeta, disp := "meta" })
 
 -- | Push frequency view (group by grp + cursor column)
 def pushFreq (s : ViewStack) : IO (Option ViewStack) := do
@@ -68,71 +67,55 @@ def pushFreq (s : ViewStack) : IO (Option ViewStack) := do
   let colIdxs := colNames.filterMap names.idxOf?
   let freq ← QueryTable.queryFreq n.tbl colIdxs
   let tbl := Freq.toMemTable freq
-  pure <| match View.fromTbl (.mem tbl) s.cur.path with
-    | some v => some (s.push { v with vkind := .freqV colNames, disp := s!"freq {colNames.join ","}" })
-    | none => none
+  let some v := View.fromTbl (.mem tbl) s.cur.path | return none
+  return some (s.push { v with vkind := .freqV colNames, disp := s!"freq {colNames.join ","}" })
 
 -- | Tab names for display (current first)
 def tabNames (s : ViewStack) : Array String := s.views.map (·.tabName)
 
 -- | col search: fzf jump to column by name
 def colSearch (s : ViewStack) : IO ViewStack := do
-  let v := s.cur
-  let names := ReadTable.colNames v.nav.tbl
+  let v := s.cur; let names := ReadTable.colNames v.nav.tbl
   let dispNames := v.nav.grp ++ names.filter (!v.nav.grp.contains ·)
-  match ← Fzf.fzfIdx #["--prompt=Column: "] dispNames with
-  | some idx =>
-    let delta : Int := idx - v.nav.col.cur.val
-    let nav' := { v.nav with col := { v.nav.col with cur := v.nav.col.cur.clamp delta } }
-    pure (s.setCur { v with nav := nav' })
-  | none => pure s
+  let some idx ← Fzf.fzfIdx #["--prompt=Column: "] dispNames | return s
+  let delta : Int := idx - v.nav.col.cur.val
+  let nav' := { v.nav with col := { v.nav.col with cur := v.nav.col.cur.clamp delta } }
+  return s.setCur { v with nav := nav' }
 
 -- | row search: fzf jump to row number
 def rowSearch (s : ViewStack) : IO ViewStack := do
   let v := s.cur
-  match ← Fzf.fzf #["--prompt=Row#: ", "--print-query"] "" with
-  | some result =>
-    let query := (result.splitOn "\n").head?.getD "" |>.trim
-    match query.toNat? with
-    | some n =>
-      let delta : Int := n - v.nav.row.cur.val
-      let nav' := { v.nav with row := { v.nav.row with cur := v.nav.row.cur.clamp delta } }
-      pure (s.setCur { v with nav := nav' })
-    | none => pure s
-  | none => pure s
+  let some result ← Fzf.fzf #["--prompt=Row#: ", "--print-query"] "" | return s
+  let query := (result.splitOn "\n").head?.getD "" |>.trim
+  let some n := query.toNat? | return s
+  let delta : Int := n - v.nav.row.cur.val
+  let nav' := { v.nav with row := { v.nav.row with cur := v.nav.row.cur.clamp delta } }
+  return s.setCur { v with nav := nav' }
 
 -- | col filter: fzf multi-select columns to keep
 def colFilter (s : ViewStack) : IO ViewStack := do
-  let v := s.cur
-  let names := ReadTable.colNames v.nav.tbl
+  let v := s.cur; let names := ReadTable.colNames v.nav.tbl
   let selected ← Fzf.fzfMulti #["--prompt=Select cols: "] ("\n".intercalate names.toList)
-  if selected.isEmpty then pure s
-  else
-    let keepIdxs := selected.filterMap names.idxOf?
-    let delIdxs := (Array.range names.size).filter (!keepIdxs.contains ·)
-    let tbl' ← ModifyTable.delCols delIdxs v.nav.tbl
-    pure <| match View.fromTbl tbl' v.path 0 v.nav.grp 0 with
-      | some v' => s.setCur { v' with disp := s!"select {selected.size}" }
-      | none => s
+  if selected.isEmpty then return s
+  let keepIdxs := selected.filterMap names.idxOf?
+  let delIdxs := (Array.range names.size).filter (!keepIdxs.contains ·)
+  let tbl' ← ModifyTable.delCols delIdxs v.nav.tbl
+  let some v' := View.fromTbl tbl' v.path 0 v.nav.grp 0 | return s
+  return s.setCur { v' with disp := s!"select {selected.size}" }
 
 -- | row filter: fzf PRQL filter on current column
 def rowFilter (s : ViewStack) : IO ViewStack := do
-  let v := s.cur
-  let names := ReadTable.colNames v.nav.tbl
+  let v := s.cur; let names := ReadTable.colNames v.nav.tbl
   let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
   let curName := names.getD curCol ""
   let vals ← QueryTable.distinct v.nav.tbl curCol
   let prompt := s!"{curName} == 'x' | > 5 | ~= 'pat' > "
-  match ← Fzf.fzf #["--print-query", s!"--prompt={prompt}"] ("\n".intercalate vals.toList) with
-  | some result =>
-    let expr := Fzf.buildFilterExpr curName vals result
-    if expr.isEmpty then pure s
-    else match ← QueryTable.filter v.nav.tbl expr with
-      | some tbl' => pure <| match View.fromTbl tbl' v.path v.nav.col.cur.val v.nav.grp 0 with
-        | some v' => s.push { v' with disp := s!"filter {curName}" }
-        | none => s
-      | none => pure s
-  | none => pure s
+  let some result ← Fzf.fzf #["--print-query", s!"--prompt={prompt}"] ("\n".intercalate vals.toList) | return s
+  let expr := Fzf.buildFilterExpr curName vals result
+  if expr.isEmpty then return s
+  let some tbl' ← QueryTable.filter v.nav.tbl expr | return s
+  let some v' := View.fromTbl tbl' v.path v.nav.col.cur.val v.nav.grp 0 | return s
+  return s.push { v' with disp := s!"filter {curName}" }
 
 -- | Select rows in meta view by predicate on MemTable
 def metaSel (s : ViewStack) (sel : MemTable → Array Nat) : ViewStack :=
@@ -160,23 +143,14 @@ def metaSetKey (s : ViewStack) : Option ViewStack :=
 
 -- | Filter parent by selected freq row, push filtered view
 def freqFilter (s : ViewStack) : IO (Option ViewStack) := do
-  match s.cur.vkind with
-  | .freqV cols =>
-    if !s.hasParent then pure (some s) else
-    match s.cur.nav.tbl.asMem? with
-    | some tbl =>
-      let row := s.cur.nav.row.cur.val
-      let expr := Freq.filterExpr tbl cols row
-      match s.pop with
-      | some s' =>
-        match ← QueryTable.filter s'.cur.nav.tbl expr with
-        | some tbl' => pure <| match View.fromTbl tbl' s'.cur.path 0 s'.cur.nav.grp 0 with
-          | some v => some (s'.push { v with disp := s!"filter {cols.join ","}" })
-          | none => some s'
-        | none => pure (some s')
-      | none => pure (some s)
-    | none => pure (some s)
-  | _ => pure (some s)
+  let .freqV cols := s.cur.vkind | return some s
+  if !s.hasParent then return some s
+  let some tbl := s.cur.nav.tbl.asMem? | return some s
+  let some s' := s.pop | return some s
+  let expr := Freq.filterExpr tbl cols s.cur.nav.row.cur.val
+  let some tbl' ← QueryTable.filter s'.cur.nav.tbl expr | return some s'
+  let some v := View.fromTbl tbl' s'.cur.path 0 s'.cur.nav.grp 0 | return some s'
+  return some (s'.push { v with disp := s!"filter {cols.join ","}" })
 
 -- | Execute Cmd, returns IO (Option ViewStack) (none = quit or table empty)
 def exec (s : ViewStack) (cmd : Cmd) (rowPg colPg : Nat) : IO (Option ViewStack) := do
