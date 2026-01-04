@@ -83,7 +83,7 @@ def main (args : List String) : IO Unit := do
     match ← MemTable.load path with
     | .error e => Term.shutdown; IO.eprintln s!"CSV parse error: {e}"
     | .ok tbl => match View.fromTbl (.mem tbl) path with
-      | some v => mainLoop ⟨v, #[]⟩ ViewState.default keys testMode; Term.shutdown
+      | some v => mainLoop ⟨#[v], by simp⟩ ViewState.default keys testMode; Term.shutdown
       | none => Term.shutdown; IO.eprintln "Empty table"
   else
     let ok ← AdbcTable.init
@@ -91,5 +91,5 @@ def main (args : List String) : IO Unit := do
     match ← AdbcTable.fromFile path with
     | none => Term.shutdown; AdbcTable.shutdown; IO.eprintln "Query failed"
     | some tbl => match View.fromTbl (.adbc tbl) path with
-      | some v => mainLoop ⟨v, #[]⟩ ViewState.default keys testMode; Term.shutdown; AdbcTable.shutdown
+      | some v => mainLoop ⟨#[v], by simp⟩ ViewState.default keys testMode; Term.shutdown; AdbcTable.shutdown
       | none => Term.shutdown; AdbcTable.shutdown; IO.eprintln "Empty table"

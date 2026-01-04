@@ -1,5 +1,5 @@
 /-
-  ViewStack: non-empty view stack
+  ViewStack: non-empty view stack as Array View (a[0] = current)
 -/
 import Tc.Fzf
 import Tc.View
@@ -10,44 +10,47 @@ import Tc.Data.Mem.Freq
 
 namespace Tc
 
--- | Non-empty view stack
-structure ViewStack where
-  cur : View                 -- current view (always exists)
-  parents : Array View := #[]
+-- | Non-empty view stack: a[0] = current, a[1:] = parents
+abbrev ViewStack := { a : Array View // a.size > 0 }
 
 namespace ViewStack
 
--- | All views (current first)
-def views (s : ViewStack) : Array View := #[s.cur] ++ s.parents
+-- | Current view
+@[inline] def cur (s : ViewStack) : View := s.val[0]'s.property
+
+-- | All views
+@[inline] def views (s : ViewStack) : Array View := s.val
 
 -- | Stack depth
-def depth (s : ViewStack) : Nat := 1 + s.parents.size
+@[inline] def depth (s : ViewStack) : Nat := s.val.size
 
 -- | Has parent?
-def hasParent (s : ViewStack) : Bool := s.parents.size > 0
+@[inline] def hasParent (s : ViewStack) : Bool := s.val.size > 1
 
 -- | Update current view
-def setCur (s : ViewStack) (v : View) : ViewStack := { s with cur := v }
+def setCur (s : ViewStack) (v : View) : ViewStack :=
+  ⟨s.val.set (Fin.mk 0 s.property) v, by simp [Array.size_set]; exact s.property⟩
 
 -- | Push new view (current becomes parent)
 def push (s : ViewStack) (v : View) : ViewStack :=
-  { s with cur := v, parents := #[s.cur] ++ s.parents }
+  ⟨#[v] ++ s.val, by simp; omega⟩
 
 -- | Pop view (returns to parent, or none if no parent)
 def pop (s : ViewStack) : Option ViewStack :=
-  if h : s.parents.size > 0 then
-    some { cur := s.parents[0], parents := s.parents.extract 1 s.parents.size }
+  if h : s.val.size > 1 then some ⟨s.val.extract 1 s.val.size, by simp [Array.size_extract]; omega⟩
   else none
 
 -- | Swap top two views
 def swap (s : ViewStack) : ViewStack :=
-  if h : s.parents.size > 0 then
-    { cur := s.parents[0], parents := #[s.cur] ++ s.parents.extract 1 s.parents.size }
+  if h : s.val.size > 1 then
+    let a := s.val[0]'s.property
+    let b := s.val[1]'h
+    ⟨#[b, a] ++ s.val.extract 2 s.val.size, by simp; omega⟩
   else s
 
--- | Duplicate current view
+-- | Duplicate current view (push copy of current)
 def dup (s : ViewStack) : ViewStack :=
-  { s with parents := #[s.cur] ++ s.parents }
+  ⟨#[s.cur] ++ s.val, by simp; omega⟩
 
 -- | Push column metadata view
 def pushMeta (s : ViewStack) : IO (Option ViewStack) := do
