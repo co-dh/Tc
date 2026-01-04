@@ -134,5 +134,25 @@ def distinct (t : MemTable) (col : Nat) : IO (Array String) := pure <| Id.run do
       result := result.push s
   result
 
+-- | Find row from starting position, forward or backward (with wrap)
+def findRow (t : MemTable) (col : Nat) (val : String) (start : Nat) (fwd : Bool) : IO (Option Nat) := pure <| Id.run do
+  let c := t.cols.getD col default
+  let n := MemTable.nRows t
+  if fwd then
+    for i in [start:n] do
+      if (c.get i).toRaw == val then return some i
+    -- wrap around
+    for i in [:start] do
+      if (c.get i).toRaw == val then return some i
+  else
+    -- backward: start-1 down to 0, then wrap to end
+    for i in [:start] do
+      let idx := start - 1 - i
+      if (c.get idx).toRaw == val then return some idx
+    for i in [:n - start] do
+      let idx := n - 1 - i
+      if (c.get idx).toRaw == val then return some idx
+  none
+
 end MemTable
 end Tc

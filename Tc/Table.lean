@@ -22,6 +22,11 @@ def asMem? : Table → Option MemTable
   | .mem t => some t
   | .adbc _ => none
 
+-- | Check if table is ADBC-backed (search disabled)
+def isAdbc : Table → Bool
+  | .adbc _ => true
+  | .mem _ => false
+
 -- | ReadTable instance
 instance : ReadTable Table where
   nRows
@@ -49,6 +54,7 @@ instance : QueryTable MemTable where
   queryFreq := MemTable.queryFreq
   filter    := MemTable.filter
   distinct  := MemTable.distinct
+  findRow   := MemTable.findRow
 
 -- | QueryTable instance for AdbcTable
 instance : QueryTable AdbcTable where
@@ -56,6 +62,7 @@ instance : QueryTable AdbcTable where
   queryFreq := AdbcTable.queryFreq
   filter    := AdbcTable.filter
   distinct  := AdbcTable.distinct
+  findRow   := AdbcTable.findRow
 
 -- | QueryTable instance for Table
 instance : QueryTable Table where
@@ -69,6 +76,9 @@ instance : QueryTable Table where
   distinct tbl col := match tbl with
     | .mem t => MemTable.distinct t col
     | .adbc t => AdbcTable.distinct t col
+  findRow tbl col val start fwd := match tbl with
+    | .mem t => MemTable.findRow t col val start fwd
+    | .adbc t => AdbcTable.findRow t col val start fwd
 
 -- | RenderTable instance (direct dispatch to Term.renderTable)
 instance : RenderTable Table where

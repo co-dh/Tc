@@ -191,5 +191,26 @@ def distinct (t : AdbcTable) (col : Nat) : IO (Array String) := do
     result := result.push (← Adbc.cellStr qr i.toUInt64 0)
   pure result
 
+-- | Find row from starting position, forward or backward (with wrap)
+def findRow (t : AdbcTable) (col : Nat) (val : String) (start : Nat) (fwd : Bool) : IO (Option Nat) := do
+  let n := t.nRows
+  if fwd then
+    for i in [start:n] do
+      let c ← t.getCol col i (i + 1)
+      if (c.get 0).toRaw == val then return some i
+    for i in [:start] do
+      let c ← t.getCol col i (i + 1)
+      if (c.get 0).toRaw == val then return some i
+  else
+    for i in [:start] do
+      let idx := start - 1 - i
+      let c ← t.getCol col idx (idx + 1)
+      if (c.get 0).toRaw == val then return some idx
+    for i in [:n - start] do
+      let idx := n - 1 - i
+      let c ← t.getCol col idx (idx + 1)
+      if (c.get 0).toRaw == val then return some idx
+  return none
+
 end AdbcTable
 end Tc

@@ -26,12 +26,13 @@ structure View where
   precAdj : Int := 0         -- precision adjustment (-=fewer, +=more decimals)
   widthAdj : Int := 0        -- width adjustment offset (-=narrower, +=wider)
   widths : Array Nat := #[]  -- cached column widths (per-view for type safety)
+  search : Option (Nat × String) := none  -- last search: (colIdx, value)
 
 namespace View
 
 -- | Create from NavState + path
 def new {nr nc : Nat} (nav : NavState nr nc Table) (path : String) : View :=
-  ⟨nr, nc, nav, path, .tbl, "", 0, 0, #[]⟩
+  ⟨nr, nc, nav, path, .tbl, "", 0, 0, #[], none⟩
 
 -- | Tab display name: custom disp or filename from path
 @[inline] def tabName (v : View) : String :=

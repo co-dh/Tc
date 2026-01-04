@@ -98,12 +98,13 @@ abbrev MetaTuple := Array String × Array String × Array Int64 × Array Int64 �
 -- Freq tuple: (keyNames, keyCols, cntData, pctData, barData)
 abbrev FreqTuple := Array String × Array Column × Array Int64 × Array Float × Array String
 
--- Query operations (meta, freq, filter, distinct)
+-- Query operations (meta, freq, filter, distinct, findRow)
 class QueryTable (α : Type) where
   queryMeta : α → IO MetaTuple
   queryFreq : α → Array Nat → IO FreqTuple
   filter    : α → String → IO (Option α)
   distinct  : α → Nat → IO (Array String)
+  findRow   : α → Nat → String → Nat → Bool → IO (Option Nat)  -- find row from start, fwd/bwd
 
 -- Derived: column count from colNames.size
 def ReadTable.nCols [ReadTable α] (a : α) : Nat := (ReadTable.colNames a).size

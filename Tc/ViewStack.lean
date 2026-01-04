@@ -84,6 +84,8 @@ def exec (s : ViewStack) (cmd : Cmd) (rowPg colPg : Nat) : IO (Option ViewStack)
   | .freq .ent => s.freqFilter                                      -- Enter: filter by freq row
   | .col .search  => some <$> s.colSearch
   | .row .search  => some <$> s.rowSearch
+  | .row .dup     => some <$> s.searchNext    -- n: search next
+  | .row .freq    => some <$> s.searchPrev    -- N: search prev
   | .row .filter  => some <$> s.rowFilter
   | _ => match ← s.cur.exec cmd rowPg colPg with
     | some v' => pure (some (s.setCur v'))
