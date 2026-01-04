@@ -25,20 +25,22 @@ structure View where
   disp : String := ""        -- custom display name (overrides filename)
   precAdj : Int := 0         -- precision adjustment (-=fewer, +=more decimals)
   widthAdj : Int := 0        -- width adjustment offset (-=narrower, +=wider)
+  widths : Array Nat := #[]  -- cached column widths (per-view for type safety)
 
 namespace View
 
 -- | Create from NavState + path
 def new {nr nc : Nat} (nav : NavState nr nc Table) (path : String) : View :=
-  ⟨nr, nc, nav, path, .tbl, "", 0, 0⟩
+  ⟨nr, nc, nav, path, .tbl, "", 0, 0, #[]⟩
 
 -- | Tab display name: custom disp or filename from path
 @[inline] def tabName (v : View) : String :=
   if v.disp.isEmpty then v.path.splitOn "/" |>.getLast? |>.getD v.path else v.disp
 
--- | Render the view
-@[inline] def doRender (v : View) (vs : ViewState) : IO ViewState :=
-  render v.nav vs v.precAdj v.widthAdj
+-- | Render the view, returns (ViewState, updated View with new widths)
+@[inline] def doRender (v : View) (vs : ViewState) : IO (ViewState × View) := do
+  let (vs', widths) ← render v.nav vs v.widths v.precAdj v.widthAdj
+  pure (vs', { v with widths })
 
 -- | Create View from Table + path (returns none if empty)
 def fromTbl (tbl : Table) (path : String)

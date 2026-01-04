@@ -38,7 +38,7 @@ private def charCmds : Array (Char × Cmd) := #[
   ('t', .colSel .toggle), ('T', .rowSel .toggle),
   ('!', .grp .toggle), ('d', .colSel .del),
   ('[', .colSel .sortAsc), (']', .colSel .sortDesc),
-  ('M', .info .inc), ('F', .colSel .freq),   -- M=push meta view
+  ('M', .info .inc), ('F', .freq .dup),   -- M=meta, F=freq view
   ('0', .info .freq), ('1', .info .dup),  -- meta: 0=null, 1=single
   ('\r', .info .toggle),  -- Enter: meta set key cols
   ('s', .col .search),     -- col search: fzf jump to column

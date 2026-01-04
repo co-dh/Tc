@@ -29,7 +29,8 @@ def charToEvent (c : Char) : Term.Event :=
 
 -- | Main loop with ViewStack, keys = remaining replay keys, testMode = exit when keys exhausted
 partial def mainLoop (stk : ViewStack) (vs : ViewState) (keys : Array Char) (testMode : Bool := false) (verbPfx : Option Verb := none) : IO Unit := do
-  let vs' ← stk.cur.doRender vs
+  let (vs', v') ← stk.cur.doRender vs  -- v' has updated widths
+  let stk := stk.setCur v'             -- update stack with new widths
   renderTabLine stk.tabNames 0  -- current is index 0
   -- info overlay (toggle with I)
   if vs'.showInfo then
@@ -60,7 +61,8 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (keys : Array Char) (tes
   match evToCmd ev verbPfx with
   | some cmd => match ← stk.exec cmd rowPg colPg with
     | some stk' =>
-      let reset := cmd matches .stk .dec | .colSel .del | .colSel _ | .info _ | .col .search | .row .search | .col .filter | .row .filter
+      -- reset ViewState when view changes (widths now in View, so ViewState just has scroll/lastCol)
+      let reset := cmd matches .stk .dec | .colSel .del | .colSel _ | .info _ | .freq _ | .col .search | .row .search | .col .filter | .row .filter
       mainLoop stk' (if reset then ViewState.default else vs') keys' testMode
     | none => return  -- quit or table empty
   | none => mainLoop stk vs' keys' testMode

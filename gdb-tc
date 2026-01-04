@@ -1,0 +1,8 @@
+#!/bin/bash
+# Debug tc with gdb - auto-abort on Lean assertion violations
+gdb -batch \
+    -ex "handle SIGTTOU nostop noprint" \
+    -ex "set environment LEAN_ABORT_ON_PANIC=1" \
+    -ex "run $*" \
+    -ex "bt" \
+    .lake/build/bin/tc

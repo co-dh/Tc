@@ -8,16 +8,15 @@ import Tc.Error
 
 open Tc
 
--- ViewState: scroll offsets + cached widths + last cursor for direction
+-- ViewState: scroll offsets (widths moved to View for type safety)
 structure ViewState where
   rowOff   : Nat := 0           -- first visible row
   colOff   : Nat := 0           -- first visible column (display index)
-  widths   : Array Nat := #[]   -- cached column widths (empty = need compute)
   lastCol  : Nat := 0           -- last cursor column (for tooltip direction)
   showInfo : Bool := false      -- show info overlay (toggle with I)
 
 -- Default ViewState
-def ViewState.default : ViewState := ⟨0, 0, #[], 0, false⟩
+def ViewState.default : ViewState := ⟨0, 0, 0, false⟩
 
 -- Max column width cap
 def maxColWidth : Nat := 50
@@ -70,9 +69,10 @@ def adjColOff (cur colOff : Nat) (widths : Array Nat) (dispIdxs : Array Nat) (sc
   else if cumW cur < offX then cur
   else colOff
 
--- Render table to terminal, returns updated ViewState
+-- Render table to terminal, returns (ViewState, widths)
 def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
-    (nav : NavState nRows nCols t) (view : ViewState) (precAdj widthAdj : Int) : IO ViewState := do
+    (nav : NavState nRows nCols t) (view : ViewState) (inWidths : Array Nat)
+    (precAdj widthAdj : Int) : IO (ViewState × Array Nat) := do
   Term.clear
   let h ← Term.height
   let w ← Term.width
@@ -81,15 +81,15 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
   let rowOff := adjOff nav.row.cur.val view.rowOff visRows
   -- first render: use colOff=0, no scroll adjust (no widths yet)
   -- subsequent: use cached widths for scroll (widths in orig order, dispColIdxs for lookup)
-  let colOff := if view.widths.isEmpty then 0
-                else adjColOff nav.col.cur.val view.colOff view.widths nav.dispColIdxs w.toNat
+  let colOff := if inWidths.isEmpty then 0
+                else adjColOff nav.col.cur.val view.colOff inWidths nav.dispColIdxs w.toNat
   -- compute move direction: 1 = moved right, -1 = moved left, 0 = same
   let moveDir : Int := if nav.curColIdx > view.lastCol then 1
                        else if nav.curColIdx < view.lastCol then -1
                        else 0
   -- render via RenderTable, get widths back
   let t0 ← IO.monoNanosNow
-  let outWidths ← RenderTable.render nav view.widths colOff rowOff (min nRows (rowOff + visRows)) moveDir styles precAdj widthAdj
+  let outWidths ← RenderTable.render nav inWidths colOff rowOff (min nRows (rowOff + visRows)) moveDir styles precAdj widthAdj
   let t1 ← IO.monoNanosNow
   Log.timing "render" ((t1 - t0) / 1000)
   -- cap widths (keep in original order for C)
@@ -105,7 +105,7 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
   -- help
   let help := "hjkl:nav HJKL:pg +/-:adj t/T:sel !:grp q:q"
   Term.print (w - help.length.toUInt32) (h - 1) Term.yellow Term.default help
-  pure ⟨rowOff, colOff, widths, nav.curColIdx, view.showInfo⟩
+  pure (⟨rowOff, colOff, nav.curColIdx, view.showInfo⟩, widths)
 
 -- | Render tab line: [current] | parent1 | parent2 ...
 def renderTabLine (tabs : Array String) (curIdx : Nat) : IO Unit := do
