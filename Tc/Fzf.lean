@@ -17,19 +17,23 @@ def setTestMode (b : Bool) : IO Unit := testMode.set b
 def getTestMode : IO Bool := testMode.get
 
 -- | Core fzf: testMode returns first line, else spawn fzf
+-- Uses --tmux popup if in tmux (keeps table visible), otherwise fullscreen
 def fzfCore (opts : Array String) (input : String) : IO String := do
   if ← getTestMode then
     pure (input.splitOn "\n" |>.filter (!·.isEmpty) |>.headD "")
   else
-    Term.shutdown
-    let args := #["--height=50%", "--layout=reverse"] ++ opts
-    let child ← IO.Process.spawn { cmd := "fzf", args, stdin := .piped, stdout := .piped }
+    let inTmux := (← IO.getEnv "TMUX").isSome
+    let baseArgs := if inTmux
+      then #["--tmux=center,50%,50%", "--layout=reverse"]  -- popup over table
+      else #["--height=100%", "--layout=reverse"]           -- fullscreen fallback
+    if !inTmux then Term.shutdown
+    let child ← IO.Process.spawn { cmd := "fzf", args := baseArgs ++ opts, stdin := .piped, stdout := .piped }
     child.stdin.putStr input
     child.stdin.flush
     let (_, child') ← child.takeStdin
     let out ← child'.stdout.readToEnd
     let _ ← child'.wait
-    let _ ← Term.init
+    if !inTmux then let _ ← Term.init; pure ()
     pure out.trim
 
 -- | Single select: returns none if empty/cancelled
