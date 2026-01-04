@@ -81,8 +81,10 @@ def parseArgs (args : List String) : String × Array Char × Bool :=
 def main (args : List String) : IO Unit := do
   let (path, keys, testMode) := parseArgs args
   Fzf.setTestMode testMode
-  -- load theme (fallback to default dark if file missing)
-  let styles ← Theme.load "theme.csv" "default" "dark" <|> pure Theme.defaultDark
+  -- detect terminal bg, load theme (fallback to default dark)
+  let dark ← Theme.isDark
+  let variant := if dark then "dark" else "light"
+  let styles ← Theme.load "theme.csv" "default" variant <|> pure Theme.defaultDark
   let _ ← Term.init
   if path.endsWith ".csv" then
     match ← MemTable.load path with

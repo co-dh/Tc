@@ -61,6 +61,17 @@ def defaultDark : Array UInt32 := #[
   Term.default, Term.sky         -- group
 ]
 
+-- | Detect terminal background: dark (true) or light (false)
+-- Uses COLORFGBG env var (format: "fg;bg", bg < 7 = dark)
+def isDark : IO Bool := do
+  match (← IO.getEnv "COLORFGBG") with
+  | some s =>
+    let parts := s.splitOn ";"
+    match parts.getLast?.bind (·.toNat?) with
+    | some bg => pure (bg < 7)  -- 0-6 = dark colors
+    | none => pure true  -- default dark
+  | none => pure true  -- default dark
+
 -- | Load theme CSV, filter by theme/variant, return styles array
 def load (path : String) (theme variant : String) : IO (Array UInt32) := do
   let content ← IO.FS.readFile path
