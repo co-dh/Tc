@@ -39,7 +39,7 @@ def metaSel (s : ViewStack) (sel : MemTable → Array Nat) : ViewStack :=
     s.setCur { s.cur with nav := nav' }
   | none => s
 
--- | Set key cols from meta view selections, pop to parent
+-- | Set key cols from meta view selections, pop to parent, select cols for deletion
 def metaSetKey (s : ViewStack) : Option ViewStack :=
   if s.cur.vkind != .colMeta then some s else
   if !s.hasParent then some s else
@@ -48,7 +48,8 @@ def metaSetKey (s : ViewStack) : Option ViewStack :=
     let colNames := Meta.selNames tbl s.cur.nav.row.sels
     match s.pop with
     | some s' =>
-      let nav' := { s'.cur.nav with grp := colNames }
+      -- Set grp and also select those cols (user likely wants to delete)
+      let nav' := { s'.cur.nav with grp := colNames, col := { s'.cur.nav.col with sels := colNames } }
       some (s'.setCur { s'.cur with nav := nav' })
     | none => some s
   | none => some s

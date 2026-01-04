@@ -137,11 +137,17 @@ def test_key_col_reorder : IO Unit := do
   -- After l!, column b should be first (key col)
   assert (hdr.take 5 |>.any (· == 'b')) "Key col moves to front"
 
-def test_separator_not_shown_when_scrolled : IO Unit := do
-  log "keycol_scroll"
-  let output ← runKeys "!llllllllllllllllll" "data/sample.parquet"
-  let hdr := header output
-  assert (!contains hdr "║") "Separator hidden when key col scrolled off"
+-- Key columns are pinned on left, non-key columns scroll
+def test_key_col_pinned_when_scrolled : IO Unit := do
+  log "keycol_pinned"
+  -- Before: set id as key, check header has id and age (next col)
+  let before ← runKeys "!" "data/sample.parquet"
+  let hdrBefore := header before
+  -- After: scroll right, id should stay but age should be gone
+  let after ← runKeys "!lllll" "data/sample.parquet"
+  let hdrAfter := header after
+  assert (contains hdrBefore "id" && contains hdrBefore "age") "Before: has id and age"
+  assert (contains hdrAfter "id" && !contains hdrAfter "age") "After: id pinned, age scrolled off"
 
 -- === Delete tests ===
 
@@ -354,6 +360,14 @@ def test_parquet_meta_0_enter_groups : IO Unit := do
   assert (tab.startsWith "[1.parquet]") "M0<ret> returns to parent view"
   assert (contains status "grp=9") "M0<ret> groups 9 null columns"
 
+-- | Test M0<ret>d deletes the null columns
+def test_meta_0_enter_delete : IO Unit := do
+  log "meta_0_enter_delete"
+  let output ← runKeys "M0<ret>d" "data/null_col.csv"
+  let (_, status) := footer output
+  -- After M0<ret>d, null col b should be deleted, only col a remains
+  assert (contains status "c0/1") "M0<ret>d deletes null column"
+
 -- === Freq enter tests ===
 
 def test_freq_enter_filters : IO Unit := do
@@ -418,7 +432,7 @@ def main : IO Unit := do
   test_toggle_key_column
   test_toggle_key_remove
   test_key_col_reorder
-  test_separator_not_shown_when_scrolled
+  test_key_col_pinned_when_scrolled
 
   -- Delete
   test_delete_column
@@ -467,6 +481,7 @@ def main : IO Unit := do
   test_meta_1_enter_sets_keycols
   test_parquet_meta_0_null_cols
   test_parquet_meta_0_enter_groups
+  test_meta_0_enter_delete
 
   -- Freq enter
   test_freq_enter_filters

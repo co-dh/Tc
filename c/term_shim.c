@@ -153,7 +153,8 @@ lean_obj_res lean_tb_render_col(uint32_t x, uint32_t w, uint32_t y0,
 #define STYLE_CUR_COL    5
 #define STYLE_DEFAULT    6
 #define STYLE_HEADER     7
-#define NUM_STYLES       8
+#define STYLE_GROUP      8   // group/key column background
+#define NUM_STYLES       9
 
 // | Column type tags (matches Lean Column inductive)
 #define COL_INTS   0
@@ -356,35 +357,50 @@ lean_obj_res lean_render_table(
         allWidths[c] = w;
     }
 
-    // compute x positions for visible columns (starting from colOff)
+    // compute x positions: key columns pinned left, then scrollable columns
     size_t nDispCols = lean_array_size(colIdxs);
+    size_t* dispIdxs = malloc(nDispCols * sizeof(size_t));  // indices into colIdxs
     int* xs = malloc(nDispCols * sizeof(int));
     int* ws = malloc(nDispCols * sizeof(int));
-    size_t nVisCols = 0;  // actual visible count
+    size_t nVisCols = 0;
     int x = 0;
-    for (size_t c = colOff; c < nDispCols && x < screenW; c++) {
+
+    // 1. Always render key columns first (pinned)
+    for (size_t c = 0; c < nKeys && c < nDispCols && x < screenW; c++) {
         size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, c));
         int w = allWidths[origIdx];
         if (x + w > screenW) w = screenW - x;
+        dispIdxs[nVisCols] = c;
+        xs[nVisCols] = x;
+        ws[nVisCols] = w;
+        nVisCols++;
+        x += w + 1;
+    }
+    size_t visKeys = nVisCols;  // number of visible key columns
+
+    // 2. Then render non-key columns starting from colOff (adjusted for keys)
+    size_t nonKeyStart = nKeys + colOff;  // skip key cols, apply scroll offset
+    for (size_t c = nonKeyStart; c < nDispCols && x < screenW; c++) {
+        size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, c));
+        int w = allWidths[origIdx];
+        if (x + w > screenW) w = screenW - x;
+        dispIdxs[nVisCols] = c;
         xs[nVisCols] = x;
         ws[nVisCols] = w;
         nVisCols++;
         x += w + 1;
     }
 
-    // visible key columns (for double separator ║ after keys)
-    size_t visKeys = (colOff < nKeys) ? nKeys - colOff : 0;
-    if (visKeys > nVisCols) visKeys = nVisCols;
-
     // header/footer (+ separators and type chars)
     int yFoot = nRows + 1;
     for (size_t c = 0; c < nVisCols; c++) {
-        size_t dispIdx = colOff + c;  // index into colIdxs
+        size_t dispIdx = dispIdxs[c];  // index into colIdxs (pinned keys first)
         size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, dispIdx));
         const char* name = lean_string_cstr(lean_array_get_core(names, origIdx));
         int isSel = IS_SEL(colBits, origIdx);
         int isCur = (origIdx == curCol);
-        int si = isCur ? STYLE_CURSOR : (isSel ? STYLE_SEL_COL : STYLE_HEADER);
+        int isGrp = (dispIdx < nKeys);  // group/key column
+        int si = isCur ? STYLE_CURSOR : (isSel ? STYLE_SEL_COL : (isGrp ? STYLE_GROUP : STYLE_HEADER));
         uint32_t fg = stFg[si] | TB_BOLD | TB_UNDERLINE;
         // leading space
         tb_set_cell(xs[c], 0, ' ', fg, stBg[si]);
@@ -419,21 +435,24 @@ lean_obj_res lean_render_table(
         int isCurRow = (row == curRow);
 
         for (size_t c = 0; c < nVisCols; c++) {
-            size_t dispIdx = colOff + c;
+            size_t dispIdx = dispIdxs[c];
             size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, dispIdx));
             int isSel = IS_SEL(colBits, origIdx);
             int isCurCol = (origIdx == curCol);
+            int isGrp = (dispIdx < nKeys);
             int si = get_style(isCurRow && isCurCol, isSelRow, isSel, isCurRow, isCurCol);
+            // group columns get group background unless cursor/selected
+            uint32_t bg = (isGrp && si == STYLE_DEFAULT) ? stBg[STYLE_GROUP] : stBg[si];
 
             lean_obj_arg col = lean_array_get_core(allCols, origIdx);
             format_col_cell(col, row, buf, sizeof(buf), (int)precAdj);
             // leading space
-            tb_set_cell(xs[c], y, ' ', stFg[si], stBg[si]);
+            tb_set_cell(xs[c], y, ' ', stFg[si], bg);
             // print cell with 2 chars reserved for leading+trailing space
             int cw = ws[c] > 2 ? ws[c] - 2 : 0;
-            if (cw > 0) print_pad(xs[c] + 1, y, cw, stFg[si], stBg[si], buf, col_is_num(col));
+            if (cw > 0) print_pad(xs[c] + 1, y, cw, stFg[si], bg, buf, col_is_num(col));
             // trailing space
-            tb_set_cell(xs[c] + ws[c] - 1, y, ' ', stFg[si], stBg[si]);
+            tb_set_cell(xs[c] + ws[c] - 1, y, ' ', stFg[si], bg);
             // separator after each column except last
             if (c + 1 < nVisCols) {
                 int sX = xs[c] + ws[c];
@@ -478,6 +497,7 @@ lean_obj_res lean_render_table(
         lean_array_set_core(outWidths, c, lean_box(allWidths[c]));
     }
 
+    free(dispIdxs);
     free(xs);
     free(ws);
     free(allWidths);

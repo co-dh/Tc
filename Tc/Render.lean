@@ -27,7 +27,7 @@ def reservedLines : Nat := 4
 -- Column page size (fixed, since widths vary)
 def colPageSize : Nat := 5
 
--- Styles: fg, bg pairs for 8 states (match C STYLE_* defines)
+-- Styles: fg, bg pairs for 9 states (match C STYLE_* defines)
 def styles : Array UInt32 := #[
   Term.black, Term.white,     -- cursor
   Term.black, Term.green,     -- selected row
@@ -36,7 +36,8 @@ def styles : Array UInt32 := #[
   Term.default, Term.default, -- cursor row
   Term.yellow, Term.default,  -- cursor col
   Term.default, Term.default, -- default
-  Term.white, Term.blue       -- header
+  Term.white, Term.blue,      -- header
+  Term.white, Term.cyan       -- group/key column
 ]
 
 -- RenderTable: tables that can render themselves
@@ -104,12 +105,12 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
   Term.print 0 (h - 1) Term.cyan Term.default status
   pure (⟨rowOff, colOff, nav.curColIdx, view.showInfo⟩, widths)
 
--- | Render tab line: [current] | parent1 | parent2 ...
+-- | Render tab line: parent2 │ parent1 │ [current] (stack top on right)
 def renderTabLine (tabs : Array String) (curIdx : Nat) : IO Unit := do
   let h ← Term.height
   let w ← Term.width
   let marked := tabs.mapIdx fun i t => if i == curIdx then s!"[{t}]" else t
-  let line := marked.toList |> String.intercalate " │ "
+  let line := marked.toList.reverse |> String.intercalate " │ "
   Term.print 0 (h - 2) Term.white Term.blue line
   -- pad rest of line with bg color
   if line.length < w.toNat then
