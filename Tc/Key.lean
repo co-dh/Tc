@@ -28,6 +28,11 @@ private def keyCmds : Array (UInt16 × Cmd) := #[
   (Term.keyHome, .ver .dec), (Term.keyEnd, .ver .inc)  -- ver -=top, +=bottom
 ]
 
+-- Ctrl char → Cmd (Ctrl-D=pgdn, Ctrl-U=pgup)
+private def ctrlCmds : Array (UInt32 × Cmd) := #[
+  (Term.ctrlD, .vPage .inc), (Term.ctrlU, .vPage .dec)
+]
+
 -- Other char → Cmd (selection, group, colSel ops, stack)
 private def charCmds : Array (Char × Cmd) := #[
   ('t', .colSel .toggle), ('T', .rowSel .toggle),
@@ -72,5 +77,5 @@ def evToCmd (ev : Term.Event) (verbPfx : Option Verb) : Option Cmd :=
     -- +/- prefix: map to hor/ver/prec/width objects
     prefixObjs.findSome? fun (ch, mk) => if c.toLower == ch then some (mk v) else none
   | none =>
-    navCmd c shift <|> lookup charCmds c <|> lookup keyCmds ev.key
+    navCmd c shift <|> lookup charCmds c <|> lookup keyCmds ev.key <|> lookup ctrlCmds ev.ch
 

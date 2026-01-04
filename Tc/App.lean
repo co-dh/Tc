@@ -11,8 +11,24 @@ import Tc.ViewStack
 
 open Tc
 
--- | Main loop with ViewStack
-partial def mainLoop (stk : ViewStack) (vs : ViewState) (verbPfx : Option Verb := none) : IO Unit := do
+-- | Parse key notation: <ret> → \r, <C-d> → Ctrl-D, etc.
+def parseKeys (s : String) : String :=
+  s.replace "<ret>" "\r"
+   |>.replace "<esc>" "\x1b"
+   |>.replace "<C-d>" "\x04"
+   |>.replace "<C-u>" "\x15"
+   |>.replace "<backslash>" "\\"
+   |>.replace "<key>" "!"
+
+-- | Convert char to synthetic Term.Event
+def charToEvent (c : Char) : Term.Event :=
+  let ch := c.toNat.toUInt32
+  -- Ctrl chars: mod=2 (ctrl)
+  if ch < 32 then ⟨Term.eventKey, 2, 0, ch, 0, 0⟩
+  else ⟨Term.eventKey, 0, 0, ch, 0, 0⟩
+
+-- | Main loop with ViewStack, keys = remaining replay keys, testMode = exit when keys exhausted
+partial def mainLoop (stk : ViewStack) (vs : ViewState) (keys : Array Char) (testMode : Bool := false) (verbPfx : Option Verb := none) : IO Unit := do
   let vs' ← stk.cur.doRender vs
   renderTabLine stk.tabNames 0  -- current is index 0
   -- info overlay (toggle with I)
@@ -20,43 +36,52 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (verbPfx : Option Verb :
     let h ← Term.height; let w ← Term.width
     infoOverlay h.toNat w.toNat
   Term.present
-  let ev ← Term.pollEvent
+  -- test mode: exit after keys consumed (check AFTER render)
+  if testMode && keys.isEmpty then
+    IO.print (← Term.bufferStr)
+    return
+  -- get event: from keys or poll
+  let (ev, keys') ← if h : keys.size > 0 then
+    pure (charToEvent keys[0], keys.extract 1 keys.size)
+  else
+    let e ← Term.pollEvent
+    pure (e, #[])
   let h ← Term.height
   let rowPg := (h.toNat - reservedLines) / 2
   let colPg := colPageSize
   -- I key: toggle info overlay
   if ev.type == Term.eventKey && ev.ch == 'I'.toNat.toUInt32 then
-    return ← mainLoop stk { vs' with showInfo := !vs'.showInfo }
+    return ← mainLoop stk { vs' with showInfo := !vs'.showInfo } keys' testMode
   -- +/- prefix for hor/ver/prec/width commands
   if ev.type == Term.eventKey && verbPfx.isNone then
-    if ev.ch == '+'.toNat.toUInt32 then return ← mainLoop stk vs' (some .inc)
-    if ev.ch == '-'.toNat.toUInt32 then return ← mainLoop stk vs' (some .dec)
+    if ev.ch == '+'.toNat.toUInt32 then return ← mainLoop stk vs' keys' testMode (some .inc)
+    if ev.ch == '-'.toNat.toUInt32 then return ← mainLoop stk vs' keys' testMode (some .dec)
   -- dispatch Cmd to ViewStack
   match evToCmd ev verbPfx with
   | some cmd => match stk.exec cmd rowPg colPg with
     | some stk' =>
       let reset := cmd matches .stk .dec | .colSel .del | .colSel _ | .col .search | .row .search | .col .filter | .row .filter
-      mainLoop stk' (if reset then ViewState.default else vs')
+      mainLoop stk' (if reset then ViewState.default else vs') keys' testMode
     | none => return  -- quit or table empty
-  | none => mainLoop stk vs'
+  | none => mainLoop stk vs' keys' testMode
 
--- | Parse -c <cmd> from args
-def parseArgs (args : List String) : String × String :=
+-- | Parse args: path, optional -c for key replay (test mode)
+def parseArgs (args : List String) : String × Array Char × Bool :=
   match args with
-  | "-c" :: cmd :: rest => (rest.head?.getD "data.csv", cmd)
-  | path :: "-c" :: cmd :: _ => (path, cmd)
-  | path :: _ => (path, "")
-  | [] => ("data.csv", "")
+  | [path, "-c", keys] => (path, (parseKeys keys).toList.toArray, true)
+  | path :: "-c" :: keys :: _ => (path, (parseKeys keys).toList.toArray, true)
+  | path :: _ => (path, #[], false)
+  | [] => ("data.csv", #[], false)
 
 -- | Entry point
 def main (args : List String) : IO Unit := do
-  let (path, _cmdStr) := parseArgs args
+  let (path, keys, testMode) := parseArgs args
   let _ ← Term.init
   if path.endsWith ".csv" then
     match ← MemTable.load path with
     | .error e => Term.shutdown; IO.eprintln s!"CSV parse error: {e}"
     | .ok tbl => match View.fromTbl tbl path with
-      | some v => mainLoop ⟨v, #[]⟩ ViewState.default; Term.shutdown
+      | some v => mainLoop ⟨v, #[]⟩ ViewState.default keys testMode; Term.shutdown
       | none => Term.shutdown; IO.eprintln "Empty table"
   else
     let ok ← AdbcTable.init
@@ -64,5 +89,5 @@ def main (args : List String) : IO Unit := do
     match ← AdbcTable.fromFile path with
     | none => Term.shutdown; AdbcTable.shutdown; IO.eprintln "Query failed"
     | some tbl => match View.fromTbl tbl path with
-      | some v => mainLoop ⟨v, #[]⟩ ViewState.default; Term.shutdown; AdbcTable.shutdown
+      | some v => mainLoop ⟨v, #[]⟩ ViewState.default keys testMode; Term.shutdown; AdbcTable.shutdown
       | none => Term.shutdown; AdbcTable.shutdown; IO.eprintln "Empty table"

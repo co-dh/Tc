@@ -2,7 +2,7 @@
  * termbox2 FFI shim for Lean 4
  */
 #include <lean/lean.h>
-#include <termbox2.h>
+#include "termbox2.h"
 
 // tb_init() -> Int32
 lean_obj_res lean_tb_init(lean_obj_arg world) {
@@ -463,7 +463,20 @@ lean_obj_res lean_render_table(
     return lean_io_result_mk_ok(outWidths);
 }
 
-// tb_buffer_str() -> String (screen as string, no escape sequences)
+// | UTF-8 encode codepoint, returns bytes written
+static int utf8_encode(uint32_t ch, char *buf) {
+    if (ch < 0x80) { buf[0] = ch; return 1; }
+    if (ch < 0x800) { buf[0] = 0xC0 | (ch >> 6); buf[1] = 0x80 | (ch & 0x3F); return 2; }
+    if (ch < 0x10000) {
+        buf[0] = 0xE0 | (ch >> 12); buf[1] = 0x80 | ((ch >> 6) & 0x3F); buf[2] = 0x80 | (ch & 0x3F);
+        return 3;
+    }
+    buf[0] = 0xF0 | (ch >> 18); buf[1] = 0x80 | ((ch >> 12) & 0x3F);
+    buf[2] = 0x80 | ((ch >> 6) & 0x3F); buf[3] = 0x80 | (ch & 0x3F);
+    return 4;
+}
+
+// tb_buffer_str() -> String (screen as UTF-8 string)
 lean_obj_res lean_tb_buffer_str(lean_obj_arg world) {
     int w = tb_width();
     int h = tb_height();
@@ -473,14 +486,15 @@ lean_obj_res lean_tb_buffer_str(lean_obj_arg world) {
         snprintf(hdr, sizeof(hdr), "(no buffer: %dx%d buf=%p)\n", w, h, (void*)buf);
         return lean_io_result_mk_ok(lean_mk_string(hdr));
     }
-    // w chars per row + newline, for h rows
-    char *str = malloc((size_t)(w + 1) * h + 1);
+    // max 4 bytes per char (UTF-8) + newline per row
+    char *str = malloc((size_t)(w * 4 + 1) * h + 1);
     if (!str) return lean_io_result_mk_ok(lean_mk_string("(malloc fail)"));
     size_t pos = 0;
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             uint32_t ch = buf[y * w + x].ch;
-            str[pos++] = (ch >= 32 && ch < 127) ? (char)ch : ' ';
+            if (ch == 0) ch = ' ';  // null → space
+            pos += utf8_encode(ch, str + pos);
         }
         str[pos++] = '\n';
     }
