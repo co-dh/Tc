@@ -68,7 +68,7 @@ Char │ Obj       │ + │ - │ ~ │ d │ [ │ ] │ c │ s │ f │ Des
  s   │ stk       │   │ q │ S │   │   │   │ c │   │   │ View stack (q=pop, S=swap, c=dup)
  p   │ prec      │+p │-p │   │   │   │   │   │   │   │ Display precision
  w   │ width     │+w │-w │   │   │   │   │   │   │   │ Column width
- M   │ info      │ 1 │ 0 │ ⏎ │   │   │   │ M │   │   │ Meta view (c=push, -=selNull, +=selSingle)
+ M   │ metaV     │ 1 │ 0 │ ⏎ │   │   │   │ M │   │   │ Meta view (c=push, -=selNull, +=selSingle)
  f   │ freq      │   │   │ ⏎ │   │   │   │ F │   │   │ Freq view (c=push, ~=filter)
 ```
 

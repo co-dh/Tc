@@ -66,7 +66,7 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (keys : Array Char) (tes
       let err ← Error.pop
       if !err.isEmpty && !testMode then errorPopup err
       -- reset ViewState when view changes (widths now in View, so ViewState just has scroll/lastCol)
-      let reset := cmd matches .stk .dec | .colSel .del | .colSel _ | .info _ | .freq _ | .col .search | .row .search | .col .filter | .row .filter
+      let reset := cmd matches .stk .dec | .colSel .del | .colSel _ | .metaV _ | .freq _ | .col .search | .row .search | .col .filter | .row .filter
       mainLoop stk' (if reset then ViewState.default else vs') keys' testMode
     | none => return  -- quit or table empty
   | none => mainLoop stk vs' keys' testMode
