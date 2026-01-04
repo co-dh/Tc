@@ -5,9 +5,10 @@
 import Std.Data.HashMap
 import Tc.Data.ADBC.FFI
 
--- | Join array of strings with separator
+-- | Join array of strings with separator (no intermediate List)
 def Array.join (arr : Array String) (sep : String) : String :=
-  String.intercalate sep arr.toList
+  if arr.isEmpty then "" else
+  arr[1:].foldl (init := arr[0]!) fun acc s => acc ++ sep ++ s
 
 -- | Toggle element in array (add if absent, remove if present)
 def Array.toggle [BEq α] (arr : Array α) (x : α) : Array α :=
