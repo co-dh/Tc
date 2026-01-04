@@ -102,9 +102,6 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
              (if widthAdj != 0 then s!" w{widthAdj}" else "")
   let status := s!"{colName} r{nav.row.cur.val}/{rowInfo} c{nav.curColIdx}/{nCols} grp={nav.grp.size} sel={nav.row.sels.size}{adj}"
   Term.print 0 (h - 1) Term.cyan Term.default status
-  -- help
-  let help := "hjkl:nav HJKL:pg +/-:adj t/T:sel !:grp q:q"
-  Term.print (w - help.length.toUInt32) (h - 1) Term.yellow Term.default help
   pure (⟨rowOff, colOff, nav.curColIdx, view.showInfo⟩, widths)
 
 -- | Render tab line: [current] | parent1 | parent2 ...
