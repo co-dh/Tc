@@ -61,7 +61,7 @@ Char │ Obj       │ + │ - │ ~ │ d │ [ │ ] │ c │ s │ f │ Des
  V   │ ver       │+j │+k │   │   │   │   │   │   │   │ Vertical end
  H   │ hor       │+l │+h │   │   │   │   │   │   │   │ Horizontal end
  --- Selection ---
- R   │ rowSel    │   │   │ T │   │   │   │   │   │   │ Row selection
+ R   │ rowSel    │ n │ N │ T │   │   │   │   │   │   │ Row selection, n/N=search next/prev
  C   │ colSel    │   │   │ t │ d │ [ │ ] │   │   │   │ Column selection
  g   │ grp       │   │   │ ! │   │   │   │   │   │   │ Group (pin left)
  --- Options ---
