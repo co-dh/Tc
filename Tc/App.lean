@@ -20,11 +20,11 @@ def parseKeys (s : String) : String :=
    |>.replace "<backslash>" "\\"
    |>.replace "<key>" "!"
 
--- | Convert char to synthetic Term.Event
+-- | Convert char to synthetic Term.Event (matches termbox behavior)
 def charToEvent (c : Char) : Term.Event :=
   let ch := c.toNat.toUInt32
-  -- Ctrl chars: mod=2 (ctrl)
-  if ch < 32 then ⟨Term.eventKey, 2, 0, ch, 0, 0⟩
+  -- Ctrl chars: termbox reports key=ctrl_code, ch=0, mod=2
+  if ch < 32 then ⟨Term.eventKey, 2, ch.toUInt16, 0, 0, 0⟩
   else ⟨Term.eventKey, 0, 0, ch, 0, 0⟩
 
 -- | Main loop with ViewStack, keys = remaining replay keys, testMode = exit when keys exhausted

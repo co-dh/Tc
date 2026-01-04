@@ -28,9 +28,9 @@ private def keyCmds : Array (UInt16 × Cmd) := #[
   (Term.keyHome, .ver .dec), (Term.keyEnd, .ver .inc)  -- ver -=top, +=bottom
 ]
 
--- Ctrl char → Cmd (Ctrl-D=pgdn, Ctrl-U=pgup)
-private def ctrlCmds : Array (UInt32 × Cmd) := #[
-  (Term.ctrlD, .vPage .inc), (Term.ctrlU, .vPage .dec)
+-- Ctrl key → Cmd (Ctrl-D=pgdn, Ctrl-U=pgup) - termbox reports in ev.key, not ev.ch
+private def ctrlCmds : Array (UInt16 × Cmd) := #[
+  (Term.ctrlD.toUInt16, .vPage .inc), (Term.ctrlU.toUInt16, .vPage .dec)
 ]
 
 -- Other char → Cmd (selection, group, colSel ops, stack, info)
@@ -80,5 +80,5 @@ def evToCmd (ev : Term.Event) (verbPfx : Option Verb) : Option Cmd :=
     -- +/- prefix: map to hor/ver/prec/width objects
     prefixObjs.findSome? fun (ch, mk) => if c.toLower == ch then some (mk v) else none
   | none =>
-    navCmd c shift <|> lookup charCmds c <|> lookup keyCmds ev.key <|> lookup ctrlCmds ev.ch
+    navCmd c shift <|> lookup charCmds c <|> lookup keyCmds ev.key <|> lookup ctrlCmds ev.key
 
