@@ -124,9 +124,9 @@ def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option
   | .hPage .inc => c colPg        | .hPage .dec => c (-colPg)
   | .ver .inc   => r (nRows - 1 - nav.row.cur.val) | .ver .dec => r (-nav.row.cur.val)
   | .hor .inc   => c (nCols - 1 - nav.col.cur.val) | .hor .dec => c (-nav.col.cur.val)
-  | .rowSel .toggle => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
-  | .colSel .toggle => some { nav with col := { nav.col with sels := nav.col.sels.toggle nav.curColName } }
-  | .grp .toggle    => some { nav with grp := nav.grp.toggle nav.curColName }
+  | .rowSel .ent => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
+  | .colSel .ent => some { nav with col := { nav.col with sels := nav.col.sels.toggle nav.curColName } }
+  | .grp .ent    => some { nav with grp := nav.grp.toggle nav.curColName }
   | .col .del | .colSel .sortAsc | .colSel .sortDesc => none  -- handled by View.exec
   | _ => some nav
 

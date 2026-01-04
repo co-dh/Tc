@@ -11,7 +11,7 @@ class Parse (α : Type) where
 -- | Verb: action type
 inductive Verb where
   | inc | dec         -- +/- movement or adjustment
-  | toggle            -- toggle selection
+  | ent            -- toggle selection
   | del               -- delete
   | sortAsc | sortDesc  -- sort
   | dup               -- copy/dup (info: select single-val cols)
@@ -24,13 +24,13 @@ namespace Verb
 
 -- | Verb to char
 def toChar : Verb → Char
-  | .inc => '+' | .dec => '-' | .toggle => '~' | .del => 'd'
+  | .inc => '+' | .dec => '-' | .ent => '~' | .del => 'd'
   | .sortAsc => '[' | .sortDesc => ']' | .dup => 'c'
   | .freq => 'F' | .search => 's' | .filter => 'f'
 
 -- | Char to verb
 def ofChar? : Char → Option Verb
-  | '+' => some .inc | '-' => some .dec | '~' => some .toggle | 'd' => some .del
+  | '+' => some .inc | '-' => some .dec | '~' => some .ent | 'd' => some .del
   | '[' => some .sortAsc | ']' => some .sortDesc | 'c' => some .dup
   | 'F' => some .freq | 's' => some .search | 'f' => some .filter | _ => none
 

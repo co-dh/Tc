@@ -35,17 +35,17 @@ private def ctrlCmds : Array (UInt32 × Cmd) := #[
 
 -- Other char → Cmd (selection, group, colSel ops, stack, info)
 private def charCmds : Array (Char × Cmd) := #[
-  ('t', .colSel .toggle), ('T', .rowSel .toggle),
-  ('!', .grp .toggle), ('d', .colSel .del),
+  ('t', .colSel .ent), ('T', .rowSel .ent),
+  ('!', .grp .ent), ('d', .colSel .del),
   ('[', .colSel .sortAsc), (']', .colSel .sortDesc),
   ('M', .info .inc), ('F', .freq .dup),   -- M=meta, F=freq view
   ('0', .info .freq), ('1', .info .dup),  -- meta: 0=null, 1=single
-  ('\r', .info .toggle),  -- Enter: meta set key cols
+  ('\r', .info .ent),  -- Enter: meta set key cols
   ('s', .col .search),     -- col search: fzf jump to column
   ('@', .row .search),     -- row search: fzf jump to row#
   ('/', .row .filter),     -- row filter: fzf PRQL filter
   ('\\', .col .filter),    -- col filter: fzf select columns
-  ('q', .stk .dec), ('S', .stk .toggle)  -- stack: q=pop, S=swap
+  ('q', .stk .dec), ('S', .stk .ent)  -- stack: q=pop, S=swap
 ]
 
 -- Normalize event to char (arrow→hjkl, or raw char)

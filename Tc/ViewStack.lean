@@ -155,21 +155,44 @@ def metaSetKey (s : ViewStack) : Option ViewStack :=
     | none => some s
   | none => some s
 
+-- | Filter parent by selected freq row, push filtered view
+def freqFilter (s : ViewStack) : IO (Option ViewStack) := do
+  match s.cur.vkind with
+  | .freqV cols =>
+    if !s.hasParent then pure (some s) else
+    match s.cur.nav.tbl.asMem? with
+    | some tbl =>
+      let row := s.cur.nav.row.cur.val
+      let expr := Freq.filterExpr tbl cols row
+      match s.pop with
+      | some s' =>
+        match ← QueryTable.filter s'.cur.nav.tbl expr with
+        | some tbl' => pure <| match View.fromTbl tbl' s'.cur.path 0 s'.cur.nav.grp 0 with
+          | some v => some (s'.push { v with disp := s!"filter {cols.join ","}" })
+          | none => some s'
+        | none => pure (some s')
+      | none => pure (some s)
+    | none => pure (some s)
+  | _ => pure (some s)
+
 -- | Execute Cmd, returns IO (Option ViewStack) (none = quit or table empty)
 def exec (s : ViewStack) (cmd : Cmd) (rowPg colPg : Nat) : IO (Option ViewStack) := do
   match cmd with
   | .stk .inc    => pure (some s.dup)
   | .stk .dec    => pure s.pop
-  | .stk .toggle => pure (some s.swap)
+  | .stk .ent => pure (some s.swap)
   | .stk .dup    => pure (some s.dup)
   | .stk _       => pure (some s)
   | .info .inc    => (← s.pushMeta).orElse (fun _ => some s) |> pure  -- M: push meta view
   | .info .freq   => pure (some (s.metaSel Meta.selNull))      -- 0: select null cols
   | .info .dup    => pure (some (s.metaSel Meta.selSingle))    -- 1: select single-val cols
-  | .info .toggle => pure s.metaSetKey                         -- Enter: set key cols (meta)
+  | .info .ent => match s.cur.vkind with                     -- Enter: dispatch by view kind
+    | .colMeta => pure s.metaSetKey
+    | .freqV _ => s.freqFilter
+    | _ => pure (some s)
   | .info _       => pure (some s)                             -- other info: no-op
   | .freq .dup    => (← s.pushFreq).orElse (fun _ => some s) |> pure  -- F: push freq view
-  | .freq _       => pure (some s)                             -- other freq: TODO
+  | .freq .ent => s.freqFilter                                      -- Enter: filter by freq row
   | .col .search  => some <$> s.colSearch
   | .row .search  => some <$> s.rowSearch
   | .col .filter  => some <$> s.colFilter
