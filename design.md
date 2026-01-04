@@ -45,27 +45,31 @@
 
 ## Obj/Verb Matrix
 
-Commands follow `Obj Verb` pattern. Not all combinations are valid.
+Commands follow `Obj Verb` pattern. Grouped by: navigation, selection, options.
 
 ```
                  │ I │ D │ T │ D │ A │ D │ D │ F │
                  │ N │ E │ O │ E │ S │ S │ U │ R │
                  │ C │ C │ G │ L │ C │ C │ P │ Q │
 Char │ Obj       │ + │ - │ ~ │ d │ [ │ ] │ c │ F │ Description
-─────┼───────────┼───┼───┼───┼───┼───┼───┼───┼───┼──────────────────
+─────┴───────────┴───┴───┴───┴───┴───┴───┴───┴───┴──────────────────
+ --- Navigation ---
  r   │ row       │ j │ k │   │   │   │   │   │   │ Row cursor
  c   │ col       │ l │ h │   │   │   │   │   │   │ Column cursor
+ v   │ vPage     │ J │ K │   │   │   │   │   │   │ Vertical page
+ h   │ hPage     │ L │ H │   │   │   │   │   │   │ Horizontal page
+ V   │ ver       │+j │+k │   │   │   │   │   │   │ Vertical end
+ H   │ hor       │+l │+h │   │   │   │   │   │   │ Horizontal end
+ --- Selection ---
  R   │ rowSel    │   │   │ T │   │   │   │   │   │ Row selection
  C   │ colSel    │   │   │ t │ d │ [ │ ] │   │ F │ Column selection
  g   │ grp       │   │   │ ! │   │   │   │   │   │ Group (pin left)
+ --- Options ---
  s   │ stk       │   │ q │ S │   │   │   │   │   │ View stack
- h   │ hPage     │ L │ H │   │   │   │   │   │   │ Horizontal page
- v   │ vPage     │ J │ K │   │   │   │   │   │   │ Vertical page
- H   │ hor       │+l │+h │   │   │   │   │   │   │ Horizontal end
- V   │ ver       │+j │+k │   │   │   │   │   │   │ Vertical end
  p   │ prec      │+p │-p │   │   │   │   │   │   │ Display precision
  w   │ width     │+w │-w │   │   │   │   │   │   │ Column width
- M   │ metaCol   │ M │   │   │   │   │   │ 1 │ 0 │ Meta view (+push, F/0=null, c/1=single)
+ M   │ metaCol   │ M │   │   │   │   │   │ 1 │ 0 │ Meta view
+ f   │ freqCol   │   │   │   │   │   │   │   │   │ Freq view (TODO)
 ```
 
 ## Structures
