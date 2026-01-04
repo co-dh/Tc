@@ -5,3 +5,6 @@
 *.trace
 data
 perf.data*
+tc.log
+test.log
+run_test.sh
