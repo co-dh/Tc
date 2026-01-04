@@ -48,39 +48,24 @@ def ofQueryResult (qr : Adbc.QueryResult) (query : Prql.Query := default) (total
   pure ⟨qr, names, fmts, nr.toNat, nc.toNat, query, total⟩
 
 -- | Extract column slice [r0, r1) as typed Column
-@[inline] unsafe def getColImpl (t : AdbcTable) (col r0 r1 : Nat) : Column :=
+def getCol (t : AdbcTable) (col r0 r1 : Nat) : IO Column := do
   let fmt := t.colFmts.getD col '?'
   match fmt with
   | 'l' | 'i' | 's' | 'c' | 'L' | 'I' | 'S' | 'C' =>
-    let data := Id.run do
-      let mut arr : Array Int64 := #[]
-      for r in [r0:r1] do
-        match unsafeIO (Adbc.cellInt t.qr r.toUInt64 col.toUInt64) with
-        | .ok v => arr := arr.push v.toInt64
-        | .error _ => arr := arr.push 0
-      arr
-    .ints data
+    let mut arr : Array Int64 := #[]
+    for r in [r0:r1] do
+      arr := arr.push (← Adbc.cellInt t.qr r.toUInt64 col.toUInt64).toInt64
+    pure (.ints arr)
   | 'g' | 'f' | 'd' =>
-    let data := Id.run do
-      let mut arr : Array Float := #[]
-      for r in [r0:r1] do
-        match unsafeIO (Adbc.cellFloat t.qr r.toUInt64 col.toUInt64) with
-        | .ok v => arr := arr.push v
-        | .error _ => arr := arr.push 0.0
-      arr
-    .floats data
+    let mut arr : Array Float := #[]
+    for r in [r0:r1] do
+      arr := arr.push (← Adbc.cellFloat t.qr r.toUInt64 col.toUInt64)
+    pure (.floats arr)
   | _ =>
-    let data := Id.run do
-      let mut arr : Array String := #[]
-      for r in [r0:r1] do
-        match unsafeIO (Adbc.cellStr t.qr r.toUInt64 col.toUInt64) with
-        | .ok v => arr := arr.push v
-        | .error _ => arr := arr.push ""
-      arr
-    .strs data
-
-@[implemented_by getColImpl]
-def getCol (_ : AdbcTable) (_ _ _ : Nat) : Column := .strs #[]
+    let mut arr : Array String := #[]
+    for r in [r0:r1] do
+      arr := arr.push (← Adbc.cellStr t.qr r.toUInt64 col.toUInt64)
+    pure (.strs arr)
 
 -- | Query total row count using cnt function
 def queryCount (query : Prql.Query) : IO Nat := do
@@ -109,31 +94,25 @@ def fromFile (path : String) : IO (Option AdbcTable) := do
   requery query total
 
 -- | Sort: append sort op and re-query (group cols asc, last col uses given asc)
-@[inline] unsafe def sortByImpl (t : AdbcTable) (idxs : Array Nat) (asc : Bool) : AdbcTable :=
+def sortBy (t : AdbcTable) (idxs : Array Nat) (asc : Bool) : IO AdbcTable := do
   let n := idxs.size
   let sortCols := idxs.mapIdx fun i idx =>
     let name := t.colNames.getD idx ""
     let isLast := i + 1 == n
     (name, if isLast then asc else true)
   let newQuery := t.query.pipe (.sort sortCols)
-  match unsafeIO (requery newQuery t.totalRows) with
-  | .ok (some t') => t'
-  | _ => t
-
-@[implemented_by sortByImpl]
-def sortBy (_ : AdbcTable) (_ : Array Nat) (_ : Bool) : AdbcTable := sorry
+  match ← requery newQuery t.totalRows with
+  | some t' => pure t'
+  | none => pure t
 
 -- | Delete columns: append select op and re-query
-@[inline] unsafe def delColsImpl (t : AdbcTable) (delIdxs : Array Nat) : AdbcTable :=
+def delCols (t : AdbcTable) (delIdxs : Array Nat) : IO AdbcTable := do
   let keepCols := (Array.range t.nCols).filter (!delIdxs.contains ·)
     |>.map fun i => t.colNames.getD i ""
   let newQuery := t.query.pipe (.sel keepCols)
-  match unsafeIO (requery newQuery t.totalRows) with
-  | .ok (some t') => t'
-  | _ => t
-
-@[implemented_by delColsImpl]
-def delCols (_ : AdbcTable) (_ : Array Nat) : AdbcTable := sorry
+  match ← requery newQuery t.totalRows with
+  | some t' => pure t'
+  | none => pure t
 
 end AdbcTable
 
@@ -152,13 +131,13 @@ instance : ModifyTable AdbcTable where
 instance : RenderTable AdbcTable where
   render nav inWidths colOff r0 r1 moveDir st precAdj widthAdj := do
     if inWidths.isEmpty then
-      let cols := (Array.range nav.tbl.nCols).map fun c => nav.tbl.getCol c 0 nav.tbl.nRows
+      let cols ← (Array.range nav.tbl.nCols).mapM fun c => nav.tbl.getCol c 0 nav.tbl.nRows
       Term.renderTable cols nav.tbl.colNames nav.tbl.colFmts inWidths nav.dispColIdxs
         nav.tbl.nRows.toUInt64 nav.grp.size.toUInt64 colOff.toUInt64
         0 nav.tbl.nRows.toUInt64 nav.row.cur.val.toUInt64 nav.curColIdx.toUInt64
         moveDir.toInt64 nav.selColIdxs nav.row.sels st precAdj.toInt64 widthAdj.toInt64
     else
-      let cols := (Array.range nav.tbl.nCols).map fun c => nav.tbl.getCol c r0 r1
+      let cols ← (Array.range nav.tbl.nCols).mapM fun c => nav.tbl.getCol c r0 r1
       let adjCur := nav.row.cur.val - r0
       let adjSel := nav.row.sels.filterMap fun r =>
         if r >= r0 && r < r1 then some (r - r0) else none

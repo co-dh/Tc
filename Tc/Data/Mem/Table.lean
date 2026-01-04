@@ -103,11 +103,12 @@ instance : ReadTable MemTable where
 
 -- | ModifyTable instance for MemTable
 instance : ModifyTable MemTable where
-  delCols := fun delIdxs t =>
-    let keepIdxs := (Array.range t.names.size).filter (!delIdxs.contains ·)
-    { names := keepIdxs.map fun i => t.names.getD i ""
-      cols  := keepIdxs.map fun i => t.cols.getD i default }
-  sortBy := fun idxs asc t => MemTable.sort t idxs asc
+  delCols := fun delIdxs t => pure
+    { names := let keepIdxs := (Array.range t.names.size).filter (!delIdxs.contains ·)
+               keepIdxs.map fun i => t.names.getD i ""
+      cols  := let keepIdxs := (Array.range t.names.size).filter (!delIdxs.contains ·)
+               keepIdxs.map fun i => t.cols.getD i default }
+  sortBy := fun idxs asc t => pure (MemTable.sort t idxs asc)
 
 -- | RenderTable instance for MemTable
 instance : RenderTable MemTable where

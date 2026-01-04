@@ -107,7 +107,7 @@ def colFilter (s : ViewStack) : IO ViewStack := do
   else
     let keepIdxs := selected.filterMap names.idxOf?
     let delIdxs := (Array.range names.size).filter (!keepIdxs.contains ·)
-    let tbl' := ModifyTable.delCols delIdxs v.nav.tbl
+    let tbl' ← ModifyTable.delCols delIdxs v.nav.tbl
     pure <| match View.fromTbl tbl' v.path 0 v.nav.grp 0 with
       | some v' => s.setCur { v' with disp := s!"select {selected.size}" }
       | none => s
@@ -174,9 +174,9 @@ def exec (s : ViewStack) (cmd : Cmd) (rowPg colPg : Nat) : IO (Option ViewStack)
   | .row .search  => some <$> s.rowSearch
   | .col .filter  => some <$> s.colFilter
   | .row .filter  => some <$> s.rowFilter
-  | _ => pure <| match s.cur.exec cmd rowPg colPg with
-    | some v' => some (s.setCur v')
-    | none => none
+  | _ => match ← s.cur.exec cmd rowPg colPg with
+    | some v' => pure (some (s.setCur v'))
+    | none => pure none
 
 end ViewStack
 end Tc

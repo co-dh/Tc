@@ -41,19 +41,19 @@ def ReadTable.nCols [ReadTable α] (a : α) : Nat := (ReadTable.colNames a).size
 
 -- Mutable table operations (column-only; row deletion via SQL filter)
 class ModifyTable (α : Type) extends ReadTable α where
-  delCols : Array Nat → α → α              -- delete columns by indices
-  sortBy  : Array Nat → Bool → α → α       -- sort by column indices, asc/desc
+  delCols : Array Nat → α → IO α           -- delete columns by indices
+  sortBy  : Array Nat → Bool → α → IO α    -- sort by column indices, asc/desc
 
 -- Delete columns at cursor + selections, return new table and filtered group
 def ModifyTable.del [ModifyTable α] (tbl : α) (cursor : Nat) (sels : Array Nat) (grp : Array String)
-    : α × Array String :=
+    : IO (α × Array String) := do
   let idxs := if sels.contains cursor then sels else sels.push cursor
   let names := ReadTable.colNames tbl
   let delNames := idxs.map (names.getD · "")
-  (delCols idxs tbl, grp.filter (!delNames.contains ·))
+  pure (← delCols idxs tbl, grp.filter (!delNames.contains ·))
 
 -- Sort table by group indices (asc) then cursor column
-def ModifyTable.sort [ModifyTable α] (tbl : α) (cursor : Nat) (grpIdxs : Array Nat) (asc : Bool) : α :=
+def ModifyTable.sort [ModifyTable α] (tbl : α) (cursor : Nat) (grpIdxs : Array Nat) (asc : Bool) : IO α :=
   sortBy (grpIdxs.push cursor) asc tbl
 
 end Tc

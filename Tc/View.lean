@@ -57,21 +57,21 @@ private def verbDelta (verb : Verb) : Int := if verb == .inc then 1 else -1
 private def preserve (v : View) (v' : Option View) : Option View :=
   v'.map fun x => { x with precAdj := v.precAdj, widthAdj := v.widthAdj }
 
--- | Execute Cmd, returns Option View (none if table becomes empty after del)
-def exec (v : View) (cmd : Cmd) (rowPg colPg : Nat) : Option View :=
+-- | Execute Cmd, returns IO (Option View) (none if table becomes empty after del)
+def exec (v : View) (cmd : Cmd) (rowPg colPg : Nat) : IO (Option View) := do
   let n := v.nav; let names := ReadTable.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   let mk tbl col grp row := preserve v (fromTbl tbl v.path col grp row)
   match cmd with
   | .colSel .del =>
-    let (tbl', grp') := ModifyTable.del n.tbl curCol (n.col.sels.filterMap names.idxOf?) n.grp
-    mk tbl' n.col.cur.val grp' 0
+    let (tbl', grp') ← ModifyTable.del n.tbl curCol (n.col.sels.filterMap names.idxOf?) n.grp
+    pure (mk tbl' n.col.cur.val grp' 0)
   | .colSel .sortAsc | .colSel .sortDesc =>
-    let tbl' := ModifyTable.sort n.tbl curCol (n.grp.filterMap names.idxOf?) (cmd == .colSel .sortAsc)
-    mk tbl' curCol n.grp n.row.cur.val
-  | .prec verb  => some { v with precAdj := v.precAdj + verbDelta verb }
-  | .width verb => some { v with widthAdj := v.widthAdj + verbDelta verb }
-  | _ => match NavState.exec cmd n rowPg colPg with
+    let tbl' ← ModifyTable.sort n.tbl curCol (n.grp.filterMap names.idxOf?) (cmd == .colSel .sortAsc)
+    pure (mk tbl' curCol n.grp n.row.cur.val)
+  | .prec verb  => pure (some { v with precAdj := v.precAdj + verbDelta verb })
+  | .width verb => pure (some { v with widthAdj := v.widthAdj + verbDelta verb })
+  | _ => pure <| match NavState.exec cmd n rowPg colPg with
     | some nav' => some { v with nav := nav' }
     | none => none
 
