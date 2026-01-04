@@ -216,6 +216,13 @@ def test_meta_shows_column_info : IO Unit := do
   let output ← runKeys "M" "data/basic.csv"
   assert (contains output "column" || contains output "name") "Meta shows column info"
 
+def test_meta_tab_no_garbage : IO Unit := do
+  log "meta_tab_no_garbage"
+  let output ← runKeys "M" "data/basic.csv"
+  let (tab, _) := footer output
+  -- Tab line should be "[meta] │ basic.csv" not "[meta] â basic.c" (garbage char)
+  assert (!contains tab "â") "Meta tab has no garbage chars"
+
 -- === Freq tests ===
 
 def test_freq_shows : IO Unit := do
@@ -411,6 +418,7 @@ def main : IO Unit := do
   test_meta_shows
   test_parquet_meta
   test_meta_shows_column_info
+  test_meta_tab_no_garbage
 
   -- Freq
   test_freq_shows

@@ -68,21 +68,41 @@ lean_obj_res lean_tb_poll_event(lean_obj_arg world) {
     return lean_io_result_mk_ok(obj);
 }
 
+// | Decode UTF-8 codepoint, advance pointer, return codepoint
+static uint32_t utf8_decode(const char **pp) {
+    const unsigned char *p = (const unsigned char *)*pp;
+    uint32_t ch;
+    if (p[0] < 0x80) { ch = p[0]; *pp += 1; }
+    else if ((p[0] & 0xE0) == 0xC0) { ch = ((p[0] & 0x1F) << 6) | (p[1] & 0x3F); *pp += 2; }
+    else if ((p[0] & 0xF0) == 0xE0) { ch = ((p[0] & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F); *pp += 3; }
+    else if ((p[0] & 0xF8) == 0xF0) { ch = ((p[0] & 0x07) << 18) | ((p[1] & 0x3F) << 12) | ((p[2] & 0x3F) << 6) | (p[3] & 0x3F); *pp += 4; }
+    else { ch = '?'; *pp += 1; }  // invalid UTF-8
+    return ch;
+}
+
+// | Count UTF-8 codepoints in string (up to max)
+static size_t utf8_len(const char *s, size_t max) {
+    size_t len = 0;
+    while (*s && len < max) { utf8_decode(&s); len++; }
+    return len;
+}
+
 // tb_print_pad(x, y, w, fg, bg, str, right_align) -> Unit
 // Prints string left/right aligned, padded to width - all in C
 lean_obj_res lean_tb_print_pad(uint32_t x, uint32_t y, uint32_t w,
                                 uint32_t fg, uint32_t bg,
                                 lean_obj_arg str, uint8_t right, lean_obj_arg world) {
     const char *s = lean_string_cstr(str);
-    size_t len = 0;
-    for (const char *p = s; *p && len < w; p++, len++) {}  // count up to w
+    size_t len = utf8_len(s, w);
     size_t pad = w > len ? w - len : 0;
     uint32_t cx = x;
     if (right) {  // right align: pad first
         for (size_t i = 0; i < pad; i++) tb_set_cell((int)cx++, (int)y, ' ', fg, bg);
     }
-    for (const char *p = s; *p && (cx - x) < w; p++) {
-        tb_set_cell((int)cx++, (int)y, (uint32_t)(unsigned char)*p, fg, bg);
+    const char *p = s;
+    while (*p && (cx - x) < w) {
+        uint32_t ch = utf8_decode(&p);
+        tb_set_cell((int)cx++, (int)y, ch, fg, bg);
     }
     if (!right) {  // left align: pad after
         for (size_t i = 0; i < pad; i++) tb_set_cell((int)cx++, (int)y, ' ', fg, bg);
@@ -103,16 +123,17 @@ lean_obj_res lean_tb_render_col(uint32_t x, uint32_t w, uint32_t y0,
         uint8_t right = lean_unbox(lean_array_get_core(rights, i));
         lean_obj_arg str = lean_array_get_core(strs, i);
         const char *s = lean_string_cstr(str);
-        size_t len = 0;
-        for (const char *p = s; *p && len < w; p++, len++) {}
+        size_t len = utf8_len(s, w);
         size_t pad = w > len ? w - len : 0;
         uint32_t cx = x;
         uint32_t y = y0 + (uint32_t)i;
         if (right) {
             for (size_t j = 0; j < pad; j++) tb_set_cell((int)cx++, (int)y, ' ', fg, bg);
         }
-        for (const char *p = s; *p && (cx - x) < w; p++) {
-            tb_set_cell((int)cx++, (int)y, (uint32_t)(unsigned char)*p, fg, bg);
+        const char *p = s;
+        while (*p && (cx - x) < w) {
+            uint32_t ch = utf8_decode(&p);
+            tb_set_cell((int)cx++, (int)y, ch, fg, bg);
         }
         if (!right) {
             for (size_t j = 0; j < pad; j++) tb_set_cell((int)cx++, (int)y, ' ', fg, bg);
