@@ -43,8 +43,8 @@ private def charCmds : Array (Char × Cmd) := #[
   ('\r', .info .ent),  -- Enter: meta set key cols
   ('s', .col .search),     -- col search: fzf jump to column
   ('/', .row .search),     -- row search: fzf jump to row (vim-style)
-  ('n', .row .dup),        -- search next: repeat last search forward
-  ('N', .row .freq),       -- search prev: repeat last search backward
+  ('n', .rowSel .inc),     -- search next: repeat last search forward
+  ('N', .rowSel .dec),     -- search prev: repeat last search backward
   ('\\', .row .filter),    -- row filter: fzf PRQL filter (backslash)
   ('q', .stk .dec), ('S', .stk .ent)  -- stack: q=pop, S=swap
 ]
