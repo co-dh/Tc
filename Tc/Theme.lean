@@ -72,6 +72,22 @@ def isDark : IO Bool := do
     | none => pure true  -- default dark
   | none => pure true  -- default dark
 
+-- | Available themes: (theme, variant) pairs
+def themes : Array (String × String) := #[
+  ("default", "dark"), ("default", "light"),
+  ("ansi", "dark"), ("ansi", "light")
+]
+
+-- | Get theme index from name/variant
+def themeIdx (theme variant : String) : Nat :=
+  themes.findIdx? (· == (theme, variant)) |>.getD 0
+
+-- | Cycle theme index by delta, return new (theme, variant)
+def cycleTheme (idx : Nat) (delta : Int) : String × String :=
+  let n := themes.size
+  let newIdx := ((idx : Int) + delta).toNat % n
+  themes.getD newIdx ("default", "dark")
+
 -- | Load theme CSV, filter by theme/variant, return styles array
 def load (path : String) (theme variant : String) : IO (Array UInt32) := do
   let content ← IO.FS.readFile path

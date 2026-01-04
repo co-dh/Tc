@@ -64,10 +64,10 @@ private def navCmd (c : Char) (shift : Bool) : Option Cmd :=
                   else (if isRow then .row v else .col v))
     else none
 
--- +/- prefix targets: h=hPage, v=vPage, H=hor, V=ver, p=prec, w=width, hjkl=ver/hor
+-- +/- prefix targets: h=hPage, v=vPage, H=hor, V=ver, p=prec, w=width, t=thm, hjkl=ver/hor
 private def prefixObjs : Array (Char × (Verb → Cmd)) := #[
   ('h', .hPage), ('v', .vPage), ('H', .hor), ('V', .ver), ('p', .prec), ('w', .width),
-  ('j', .ver), ('k', .ver), ('l', .hor)  -- hjkl maps to ver/hor (end navigation)
+  ('t', .thm), ('j', .ver), ('k', .ver), ('l', .hor)  -- hjkl maps to ver/hor (end navigation)
 ]
 
 -- Convert Term.Event to Cmd
