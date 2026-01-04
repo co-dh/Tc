@@ -27,7 +27,7 @@ extern_lib adbcshim pkg := do
 lean_lib Tc where
   roots := #[`Tc.Offset, `Tc.Cmd, `Tc.Nav, `Tc.Render, `Tc.Key, `Tc.App,
              `Tc.Term, `Tc.Types, `Tc.Error, `Tc.View, `Tc.ViewStack,
-             `Tc.Meta, `Tc.Freq, `Tc.Fzf, `Tc.Table,
+             `Tc.Meta, `Tc.Freq, `Tc.Fzf, `Tc.Table, `Tc.Search, `Tc.Filter,
              `Tc.Data.CSV,
              `Tc.Data.Mem.Table, `Tc.Data.Mem.Meta, `Tc.Data.Mem.Freq,
              `Tc.Data.ADBC.FFI, `Tc.Data.ADBC.Prql,

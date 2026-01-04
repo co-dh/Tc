@@ -78,4 +78,54 @@ def exec (v : View) (cmd : Cmd) (rowPg colPg : Nat) : IO (Option View) := do
     | none => none
 
 end View
+
+/-! ## ViewStack: non-empty view stack -/
+
+-- | Non-empty view stack: a[0] = current, a[1:] = parents
+abbrev ViewStack := { a : Array View // a.size > 0 }
+
+namespace ViewStack
+
+-- | Current view
+@[inline] def cur (s : ViewStack) : View := s.val[0]'s.property
+
+-- | All views
+@[inline] def views (s : ViewStack) : Array View := s.val
+
+-- | Stack depth
+@[inline] def depth (s : ViewStack) : Nat := s.val.size
+
+-- | Has parent?
+@[inline] def hasParent (s : ViewStack) : Bool := s.val.size > 1
+
+-- | Update current view
+def setCur (s : ViewStack) (v : View) : ViewStack :=
+  ⟨s.val.set (Fin.mk 0 s.property) v, by simp [Array.size_set]; exact s.property⟩
+
+-- | Push new view (current becomes parent)
+def push (s : ViewStack) (v : View) : ViewStack :=
+  ⟨#[v] ++ s.val, by simp; omega⟩
+
+-- | Pop view (returns to parent, or none if no parent)
+def pop (s : ViewStack) : Option ViewStack :=
+  if h : s.val.size > 1 then some ⟨s.val.extract 1 s.val.size, by simp [Array.size_extract]; omega⟩
+  else none
+
+-- | Swap top two views
+def swap (s : ViewStack) : ViewStack :=
+  if h : s.val.size > 1 then
+    let a := s.val[0]'s.property
+    let b := s.val[1]'h
+    ⟨#[b, a] ++ s.val.extract 2 s.val.size, by simp; omega⟩
+  else s
+
+-- | Duplicate current view (push copy of current)
+def dup (s : ViewStack) : ViewStack :=
+  ⟨#[s.cur] ++ s.val, by simp; omega⟩
+
+-- | Tab names for display (current first)
+def tabNames (s : ViewStack) : Array String := s.views.map (·.tabName)
+
+end ViewStack
+
 end Tc
