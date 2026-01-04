@@ -337,6 +337,13 @@ def test_meta_1_enter_sets_keycols : IO Unit := do
   let hdr := header output
   assert (contains hdr "║" || contains hdr "|") "M1<ret> sets key cols"
 
+-- | Test M0 on parquet with known null columns (9 cols with 100% null)
+def test_parquet_meta_0_null_cols : IO Unit := do
+  log "parquet_meta_0"
+  let output ← runKeys "M0" "data/nyse/1.parquet"
+  let (_, status) := footer output
+  assert (contains status "sel=9") "M0 on parquet selects 9 null columns"
+
 -- === Freq enter tests ===
 
 def test_freq_enter_filters : IO Unit := do
@@ -448,6 +455,7 @@ def main : IO Unit := do
   test_meta_1_select_single_val
   test_meta_0_enter_sets_keycols
   test_meta_1_enter_sets_keycols
+  test_parquet_meta_0_null_cols
 
   -- Freq enter
   test_freq_enter_filters
