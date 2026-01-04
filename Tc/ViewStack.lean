@@ -168,6 +168,37 @@ unsafe def rowFilterImpl (s : ViewStack) : ViewStack :=
 @[implemented_by rowFilterImpl]
 def rowFilter (s : ViewStack) : ViewStack := s
 
+-- | Select rows in meta view by predicate on MemTable
+unsafe def metaSelImpl (s : ViewStack) (sel : MemTable → Array Nat) : ViewStack :=
+  if s.cur.vkind != .colMeta then s else
+  letI : ReadTable s.cur.t := s.cur.instR
+  -- Get underlying MemTable from meta view and compute selection
+  match unsafeIO (pure (sel (unsafeCast s.cur.nav.tbl : MemTable))) with
+  | .ok rows =>
+    let nav' := { s.cur.nav with row := { s.cur.nav.row with sels := rows } }
+    s.setCur { s.cur with nav := nav' }
+  | .error _ => s
+
+@[implemented_by metaSelImpl]
+def metaSel (s : ViewStack) (_ : MemTable → Array Nat) : ViewStack := s
+
+-- | Set key cols from meta view selections, pop to parent
+unsafe def metaSetKeyImpl (s : ViewStack) : Option ViewStack :=
+  if s.cur.vkind != .colMeta then some s else
+  if !s.hasParent then some s else
+  letI : ReadTable s.cur.t := s.cur.instR
+  let tbl : MemTable := unsafeCast s.cur.nav.tbl
+  let colNames := Meta.selNames tbl s.cur.nav.row.sels
+  match s.pop with
+  | some s' =>
+    letI : ReadTable s'.cur.t := s'.cur.instR
+    let nav' := { s'.cur.nav with grp := colNames }
+    some (s'.setCur { s'.cur with nav := nav' })
+  | none => some s
+
+@[implemented_by metaSetKeyImpl]
+def metaSetKey (s : ViewStack) : Option ViewStack := some s
+
 -- | Execute Cmd (pure), returns Option ViewStack (none = quit or table empty)
 def exec (s : ViewStack) (cmd : Cmd) (rowPg colPg : Nat) : Option ViewStack :=
   match cmd with
@@ -176,8 +207,12 @@ def exec (s : ViewStack) (cmd : Cmd) (rowPg colPg : Nat) : Option ViewStack :=
   | .stk .toggle => some s.swap
   | .stk .dup    => some s.dup
   | .stk _       => some s
-  | .colSel .colMeta => s.pushMeta.orElse fun _ => some s  -- fallback: no change
-  | .colSel .freq    => s.pushFreq.orElse fun _ => some s  -- fallback: no change
+  | .metaCol .inc    => s.pushMeta.orElse fun _ => some s  -- M: push meta view
+  | .metaCol .freq   => some (s.metaSel Meta.selNull)      -- 0: select null cols
+  | .metaCol .dup    => some (s.metaSel Meta.selSingle)    -- 1: select single-val cols
+  | .metaCol .toggle => s.metaSetKey                       -- Enter: set key cols
+  | .metaCol _       => some s                             -- other metaCol: no-op
+  | .colSel .freq    => s.pushFreq.orElse fun _ => some s  -- F: push freq view
   | .col .search => some s.colSearch
   | .row .search => some s.rowSearch
   | .col .filter => some s.colFilter

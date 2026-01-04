@@ -60,7 +60,7 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (keys : Array Char) (tes
   match evToCmd ev verbPfx with
   | some cmd => match stk.exec cmd rowPg colPg with
     | some stk' =>
-      let reset := cmd matches .stk .dec | .colSel .del | .colSel _ | .col .search | .row .search | .col .filter | .row .filter
+      let reset := cmd matches .stk .dec | .colSel .del | .colSel _ | .metaCol _ | .col .search | .row .search | .col .filter | .row .filter
       mainLoop stk' (if reset then ViewState.default else vs') keys' testMode
     | none => return  -- quit or table empty
   | none => mainLoop stk vs' keys' testMode

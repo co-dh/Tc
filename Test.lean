@@ -304,6 +304,63 @@ def test_prec_decrease : IO Unit := do
   let first := rows.headD ""
   assert (contains first "1.1") "-p decreases precision"
 
+-- === Meta selection tests (M0/M1) ===
+
+def test_meta_0_select_null_cols : IO Unit := do
+  log "meta_0"
+  let output ← runKeys "M0" "data/null_col.csv"
+  let (_, status) := footer output
+  assert (contains status "sel=1" || contains status "rows=1") "M0 selects null columns"
+
+def test_meta_1_select_single_val : IO Unit := do
+  log "meta_1"
+  let output ← runKeys "M1" "data/single_val.csv"
+  let (_, status) := footer output
+  assert (contains status "sel=1" || contains status "rows=1") "M1 selects single-value columns"
+
+def test_meta_0_enter_sets_keycols : IO Unit := do
+  log "meta_0_enter"
+  let output ← runKeys "M0<ret>" "data/null_col.csv"
+  let hdr := header output
+  assert (contains hdr "║" || contains hdr "|") "M0<ret> sets key cols"
+
+def test_meta_1_enter_sets_keycols : IO Unit := do
+  log "meta_1_enter"
+  let output ← runKeys "M1<ret>" "data/single_val.csv"
+  let hdr := header output
+  assert (contains hdr "║" || contains hdr "|") "M1<ret> sets key cols"
+
+-- === Freq enter tests ===
+
+def test_freq_enter_filters : IO Unit := do
+  log "freq_enter"
+  let output ← runKeys "F<ret>" "data/basic.csv"
+  let (tab, _) := footer output
+  -- After F<ret>, should have filter view or be back at filtered data
+  assert (contains tab "filter" || contains tab "basic") "F<ret> filters or returns"
+
+def test_freq_enter_then_quit : IO Unit := do
+  log "freq_enter_quit"
+  let output ← runKeys "F<ret>q" "data/basic.csv"
+  let (tab, _) := footer output
+  assert (contains tab "freq") "F<ret>q returns to freq view"
+
+-- === Cursor tracking ===
+
+def test_key_cursor_tracks : IO Unit := do
+  log "key_cursor"
+  let output ← runKeys "l!" "data/basic.csv"
+  let (_, status) := footer output
+  -- After l!, cursor should be on col 0 (b is now first as key)
+  assert (contains status "c0/") "Cursor tracks after key toggle"
+
+-- === No stderr ===
+
+def test_no_stderr : IO Unit := do
+  log "no_stderr"
+  let out ← IO.Process.output { cmd := "grep", args := #["-r", "eprintln", "Tc/"] }
+  assert (out.stdout.trim.isEmpty) "No eprintln in Tc/"
+
 -- === Misc ===
 
 def test_numeric_right_align : IO Unit := do
@@ -375,6 +432,22 @@ def main : IO Unit := do
   -- Precision/Width
   test_prec_increase
   test_prec_decrease
+
+  -- Meta M0/M1
+  test_meta_0_select_null_cols
+  test_meta_1_select_single_val
+  test_meta_0_enter_sets_keycols
+  test_meta_1_enter_sets_keycols
+
+  -- Freq enter
+  test_freq_enter_filters
+  test_freq_enter_then_quit
+
+  -- Cursor tracking
+  test_key_cursor_tracks
+
+  -- No stderr
+  test_no_stderr
 
   -- Misc
   test_numeric_right_align

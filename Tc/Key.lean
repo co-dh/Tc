@@ -33,12 +33,14 @@ private def ctrlCmds : Array (UInt32 × Cmd) := #[
   (Term.ctrlD, .vPage .inc), (Term.ctrlU, .vPage .dec)
 ]
 
--- Other char → Cmd (selection, group, colSel ops, stack)
+-- Other char → Cmd (selection, group, colSel ops, stack, metaCol)
 private def charCmds : Array (Char × Cmd) := #[
   ('t', .colSel .toggle), ('T', .rowSel .toggle),
   ('!', .grp .toggle), ('d', .colSel .del),
   ('[', .colSel .sortAsc), (']', .colSel .sortDesc),
-  ('M', .colSel .colMeta), ('F', .colSel .freq),
+  ('M', .metaCol .inc), ('F', .colSel .freq),   -- M=push meta view
+  ('0', .metaCol .freq), ('1', .metaCol .dup),  -- meta: 0=null, 1=single
+  ('\r', .metaCol .toggle),  -- Enter: meta set key cols
   ('s', .col .search),     -- col search: fzf jump to column
   ('@', .row .search),     -- row search: fzf jump to row#
   ('/', .row .filter),     -- row filter: fzf PRQL filter
