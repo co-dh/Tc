@@ -28,16 +28,17 @@ def reservedLines : Nat := 4
 def colPageSize : Nat := 5
 
 -- Styles: fg, bg pairs for 9 states (match C STYLE_* defines)
+-- Beautiful 256-color theme
 def styles : Array UInt32 := #[
-  Term.black, Term.white,     -- cursor
-  Term.black, Term.green,     -- selected row
-  Term.black, Term.magenta,   -- selected col + cursor row
-  Term.magenta, Term.default, -- selected col
-  Term.default, Term.default, -- cursor row
-  Term.yellow, Term.default,  -- cursor col
-  Term.default, Term.default, -- default
-  Term.white, Term.blue,      -- header
-  Term.white, Term.cyan       -- group/key column
+  Term.black, Term.brWhite,      -- cursor: black on bright white
+  Term.black, Term.mint,         -- selected row: black on soft mint
+  Term.black, Term.lavender,     -- selected col + cursor row: black on lavender
+  Term.brMagenta, Term.default,  -- selected col: bright magenta fg
+  Term.default, Term.gray234,    -- cursor row: subtle dark highlight
+  Term.brYellow, Term.default,   -- cursor col: bright yellow fg
+  Term.default, Term.default,    -- default: terminal colors
+  Term.brWhite, Term.slate,      -- header: bright white on slate blue
+  Term.default, Term.sky         -- group/key column: default fg, subtle bg
 ]
 
 -- RenderTable: tables that can render themselves

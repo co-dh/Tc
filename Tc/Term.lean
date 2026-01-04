@@ -28,16 +28,35 @@ def modShift : UInt8 := 4
 def ctrlD : UInt32 := 4   -- Ctrl+D (page down)
 def ctrlU : UInt32 := 21  -- Ctrl+U (page up)
 
--- | Colors (termbox2 indexed: TB_DEFAULT=0, TB_BLACK=1, ..., TB_WHITE=8)
-def default : UInt32 := 0x0000
-def black   : UInt32 := 0x0001
-def red     : UInt32 := 0x0002
-def green   : UInt32 := 0x0003
-def yellow  : UInt32 := 0x0004
-def blue    : UInt32 := 0x0005
-def magenta : UInt32 := 0x0006
-def cyan    : UInt32 := 0x0007
-def white   : UInt32 := 0x0008
+-- | Colors (xterm-256 palette for TB_OUTPUT_256)
+-- 0-7: standard ANSI, 8-15: bright, 16-231: cube, 232-255: grayscale
+def default : UInt32 := 0x0000  -- termbox TB_DEFAULT (uses terminal default color)
+def black   : UInt32 := 16      -- pure black (from 6x6x6 cube, since 0=TB_DEFAULT)
+def red     : UInt32 := 1       -- ANSI red
+def green   : UInt32 := 2       -- ANSI green
+def yellow  : UInt32 := 3       -- ANSI yellow/olive
+def blue    : UInt32 := 4       -- ANSI blue
+def magenta : UInt32 := 5       -- ANSI magenta
+def cyan    : UInt32 := 6       -- ANSI cyan
+def white   : UInt32 := 7       -- ANSI white (light gray)
+-- Bright colors (8-15)
+def brBlack   : UInt32 := 8     -- bright black (dark gray)
+def brRed     : UInt32 := 9
+def brGreen   : UInt32 := 10
+def brYellow  : UInt32 := 11
+def brBlue    : UInt32 := 12
+def brMagenta : UInt32 := 13
+def brCyan    : UInt32 := 14    -- light cyan
+def brWhite   : UInt32 := 15    -- bright white
+-- Extended palette
+def slate     : UInt32 := 60    -- muted blue-gray
+def sky       : UInt32 := 237   -- dark gray (subtle highlight)
+def mint      : UInt32 := 158   -- soft mint green
+def peach     : UInt32 := 223   -- soft peach
+def lavender  : UInt32 := 183   -- soft purple
+def gray234   : UInt32 := 234   -- very dark gray
+def gray240   : UInt32 := 240   -- medium gray
+def gray252   : UInt32 := 252   -- very light gray
 
 -- | Attributes (OR with color)
 def underline : UInt32 := 0x02000000

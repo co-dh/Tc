@@ -7,6 +7,7 @@
 // tb_init() -> Int32
 lean_obj_res lean_tb_init(lean_obj_arg world) {
     int r = tb_init();
+    tb_set_output_mode(TB_OUTPUT_256);  // enable 256-color mode
     // Drain any pending escape sequence responses (cursor position, etc)
     struct tb_event ev;
     while (tb_peek_event(&ev, 50) > 0) { /* discard */ }
@@ -400,30 +401,34 @@ lean_obj_res lean_render_table(
         int isSel = IS_SEL(colBits, origIdx);
         int isCur = (origIdx == curCol);
         int isGrp = (dispIdx < nKeys);  // group/key column
+        // style for fg: cursor > sel > group > header
         int si = isCur ? STYLE_CURSOR : (isSel ? STYLE_SEL_COL : (isGrp ? STYLE_GROUP : STYLE_HEADER));
         uint32_t fg = stFg[si] | TB_BOLD | TB_UNDERLINE;
+        // group cols keep group bg even when selected (only change fg)
+        uint32_t bg = isGrp ? stBg[STYLE_GROUP] : stBg[si];
         // leading space
-        tb_set_cell(xs[c], 0, ' ', fg, stBg[si]);
-        tb_set_cell(xs[c], yFoot, ' ', fg, stBg[si]);
+        tb_set_cell(xs[c], 0, ' ', fg, bg);
+        tb_set_cell(xs[c], yFoot, ' ', fg, bg);
         // print header with 2 chars reserved for leading space + type char
         int hw = ws[c] > 2 ? ws[c] - 2 : 0;
         if (hw > 0) {
-            print_pad(xs[c] + 1, 0, hw, fg, stBg[si], name, 0);
-            print_pad(xs[c] + 1, yFoot, hw, fg, stBg[si], name, 0);
+            print_pad(xs[c] + 1, 0, hw, fg, bg, name, 0);
+            print_pad(xs[c] + 1, yFoot, hw, fg, bg, name, 0);
         }
         // type char at last position (VisiData style: # int, % float, ? bool, @ date)
         lean_obj_arg col = lean_array_get_core(allCols, origIdx);
         char tc = (origIdx < nFmts)
             ? type_char_fmt((char)lean_unbox_uint32(lean_array_get_core(fmts, origIdx)))
             : type_char_col(col);
-        tb_set_cell(xs[c] + ws[c] - 1, 0, tc, fg, stBg[si]);
-        tb_set_cell(xs[c] + ws[c] - 1, yFoot, tc, fg, stBg[si]);
+        tb_set_cell(xs[c] + ws[c] - 1, 0, tc, fg, bg);
+        tb_set_cell(xs[c] + ws[c] - 1, yFoot, tc, fg, bg);
         // separator after each column except last
         if (c + 1 < nVisCols) {
             int sX = xs[c] + ws[c];  // x after column content
             uint32_t sc = (c + 1 == visKeys) ? 0x2551 : 0x2502;  // ║ after keys, │ otherwise
-            tb_set_cell(sX, 0, sc, stFg[STYLE_DEFAULT], stBg[STYLE_DEFAULT]);
-            tb_set_cell(sX, yFoot, sc, stFg[STYLE_DEFAULT], stBg[STYLE_DEFAULT]);
+            uint32_t sf = (c + 1 == visKeys) ? stFg[STYLE_GROUP] : stFg[STYLE_DEFAULT];
+            tb_set_cell(sX, 0, sc, sf, stBg[STYLE_DEFAULT]);
+            tb_set_cell(sX, yFoot, sc, sf, stBg[STYLE_DEFAULT]);
         }
     }
 
@@ -441,8 +446,8 @@ lean_obj_res lean_render_table(
             int isCurCol = (origIdx == curCol);
             int isGrp = (dispIdx < nKeys);
             int si = get_style(isCurRow && isCurCol, isSelRow, isSel, isCurRow, isCurCol);
-            // group columns get group background unless cursor/selected
-            uint32_t bg = (isGrp && si == STYLE_DEFAULT) ? stBg[STYLE_GROUP] : stBg[si];
+            // group columns keep group bg even when selected (only change fg)
+            uint32_t bg = isGrp ? stBg[STYLE_GROUP] : stBg[si];
 
             lean_obj_arg col = lean_array_get_core(allCols, origIdx);
             format_col_cell(col, row, buf, sizeof(buf), (int)precAdj);

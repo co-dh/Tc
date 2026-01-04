@@ -11,10 +11,10 @@ class Parse (α : Type) where
 -- | Verb: action type
 inductive Verb where
   | inc | dec         -- +/- movement or adjustment
-  | ent            -- toggle selection
-  | del               -- delete
-  | sortAsc | sortDesc  -- sort
   | dup               -- copy/dup (info: select single-val cols)
+  | del               -- delete
+  | ent            -- toggle selection
+  | sortAsc | sortDesc  -- sort
   | freq              -- frequency view (info: select null cols)
   | search            -- search/jump (col=fzf name, row=fzf row#)
   | filter            -- filter (col=select cols, row=PRQL filter)
@@ -47,14 +47,17 @@ end Verb
 inductive Cmd where
   | row (v : Verb)     -- row inc/dec (single step)
   | col (v : Verb)     -- col inc/dec/del (single step)
+  | hPage (v : Verb)   -- hPage -=prev, +=next page (column)
+  | vPage (v : Verb)   -- vPage -=prev, +=next page (row)
+  | hor (v : Verb)     -- hor -=home, +=end (column)
+  | ver (v : Verb)     -- ver -=top, +=bottom (row)
+
   | rowSel (v : Verb)  -- rowSel toggle
   | colSel (v : Verb)  -- colSel toggle/sortAsc/sortDesc
   | grp (v : Verb)     -- grp toggle
+
   | stk (v : Verb)     -- stk +push/-pop/~swap/cdup
-  | hor (v : Verb)     -- hor -=home, +=end (column)
-  | ver (v : Verb)     -- ver -=top, +=bottom (row)
-  | hPage (v : Verb)   -- hPage -=prev, +=next page (column)
-  | vPage (v : Verb)   -- vPage -=prev, +=next page (row)
+
   | prec (v : Verb)    -- prec -=dec, +=inc precision
   | width (v : Verb)   -- width -=dec, +=inc width
   | info (v : Verb) -- info +=push, F/0=selNull, c/1=selSingle, ~=setKeyCols
