@@ -1,24 +1,22 @@
 /-
-  Filter: fzf-based column selection and row filtering
+  Filter: fzf-based column/row filtering and search
 -/
 import Tc.Fzf
 import Tc.View
 
 namespace Tc.ViewStack
 
--- | col filter: fzf multi-select columns to keep
-def colFilter (s : ViewStack) : IO ViewStack := do
+-- | col search: fzf jump to column by name
+def colSearch (s : ViewStack) : IO ViewStack := do
   let v := s.cur; let names := ReadTable.colNames v.nav.tbl
-  let selected ← Fzf.fzfMulti #["--prompt=Select cols: "] ("\n".intercalate names.toList)
-  if selected.isEmpty then return s
-  let keepIdxs := selected.filterMap names.idxOf?
-  let delIdxs := (Array.range names.size).filter (!keepIdxs.contains ·)
-  let tbl' ← ModifyTable.delCols delIdxs v.nav.tbl
-  let some v' := View.fromTbl tbl' v.path 0 v.nav.grp 0 | return s
-  return s.setCur { v' with disp := s!"select {selected.size}" }
+  let dispNames := v.nav.grp ++ names.filter (!v.nav.grp.contains ·)
+  let some idx ← Fzf.fzfIdx #["--prompt=Column: "] dispNames | return s
+  let delta : Int := idx - v.nav.col.cur.val
+  let nav' := { v.nav with col := { v.nav.col with cur := v.nav.col.cur.clamp delta } }
+  return s.setCur { v with nav := nav' }
 
--- | row filter: fzf PRQL filter on current column
-def rowFilter (s : ViewStack) : IO ViewStack := do
+-- | Core row filter: fzf with distinct vals + PRQL, returns filtered view
+def rowFilterCore (s : ViewStack) (tag : String) : IO ViewStack := do
   let v := s.cur; let names := ReadTable.colNames v.nav.tbl
   let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
   let curName := names.getD curCol ""
@@ -29,6 +27,10 @@ def rowFilter (s : ViewStack) : IO ViewStack := do
   if expr.isEmpty then return s
   let some tbl' ← QueryTable.filter v.nav.tbl expr | return s
   let some v' := View.fromTbl tbl' v.path v.nav.col.cur.val v.nav.grp 0 | return s
-  return s.push { v' with disp := s!"filter {curName}" }
+  return s.push { v' with disp := s!"{tag}{curName}" }
+
+-- | row search (/) and row filter (\): same behavior, different display
+def rowSearch (s : ViewStack) : IO ViewStack := rowFilterCore s "/"
+def rowFilter (s : ViewStack) : IO ViewStack := rowFilterCore s "filter "
 
 end Tc.ViewStack
