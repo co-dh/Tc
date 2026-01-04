@@ -6,7 +6,6 @@
   - NavAxis: cursor (Fin) + selections (Array)
 -/
 import Tc.Offset
-import Tc.Data.Table
 import Tc.Types
 import Tc.Cmd
 

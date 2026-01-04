@@ -3,7 +3,6 @@
 -/
 import Std.Data.HashSet
 import Tc.Data.CSV
-import Tc.Data.Table
 import Tc.Error
 import Tc.Nav
 import Tc.Render
