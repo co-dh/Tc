@@ -15,7 +15,6 @@ inductive Verb where
   | del               -- delete
   | ent            -- toggle selection
   | sortAsc | sortDesc  -- sort
-  | freq              -- frequency view (info: select null cols)
   | search            -- search/jump (col=fzf name, row=fzf row#)
   | filter            -- filter (col=select cols, row=PRQL filter)
   deriving Repr, BEq, DecidableEq
@@ -26,13 +25,13 @@ namespace Verb
 def toChar : Verb → Char
   | .inc => '+' | .dec => '-' | .ent => '~' | .del => 'd'
   | .sortAsc => '[' | .sortDesc => ']' | .dup => 'c'
-  | .freq => 'F' | .search => 's' | .filter => 'f'
+  | .search => 's' | .filter => 'f'
 
 -- | Char to verb
 def ofChar? : Char → Option Verb
   | '+' => some .inc | '-' => some .dec | '~' => some .ent | 'd' => some .del
   | '[' => some .sortAsc | ']' => some .sortDesc | 'c' => some .dup
-  | 'F' => some .freq | 's' => some .search | 'f' => some .filter | _ => none
+  | 's' => some .search | 'f' => some .filter | _ => none
 
 instance : ToString Verb where toString v := v.toChar.toString
 instance : Parse Verb where parse? s := if s.length == 1 then ofChar? s.toList[0]! else none
@@ -60,7 +59,7 @@ inductive Cmd where
 
   | prec (v : Verb)    -- prec -=dec, +=inc precision
   | width (v : Verb)   -- width -=dec, +=inc width
-  | info (v : Verb) -- info +=push, F/0=selNull, c/1=selSingle, ~=setKeyCols
+  | info (v : Verb) -- info c=push, -/0=selNull, +/1=selSingle, ~=setKeyCols
   | freq (v : Verb) -- freq ~=filter by selected value
   deriving Repr, BEq, DecidableEq
 
