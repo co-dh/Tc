@@ -261,6 +261,13 @@ def test_freq_multi_key : IO Unit := do
   let (tab, _) := footer output
   assert (contains tab "freq") "!l!F shows multi-key freq"
 
+-- | Freq view should keep the group columns used to create it
+def test_freq_keeps_grp_cols : IO Unit := do
+  log "freq_keeps_grp"
+  let output ← runKeys "!F" "data/basic.csv"  -- set col a as grp, then freq
+  let (_, status) := footer output
+  assert (contains status "grp=1") "Freq view keeps grp columns"
+
 -- === Selection tests ===
 
 def test_row_select : IO Unit := do
@@ -457,6 +464,7 @@ def main : IO Unit := do
   test_freq_after_meta
   test_freq_by_key_column
   test_freq_multi_key
+  test_freq_keeps_grp_cols
 
   -- Selection
   test_row_select

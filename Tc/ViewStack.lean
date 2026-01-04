@@ -25,7 +25,7 @@ def pushFreq (s : ViewStack) : IO (Option ViewStack) := do
   let colIdxs := colNames.filterMap names.idxOf?
   let freq ← QueryTable.queryFreq n.tbl colIdxs
   let tbl := Freq.toMemTable freq
-  let some v := View.fromTbl (.mem tbl) s.cur.path | return none
+  let some v := View.fromTbl (.mem tbl) s.cur.path 0 colNames | return none
   return some (s.push { v with vkind := .freqV colNames, disp := s!"freq {colNames.join ","}" })
 
 -- | Select rows in meta view by predicate on MemTable
