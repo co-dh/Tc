@@ -24,9 +24,17 @@ class QueryMeta (α : Type) where
 -- Freq result: (keyNames, keyCols, cntData, pctData, barData)
 abbrev FreqTuple := Array String × Array Column × Array Int64 × Array Float × Array String
 
--- Frequency query (group by columns, count, pct, bar)
+-- Frequency query (group by columns, count, pct, bar) - IO for ADBC support
 class QueryFreq (α : Type) where
-  queryFreq : α → Array Nat → FreqTuple
+  queryFreq : α → Array Nat → IO FreqTuple
+
+-- Filter query (apply PRQL filter expression, return filtered table)
+class QueryFilter (α : Type) where
+  filter : α → String → IO (Option α)
+
+-- Distinct values for a column (for fzf picker)
+class QueryDistinct (α : Type) where
+  distinct : α → Nat → IO (Array String)
 
 -- Derived: column count from colNames.size
 def ReadTable.nCols [ReadTable α] (a : α) : Nat := (ReadTable.colNames a).size

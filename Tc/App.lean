@@ -15,11 +15,18 @@ open Tc
 partial def mainLoop (stk : ViewStack) (vs : ViewState) (verbPfx : Option Verb := none) : IO Unit := do
   let vs' ← stk.cur.doRender vs
   renderTabLine stk.tabNames 0  -- current is index 0
+  -- info overlay (toggle with I)
+  if vs'.showInfo then
+    let h ← Term.height; let w ← Term.width
+    infoOverlay h.toNat w.toNat
   Term.present
   let ev ← Term.pollEvent
   let h ← Term.height
   let rowPg := (h.toNat - reservedLines) / 2
   let colPg := colPageSize
+  -- I key: toggle info overlay
+  if ev.type == Term.eventKey && ev.ch == 'I'.toNat.toUInt32 then
+    return ← mainLoop stk { vs' with showInfo := !vs'.showInfo }
   -- +/- prefix for hor/ver/prec/width commands
   if ev.type == Term.eventKey && verbPfx.isNone then
     if ev.ch == '+'.toNat.toUInt32 then return ← mainLoop stk vs' (some .inc)
@@ -27,8 +34,9 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (verbPfx : Option Verb :
   -- dispatch Cmd to ViewStack
   match evToCmd ev verbPfx with
   | some cmd => match stk.exec cmd rowPg colPg with
-    | some stk' => let vs'' := if cmd matches .stk .dec | .colSel .del | .colSel _ then ViewState.default else vs'
-                   mainLoop stk' vs''
+    | some stk' =>
+      let reset := cmd matches .stk .dec | .colSel .del | .colSel _ | .col .search | .row .search | .col .filter | .row .filter
+      mainLoop stk' (if reset then ViewState.default else vs')
     | none => return  -- quit or table empty
   | none => mainLoop stk vs'
 

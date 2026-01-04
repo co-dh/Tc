@@ -54,9 +54,9 @@ Commands follow `Obj Verb` pattern. Not all combinations are valid.
 Char │ Obj       │ + │ - │ ~ │ d │ [ │ ] │ c │ Description
 ─────┼───────────┼───┼───┼───┼───┼───┼───┼───┼──────────────────
  r   │ row       │ j │ k │   │   │   │   │   │ Row cursor
- c   │ col       │ l │ h │   │ d │   │   │   │ Column cursor
+ c   │ col       │ l │ h │   │   │   │   │   │ Column cursor
  R   │ rowSel    │   │   │ T │   │   │   │   │ Row selection
- C   │ colSel    │   │   │ t │   │ [ │ ] │   │ Column selection
+ C   │ colSel    │   │   │ t │ d │ [ │ ] │   │ Column selection
  g   │ grp       │   │   │ ! │   │   │   │   │ Group (pin left)
  s   │ stk       │   │ q │ S │   │   │   │   │ View stack
  h   │ hPage     │ L │ H │   │   │   │   │   │ Horizontal page

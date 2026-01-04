@@ -17,6 +17,8 @@ inductive Verb where
   | dup               -- copy/dup
   | colMeta           -- column metadata view
   | freq              -- frequency view
+  | search            -- search/jump (col=fzf name, row=fzf row#)
+  | filter            -- filter (col=select cols, row=PRQL filter)
   deriving Repr, BEq, DecidableEq
 
 namespace Verb
@@ -24,13 +26,14 @@ namespace Verb
 -- | Verb to char
 def toChar : Verb → Char
   | .inc => '+' | .dec => '-' | .toggle => '~' | .del => 'd'
-  | .sortAsc => '[' | .sortDesc => ']' | .dup => 'c' | .colMeta => 'M' | .freq => 'F'
+  | .sortAsc => '[' | .sortDesc => ']' | .dup => 'c' | .colMeta => 'M'
+  | .freq => 'F' | .search => 's' | .filter => 'f'
 
 -- | Char to verb
 def ofChar? : Char → Option Verb
   | '+' => some .inc | '-' => some .dec | '~' => some .toggle | 'd' => some .del
   | '[' => some .sortAsc | ']' => some .sortDesc | 'c' => some .dup | 'M' => some .colMeta
-  | 'F' => some .freq | _ => none
+  | 'F' => some .freq | 's' => some .search | 'f' => some .filter | _ => none
 
 instance : ToString Verb where toString v := v.toChar.toString
 instance : Parse Verb where parse? s := if s.length == 1 then ofChar? s.toList[0]! else none

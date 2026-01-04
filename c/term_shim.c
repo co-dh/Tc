@@ -7,6 +7,9 @@
 // tb_init() -> Int32
 lean_obj_res lean_tb_init(lean_obj_arg world) {
     int r = tb_init();
+    // Drain any pending escape sequence responses (cursor position, etc)
+    struct tb_event ev;
+    while (tb_peek_event(&ev, 50) > 0) { /* discard */ }
     return lean_io_result_mk_ok(lean_box((uint32_t)(int32_t)r));
 }
 

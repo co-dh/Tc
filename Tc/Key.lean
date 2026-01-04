@@ -22,11 +22,10 @@ private def navDirs : Array (Char × Bool × Bool) := #[
   ('j', true, true), ('k', true, false), ('l', false, true), ('h', false, false)
 ]
 
--- Special key → Cmd (PageUp/Down, Home/End, Esc)
+-- Special key → Cmd (PageUp/Down, Home/End)
 private def keyCmds : Array (UInt16 × Cmd) := #[
   (Term.keyPageDown, .vPage .inc), (Term.keyPageUp, .vPage .dec),  -- vPage +=down, -=up
-  (Term.keyHome, .ver .dec), (Term.keyEnd, .ver .inc),  -- ver -=top, +=bottom
-  (Term.keyEsc, .stk .dec)  -- Esc = pop/quit
+  (Term.keyHome, .ver .dec), (Term.keyEnd, .ver .inc)  -- ver -=top, +=bottom
 ]
 
 -- Other char → Cmd (selection, group, colSel ops, stack)
@@ -35,6 +34,10 @@ private def charCmds : Array (Char × Cmd) := #[
   ('!', .grp .toggle), ('d', .colSel .del),
   ('[', .colSel .sortAsc), (']', .colSel .sortDesc),
   ('M', .colSel .colMeta), ('F', .colSel .freq),
+  ('s', .col .search),     -- col search: fzf jump to column
+  ('@', .row .search),     -- row search: fzf jump to row#
+  ('/', .row .filter),     -- row filter: fzf PRQL filter
+  ('\\', .col .filter),    -- col filter: fzf select columns
   ('q', .stk .dec), ('S', .stk .toggle)  -- stack: q=pop, S=swap
 ]
 

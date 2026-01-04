@@ -10,13 +10,14 @@ open Tc
 
 -- ViewState: scroll offsets + cached widths + last cursor for direction
 structure ViewState where
-  rowOff  : Nat := 0           -- first visible row
-  colOff  : Nat := 0           -- first visible column (display index)
-  widths  : Array Nat := #[]   -- cached column widths (empty = need compute)
-  lastCol : Nat := 0           -- last cursor column (for tooltip direction)
+  rowOff   : Nat := 0           -- first visible row
+  colOff   : Nat := 0           -- first visible column (display index)
+  widths   : Array Nat := #[]   -- cached column widths (empty = need compute)
+  lastCol  : Nat := 0           -- last cursor column (for tooltip direction)
+  showInfo : Bool := false      -- show info overlay (toggle with I)
 
 -- Default ViewState
-def ViewState.default : ViewState := ⟨0, 0, #[], 0⟩
+def ViewState.default : ViewState := ⟨0, 0, #[], 0, false⟩
 
 -- Max column width cap
 def maxColWidth : Nat := 50
@@ -104,7 +105,7 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
   -- help
   let help := "hjkl:nav HJKL:pg +/-:adj t/T:sel !:grp q:q"
   Term.print (w - help.length.toUInt32) (h - 1) Term.yellow Term.default help
-  pure ⟨rowOff, colOff, widths, nav.curColIdx⟩
+  pure ⟨rowOff, colOff, widths, nav.curColIdx, view.showInfo⟩
 
 -- | Render tab line: [current] | parent1 | parent2 ...
 def renderTabLine (tabs : Array String) (curIdx : Nat) : IO Unit := do
@@ -116,3 +117,29 @@ def renderTabLine (tabs : Array String) (curIdx : Nat) : IO Unit := do
   -- pad rest of line with bg color
   if line.length < w.toNat then
     Term.print line.length.toUInt32 (h - 2) Term.white Term.blue ("".pushn ' ' (w.toNat - line.length))
+
+-- | Key hints for info overlay (key | description)
+def keyHints : Array (String × String) := #[
+  ("j/k", "up/down"), ("h/l", "left/right"),
+  ("g/G", "top/end"), ("^D/^U", "page"),
+  ("0/$", "first/last"), ("[/]", "sort"),
+  ("/\\@", "filter"), ("F", "freq"),
+  ("M", "meta"), ("D", "delete"),
+  ("t/T", "sel/swap"), ("!", "key col"),
+  ("s", "col jump"), ("+/-", "adjust"),
+  ("S", "stack"), ("I", "info"),
+  ("q", "quit")
+]
+
+-- | Render info overlay at bottom-right
+def infoOverlay (screenH screenW : Nat) : IO Unit := do
+  let nRows := keyHints.size
+  let keyW : Nat := 5; let hintW : Nat := 10
+  let boxW := keyW + 1 + hintW
+  let x0 := screenW - boxW - 2
+  let y0 := screenH - nRows - 3
+  for i in [:nRows] do
+    let (k, d) := keyHints.getD i ("", "")
+    let kpad := "".pushn ' ' (keyW - k.length) ++ k
+    let dpad := d.take hintW ++ "".pushn ' ' (hintW - min d.length hintW)
+    Term.print x0.toUInt32 (y0 + i).toUInt32 Term.black Term.yellow (kpad ++ " " ++ dpad)
