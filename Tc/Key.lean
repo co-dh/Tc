@@ -42,9 +42,8 @@ private def charCmds : Array (Char × Cmd) := #[
   ('0', .info .freq), ('1', .info .dup),  -- meta: 0=null, 1=single
   ('\r', .info .ent),  -- Enter: meta set key cols
   ('s', .col .search),     -- col search: fzf jump to column
-  ('@', .row .search),     -- row search: fzf jump to row#
-  ('/', .row .filter),     -- row filter: fzf PRQL filter
-  ('\\', .col .filter),    -- col filter: fzf select columns
+  ('/', .row .search),     -- row search: fzf jump to row (vim-style)
+  ('\\', .row .filter),    -- row filter: fzf PRQL filter (backslash)
   ('q', .stk .dec), ('S', .stk .ent)  -- stack: q=pop, S=swap
 ]
 

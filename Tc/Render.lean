@@ -122,12 +122,12 @@ def keyHints : Array (String × String) := #[
   ("j/k", "up/down"), ("h/l", "left/right"),
   ("g/G", "top/end"), ("^D/^U", "page"),
   ("0/$", "first/last"), ("[/]", "sort"),
-  ("/\\@", "filter"), ("F", "freq"),
-  ("M", "meta"), ("D", "delete"),
-  ("t/T", "sel/swap"), ("!", "key col"),
-  ("s", "col jump"), ("+/-", "adjust"),
-  ("S", "stack"), ("I", "info"),
-  ("q", "quit")
+  ("/", "search"), ("\\", "filter"),
+  ("F", "freq"), ("M", "meta"),
+  ("d", "delete"), ("t/T", "sel"),
+  ("!", "key col"), ("s", "col jump"),
+  ("+/-", "adjust"), ("S", "stack"),
+  ("I", "info"), ("q", "quit")
 ]
 
 -- | Render info overlay at bottom-right
