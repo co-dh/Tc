@@ -1,6 +1,6 @@
 /-
-  Key tests for Tc - run with: lake build && .lake/build/bin/test
-  Adapted from tvl Test.lean
+  Key tests for Tc - adapted from tvl Test.lean
+  Run with: lake build tc test && .lake/build/bin/test
 -/
 import Tc.Data.ADBC.Table
 
@@ -68,19 +68,37 @@ def test_navigation_down : IO Unit := do
   log "nav_down"
   let output ← runKeys "j" "data/basic.csv"
   let (_, status) := footer output
-  assert (contains status "r1/") "j should move to row 1"
+  assert (contains status "r1/") "j moves to row 1"
 
 def test_navigation_right : IO Unit := do
   log "nav_right"
   let output ← runKeys "l" "data/basic.csv"
   let (_, status) := footer output
-  assert (contains status "c1/") "l should move to col 1"
+  assert (contains status "c1/") "l moves to col 1"
+
+def test_navigation_up : IO Unit := do
+  log "nav_up"
+  let output ← runKeys "jk" "data/basic.csv"
+  let (_, status) := footer output
+  assert (contains status "r0/") "jk returns to row 0"
+
+def test_navigation_left : IO Unit := do
+  log "nav_left"
+  let output ← runKeys "lh" "data/basic.csv"
+  let (_, status) := footer output
+  assert (contains status "c0/") "lh returns to col 0"
 
 def test_page_down : IO Unit := do
   log "page_down"
   let output ← runKeys "<C-d>" "data/sample.parquet"
   let (_, status) := footer output
-  assert (!contains status "r0/") "Ctrl-D should page down past row 0"
+  assert (!contains status "r0/") "Ctrl-D pages down past row 0"
+
+def test_page_up : IO Unit := do
+  log "page_up"
+  let output ← runKeys "<C-d><C-u>" "data/sample.parquet"
+  let (_, status) := footer output
+  assert (contains status "r0/") "Ctrl-D then Ctrl-U returns to row 0"
 
 def test_page_down_scrolls : IO Unit := do
   log "page_down_scrolls"
@@ -88,7 +106,7 @@ def test_page_down_scrolls : IO Unit := do
   let withPgdn ← runKeys "<C-d>" "data/sample.parquet"
   let (_, status1) := footer without
   let (_, status2) := footer withPgdn
-  assert (status1 != status2) s!"Page down should scroll: before={status1} after={status2}"
+  assert (status1 != status2) "Page down changes status"
 
 def test_last_col_visible : IO Unit := do
   log "last_col_visible"
@@ -96,36 +114,58 @@ def test_last_col_visible : IO Unit := do
   let rows := dataLines output
   let first := rows.headD ""
   let nonWs := first.toList.filter (!·.isWhitespace) |>.length
-  assert (nonWs > 0) s!"Last col should show data: {first}"
+  assert (nonWs > 0) "Last col shows data"
 
--- === Column operations ===
+-- === Key column tests ===
 
 def test_toggle_key_column : IO Unit := do
   log "key_col"
   let output ← runKeys "!" "data/xkey.csv"
   let hdr := header output
-  assert (contains hdr "║") "! should add key column separator (║)"
+  assert (contains hdr "║") "! adds key separator"
 
 def test_toggle_key_remove : IO Unit := do
   log "key_remove"
   let output ← runKeys "!!" "data/xkey.csv"
   let hdr := header output
-  assert (!contains hdr "║") "!! should remove key column separator"
+  assert (!contains hdr "║") "!! removes key separator"
+
+def test_key_col_reorder : IO Unit := do
+  log "key_reorder"
+  let output ← runKeys "l!" "data/basic.csv"
+  let hdr := header output
+  -- After l!, column b should be first (key col)
+  assert (hdr.take 5 |>.any (· == 'b')) "Key col moves to front"
+
+def test_separator_not_shown_when_scrolled : IO Unit := do
+  log "keycol_scroll"
+  let output ← runKeys "!llllllllllllllllll" "data/sample.parquet"
+  let hdr := header output
+  assert (!contains hdr "║") "Separator hidden when key col scrolled off"
+
+-- === Delete tests ===
 
 def test_delete_column : IO Unit := do
   log "del_col"
   let output ← runKeys "ld" "data/basic.csv"
   let hdr := header output
-  assert (contains hdr "a") "Should have column a"
-  assert (!contains hdr "b") "Should not have column b"
+  assert (contains hdr "a") "Has column a"
+  assert (!contains hdr "b") "Column b deleted"
 
 def test_delete_twice : IO Unit := do
   log "del_twice"
   let output ← runKeys "dd" "data/sample.parquet"
   let hdr := header output
-  assert (!contains hdr "id") "id should be deleted"
-  assert (!contains hdr "age") "age should be deleted"
-  assert (contains hdr "year") "year should remain"
+  assert (!contains hdr "id") "id deleted"
+  assert (!contains hdr "age") "age deleted"
+  assert (contains hdr "year") "year remains"
+
+def test_delete_then_key_then_freq : IO Unit := do
+  log "del_key_freq"
+  let output ← runKeys "dl!F" "data/sample.parquet"
+  let (tab, status) := footer output
+  assert (contains tab "freq") "D+key+F shows freq"
+  assert (!contains status "Error") "No error"
 
 -- === Sort tests ===
 
@@ -134,62 +174,79 @@ def test_sort_asc : IO Unit := do
   let output ← runKeys "[" "data/unsorted.csv"
   let rows := dataLines output
   let first := rows.headD ""
-  assert (first.startsWith "1 " || contains first " 1 ") "[ should sort asc, first=1"
+  assert (first.startsWith "1 " || contains first " 1 ") "[ sorts asc, first=1"
 
 def test_sort_desc : IO Unit := do
   log "sort_desc"
   let output ← runKeys "]" "data/unsorted.csv"
   let rows := dataLines output
   let first := rows.headD ""
-  assert (first.startsWith "3 " || contains first " 3 ") "] should sort desc, first=3"
+  assert (first.startsWith "3 " || contains first " 3 ") "] sorts desc, first=3"
 
 def test_parquet_sort_asc : IO Unit := do
   log "parquet_sort_asc"
   let output ← runKeys "l[" "data/sample.parquet"
   let rows := dataLines output
   let first := rows.headD ""
-  assert (contains first " 18 ") "[ on age should sort asc, age=18"
+  assert (contains first " 18 ") "[ on age sorts asc, age=18"
 
 def test_parquet_sort_desc : IO Unit := do
   log "parquet_sort_desc"
   let output ← runKeys "l]" "data/sample.parquet"
   let rows := dataLines output
   let first := rows.headD ""
-  assert (contains first " 80 ") "] on age should sort desc, age=80"
+  assert (contains first " 80 ") "] on age sorts desc, age=80"
 
--- === Meta view ===
+-- === Meta tests ===
 
 def test_meta_shows : IO Unit := do
   log "meta"
   let output ← runKeys "M" "data/basic.csv"
   let (tab, _) := footer output
-  assert (contains tab "meta") "M should show meta in tab"
+  assert (contains tab "meta") "M shows meta in tab"
 
 def test_parquet_meta : IO Unit := do
   log "parquet_meta"
   let output ← runKeys "M" "data/sample.parquet"
   let (tab, _) := footer output
-  assert (contains tab "meta") "M should show meta"
+  assert (contains tab "meta") "M on parquet shows meta"
 
--- === Freq view ===
+def test_meta_shows_column_info : IO Unit := do
+  log "meta_col_info"
+  let output ← runKeys "M" "data/basic.csv"
+  assert (contains output "column" || contains output "name") "Meta shows column info"
 
-def test_freq_in_tab : IO Unit := do
-  log "freq_csv"
+-- === Freq tests ===
+
+def test_freq_shows : IO Unit := do
+  log "freq"
   let output ← runKeys "F" "data/basic.csv"
   let (tab, _) := footer output
-  assert (contains tab "freq") "F should show freq in tab"
+  assert (contains tab "freq") "F shows freq in tab"
 
 def test_freq_parquet : IO Unit := do
   log "freq_parquet"
   let output ← runKeys "F" "data/sample.parquet"
   let (tab, _) := footer output
-  assert (contains tab "freq") "F on parquet should show freq"
+  assert (contains tab "freq") "F on parquet shows freq"
 
 def test_freq_after_meta : IO Unit := do
   log "freq_after_meta"
   let output ← runKeys "MqF" "data/basic.csv"
   let (tab, _) := footer output
-  assert (contains tab "freq") "M then q then F should show freq"
+  assert (contains tab "freq") "MqF shows freq"
+
+def test_freq_by_key_column : IO Unit := do
+  log "freq_by_key"
+  let output ← runKeys "l!F" "data/full.csv"
+  let (tab, _) := footer output
+  assert (contains tab "freq") "l!F shows freq by key"
+
+def test_freq_multi_key : IO Unit := do
+  log "freq_multi_key"
+  let output ← runKeys "!l!F" "data/multi_freq.csv"
+  let (tab, _) := footer output
+  assert (contains tab "freq") "!l!F shows multi-key freq"
 
 -- === Selection tests ===
 
@@ -197,48 +254,69 @@ def test_row_select : IO Unit := do
   log "row_select"
   let output ← runKeys "T" "data/basic.csv"
   let (_, status) := footer output
-  assert (contains status "sel=1") "T should select row (show sel=1)"
+  assert (contains status "sel=1") "T selects row"
 
 def test_multi_row_select : IO Unit := do
   log "multi_row_select"
   let output ← runKeys "TjT" "data/full.csv"
   let (_, status) := footer output
-  assert (contains status "sel=2") "TjT should show sel=2"
+  assert (contains status "sel=2") "TjT selects 2 rows"
+
+-- === Stack tests ===
+
+def test_stack_swap : IO Unit := do
+  log "stack_swap"
+  let output ← runKeys "S" "data/basic.csv"
+  let (tab, _) := footer output
+  assert (contains tab "basic.csv") "S swaps/dups view"
+
+def test_meta_then_quit : IO Unit := do
+  log "meta_quit"
+  let output ← runKeys "Mq" "data/basic.csv"
+  let (tab, _) := footer output
+  assert (!contains tab "meta") "Mq returns from meta"
+
+def test_freq_then_quit : IO Unit := do
+  log "freq_quit"
+  let output ← runKeys "Fq" "data/basic.csv"
+  let (tab, _) := footer output
+  assert (!contains tab "freq") "Fq returns from freq"
 
 -- === Info overlay ===
 
 def test_info_overlay : IO Unit := do
   log "info"
   let output ← runKeys "I" "data/basic.csv"
-  assert (contains output "hjkl" || contains output "quit") "I should show info overlay"
+  assert (contains output "hjkl" || contains output "quit") "I shows info overlay"
 
--- === Stack operations ===
+-- === Precision/Width adjustment ===
 
-def test_stack_dup : IO Unit := do
-  log "stack_dup"
-  let output ← runKeys "S" "data/basic.csv"
-  let (tab, _) := footer output
-  assert (contains tab "basic.csv") "S should swap/dup view"
+def test_prec_increase : IO Unit := do
+  log "prec_inc"
+  let output ← runKeys "+p" "data/floats.csv"
+  -- +p increases precision, should show more decimals
+  assert (contains output "1.123" || contains output "1.1235") "+p increases precision"
 
-def test_separator_not_shown_when_keycol_scrolled : IO Unit := do
-  log "keycol_scroll"
-  let output ← runKeys "!llllllllllllllllll" "data/sample.parquet"
-  let hdr := header output
-  -- Separator should NOT be in header since key col is scrolled off
-  assert (!contains hdr "║") "Separator should not show when key col scrolled off"
+def test_prec_decrease : IO Unit := do
+  log "prec_dec"
+  let output ← runKeys "-p" "data/floats.csv"
+  let rows := dataLines output
+  let first := rows.headD ""
+  assert (contains first "1.1") "-p decreases precision"
+
+-- === Misc ===
 
 def test_numeric_right_align : IO Unit := do
   log "numeric_align"
   let output ← runKeys "" "data/sample.parquet"
   let rows := dataLines output
   let first := rows.headD ""
-  -- Values should have leading spaces (right-aligned)
-  assert (contains first "  ") "Should have spacing for alignment"
+  assert (contains first "  ") "Numeric columns right-aligned"
 
 -- === Run all tests ===
 
 def main : IO Unit := do
-  IO.FS.writeFile "test.log" ""  -- clear log
+  IO.FS.writeFile "test.log" ""
   IO.println "Running Tc key tests...\n"
   let ok ← Tc.AdbcTable.init
   if !ok then throw (IO.userError "Backend init failed")
@@ -246,15 +324,23 @@ def main : IO Unit := do
   -- Navigation
   test_navigation_down
   test_navigation_right
+  test_navigation_up
+  test_navigation_left
   test_page_down
+  test_page_up
   test_page_down_scrolls
   test_last_col_visible
 
-  -- Column operations
+  -- Key column
   test_toggle_key_column
   test_toggle_key_remove
+  test_key_col_reorder
+  test_separator_not_shown_when_scrolled
+
+  -- Delete
   test_delete_column
   test_delete_twice
+  test_delete_then_key_then_freq
 
   -- Sort
   test_sort_asc
@@ -265,22 +351,32 @@ def main : IO Unit := do
   -- Meta
   test_meta_shows
   test_parquet_meta
+  test_meta_shows_column_info
 
   -- Freq
-  test_freq_in_tab
+  test_freq_shows
   test_freq_parquet
   test_freq_after_meta
+  test_freq_by_key_column
+  test_freq_multi_key
 
   -- Selection
   test_row_select
   test_multi_row_select
 
+  -- Stack
+  test_stack_swap
+  test_meta_then_quit
+  test_freq_then_quit
+
   -- Info
   test_info_overlay
 
-  -- Stack & misc
-  test_stack_dup
-  test_separator_not_shown_when_keycol_scrolled
+  -- Precision/Width
+  test_prec_increase
+  test_prec_decrease
+
+  -- Misc
   test_numeric_right_align
 
   Tc.AdbcTable.shutdown
