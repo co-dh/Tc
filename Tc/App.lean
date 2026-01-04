@@ -4,6 +4,7 @@
 -/
 import Tc.Data.ADBC.Meta
 import Tc.Data.Mem.Meta
+import Tc.Fzf
 import Tc.Key
 import Tc.Render
 import Tc.Term
@@ -78,6 +79,7 @@ def parseArgs (args : List String) : String × Array Char × Bool :=
 -- | Entry point
 def main (args : List String) : IO Unit := do
   let (path, keys, testMode) := parseArgs args
+  Fzf.setTestMode testMode
   let _ ← Term.init
   if path.endsWith ".csv" then
     match ← MemTable.load path with

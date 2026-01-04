@@ -1,42 +1,58 @@
 /-
   Fzf: helpers for running fzf picker
   Suspends terminal, spawns fzf, returns selection
+  In testMode, returns first value without spawning fzf
 -/
 import Tc.Term
 
 namespace Tc.Fzf
 
--- | Core fzf: spawn fzf with opts, pipe input, return output
+-- | Global testMode flag (set by App.main)
+initialize testMode : IO.Ref Bool ← IO.mkRef false
+
+-- | Set testMode
+def setTestMode (b : Bool) : IO Unit := testMode.set b
+
+-- | Get testMode
+def getTestMode : IO Bool := testMode.get
+
+-- | Core fzf: testMode returns first line, else spawn fzf
 def fzfCore (opts : Array String) (input : String) : IO String := do
-  Term.shutdown
-  let args := #["--height=50%", "--layout=reverse"] ++ opts
-  let child ← IO.Process.spawn { cmd := "fzf", args, stdin := .piped, stdout := .piped }
-  child.stdin.putStr input
-  child.stdin.flush
-  let (_, child') ← child.takeStdin
-  let out ← child'.stdout.readToEnd
-  let _ ← child'.wait
-  let _ ← Term.init
-  pure out.trim
+  if ← getTestMode then
+    pure (input.splitOn "\n" |>.filter (!·.isEmpty) |>.headD "")
+  else
+    Term.shutdown
+    let args := #["--height=50%", "--layout=reverse"] ++ opts
+    let child ← IO.Process.spawn { cmd := "fzf", args, stdin := .piped, stdout := .piped }
+    child.stdin.putStr input
+    child.stdin.flush
+    let (_, child') ← child.takeStdin
+    let out ← child'.stdout.readToEnd
+    let _ ← child'.wait
+    let _ ← Term.init
+    pure out.trim
 
 -- | Single select: returns none if empty/cancelled
 def fzf (opts : Array String) (input : String) : IO (Option String) := do
   let out ← fzfCore opts input
   pure (if out.isEmpty then none else some out)
 
--- | Multi select: returns array of selections
+-- | Multi select: testMode returns first as singleton
 def fzfMulti (opts : Array String) (input : String) : IO (Array String) := do
   let out ← fzfCore (#["-m"] ++ opts) input
-  pure (out.splitOn "\n" |>.map String.trim |>.filter (!·.isEmpty) |>.toArray)
+  if ← getTestMode then pure (if out.isEmpty then #[] else #[out])
+  else pure (out.splitOn "\n" |>.map String.trim |>.filter (!·.isEmpty) |>.toArray)
 
--- | Index select: numbered items, returns selected index
+-- | Index select: testMode returns 0
 def fzfIdx (opts : Array String) (items : Array String) : IO (Option Nat) := do
-  let numbered := items.mapIdx fun i s => s!"{i}\t{s}"
-  let out ← fzfCore (#["--with-nth=2.."] ++ opts) ("\n".intercalate numbered.toList)
-  if out.isEmpty then return none
-  match out.splitOn "\t" |>.head? |>.bind String.toNat? with
-  | some n => return some n
-  | none => return none
+  if ← getTestMode then pure (if items.isEmpty then none else some 0)
+  else
+    let numbered := items.mapIdx fun i s => s!"{i}\t{s}"
+    let out ← fzfCore (#["--with-nth=2.."] ++ opts) ("\n".intercalate numbered.toList)
+    if out.isEmpty then return none
+    match out.splitOn "\t" |>.head? |>.bind String.toNat? with
+    | some n => return some n
+    | none => return none
 
 -- | Check if string is numeric (for PRQL quoting)
 def isNumeric (s : String) : Bool :=
