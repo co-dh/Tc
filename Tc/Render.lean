@@ -27,19 +27,8 @@ def reservedLines : Nat := 4
 -- Column page size (fixed, since widths vary)
 def colPageSize : Nat := 5
 
--- Styles: fg, bg pairs for 9 states (match C STYLE_* defines)
--- Beautiful 256-color theme
-def styles : Array UInt32 := #[
-  Term.black, Term.brWhite,      -- cursor: black on bright white
-  Term.black, Term.mint,         -- selected row: black on soft mint
-  Term.black, Term.lavender,     -- selected col + cursor row: black on lavender
-  Term.brMagenta, Term.default,  -- selected col: bright magenta fg
-  Term.default, Term.gray234,    -- cursor row: subtle dark highlight
-  Term.brYellow, Term.default,   -- cursor col: bright yellow fg
-  Term.default, Term.default,    -- default: terminal colors
-  Term.brWhite, Term.slate,      -- header: bright white on slate blue
-  Term.default, Term.sky         -- group/key column: default fg, subtle bg
-]
+-- Styles: loaded from Theme, or use default
+-- 9 states: cursor, selRow, selColCurRow, selCol, curRow, curCol, default, header, group
 
 -- RenderTable: tables that can render themselves
 -- Takes input widths (empty = compute), returns computed widths
@@ -74,7 +63,7 @@ def adjColOff (cur colOff : Nat) (widths : Array Nat) (dispIdxs : Array Nat) (sc
 -- Render table to terminal, returns (ViewState, widths)
 def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
     (nav : NavState nRows nCols t) (view : ViewState) (inWidths : Array Nat)
-    (precAdj widthAdj : Int) : IO (ViewState × Array Nat) := do
+    (styles : Array UInt32) (precAdj widthAdj : Int) : IO (ViewState × Array Nat) := do
   Term.clear
   let h ← Term.height
   let w ← Term.width
