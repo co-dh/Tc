@@ -62,6 +62,9 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (keys : Array Char) (tes
   match evToCmd ev verbPfx with
   | some cmd => match ← stk.exec cmd rowPg colPg with
     | some stk' =>
+      -- check for error popup (skip in testMode)
+      let err ← Error.pop
+      if !err.isEmpty && !testMode then errorPopup err
       -- reset ViewState when view changes (widths now in View, so ViewState just has scroll/lastCol)
       let reset := cmd matches .stk .dec | .colSel .del | .colSel _ | .info _ | .freq _ | .col .search | .row .search | .col .filter | .row .filter
       mainLoop stk' (if reset then ViewState.default else vs') keys' testMode

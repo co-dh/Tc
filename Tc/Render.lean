@@ -142,3 +142,24 @@ def infoOverlay (screenH screenW : Nat) : IO Unit := do
     let kpad := "".pushn ' ' (keyW - k.length) ++ k
     let dpad := d.take hintW ++ "".pushn ' ' (hintW - min d.length hintW)
     Term.print x0.toUInt32 (y0 + i).toUInt32 Term.black Term.yellow (kpad ++ " " ++ dpad)
+
+-- | Wait for 'q' key press
+partial def waitForQ : IO Unit := do
+  let ev ← Term.pollEvent
+  if ev.type == Term.eventKey && ev.ch == 'q'.toNat.toUInt32 then return
+  waitForQ
+
+-- | Render error popup centered on screen, returns on 'q' press
+def errorPopup (msg : String) : IO Unit := do
+  let h ← Term.height; let w ← Term.width
+  let help := "press q to dismiss"
+  let boxW := max msg.length help.length + 4
+  let x0 := (w.toNat - boxW) / 2
+  let y0 := h.toNat / 2 - 1
+  -- draw 3-line box: border, message, help
+  let pad := fun s => " " ++ s ++ "".pushn ' ' (boxW - s.length - 2) ++ " "
+  Term.print x0.toUInt32 y0.toUInt32 Term.white Term.red (pad ("".pushn ' ' (boxW - 2)))
+  Term.print x0.toUInt32 (y0 + 1).toUInt32 Term.white Term.red (pad msg)
+  Term.print x0.toUInt32 (y0 + 2).toUInt32 Term.brBlack Term.red (pad help)
+  Term.present
+  waitForQ

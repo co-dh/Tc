@@ -445,6 +445,14 @@ def test_col_search : IO Unit := do
   let (_, status) := footer output
   assert (contains status "c0/") "s col search jumps to column"
 
+-- | Test search disabled on parquet (cursor stays at r0, popup skipped in testMode)
+def test_search_disabled_parquet : IO Unit := do
+  log "search_disabled_parquet"
+  let output ← runKeys "/" "data/sample.parquet"
+  let (_, status) := footer output
+  -- In testMode popup is skipped; verify cursor didn't move (search was no-op)
+  assert (contains status "r0/") "/ on parquet is no-op (search disabled)"
+
 -- === Run all tests ===
 
 def main : IO Unit := do
@@ -536,6 +544,7 @@ def main : IO Unit := do
   test_search_next
   test_search_prev
   test_col_search
+  test_search_disabled_parquet
 
   Tc.AdbcTable.shutdown
   IO.println "\nAll tests passed!"
