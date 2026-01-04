@@ -14,8 +14,8 @@ inductive Verb where
   | toggle            -- toggle selection
   | del               -- delete
   | sortAsc | sortDesc  -- sort
-  | dup               -- copy/dup (metaCol: select single-val cols)
-  | freq              -- frequency view (metaCol: select null cols)
+  | dup               -- copy/dup (info: select single-val cols)
+  | freq              -- frequency view (info: select null cols)
   | search            -- search/jump (col=fzf name, row=fzf row#)
   | filter            -- filter (col=select cols, row=PRQL filter)
   deriving Repr, BEq, DecidableEq
@@ -57,17 +57,17 @@ inductive Cmd where
   | vPage (v : Verb)   -- vPage -=prev, +=next page (row)
   | prec (v : Verb)    -- prec -=dec, +=inc precision
   | width (v : Verb)   -- width -=dec, +=inc width
-  | metaCol (v : Verb) -- metaCol +=push, F/0=selNull, c/1=selSingle, ~=setKeyCols
-  | freqCol (v : Verb) -- freqCol ~=filter by selected value
+  | info (v : Verb) -- info +=push, F/0=selNull, c/1=selSingle, ~=setKeyCols
+  | freq (v : Verb) -- freq ~=filter by selected value
   deriving Repr, BEq, DecidableEq
 
 namespace Cmd
 
--- | Obj chars: r=row, c=col, R=rowSel, C=colSel, g=grp, s=stk, h=hPage, v=vPage, H=hor, V=ver, p=prec, w=width, M=metaCol, f=freqCol
+-- | Obj chars: r=row, c=col, R=rowSel, C=colSel, g=grp, s=stk, h=hPage, v=vPage, H=hor, V=ver, p=prec, w=width, M=info, f=freq
 private def objs : Array (Char × (Verb → Cmd)) := #[
   ('r', .row), ('c', .col), ('R', .rowSel), ('C', .colSel), ('g', .grp), ('s', .stk),
   ('h', .hPage), ('v', .vPage), ('H', .hor), ('V', .ver), ('p', .prec), ('w', .width),
-  ('M', .metaCol), ('f', .freqCol)
+  ('M', .info), ('f', .freq)
 ]
 
 -- | Get obj char for Cmd
@@ -75,12 +75,12 @@ private def objChar : Cmd → Char
   | .row _ => 'r' | .col _ => 'c' | .rowSel _ => 'R' | .colSel _ => 'C'
   | .grp _ => 'g' | .stk _ => 's'
   | .hPage _ => 'h' | .vPage _ => 'v' | .hor _ => 'H' | .ver _ => 'V'
-  | .prec _ => 'p' | .width _ => 'w' | .metaCol _ => 'M' | .freqCol _ => 'f'
+  | .prec _ => 'p' | .width _ => 'w' | .info _ => 'M' | .freq _ => 'f'
 
 -- | Get verb from Cmd
 private def verb : Cmd → Verb
   | .row v | .col v | .rowSel v | .colSel v | .grp v | .stk v => v
-  | .hor v | .ver v | .hPage v | .vPage v | .prec v | .width v | .metaCol v | .freqCol v => v
+  | .hor v | .ver v | .hPage v | .vPage v | .prec v | .width v | .info v | .freq v => v
 
 instance : ToString Cmd where toString c := s!"{c.objChar}{c.verb.toChar}"
 
@@ -110,7 +110,7 @@ theorem parse_toString (c : Cmd) : Parse.parse? (toString c) = some c := by
   | vPage v => cases v <;> native_decide
   | prec v => cases v <;> native_decide
   | width v => cases v <;> native_decide
-  | metaCol v => cases v <;> native_decide
-  | freqCol v => cases v <;> native_decide
+  | info v => cases v <;> native_decide
+  | freq v => cases v <;> native_decide
 
 end Cmd

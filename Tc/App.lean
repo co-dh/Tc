@@ -58,9 +58,9 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (keys : Array Char) (tes
     if ev.ch == '-'.toNat.toUInt32 then return ← mainLoop stk vs' keys' testMode (some .dec)
   -- dispatch Cmd to ViewStack
   match evToCmd ev verbPfx with
-  | some cmd => match stk.exec cmd rowPg colPg with
+  | some cmd => match ← stk.exec cmd rowPg colPg with
     | some stk' =>
-      let reset := cmd matches .stk .dec | .colSel .del | .colSel _ | .metaCol _ | .col .search | .row .search | .col .filter | .row .filter
+      let reset := cmd matches .stk .dec | .colSel .del | .colSel _ | .info _ | .col .search | .row .search | .col .filter | .row .filter
       mainLoop stk' (if reset then ViewState.default else vs') keys' testMode
     | none => return  -- quit or table empty
   | none => mainLoop stk vs' keys' testMode
@@ -80,7 +80,7 @@ def main (args : List String) : IO Unit := do
   if path.endsWith ".csv" then
     match ← MemTable.load path with
     | .error e => Term.shutdown; IO.eprintln s!"CSV parse error: {e}"
-    | .ok tbl => match View.fromTbl tbl path with
+    | .ok tbl => match View.fromTbl (.mem tbl) path with
       | some v => mainLoop ⟨v, #[]⟩ ViewState.default keys testMode; Term.shutdown
       | none => Term.shutdown; IO.eprintln "Empty table"
   else
@@ -88,6 +88,6 @@ def main (args : List String) : IO Unit := do
     if !ok then Term.shutdown; IO.eprintln "Backend init failed"; return
     match ← AdbcTable.fromFile path with
     | none => Term.shutdown; AdbcTable.shutdown; IO.eprintln "Query failed"
-    | some tbl => match View.fromTbl tbl path with
+    | some tbl => match View.fromTbl (.adbc tbl) path with
       | some v => mainLoop ⟨v, #[]⟩ ViewState.default keys testMode; Term.shutdown; AdbcTable.shutdown
       | none => Term.shutdown; AdbcTable.shutdown; IO.eprintln "Empty table"

@@ -1,8 +1,9 @@
 /-
-  View: existential wrapper for NavState + metadata
+  View: wraps NavState + metadata for unified Table type
+  Uses closed sum Table (Type 0) instead of existential (Type 1).
 -/
 import Tc.Nav
-import Tc.Render
+import Tc.Table
 
 namespace Tc
 
@@ -14,19 +15,11 @@ inductive ViewKind where
   | fld                          -- folder browser
   deriving Inhabited, Repr, BEq
 
--- | View: existential wrapper for NavState + metadata
+-- | View: wraps NavState for unified Table type
 structure View where
   nRows : Nat
   nCols : Nat
-  t : Type
-  instR : ReadTable t
-  instM : ModifyTable t
-  instV : RenderTable t
-  instQ : QueryMeta t
-  instF : QueryFreq t
-  instL : QueryFilter t
-  instD : QueryDistinct t
-  nav : NavState nRows nCols t
+  nav : NavState nRows nCols Table
   path : String              -- source file/command (for tab display)
   vkind : ViewKind := .tbl
   disp : String := ""        -- custom display name (overrides filename)
@@ -35,22 +28,20 @@ structure View where
 
 namespace View
 
--- | Create from NavState + path (infers instances)
-def new {nr nc : Nat} {τ : Type} [ir : ReadTable τ] [im : ModifyTable τ] [iv : RenderTable τ]
-    [iq : QueryMeta τ] [if_ : QueryFreq τ] [il : QueryFilter τ] [id_ : QueryDistinct τ]
-    (nav : NavState nr nc τ) (path : String) : View :=
-  ⟨nr, nc, τ, ir, im, iv, iq, if_, il, id_, nav, path, .tbl, "", 0, 0⟩
+-- | Create from NavState + path
+def new {nr nc : Nat} (nav : NavState nr nc Table) (path : String) : View :=
+  ⟨nr, nc, nav, path, .tbl, "", 0, 0⟩
 
 -- | Tab display name: custom disp or filename from path
 @[inline] def tabName (v : View) : String :=
   if v.disp.isEmpty then v.path.splitOn "/" |>.getLast? |>.getD v.path else v.disp
 
+-- | Render the view
 @[inline] def doRender (v : View) (vs : ViewState) : IO ViewState :=
-  @render v.nRows v.nCols v.t v.instR v.instV v.nav vs v.precAdj v.widthAdj
+  render v.nav vs v.precAdj v.widthAdj
 
--- | Create View from table + path (returns none if empty)
-def fromTbl {τ : Type} [ReadTable τ] [ModifyTable τ] [RenderTable τ] [QueryMeta τ] [QueryFreq τ]
-    [QueryFilter τ] [QueryDistinct τ] (tbl : τ) (path : String)
+-- | Create View from Table + path (returns none if empty)
+def fromTbl (tbl : Table) (path : String)
     (col : Nat := 0) (grp : Array String := #[]) (row : Nat := 0) : Option View := do
   let nCols := (ReadTable.colNames tbl).size
   let nRows := ReadTable.nRows tbl
@@ -68,10 +59,6 @@ private def preserve (v : View) (v' : Option View) : Option View :=
 
 -- | Execute Cmd, returns Option View (none if table becomes empty after del)
 def exec (v : View) (cmd : Cmd) (rowPg colPg : Nat) : Option View :=
-  letI : ReadTable v.t := v.instR; letI : ModifyTable v.t := v.instM
-  letI : RenderTable v.t := v.instV; letI : QueryMeta v.t := v.instQ
-  letI : QueryFreq v.t := v.instF; letI : QueryFilter v.t := v.instL
-  letI : QueryDistinct v.t := v.instD
   let n := v.nav; let names := ReadTable.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   let mk tbl col grp row := preserve v (fromTbl tbl v.path col grp row)
