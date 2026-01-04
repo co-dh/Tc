@@ -14,4 +14,14 @@ def toMemTable (f : FreqTuple) : MemTable :=
   -- sort by Cnt (first column after keys) descending
   MemTable.sort ⟨names, cols⟩ #[keyCols.size] false
 
+-- | Build filter expression from freq row (col1 == val1 && col2 == val2 ...)
+def filterExpr (tbl : MemTable) (cols : Array String) (row : Nat) : String :=
+  let vals := cols.mapIdx fun i _ =>
+    match tbl.cols.getD i default with
+    | .strs data => s!"'{data.getD row ""}'"
+    | .ints data => s!"{data.getD row 0}"
+    | .floats data => s!"{data.getD row 0}"
+  let exprs := cols.zip vals |>.map fun (c, v) => s!"{c} == {v}"
+  " && ".intercalate exprs.toList
+
 end Tc.Freq

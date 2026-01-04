@@ -58,15 +58,16 @@ inductive Cmd where
   | prec (v : Verb)    -- prec -=dec, +=inc precision
   | width (v : Verb)   -- width -=dec, +=inc width
   | metaCol (v : Verb) -- metaCol +=push, F/0=selNull, c/1=selSingle, ~=setKeyCols
+  | freqCol (v : Verb) -- freqCol ~=filter by selected value
   deriving Repr, BEq, DecidableEq
 
 namespace Cmd
 
--- | Obj chars: r=row, c=col, R=rowSel, C=colSel, g=grp, s=stk, h=hPage, v=vPage, H=hor, V=ver, p=prec, w=width, M=metaCol
+-- | Obj chars: r=row, c=col, R=rowSel, C=colSel, g=grp, s=stk, h=hPage, v=vPage, H=hor, V=ver, p=prec, w=width, M=metaCol, f=freqCol
 private def objs : Array (Char × (Verb → Cmd)) := #[
   ('r', .row), ('c', .col), ('R', .rowSel), ('C', .colSel), ('g', .grp), ('s', .stk),
   ('h', .hPage), ('v', .vPage), ('H', .hor), ('V', .ver), ('p', .prec), ('w', .width),
-  ('M', .metaCol)
+  ('M', .metaCol), ('f', .freqCol)
 ]
 
 -- | Get obj char for Cmd
@@ -74,12 +75,12 @@ private def objChar : Cmd → Char
   | .row _ => 'r' | .col _ => 'c' | .rowSel _ => 'R' | .colSel _ => 'C'
   | .grp _ => 'g' | .stk _ => 's'
   | .hPage _ => 'h' | .vPage _ => 'v' | .hor _ => 'H' | .ver _ => 'V'
-  | .prec _ => 'p' | .width _ => 'w' | .metaCol _ => 'M'
+  | .prec _ => 'p' | .width _ => 'w' | .metaCol _ => 'M' | .freqCol _ => 'f'
 
 -- | Get verb from Cmd
 private def verb : Cmd → Verb
   | .row v | .col v | .rowSel v | .colSel v | .grp v | .stk v => v
-  | .hor v | .ver v | .hPage v | .vPage v | .prec v | .width v | .metaCol v => v
+  | .hor v | .ver v | .hPage v | .vPage v | .prec v | .width v | .metaCol v | .freqCol v => v
 
 instance : ToString Cmd where toString c := s!"{c.objChar}{c.verb.toChar}"
 
@@ -110,5 +111,6 @@ theorem parse_toString (c : Cmd) : Parse.parse? (toString c) = some c := by
   | prec v => cases v <;> native_decide
   | width v => cases v <;> native_decide
   | metaCol v => cases v <;> native_decide
+  | freqCol v => cases v <;> native_decide
 
 end Cmd

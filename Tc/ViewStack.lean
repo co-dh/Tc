@@ -210,8 +210,9 @@ def exec (s : ViewStack) (cmd : Cmd) (rowPg colPg : Nat) : Option ViewStack :=
   | .metaCol .inc    => s.pushMeta.orElse fun _ => some s  -- M: push meta view
   | .metaCol .freq   => some (s.metaSel Meta.selNull)      -- 0: select null cols
   | .metaCol .dup    => some (s.metaSel Meta.selSingle)    -- 1: select single-val cols
-  | .metaCol .toggle => s.metaSetKey                       -- Enter: set key cols
+  | .metaCol .toggle => s.metaSetKey                       -- Enter: set key cols (meta)
   | .metaCol _       => some s                             -- other metaCol: no-op
+  | .freqCol _       => some s                             -- freqCol: TODO
   | .colSel .freq    => s.pushFreq.orElse fun _ => some s  -- F: push freq view
   | .col .search => some s.colSearch
   | .row .search => some s.rowSearch
