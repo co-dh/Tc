@@ -38,9 +38,9 @@ private def charCmds : Array (Char × Cmd) := #[
   ('t', .colSel .ent), ('T', .rowSel .ent),
   ('!', .grp .ent), ('d', .colSel .del),
   ('[', .colSel .sortAsc), (']', .colSel .sortDesc),
-  ('M', .info .dup), ('F', .freq .dup),   -- M=meta, F=freq view (dup=constructor)
-  ('0', .info .dec), ('1', .info .inc),  -- meta: 0=selNull, 1=selSingle
-  ('\r', .info .ent),  -- Enter: meta set key cols
+  ('M', .metaV .dup), ('F', .freq .dup),   -- M=meta, F=freq view (dup=constructor)
+  ('0', .metaV .dec), ('1', .metaV .inc),  -- meta: 0=selNull, 1=selSingle
+  ('\r', .metaV .ent),  -- Enter: meta set key cols
   ('s', .col .search),     -- col search: fzf jump to column
   ('/', .row .search),     -- row search: fzf jump to row (vim-style)
   ('n', .rowSel .inc),     -- search next: repeat last search forward

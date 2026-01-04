@@ -72,14 +72,14 @@ def exec (s : ViewStack) (cmd : Cmd) (rowPg colPg : Nat) : IO (Option ViewStack)
   | .stk .ent => pure (some s.swap)
   | .stk .dup    => pure (some s.dup)
   | .stk _       => pure (some s)
-  | .info .dup    => (← s.pushMeta).orElse (fun _ => some s) |> pure  -- M: push meta view (dup=constructor)
-  | .info .dec    => pure (some (s.metaSel Meta.selNull))      -- 0: select null cols
-  | .info .inc    => pure (some (s.metaSel Meta.selSingle))    -- 1: select single-val cols
-  | .info .ent => match s.cur.vkind with                     -- Enter: dispatch by view kind
+  | .metaV .dup    => (← s.pushMeta).orElse (fun _ => some s) |> pure  -- M: push meta view (dup=constructor)
+  | .metaV .dec    => pure (some (s.metaSel Meta.selNull))      -- 0: select null cols
+  | .metaV .inc    => pure (some (s.metaSel Meta.selSingle))    -- 1: select single-val cols
+  | .metaV .ent => match s.cur.vkind with                     -- Enter: dispatch by view kind
     | .colMeta => pure s.metaSetKey
     | .freqV _ => s.freqFilter
     | _ => pure (some s)
-  | .info _       => pure (some s)                             -- other info: no-op
+  | .metaV _       => pure (some s)                             -- other info: no-op
   | .freq .dup    => (← s.pushFreq).orElse (fun _ => some s) |> pure  -- F: push freq view
   | .freq .ent => s.freqFilter                                      -- Enter: filter by freq row
   | .col .search  => some <$> s.colSearch
