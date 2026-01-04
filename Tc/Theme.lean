@@ -1,0 +1,82 @@
+/-
+  Theme: CSV-based color themes
+  Format: theme,variant,name,fg,bg
+-/
+import Tc.Term
+
+namespace Tc.Theme
+
+-- | Color name to UInt32 lookup
+def colorMap : Array (String × UInt32) := #[
+  ("default", Term.default),
+  ("black", Term.black),
+  ("red", Term.red),
+  ("green", Term.green),
+  ("yellow", Term.yellow),
+  ("blue", Term.blue),
+  ("magenta", Term.magenta),
+  ("cyan", Term.cyan),
+  ("white", Term.white),
+  ("brBlack", Term.brBlack),
+  ("brRed", Term.brRed),
+  ("brGreen", Term.brGreen),
+  ("brYellow", Term.brYellow),
+  ("brBlue", Term.brBlue),
+  ("brMagenta", Term.brMagenta),
+  ("brCyan", Term.brCyan),
+  ("brWhite", Term.brWhite),
+  ("slate", Term.slate),
+  ("sky", Term.sky),
+  ("mint", Term.mint),
+  ("peach", Term.peach),
+  ("lavender", Term.lavender),
+  ("gray234", Term.gray234),
+  ("gray240", Term.gray240),
+  ("gray252", Term.gray252)
+]
+
+-- | Parse color name to UInt32
+def parseColor (s : String) : UInt32 :=
+  colorMap.findSome? (fun (n, c) => if n == s then some c else none) |>.getD Term.default
+
+-- | Style name to index
+def styleIdx : Array String := #[
+  "cursor", "selRow", "selColCurRow", "selCol",
+  "curRow", "curCol", "default", "header", "group"
+]
+
+-- | Parse style name to index
+def parseStyle (s : String) : Option Nat := styleIdx.idxOf? s
+
+-- | Default dark theme (fallback if CSV fails)
+def defaultDark : Array UInt32 := #[
+  Term.black, Term.brWhite,      -- cursor
+  Term.black, Term.mint,         -- selRow
+  Term.black, Term.lavender,     -- selColCurRow
+  Term.brMagenta, Term.default,  -- selCol
+  Term.default, Term.gray234,    -- curRow
+  Term.brYellow, Term.default,   -- curCol
+  Term.default, Term.default,    -- default
+  Term.brWhite, Term.slate,      -- header
+  Term.default, Term.sky         -- group
+]
+
+-- | Load theme CSV, filter by theme/variant, return styles array
+def load (path : String) (theme variant : String) : IO (Array UInt32) := do
+  let content ← IO.FS.readFile path
+  let lines := content.splitOn "\n" |>.filter (·.length > 0)
+  let rows := lines.drop 1 |>.map (·.splitOn ",")  -- skip header
+  -- filter matching theme/variant
+  let matching := rows.filter fun r =>
+    r.getD 0 "" == theme && r.getD 1 "" == variant
+  -- build styles array (9 styles × 2 = 18 values: fg0,bg0,fg1,bg1,...)
+  let mut styles := defaultDark  -- start with default
+  for row in matching do
+    if let some idx := parseStyle (row.getD 2 "") then
+      let fg := parseColor (row.getD 3 "default")
+      let bg := parseColor (row.getD 4 "default")
+      styles := styles.set! (idx * 2) fg
+      styles := styles.set! (idx * 2 + 1) bg
+  return styles
+
+end Tc.Theme

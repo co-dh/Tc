@@ -39,8 +39,8 @@ def new {nr nc : Nat} (nav : NavState nr nc Table) (path : String) : View :=
   if v.disp.isEmpty then v.path.splitOn "/" |>.getLast? |>.getD v.path else v.disp
 
 -- | Render the view, returns (ViewState, updated View with new widths)
-@[inline] def doRender (v : View) (vs : ViewState) : IO (ViewState × View) := do
-  let (vs', widths) ← render v.nav vs v.widths v.precAdj v.widthAdj
+@[inline] def doRender (v : View) (vs : ViewState) (styles : Array UInt32) : IO (ViewState × View) := do
+  let (vs', widths) ← render v.nav vs v.widths styles v.precAdj v.widthAdj
   pure (vs', { v with widths })
 
 -- | Create View from Table + path (returns none if empty)
