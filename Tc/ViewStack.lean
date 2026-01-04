@@ -51,7 +51,7 @@ def dup (s : ViewStack) : ViewStack :=
 
 -- | Push column metadata view
 def pushMeta (s : ViewStack) : IO (Option ViewStack) := do
-  let tbl ← QueryMeta.queryMeta s.cur.nav.tbl <&> Meta.toMemTable
+  let tbl ← QueryTable.queryMeta s.cur.nav.tbl <&> Meta.toMemTable
   pure <| match View.fromTbl (.mem tbl) s.cur.path with
     | some v => some (s.push { v with vkind := .colMeta, disp := "meta" })
     | none => none
@@ -63,7 +63,7 @@ def pushFreq (s : ViewStack) : IO (Option ViewStack) := do
   let curName := names.getD curCol ""
   let colNames := if n.grp.contains curName then n.grp else n.grp.push curName
   let colIdxs := colNames.filterMap names.idxOf?
-  let freq ← QueryFreq.queryFreq n.tbl colIdxs
+  let freq ← QueryTable.queryFreq n.tbl colIdxs
   let tbl := Freq.toMemTable freq
   pure <| match View.fromTbl (.mem tbl) s.cur.path with
     | some v => some (s.push { v with vkind := .freqV colNames, disp := s!"freq {colNames.join ","}" })
@@ -118,13 +118,13 @@ def rowFilter (s : ViewStack) : IO ViewStack := do
   let names := ReadTable.colNames v.nav.tbl
   let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
   let curName := names.getD curCol ""
-  let vals ← QueryDistinct.distinct v.nav.tbl curCol
+  let vals ← QueryTable.distinct v.nav.tbl curCol
   let prompt := s!"{curName} == 'x' | > 5 | ~= 'pat' > "
   match ← Fzf.fzf #["--print-query", s!"--prompt={prompt}"] ("\n".intercalate vals.toList) with
   | some result =>
     let expr := Fzf.buildFilterExpr curName vals result
     if expr.isEmpty then pure s
-    else match ← QueryFilter.filter v.nav.tbl expr with
+    else match ← QueryTable.filter v.nav.tbl expr with
       | some tbl' => pure <| match View.fromTbl tbl' v.path v.nav.col.cur.val v.nav.grp 0 with
         | some v' => s.push { v' with disp := s!"filter {curName}" }
         | none => s

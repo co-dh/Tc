@@ -51,9 +51,4 @@ def queryFreq (t : MemTable) (colIdxs : Array Nat) : IO FreqTuple := pure $
   (keyNames, keyCols, cntData, pctData, barData)
 
 end MemTable
-
--- | QueryFreq instance for MemTable
-instance : QueryFreq MemTable where
-  queryFreq := MemTable.queryFreq
-
 end Tc

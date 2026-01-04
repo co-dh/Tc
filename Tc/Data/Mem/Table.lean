@@ -118,21 +118,22 @@ instance : RenderTable MemTable where
       r0.toUInt64 r1.toUInt64 nav.row.cur.val.toUInt64 nav.curColIdx.toUInt64
       moveDir.toInt64 nav.selColIdxs nav.row.sels st precAdj.toInt64 widthAdj.toInt64
 
--- | QueryFilter: no-op for MemTable (in-memory filter not yet impl)
-instance : QueryFilter MemTable where
-  filter t _ := pure (some t)  -- TODO: in-memory filter
+namespace MemTable
 
--- | QueryDistinct: get distinct values for a column
-instance : QueryDistinct MemTable where
-  distinct t col := pure <| Id.run do
-    let c := t.cols.getD col default
-    let mut seen : Std.HashSet String := {}
-    let mut result : Array String := #[]
-    for i in [:MemTable.nRows t] do
-      let s := (c.get i).toRaw
-      if !seen.contains s then
-        seen := seen.insert s
-        result := result.push s
-    result
+-- | Filter: no-op for MemTable (in-memory filter not yet impl)
+def filter (t : MemTable) (_ : String) : IO (Option MemTable) := pure (some t)
 
+-- | Distinct values for a column
+def distinct (t : MemTable) (col : Nat) : IO (Array String) := pure <| Id.run do
+  let c := t.cols.getD col default
+  let mut seen : Std.HashSet String := {}
+  let mut result : Array String := #[]
+  for i in [:MemTable.nRows t] do
+    let s := (c.get i).toRaw
+    if !seen.contains s then
+      seen := seen.insert s
+      result := result.push s
+  result
+
+end MemTable
 end Tc

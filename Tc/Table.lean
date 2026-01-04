@@ -43,29 +43,32 @@ instance : ModifyTable Table where
     | .mem t => .mem <$> ModifyTable.sortBy idxs asc t
     | .adbc t => .adbc <$> ModifyTable.sortBy idxs asc t
 
--- | QueryMeta instance
-instance : QueryMeta Table where
-  queryMeta
-    | .mem t => QueryMeta.queryMeta t
-    | .adbc t => QueryMeta.queryMeta t
+-- | QueryTable instance for MemTable
+instance : QueryTable MemTable where
+  queryMeta := MemTable.queryMeta
+  queryFreq := MemTable.queryFreq
+  filter    := MemTable.filter
+  distinct  := MemTable.distinct
 
--- | QueryFreq instance
-instance : QueryFreq Table where
+-- | QueryTable instance for AdbcTable
+instance : QueryTable AdbcTable where
+  queryMeta := AdbcTable.queryMeta
+  queryFreq := AdbcTable.queryFreq
+  filter    := AdbcTable.filter
+  distinct  := AdbcTable.distinct
+
+-- | QueryTable instance for Table
+instance : QueryTable Table where
+  queryMeta | .mem t => MemTable.queryMeta t | .adbc t => AdbcTable.queryMeta t
   queryFreq tbl idxs := match tbl with
-    | .mem t => QueryFreq.queryFreq t idxs
-    | .adbc t => QueryFreq.queryFreq t idxs
-
--- | QueryFilter instance
-instance : QueryFilter Table where
+    | .mem t => MemTable.queryFreq t idxs
+    | .adbc t => AdbcTable.queryFreq t idxs
   filter tbl expr := match tbl with
-    | .mem t => QueryFilter.filter t expr <&> (·.map .mem)
-    | .adbc t => QueryFilter.filter t expr <&> (·.map .adbc)
-
--- | QueryDistinct instance
-instance : QueryDistinct Table where
+    | .mem t => MemTable.filter t expr <&> (·.map .mem)
+    | .adbc t => AdbcTable.filter t expr <&> (·.map .adbc)
   distinct tbl col := match tbl with
-    | .mem t => QueryDistinct.distinct t col
-    | .adbc t => QueryDistinct.distinct t col
+    | .mem t => MemTable.distinct t col
+    | .adbc t => AdbcTable.distinct t col
 
 -- | RenderTable instance (direct dispatch to Term.renderTable)
 instance : RenderTable Table where

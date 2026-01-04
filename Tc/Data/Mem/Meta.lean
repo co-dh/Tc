@@ -59,9 +59,4 @@ def queryMeta (t : MemTable) : IO MetaTuple := do
   pure (names, types, cnts, dists, nulls, mins, maxs)
 
 end MemTable
-
--- | QueryMeta instance for MemTable
-instance : QueryMeta MemTable where
-  queryMeta := MemTable.queryMeta
-
 end Tc

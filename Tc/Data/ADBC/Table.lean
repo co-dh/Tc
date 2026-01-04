@@ -146,54 +146,50 @@ instance : RenderTable AdbcTable where
         0 (r1 - r0).toUInt64 adjCur.toUInt64 nav.curColIdx.toUInt64
         moveDir.toInt64 nav.selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
 
--- | QueryFreq instance for AdbcTable: use SQL GROUP BY
-instance : QueryFreq AdbcTable where
-  queryFreq t colIdxs := do
-    let names := t.colNames
-    let keyNames := colIdxs.map fun i => names.getD i ""
-    if keyNames.isEmpty then return (#[], #[], #[], #[], #[])
-    -- PRQL: from query | group {cols} (aggregate {Cnt = count this})
-    let cols := keyNames.map Prql.quote |> (", ".intercalate ·.toList)
-    let prql := s!"{t.query.render} | group \{{cols}} (aggregate \{Cnt = std.count this})"
-    Log.write "prql-freq" prql
-    let some sql ← Prql.compile prql | return (#[], #[], #[], #[], #[])
-    let qr ← Adbc.query sql
-    let nr ← Adbc.nrows qr
-    -- build key columns + count
-    let mut keyCols : Array Column := #[]
-    for i in [:keyNames.size] do
-      let mut vals : Array String := #[]
-      for r in [:nr.toNat] do
-        vals := vals.push (← Adbc.cellStr qr r.toUInt64 i.toUInt64)
-      keyCols := keyCols.push (.strs vals)  -- all as strings for simplicity
-    -- count column is last
-    let mut cntData : Array Int64 := #[]
+namespace AdbcTable
+
+-- | Freq: use SQL GROUP BY
+def queryFreq (t : AdbcTable) (colIdxs : Array Nat) : IO FreqTuple := do
+  let names := t.colNames
+  let keyNames := colIdxs.map fun i => names.getD i ""
+  if keyNames.isEmpty then return (#[], #[], #[], #[], #[])
+  let cols := keyNames.map Prql.quote |> (", ".intercalate ·.toList)
+  let prql := s!"{t.query.render} | group \{{cols}} (aggregate \{Cnt = std.count this})"
+  Log.write "prql-freq" prql
+  let some sql ← Prql.compile prql | return (#[], #[], #[], #[], #[])
+  let qr ← Adbc.query sql
+  let nr ← Adbc.nrows qr
+  let mut keyCols : Array Column := #[]
+  for i in [:keyNames.size] do
+    let mut vals : Array String := #[]
     for r in [:nr.toNat] do
-      let v ← Adbc.cellStr qr r.toUInt64 keyNames.size.toUInt64
-      cntData := cntData.push (v.toInt?.getD 0).toInt64
-    -- compute pct and bar
-    let total := cntData.foldl (init := 0) (· + ·)
-    let pctData := cntData.map fun c => if total > 0 then c.toFloat * 100 / total.toFloat else 0
-    let barData := pctData.map fun p => String.ofList (List.replicate (p / 5).toUInt32.toNat '#')
-    pure (keyNames, keyCols, cntData, pctData, barData)
+      vals := vals.push (← Adbc.cellStr qr r.toUInt64 i.toUInt64)
+    keyCols := keyCols.push (.strs vals)
+  let mut cntData : Array Int64 := #[]
+  for r in [:nr.toNat] do
+    let v ← Adbc.cellStr qr r.toUInt64 keyNames.size.toUInt64
+    cntData := cntData.push (v.toInt?.getD 0).toInt64
+  let total := cntData.foldl (init := 0) (· + ·)
+  let pctData := cntData.map fun c => if total > 0 then c.toFloat * 100 / total.toFloat else 0
+  let barData := pctData.map fun p => String.ofList (List.replicate (p / 5).toUInt32.toNat '#')
+  pure (keyNames, keyCols, cntData, pctData, barData)
 
--- | QueryFilter instance for AdbcTable: requery with filter
-instance : QueryFilter AdbcTable where
-  filter t expr := AdbcTable.requery (t.query.filter expr) t.totalRows
+-- | Filter: requery with filter
+def filter (t : AdbcTable) (expr : String) : IO (Option AdbcTable) :=
+  AdbcTable.requery (t.query.filter expr) t.totalRows
 
--- | QueryDistinct instance for AdbcTable: use SQL DISTINCT
-instance : QueryDistinct AdbcTable where
-  distinct t col := do
-    let colName := t.colNames.getD col ""
-    let prql := s!"{t.query.render} | group \{{Prql.quote colName}} (take 1) | select \{{Prql.quote colName}} | take 100"
-    Log.write "prql" prql
-    let some sql ← Prql.compile prql | return #[]
-    let qr ← Adbc.query sql
-    let nr ← Adbc.nrows qr
-    let mut result : Array String := #[]
-    for i in [:nr.toNat] do
-      let v ← Adbc.cellStr qr i.toUInt64 0
-      result := result.push v
-    pure result
+-- | Distinct: use SQL DISTINCT
+def distinct (t : AdbcTable) (col : Nat) : IO (Array String) := do
+  let colName := t.colNames.getD col ""
+  let prql := s!"{t.query.render} | group \{{Prql.quote colName}} (take 1) | select \{{Prql.quote colName}} | take 100"
+  Log.write "prql" prql
+  let some sql ← Prql.compile prql | return #[]
+  let qr ← Adbc.query sql
+  let nr ← Adbc.nrows qr
+  let mut result : Array String := #[]
+  for i in [:nr.toNat] do
+    result := result.push (← Adbc.cellStr qr i.toUInt64 0)
+  pure result
 
+end AdbcTable
 end Tc

@@ -62,9 +62,4 @@ def queryMeta (t : AdbcTable) : IO MetaTuple := do
   pure (rNames, rTypes, rCnts, rDists, rNulls, rMins, rMaxs)
 
 end AdbcTable
-
--- | QueryMeta instance for AdbcTable
-instance : QueryMeta AdbcTable where
-  queryMeta := AdbcTable.queryMeta
-
 end Tc

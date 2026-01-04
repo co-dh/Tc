@@ -13,28 +13,18 @@ class ReadTable (α : Type) where
   colNames  : α → Array String                -- column names (size = nCols)
   totalRows : α → Nat := nRows                -- total rows (for ADBC: actual count)
 
--- Meta tuple type alias
+-- Meta tuple: (names, types, cnts, dists, nullPcts, mins, maxs)
 abbrev MetaTuple := Array String × Array String × Array Int64 × Array Int64 × Array Int64 × Array String × Array String
--- (names, types, cnts, dists, nullPcts, mins, maxs)
 
--- Meta query (separate from ReadTable to avoid circular deps)
-class QueryMeta (α : Type) where
-  queryMeta : α → IO MetaTuple
-
--- Freq result: (keyNames, keyCols, cntData, pctData, barData)
+-- Freq tuple: (keyNames, keyCols, cntData, pctData, barData)
 abbrev FreqTuple := Array String × Array Column × Array Int64 × Array Float × Array String
 
--- Frequency query (group by columns, count, pct, bar) - IO for ADBC support
-class QueryFreq (α : Type) where
+-- Query operations (meta, freq, filter, distinct)
+class QueryTable (α : Type) where
+  queryMeta : α → IO MetaTuple
   queryFreq : α → Array Nat → IO FreqTuple
-
--- Filter query (apply PRQL filter expression, return filtered table)
-class QueryFilter (α : Type) where
-  filter : α → String → IO (Option α)
-
--- Distinct values for a column (for fzf picker)
-class QueryDistinct (α : Type) where
-  distinct : α → Nat → IO (Array String)
+  filter    : α → String → IO (Option α)
+  distinct  : α → Nat → IO (Array String)
 
 -- Derived: column count from colNames.size
 def ReadTable.nCols [ReadTable α] (a : α) : Nat := (ReadTable.colNames a).size
