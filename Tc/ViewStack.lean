@@ -3,7 +3,9 @@
 -/
 import Tc.View
 import Tc.Meta
+import Tc.Freq
 import Tc.Data.Mem.Meta
+import Tc.Data.Mem.Freq
 
 namespace Tc
 
@@ -58,6 +60,20 @@ def dup (s : ViewStack) : ViewStack :=
 @[implemented_by pushMetaImpl]
 def pushMeta (_ : ViewStack) : Option ViewStack := none
 
+-- | Push frequency view (group by grp + cursor column)
+def pushFreq (s : ViewStack) : Option ViewStack :=
+  letI : ReadTable s.cur.t := s.cur.instR; letI : QueryFreq s.cur.t := s.cur.instF
+  let n := s.cur.nav; let names := ReadTable.colNames n.tbl
+  let curCol := colIdxAt n.grp names n.col.cur.val
+  let curName := names.getD curCol ""
+  -- cols = grp + cursor (if not in grp)
+  let colNames := if n.grp.contains curName then n.grp else n.grp.push curName
+  let colIdxs := colNames.filterMap names.idxOf?
+  let tbl := Freq.toMemTable (QueryFreq.queryFreq n.tbl colIdxs)
+  match View.fromTbl tbl s.cur.path with
+  | some v => some (s.push { v with vkind := .freqV colNames, disp := s!"freq {colNames.join ","}" })
+  | none => none
+
 -- | Tab names for display (current first)
 def tabNames (s : ViewStack) : Array String := s.views.map (·.tabName)
 
@@ -70,6 +86,7 @@ def exec (s : ViewStack) (cmd : Cmd) (rowPg colPg : Nat) : Option ViewStack :=
   | .stk .dup    => some s.dup   -- dup
   | .stk _       => some s       -- ignore other stk verbs
   | .colSel .colMeta => s.pushMeta  -- push meta view
+  | .colSel .freq    => s.pushFreq  -- push freq view
   | _ => match s.cur.exec cmd rowPg colPg with  -- delegate to View
     | some v' => some (s.setCur v')
     | none => none  -- table empty after del

@@ -34,7 +34,7 @@ private def charCmds : Array (Char × Cmd) := #[
   ('t', .colSel .toggle), ('T', .rowSel .toggle),
   ('!', .grp .toggle), ('d', .colSel .del),
   ('[', .colSel .sortAsc), (']', .colSel .sortDesc),
-  ('M', .colSel .colMeta),
+  ('M', .colSel .colMeta), ('F', .colSel .freq),
   ('q', .stk .dec), ('S', .stk .toggle)  -- stack: q=pop, S=swap
 ]
 

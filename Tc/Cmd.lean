@@ -16,6 +16,7 @@ inductive Verb where
   | sortAsc | sortDesc  -- sort
   | dup               -- copy/dup
   | colMeta           -- column metadata view
+  | freq              -- frequency view
   deriving Repr, BEq, DecidableEq
 
 namespace Verb
@@ -23,13 +24,13 @@ namespace Verb
 -- | Verb to char
 def toChar : Verb → Char
   | .inc => '+' | .dec => '-' | .toggle => '~' | .del => 'd'
-  | .sortAsc => '[' | .sortDesc => ']' | .dup => 'c' | .colMeta => 'M'
+  | .sortAsc => '[' | .sortDesc => ']' | .dup => 'c' | .colMeta => 'M' | .freq => 'F'
 
 -- | Char to verb
 def ofChar? : Char → Option Verb
   | '+' => some .inc | '-' => some .dec | '~' => some .toggle | 'd' => some .del
   | '[' => some .sortAsc | ']' => some .sortDesc | 'c' => some .dup | 'M' => some .colMeta
-  | _ => none
+  | 'F' => some .freq | _ => none
 
 instance : ToString Verb where toString v := v.toChar.toString
 instance : Parse Verb where parse? s := if s.length == 1 then ofChar? s.toList[0]! else none

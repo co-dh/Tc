@@ -3,6 +3,7 @@
   ReadTable: read-only access (nRows, colNames, cell, render)
   ModifyTable: column deletion (row deletion via SQL filter)
 -/
+import Tc.Types
 
 namespace Tc
 
@@ -19,6 +20,13 @@ abbrev MetaTuple := Array String × Array String × Array Int64 × Array Int64 �
 -- Meta query (separate from ReadTable to avoid circular deps)
 class QueryMeta (α : Type) where
   queryMeta : α → IO MetaTuple
+
+-- Freq result: (keyNames, keyCols, cntData, pctData, barData)
+abbrev FreqTuple := Array String × Array Column × Array Int64 × Array Float × Array String
+
+-- Frequency query (group by columns, count, pct, bar)
+class QueryFreq (α : Type) where
+  queryFreq : α → Array Nat → FreqTuple
 
 -- Derived: column count from colNames.size
 def ReadTable.nCols [ReadTable α] (a : α) : Nat := (ReadTable.colNames a).size

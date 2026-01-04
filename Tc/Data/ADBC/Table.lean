@@ -167,4 +167,8 @@ instance : RenderTable AdbcTable where
         0 (r1 - r0).toUInt64 adjCur.toUInt64 nav.curColIdx.toUInt64
         moveDir.toInt64 nav.selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
 
+-- | QueryFreq instance for AdbcTable (TODO: use SQL GROUP BY)
+instance : QueryFreq AdbcTable where
+  queryFreq _ _ := (#[], #[], #[], #[], #[])  -- empty for now
+
 end Tc

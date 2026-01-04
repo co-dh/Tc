@@ -23,6 +23,7 @@ structure View where
   instM : ModifyTable t
   instV : RenderTable t
   instQ : QueryMeta t
+  instF : QueryFreq t
   nav : NavState nRows nCols t
   path : String              -- source file/command (for tab display)
   vkind : ViewKind := .tbl
@@ -33,9 +34,9 @@ structure View where
 namespace View
 
 -- | Create from NavState + path (infers instances)
-def new {nr nc : Nat} {τ : Type} [ir : ReadTable τ] [im : ModifyTable τ] [iv : RenderTable τ] [iq : QueryMeta τ]
+def new {nr nc : Nat} {τ : Type} [ir : ReadTable τ] [im : ModifyTable τ] [iv : RenderTable τ] [iq : QueryMeta τ] [if_ : QueryFreq τ]
     (nav : NavState nr nc τ) (path : String) : View :=
-  ⟨nr, nc, τ, ir, im, iv, iq, nav, path, .tbl, "", 0, 0⟩
+  ⟨nr, nc, τ, ir, im, iv, iq, if_, nav, path, .tbl, "", 0, 0⟩
 
 -- | Tab display name: custom disp or filename from path
 @[inline] def tabName (v : View) : String :=
@@ -45,7 +46,7 @@ def new {nr nc : Nat} {τ : Type} [ir : ReadTable τ] [im : ModifyTable τ] [iv 
   @render v.nRows v.nCols v.t v.instR v.instV v.nav vs v.precAdj v.widthAdj
 
 -- | Create View from table + path (returns none if empty)
-def fromTbl {τ : Type} [ReadTable τ] [ModifyTable τ] [RenderTable τ] [QueryMeta τ]
+def fromTbl {τ : Type} [ReadTable τ] [ModifyTable τ] [RenderTable τ] [QueryMeta τ] [QueryFreq τ]
     (tbl : τ) (path : String) (col : Nat := 0) (grp : Array String := #[]) (row : Nat := 0)
     : Option View := do
   let nCols := (ReadTable.colNames tbl).size
@@ -66,6 +67,7 @@ private def preserve (v : View) (v' : Option View) : Option View :=
 def exec (v : View) (cmd : Cmd) (rowPg colPg : Nat) : Option View :=
   letI : ReadTable v.t := v.instR; letI : ModifyTable v.t := v.instM
   letI : RenderTable v.t := v.instV; letI : QueryMeta v.t := v.instQ
+  letI : QueryFreq v.t := v.instF
   let n := v.nav; let names := ReadTable.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   let mk tbl col grp row := preserve v (fromTbl tbl v.path col grp row)
