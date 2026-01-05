@@ -29,6 +29,17 @@ def charToEvent (c : Char) : Term.Event :=
   if ch < 32 then ⟨Term.eventKey, 2, ch.toUInt16, 0, 0, 0⟩
   else ⟨Term.eventKey, 0, 0, ch, 0, 0⟩
 
+-- | Show fzf menu for +/- prefix commands, returns selected Cmd
+def fzfPrefixCmd (verb : Verb) : IO (Option Cmd) := do
+  let prompt := if verb == .inc then "+" else "-"
+  let items := prefixMenu.map fun (c, desc, _) => s!"{c}\t{desc}"
+  let input := "\n".intercalate items.toList
+  match ← Fzf.fzf #["--with-nth=2..", s!"--prompt={prompt}"] input with
+  | some sel =>
+    let key := sel.toList.getD 0 ' '
+    pure (prefixMenu.findSome? fun (c, _, mk) => if c == key then some (mk verb) else none)
+  | none => pure none
+
 -- | Main loop with ViewStack, keys = remaining replay keys, testMode = exit when keys exhausted
 partial def mainLoop (stk : ViewStack) (vs : ViewState) (styles : Array UInt32) (themeIdx : Nat) (keys : Array Char) (testMode : Bool := false) (verbPfx : Option Verb := none) : IO Unit := do
   let (vs', v') ← stk.cur.doRender vs styles  -- v' has updated widths
@@ -55,10 +66,23 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (styles : Array UInt32) 
   -- I key: toggle info overlay
   if ev.type == Term.eventKey && ev.ch == 'I'.toNat.toUInt32 then
     return ← mainLoop stk { vs' with showInfo := !vs'.showInfo } styles themeIdx keys' testMode
-  -- +/- prefix for hor/ver/prec/width/thm commands
+  -- +/- prefix: show fzf menu to select object, then dispatch
   if ev.type == Term.eventKey && verbPfx.isNone then
-    if ev.ch == '+'.toNat.toUInt32 then return ← mainLoop stk vs' styles themeIdx keys' testMode (some .inc)
-    if ev.ch == '-'.toNat.toUInt32 then return ← mainLoop stk vs' styles themeIdx keys' testMode (some .dec)
+    let verb? := if ev.ch == '+'.toNat.toUInt32 then some Verb.inc
+                 else if ev.ch == '-'.toNat.toUInt32 then some Verb.dec
+                 else none
+    if let some verb := verb? then
+      match ← fzfPrefixCmd verb with
+      | some (.thm v) =>
+        let delta := if v == .inc then 1 else -1
+        let (theme, variant) := Theme.cycleTheme themeIdx delta
+        let newIdx := Theme.themeIdx theme variant
+        let newStyles ← Theme.load "theme.csv" theme variant <|> pure Theme.defaultDark
+        return ← mainLoop stk vs' newStyles newIdx keys' testMode
+      | some cmd => match ← stk.exec cmd rowPg colPg with
+        | some stk' => return ← mainLoop stk' vs' styles themeIdx keys' testMode
+        | none => return
+      | none => return ← mainLoop stk vs' styles themeIdx keys' testMode
   -- dispatch Cmd to ViewStack
   match evToCmd ev verbPfx with
   | some (.thm verb) =>

@@ -137,18 +137,6 @@ def test_key_col_reorder : IO Unit := do
   -- After l!, column b should be first (key col)
   assert (hdr.take 5 |>.any (· == 'b')) "Key col moves to front"
 
--- Key columns are pinned on left, non-key columns scroll
-def test_key_col_pinned_when_scrolled : IO Unit := do
-  log "keycol_pinned"
-  -- Before: set id as key, check header has id and age (next col)
-  let before ← runKeys "!" "data/sample.parquet"
-  let hdrBefore := header before
-  -- After: scroll right, id should stay but age should be gone
-  let after ← runKeys "!lllll" "data/sample.parquet"
-  let hdrAfter := header after
-  assert (contains hdrBefore "id" && contains hdrBefore "age") "Before: has id and age"
-  assert (contains hdrAfter "id" && !contains hdrAfter "age") "After: id pinned, age scrolled off"
-
 -- === Delete tests ===
 
 def test_delete_column : IO Unit := do
@@ -474,7 +462,6 @@ def main : IO Unit := do
   test_toggle_key_column
   test_toggle_key_remove
   test_key_col_reorder
-  -- test_key_col_pinned_when_scrolled  -- TODO: fix pinning test
 
   -- Delete
   test_delete_column

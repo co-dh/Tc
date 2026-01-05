@@ -64,11 +64,23 @@ private def navCmd (c : Char) (shift : Bool) : Option Cmd :=
                   else (if isRow then .row v else .col v))
     else none
 
--- +/- prefix targets: h=hPage, v=vPage, H=hor, V=ver, p=prec, w=width, t=thm, hjkl=ver/hor
-private def prefixObjs : Array (Char × (Verb → Cmd)) := #[
-  ('h', .hPage), ('v', .vPage), ('H', .hor), ('V', .ver), ('p', .prec), ('w', .width),
-  ('t', .thm), ('j', .ver), ('k', .ver), ('l', .hor)  -- hjkl maps to ver/hor (end navigation)
+-- +/- prefix targets with descriptions for fzf
+def prefixMenu : Array (Char × String × (Verb → Cmd)) := #[
+  ('t', "theme",      .thm),
+  ('p', "precision",  .prec),
+  ('w', "width",      .width),
+  ('h', "horiz page", .hPage),
+  ('v', "vert page",  .vPage),
+  ('H', "horiz end",  .hor),
+  ('V', "vert end",   .ver),
+  ('j', "bottom",     .ver),
+  ('k', "top",        .ver),
+  ('l', "end",        .hor)
 ]
+
+-- +/- prefix targets: h=hPage, v=vPage, H=hor, V=ver, p=prec, w=width, t=thm, hjkl=ver/hor
+private def prefixObjs : Array (Char × (Verb → Cmd)) :=
+  prefixMenu.map fun (c, _, mk) => (c, mk)
 
 -- Convert Term.Event to Cmd
 -- verbPfx: none = normal, some .inc = after +, some .dec = after -
