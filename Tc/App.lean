@@ -56,6 +56,9 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (styles : Array UInt32) 
   -- I key: toggle info overlay
   if ev.type == Term.eventKey && ev.ch == 'I'.toNat.toUInt32 then
     return ← mainLoop stk { vs' with showInfo := !vs'.showInfo } styles themeIdx keys' testMode
+  -- Q key: force quit
+  if ev.type == Term.eventKey && ev.ch == 'Q'.toNat.toUInt32 then
+    return stk
   -- +/- prefix: show fzf menu to select object, then dispatch
   if ev.type == Term.eventKey && verbPfx.isNone then
     let verb? := if ev.ch == '+'.toNat.toUInt32 then some Verb.inc

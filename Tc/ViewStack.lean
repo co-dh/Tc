@@ -68,7 +68,7 @@ def freqFilter (s : ViewStack) : IO (Option ViewStack) := do
 def exec (s : ViewStack) (cmd : Cmd) (rowPg colPg : Nat) : IO (Option ViewStack) := do
   match cmd with
   | .stk .inc    => pure (some s.dup)
-  | .stk .dec    => pure s.pop
+  | .stk .dec    => pure (s.pop.orElse fun _ => some s)  -- pop or no-op at base
   | .stk .ent => pure (some s.swap)
   | .stk .dup    => pure (some s.dup)
   | .stk _       => pure (some s)

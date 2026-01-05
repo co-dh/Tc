@@ -116,7 +116,7 @@ def keyHints : Array (String × String) := #[
   ("d", "delete"), ("t/T", "sel"),
   ("!", "key col"), ("s", "col jump"),
   ("+/-", "adjust"), ("S", "stack"),
-  ("I", "info"), ("q", "quit")
+  ("I", "info"), ("q", "pop"), ("Q", "quit")
 ]
 
 -- | Render info overlay at bottom-right

@@ -20,30 +20,28 @@ def cacheValid (path : String) : IO Bool := do
     return decide (cacheMeta.modified.sec.toNat >= srcMeta.modified.sec.toNat)
   catch _ => return false
 
--- | Load meta from parquet cache, returns MetaTuple
+-- | Read string column from query result
+private def colStr (qr : Adbc.QueryResult) (nr : Nat) (c : UInt64) : IO (Array String) :=
+  (Array.range nr).mapM fun r => Adbc.cellStr qr r.toUInt64 c
+
+-- | Read int column from query result
+private def colInt (qr : Adbc.QueryResult) (nr : Nat) (c : UInt64) : IO (Array Int64) :=
+  (Array.range nr).mapM fun r => (·.toInt64) <$> Adbc.cellInt qr r.toUInt64 c
+
+-- | Build MetaTuple from query result (cols: name,type,cnt,dist,null%,min,max)
+private def metaFromQuery (qr : Adbc.QueryResult) : IO MetaTuple := do
+  let nr := (← Adbc.nrows qr).toNat
+  let s := colStr qr nr; let i := colInt qr nr  -- s/i: read col as str/int
+  pure (← s 0, ← s 1, ← i 2, ← i 3, ← i 4, ← s 5, ← s 6)  -- ← awaits IO
+
+-- | Load meta from parquet cache
 def loadCache (path : String) : IO (Option MetaTuple) := do
   if !(← cacheValid path) then return none
   try
     let cp := metaCachePath path
     let qr ← Adbc.query s!"SELECT * FROM read_parquet('{cp}')"
-    let nr ← Adbc.nrows qr
-    let mut rNames : Array String := #[]
-    let mut rTypes : Array String := #[]
-    let mut rCnts : Array Int64 := #[]
-    let mut rDists : Array Int64 := #[]
-    let mut rNulls : Array Int64 := #[]
-    let mut rMins : Array String := #[]
-    let mut rMaxs : Array String := #[]
-    for r in [:nr.toNat] do
-      rNames := rNames.push (← Adbc.cellStr qr r.toUInt64 0)
-      rTypes := rTypes.push (← Adbc.cellStr qr r.toUInt64 1)
-      rCnts := rCnts.push (← Adbc.cellInt qr r.toUInt64 2).toInt64
-      rDists := rDists.push (← Adbc.cellInt qr r.toUInt64 3).toInt64
-      rNulls := rNulls.push (← Adbc.cellInt qr r.toUInt64 4).toInt64
-      rMins := rMins.push (← Adbc.cellStr qr r.toUInt64 5)
-      rMaxs := rMaxs.push (← Adbc.cellStr qr r.toUInt64 6)
     Log.write "meta" s!"[cache] loaded {cp}"
-    return some (rNames, rTypes, rCnts, rDists, rNulls, rMins, rMaxs)
+    some <$> metaFromQuery qr
   catch _ => return none
 
 -- | Save meta to parquet cache
@@ -87,9 +85,10 @@ private def canCache (t : AdbcTable) : Option String :=
 
 -- | Query meta via SQL UNION (with parquet caching)
 def queryMeta (t : AdbcTable) : IO MetaTuple := do
+  let cachePath := canCache t
   -- Try cache for base parquet queries
-  if let some path := canCache t then
-    if let some cached ← loadCache path then return cached
+  if let some p := cachePath then
+    if let some cached ← loadCache p then return cached
   let names := t.colNames
   let types := t.colFmts.map fmtToType
   let unions := (Array.range names.size).map fun i =>
@@ -104,26 +103,10 @@ def queryMeta (t : AdbcTable) : IO MetaTuple := do
   let metaSql := unions.map (· ++ " FROM " ++ tbl) |>.toList |> String.intercalate " UNION ALL "
   Log.write "meta" metaSql
   -- Save to cache for base parquet queries
-  if let some path := canCache t then
-    try saveCache path metaSql catch _ => pure ()
+  if let some p := cachePath then
+    try saveCache p metaSql catch _ => pure ()
   let qr ← Adbc.query metaSql
-  let nr ← Adbc.nrows qr
-  let mut rNames : Array String := #[]
-  let mut rTypes : Array String := #[]
-  let mut rCnts : Array Int64 := #[]
-  let mut rDists : Array Int64 := #[]
-  let mut rNulls : Array Int64 := #[]
-  let mut rMins : Array String := #[]
-  let mut rMaxs : Array String := #[]
-  for r in [:nr.toNat] do
-    rNames := rNames.push (← Adbc.cellStr qr r.toUInt64 0)
-    rTypes := rTypes.push (← Adbc.cellStr qr r.toUInt64 1)
-    rCnts := rCnts.push (← Adbc.cellInt qr r.toUInt64 2).toInt64
-    rDists := rDists.push (← Adbc.cellInt qr r.toUInt64 3).toInt64
-    rNulls := rNulls.push (← Adbc.cellInt qr r.toUInt64 4).toInt64
-    rMins := rMins.push (← Adbc.cellStr qr r.toUInt64 5)
-    rMaxs := rMaxs.push (← Adbc.cellStr qr r.toUInt64 6)
-  pure (rNames, rTypes, rCnts, rDists, rNulls, rMins, rMaxs)
+  metaFromQuery qr
 
 end AdbcTable
 end Tc
