@@ -3,7 +3,10 @@
   Suspends terminal, spawns fzf, returns selection
   In testMode, returns first value without spawning fzf
 -/
+import Tc.Key
 import Tc.Term
+
+open Tc
 
 namespace Tc.Fzf
 
@@ -88,5 +91,16 @@ def buildFilterExpr (col : String) (vals : Array String) (result : String) : Str
     if input.startsWith ">" || input.startsWith "<" || input.startsWith "=" || input.startsWith "~"
     then s!"{col} {input}" else input
   else ""
+
+-- | Show fzf menu for +/- prefix commands, returns selected Cmd
+def prefixCmd (verb : Verb) : IO (Option Cmd) := do
+  let prompt := if verb == .inc then "+" else "-"
+  let items := prefixMenu.map fun (c, desc, _) => s!"{c}\t{desc}"
+  let input := "\n".intercalate items.toList
+  match ← fzf #["--with-nth=2..", s!"--prompt={prompt}"] input with
+  | some sel =>
+    let key := sel.toList.getD 0 ' '
+    pure (prefixMenu.findSome? fun (c, _, mk) => if c == key then some (mk verb) else none)
+  | none => pure none
 
 end Tc.Fzf

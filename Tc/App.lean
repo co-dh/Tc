@@ -29,20 +29,8 @@ def charToEvent (c : Char) : Term.Event :=
   if ch < 32 then ⟨Term.eventKey, 2, ch.toUInt16, 0, 0, 0⟩
   else ⟨Term.eventKey, 0, 0, ch, 0, 0⟩
 
--- | Show fzf menu for +/- prefix commands, returns selected Cmd
-def fzfPrefixCmd (verb : Verb) : IO (Option Cmd) := do
-  let prompt := if verb == .inc then "+" else "-"
-  let items := prefixMenu.map fun (c, desc, _) => s!"{c}\t{desc}"
-  let input := "\n".intercalate items.toList
-  match ← Fzf.fzf #["--with-nth=2..", s!"--prompt={prompt}"] input with
-  | some sel =>
-    let key := sel.toList.getD 0 ' '
-    pure (prefixMenu.findSome? fun (c, _, mk) => if c == key then some (mk verb) else none)
-  | none => pure none
-
 -- | Main loop with ViewStack, keys = remaining replay keys, testMode = exit when keys exhausted
--- Returns final ViewStack for pipe mode output
-partial def mainLoop (stk : ViewStack) (vs : ViewState) (styles : Array UInt32) (themeIdx : Nat) (keys : Array Char) (testMode : Bool := false) (verbPfx : Option Verb := none) : IO ViewStack := do
+partial def mainLoop (stk : ViewStack) (vs : ViewState) (styles : Array UInt32) (themeIdx : Nat) (keys : Array Char) (testMode : Bool := false) (verbPfx : Option Verb := none) : IO Unit := do
   let (vs', v') ← stk.cur.doRender vs styles  -- v' has updated widths
   let stk := stk.setCur v'             -- update stack with new widths
   renderTabLine stk.tabNames 0  -- current is index 0
@@ -54,7 +42,7 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (styles : Array UInt32) 
   -- test mode: exit after keys consumed (check AFTER render)
   if testMode && keys.isEmpty then
     IO.print (← Term.bufferStr)
-    return stk
+    return
   -- get event: from keys or poll
   let (ev, keys') ← if h : keys.size > 0 then
     pure (charToEvent keys[0], keys.extract 1 keys.size)
@@ -73,7 +61,7 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (styles : Array UInt32) 
                  else if ev.ch == '-'.toNat.toUInt32 then some Verb.dec
                  else none
     if let some verb := verb? then
-      match ← fzfPrefixCmd verb with
+      match ← Fzf.prefixCmd verb with
       | some (.thm v) =>
         let delta := if v == .inc then 1 else -1
         let (theme, variant) := Theme.cycleTheme themeIdx delta
@@ -82,7 +70,7 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (styles : Array UInt32) 
         return ← mainLoop stk vs' newStyles newIdx keys' testMode
       | some cmd => match ← stk.exec cmd rowPg colPg with
         | some stk' => return ← mainLoop stk' vs' styles themeIdx keys' testMode
-        | none => return stk
+        | none => return
       | none => return ← mainLoop stk vs' styles themeIdx keys' testMode
   -- dispatch Cmd to ViewStack
   match evToCmd ev verbPfx with
@@ -95,9 +83,6 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (styles : Array UInt32) 
     mainLoop stk vs' newStyles newIdx keys' testMode
   | some cmd => match ← stk.exec cmd rowPg colPg with
     | some stk' =>
-      -- check for error popup (skip in testMode)
-      let err ← Error.pop
-      if !err.isEmpty && !testMode then errorPopup err
       -- reset ViewState when view changes (widths now in View, so ViewState just has scroll/lastCol)
       let reset := cmd matches .stk .dec | .colSel .del | .colSel _ | .metaV _ | .freq _ | .col .search | .row .search | .col .filter | .row .filter
       mainLoop stk' (if reset then ViewState.default else vs') styles themeIdx keys' testMode
