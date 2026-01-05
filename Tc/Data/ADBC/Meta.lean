@@ -20,30 +20,34 @@ def cacheValid (path : String) : IO Bool := do
     return decide (cacheMeta.modified.sec.toNat >= srcMeta.modified.sec.toNat)
   catch _ => return false
 
+-- | Build MetaTuple from query result
+private def metaFromQuery (qr : Adbc.QueryResult) : IO MetaTuple := do
+  let nr ← Adbc.nrows qr
+  let mut ns : Array String := #[]
+  let mut ts : Array String := #[]
+  let mut cs : Array Int64 := #[]
+  let mut ds : Array Int64 := #[]
+  let mut us : Array Int64 := #[]
+  let mut mis : Array String := #[]
+  let mut mas : Array String := #[]
+  for r in [:nr.toNat] do
+    ns := ns.push (← Adbc.cellStr qr r.toUInt64 0)
+    ts := ts.push (← Adbc.cellStr qr r.toUInt64 1)
+    cs := cs.push (← Adbc.cellInt qr r.toUInt64 2).toInt64
+    ds := ds.push (← Adbc.cellInt qr r.toUInt64 3).toInt64
+    us := us.push (← Adbc.cellInt qr r.toUInt64 4).toInt64
+    mis := mis.push (← Adbc.cellStr qr r.toUInt64 5)
+    mas := mas.push (← Adbc.cellStr qr r.toUInt64 6)
+  pure (ns, ts, cs, ds, us, mis, mas)
+
 -- | Load meta from parquet cache, returns MetaTuple
 def loadCache (path : String) : IO (Option MetaTuple) := do
   if !(← cacheValid path) then return none
   try
     let cp := metaCachePath path
     let qr ← Adbc.query s!"SELECT * FROM read_parquet('{cp}')"
-    let nr ← Adbc.nrows qr
-    let mut rNames : Array String := #[]
-    let mut rTypes : Array String := #[]
-    let mut rCnts : Array Int64 := #[]
-    let mut rDists : Array Int64 := #[]
-    let mut rNulls : Array Int64 := #[]
-    let mut rMins : Array String := #[]
-    let mut rMaxs : Array String := #[]
-    for r in [:nr.toNat] do
-      rNames := rNames.push (← Adbc.cellStr qr r.toUInt64 0)
-      rTypes := rTypes.push (← Adbc.cellStr qr r.toUInt64 1)
-      rCnts := rCnts.push (← Adbc.cellInt qr r.toUInt64 2).toInt64
-      rDists := rDists.push (← Adbc.cellInt qr r.toUInt64 3).toInt64
-      rNulls := rNulls.push (← Adbc.cellInt qr r.toUInt64 4).toInt64
-      rMins := rMins.push (← Adbc.cellStr qr r.toUInt64 5)
-      rMaxs := rMaxs.push (← Adbc.cellStr qr r.toUInt64 6)
     Log.write "meta" s!"[cache] loaded {cp}"
-    return some (rNames, rTypes, rCnts, rDists, rNulls, rMins, rMaxs)
+    some <$> metaFromQuery qr
   catch _ => return none
 
 -- | Save meta to parquet cache
@@ -107,23 +111,7 @@ def queryMeta (t : AdbcTable) : IO MetaTuple := do
   if let some path := canCache t then
     try saveCache path metaSql catch _ => pure ()
   let qr ← Adbc.query metaSql
-  let nr ← Adbc.nrows qr
-  let mut rNames : Array String := #[]
-  let mut rTypes : Array String := #[]
-  let mut rCnts : Array Int64 := #[]
-  let mut rDists : Array Int64 := #[]
-  let mut rNulls : Array Int64 := #[]
-  let mut rMins : Array String := #[]
-  let mut rMaxs : Array String := #[]
-  for r in [:nr.toNat] do
-    rNames := rNames.push (← Adbc.cellStr qr r.toUInt64 0)
-    rTypes := rTypes.push (← Adbc.cellStr qr r.toUInt64 1)
-    rCnts := rCnts.push (← Adbc.cellInt qr r.toUInt64 2).toInt64
-    rDists := rDists.push (← Adbc.cellInt qr r.toUInt64 3).toInt64
-    rNulls := rNulls.push (← Adbc.cellInt qr r.toUInt64 4).toInt64
-    rMins := rMins.push (← Adbc.cellStr qr r.toUInt64 5)
-    rMaxs := rMaxs.push (← Adbc.cellStr qr r.toUInt64 6)
-  pure (rNames, rTypes, rCnts, rDists, rNulls, rMins, rMaxs)
+  metaFromQuery qr
 
 end AdbcTable
 end Tc
