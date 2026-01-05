@@ -29,8 +29,19 @@ def charToEvent (c : Char) : Term.Event :=
   if ch < 32 then ⟨Term.eventKey, 2, ch.toUInt16, 0, 0, 0⟩
   else ⟨Term.eventKey, 0, 0, ch, 0, 0⟩
 
+-- | Show fzf menu for +/- prefix commands, returns selected Cmd
+def fzfPrefixCmd (verb : Verb) : IO (Option Cmd) := do
+  let prompt := if verb == .inc then "+" else "-"
+  let items := prefixMenu.map fun (c, desc, _) => s!"{c}\t{desc}"
+  let input := "\n".intercalate items.toList
+  match ← Fzf.fzf #["--with-nth=2..", s!"--prompt={prompt}"] input with
+  | some sel =>
+    let key := sel.toList.getD 0 ' '
+    pure (prefixMenu.findSome? fun (c, _, mk) => if c == key then some (mk verb) else none)
+  | none => pure none
+
 -- | Main loop with ViewStack, keys = remaining replay keys, testMode = exit when keys exhausted
-partial def mainLoop (stk : ViewStack) (vs : ViewState) (styles : Array UInt32) (keys : Array Char) (testMode : Bool := false) (verbPfx : Option Verb := none) : IO Unit := do
+partial def mainLoop (stk : ViewStack) (vs : ViewState) (styles : Array UInt32) (themeIdx : Nat) (keys : Array Char) (testMode : Bool := false) (verbPfx : Option Verb := none) : IO Unit := do
   let (vs', v') ← stk.cur.doRender vs styles  -- v' has updated widths
   let stk := stk.setCur v'             -- update stack with new widths
   renderTabLine stk.tabNames 0  -- current is index 0
@@ -54,13 +65,33 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (styles : Array UInt32) 
   let colPg := colPageSize
   -- I key: toggle info overlay
   if ev.type == Term.eventKey && ev.ch == 'I'.toNat.toUInt32 then
-    return ← mainLoop stk { vs' with showInfo := !vs'.showInfo } styles keys' testMode
-  -- +/- prefix for hor/ver/prec/width commands
+    return ← mainLoop stk { vs' with showInfo := !vs'.showInfo } styles themeIdx keys' testMode
+  -- +/- prefix: show fzf menu to select object, then dispatch
   if ev.type == Term.eventKey && verbPfx.isNone then
-    if ev.ch == '+'.toNat.toUInt32 then return ← mainLoop stk vs' styles keys' testMode (some .inc)
-    if ev.ch == '-'.toNat.toUInt32 then return ← mainLoop stk vs' styles keys' testMode (some .dec)
+    let verb? := if ev.ch == '+'.toNat.toUInt32 then some Verb.inc
+                 else if ev.ch == '-'.toNat.toUInt32 then some Verb.dec
+                 else none
+    if let some verb := verb? then
+      match ← fzfPrefixCmd verb with
+      | some (.thm v) =>
+        let delta := if v == .inc then 1 else -1
+        let (theme, variant) := Theme.cycleTheme themeIdx delta
+        let newIdx := Theme.themeIdx theme variant
+        let newStyles ← Theme.load "theme.csv" theme variant <|> pure Theme.defaultDark
+        return ← mainLoop stk vs' newStyles newIdx keys' testMode
+      | some cmd => match ← stk.exec cmd rowPg colPg with
+        | some stk' => return ← mainLoop stk' vs' styles themeIdx keys' testMode
+        | none => return
+      | none => return ← mainLoop stk vs' styles themeIdx keys' testMode
   -- dispatch Cmd to ViewStack
   match evToCmd ev verbPfx with
+  | some (.thm verb) =>
+    -- theme switch: cycle theme and reload styles
+    let delta := if verb == .inc then 1 else -1
+    let (theme, variant) := Theme.cycleTheme themeIdx delta
+    let newIdx := Theme.themeIdx theme variant
+    let newStyles ← Theme.load "theme.csv" theme variant <|> pure Theme.defaultDark
+    mainLoop stk vs' newStyles newIdx keys' testMode
   | some cmd => match ← stk.exec cmd rowPg colPg with
     | some stk' =>
       -- check for error popup (skip in testMode)
@@ -68,9 +99,9 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (styles : Array UInt32) 
       if !err.isEmpty && !testMode then errorPopup err
       -- reset ViewState when view changes (widths now in View, so ViewState just has scroll/lastCol)
       let reset := cmd matches .stk .dec | .colSel .del | .colSel _ | .metaV _ | .freq _ | .col .search | .row .search | .col .filter | .row .filter
-      mainLoop stk' (if reset then ViewState.default else vs') styles keys' testMode
+      mainLoop stk' (if reset then ViewState.default else vs') styles themeIdx keys' testMode
     | none => return  -- quit or table empty
-  | none => mainLoop stk vs' styles keys' testMode
+  | none => mainLoop stk vs' styles themeIdx keys' testMode
 
 -- | Parse args: path, optional -c for key replay (test mode)
 def parseArgs (args : List String) : String × Array Char × Bool :=
@@ -87,13 +118,14 @@ def main (args : List String) : IO Unit := do
   -- detect terminal bg, load theme (fallback to default dark)
   let dark ← Theme.isDark
   let variant := if dark then "dark" else "light"
+  let themeIdx := Theme.themeIdx "default" variant
   let styles ← Theme.load "theme.csv" "default" variant <|> pure Theme.defaultDark
   let _ ← Term.init
   if path.endsWith ".csv" then
     match ← MemTable.load path with
     | .error e => Term.shutdown; IO.eprintln s!"CSV parse error: {e}"
     | .ok tbl => match View.fromTbl (.mem tbl) path with
-      | some v => mainLoop ⟨#[v], by simp⟩ ViewState.default styles keys testMode; Term.shutdown
+      | some v => mainLoop ⟨#[v], by simp⟩ ViewState.default styles themeIdx keys testMode; Term.shutdown
       | none => Term.shutdown; IO.eprintln "Empty table"
   else
     let ok ← AdbcTable.init
@@ -101,5 +133,5 @@ def main (args : List String) : IO Unit := do
     match ← AdbcTable.fromFile path with
     | none => Term.shutdown; AdbcTable.shutdown; IO.eprintln "Query failed"
     | some tbl => match View.fromTbl (.adbc tbl) path with
-      | some v => mainLoop ⟨#[v], by simp⟩ ViewState.default styles keys testMode; Term.shutdown; AdbcTable.shutdown
+      | some v => mainLoop ⟨#[v], by simp⟩ ViewState.default styles themeIdx keys testMode; Term.shutdown; AdbcTable.shutdown
       | none => Term.shutdown; AdbcTable.shutdown; IO.eprintln "Empty table"

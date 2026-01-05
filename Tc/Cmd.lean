@@ -59,17 +59,18 @@ inductive Cmd where
 
   | prec (v : Verb)    -- prec -=dec, +=inc precision
   | width (v : Verb)   -- width -=dec, +=inc width
+  | thm (v : Verb)     -- thm -=prev, +=next theme
   | metaV (v : Verb) -- info c=push, -/0=selNull, +/1=selSingle, ~=setKeyCols
   | freq (v : Verb) -- freq ~=filter by selected value
   deriving Repr, BEq, DecidableEq
 
 namespace Cmd
 
--- | Obj chars: r=row, c=col, R=rowSel, C=colSel, g=grp, s=stk, h=hPage, v=vPage, H=hor, V=ver, p=prec, w=width, M=info, f=freq
+-- | Obj chars: r=row, c=col, R=rowSel, C=colSel, g=grp, s=stk, h=hPage, v=vPage, H=hor, V=ver, p=prec, w=width, T=thm, M=metaV, f=freq
 private def objs : Array (Char × (Verb → Cmd)) := #[
   ('r', .row), ('c', .col), ('R', .rowSel), ('C', .colSel), ('g', .grp), ('s', .stk),
   ('h', .hPage), ('v', .vPage), ('H', .hor), ('V', .ver), ('p', .prec), ('w', .width),
-  ('M', .metaV), ('f', .freq)
+  ('T', .thm), ('M', .metaV), ('f', .freq)
 ]
 
 -- | Get obj char for Cmd
@@ -77,12 +78,12 @@ private def objChar : Cmd → Char
   | .row _ => 'r' | .col _ => 'c' | .rowSel _ => 'R' | .colSel _ => 'C'
   | .grp _ => 'g' | .stk _ => 's'
   | .hPage _ => 'h' | .vPage _ => 'v' | .hor _ => 'H' | .ver _ => 'V'
-  | .prec _ => 'p' | .width _ => 'w' | .metaV _ => 'M' | .freq _ => 'f'
+  | .prec _ => 'p' | .width _ => 'w' | .thm _ => 'T' | .metaV _ => 'M' | .freq _ => 'f'
 
 -- | Get verb from Cmd
 private def verb : Cmd → Verb
   | .row v | .col v | .rowSel v | .colSel v | .grp v | .stk v => v
-  | .hor v | .ver v | .hPage v | .vPage v | .prec v | .width v | .metaV v | .freq v => v
+  | .hor v | .ver v | .hPage v | .vPage v | .prec v | .width v | .thm v | .metaV v | .freq v => v
 
 instance : ToString Cmd where toString c := s!"{c.objChar}{c.verb.toChar}"
 
@@ -112,6 +113,7 @@ theorem parse_toString (c : Cmd) : Parse.parse? (toString c) = some c := by
   | vPage v => cases v <;> native_decide
   | prec v => cases v <;> native_decide
   | width v => cases v <;> native_decide
+  | thm v => cases v <;> native_decide
   | metaV v => cases v <;> native_decide
   | freq v => cases v <;> native_decide
 
