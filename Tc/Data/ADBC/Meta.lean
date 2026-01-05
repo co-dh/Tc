@@ -34,7 +34,7 @@ private def metaFromQuery (qr : Adbc.QueryResult) : IO MetaTuple := do
   let s := colStr qr nr; let i := colInt qr nr  -- s/i: read col as str/int
   pure (← s 0, ← s 1, ← i 2, ← i 3, ← i 4, ← s 5, ← s 6)  -- ← awaits IO
 
--- | Load meta from parquet cache, returns MetaTuple
+-- | Load meta from parquet cache
 def loadCache (path : String) : IO (Option MetaTuple) := do
   if !(← cacheValid path) then return none
   try
