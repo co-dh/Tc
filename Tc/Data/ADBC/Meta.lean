@@ -20,25 +20,19 @@ def cacheValid (path : String) : IO Bool := do
     return decide (cacheMeta.modified.sec.toNat >= srcMeta.modified.sec.toNat)
   catch _ => return false
 
+-- | Read string column from query result
+private def colStr (qr : Adbc.QueryResult) (nr : Nat) (c : UInt64) : IO (Array String) :=
+  (Array.range nr).mapM fun r => Adbc.cellStr qr r.toUInt64 c
+
+-- | Read int column from query result
+private def colInt (qr : Adbc.QueryResult) (nr : Nat) (c : UInt64) : IO (Array Int64) :=
+  (Array.range nr).mapM fun r => (·.toInt64) <$> Adbc.cellInt qr r.toUInt64 c
+
 -- | Build MetaTuple from query result
 private def metaFromQuery (qr : Adbc.QueryResult) : IO MetaTuple := do
-  let nr ← Adbc.nrows qr
-  let mut ns : Array String := #[]
-  let mut ts : Array String := #[]
-  let mut cs : Array Int64 := #[]
-  let mut ds : Array Int64 := #[]
-  let mut us : Array Int64 := #[]
-  let mut mis : Array String := #[]
-  let mut mas : Array String := #[]
-  for r in [:nr.toNat] do
-    ns := ns.push (← Adbc.cellStr qr r.toUInt64 0)
-    ts := ts.push (← Adbc.cellStr qr r.toUInt64 1)
-    cs := cs.push (← Adbc.cellInt qr r.toUInt64 2).toInt64
-    ds := ds.push (← Adbc.cellInt qr r.toUInt64 3).toInt64
-    us := us.push (← Adbc.cellInt qr r.toUInt64 4).toInt64
-    mis := mis.push (← Adbc.cellStr qr r.toUInt64 5)
-    mas := mas.push (← Adbc.cellStr qr r.toUInt64 6)
-  pure (ns, ts, cs, ds, us, mis, mas)
+  let nr := (← Adbc.nrows qr).toNat
+  pure (← colStr qr nr 0, ← colStr qr nr 1, ← colInt qr nr 2,
+        ← colInt qr nr 3, ← colInt qr nr 4, ← colStr qr nr 5, ← colStr qr nr 6)
 
 -- | Load meta from parquet cache, returns MetaTuple
 def loadCache (path : String) : IO (Option MetaTuple) := do
@@ -91,9 +85,10 @@ private def canCache (t : AdbcTable) : Option String :=
 
 -- | Query meta via SQL UNION (with parquet caching)
 def queryMeta (t : AdbcTable) : IO MetaTuple := do
+  let cachePath := canCache t
   -- Try cache for base parquet queries
-  if let some path := canCache t then
-    if let some cached ← loadCache path then return cached
+  if let some p := cachePath then
+    if let some cached ← loadCache p then return cached
   let names := t.colNames
   let types := t.colFmts.map fmtToType
   let unions := (Array.range names.size).map fun i =>
@@ -108,8 +103,8 @@ def queryMeta (t : AdbcTable) : IO MetaTuple := do
   let metaSql := unions.map (· ++ " FROM " ++ tbl) |>.toList |> String.intercalate " UNION ALL "
   Log.write "meta" metaSql
   -- Save to cache for base parquet queries
-  if let some path := canCache t then
-    try saveCache path metaSql catch _ => pure ()
+  if let some p := cachePath then
+    try saveCache p metaSql catch _ => pure ()
   let qr ← Adbc.query metaSql
   metaFromQuery qr
 
