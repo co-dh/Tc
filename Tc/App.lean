@@ -41,7 +41,8 @@ def fzfPrefixCmd (verb : Verb) : IO (Option Cmd) := do
   | none => pure none
 
 -- | Main loop with ViewStack, keys = remaining replay keys, testMode = exit when keys exhausted
-partial def mainLoop (stk : ViewStack) (vs : ViewState) (styles : Array UInt32) (themeIdx : Nat) (keys : Array Char) (testMode : Bool := false) (verbPfx : Option Verb := none) : IO Unit := do
+-- Returns final ViewStack for pipe mode output
+partial def mainLoop (stk : ViewStack) (vs : ViewState) (styles : Array UInt32) (themeIdx : Nat) (keys : Array Char) (testMode : Bool := false) (verbPfx : Option Verb := none) : IO ViewStack := do
   let (vs', v') ← stk.cur.doRender vs styles  -- v' has updated widths
   let stk := stk.setCur v'             -- update stack with new widths
   renderTabLine stk.tabNames 0  -- current is index 0
@@ -53,7 +54,7 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (styles : Array UInt32) 
   -- test mode: exit after keys consumed (check AFTER render)
   if testMode && keys.isEmpty then
     IO.print (← Term.bufferStr)
-    return
+    return stk
   -- get event: from keys or poll
   let (ev, keys') ← if h : keys.size > 0 then
     pure (charToEvent keys[0], keys.extract 1 keys.size)
@@ -81,7 +82,7 @@ partial def mainLoop (stk : ViewStack) (vs : ViewState) (styles : Array UInt32) 
         return ← mainLoop stk vs' newStyles newIdx keys' testMode
       | some cmd => match ← stk.exec cmd rowPg colPg with
         | some stk' => return ← mainLoop stk' vs' styles themeIdx keys' testMode
-        | none => return
+        | none => return stk
       | none => return ← mainLoop stk vs' styles themeIdx keys' testMode
   -- dispatch Cmd to ViewStack
   match evToCmd ev verbPfx with

@@ -56,6 +56,38 @@ def load (path : String) : IO (Except String MemTable) := do
     let cols := strCols.map buildColumn
     pure (.ok ⟨names, cols⟩)
 
+-- | Split line on whitespace (multiple spaces = one delimiter)
+private def splitWs (s : String) : Array String :=
+  s.splitOn " " |>.filter (·.length > 0) |>.toArray
+
+-- | Parse space-separated text (like ps aux, ls -l output)
+-- First line = headers, rest = data rows
+def fromText (content : String) : Except String MemTable :=
+  let lines := content.splitOn "\n" |>.filter (·.length > 0)
+  match lines with
+  | [] => .ok ⟨#[], #[]⟩
+  | hdr :: rest =>
+    let names := splitWs hdr
+    let nc := names.size
+    let strCols : Array (Array String) := Id.run do
+      let mut cols := (List.replicate nc #[]).toArray
+      for line in rest do
+        let fields := splitWs line
+        for i in [:nc] do
+          -- last col gets rest of line if more fields than headers
+          let v := if i == nc - 1 && fields.size > nc
+            then " ".intercalate (fields.toList.drop i)
+            else fields.getD i ""
+          cols := cols.modify i (·.push v)
+      cols
+    let cols := strCols.map buildColumn
+    .ok ⟨names, cols⟩
+
+-- | Load from stdin (reads all input)
+def fromStdin : IO (Except String MemTable) := do
+  let content ← (← IO.getStdin).readToEnd
+  pure (fromText content)
+
 -- | Row count
 def nRows (t : MemTable) : Nat := (t.cols.getD 0 default).size
 
@@ -153,6 +185,21 @@ def findRow (t : MemTable) (col : Nat) (val : String) (start : Nat) (fwd : Bool)
       let idx := n - 1 - i
       if (c.get idx).toRaw == val then return some idx
   none
+
+-- | Format table as plain text (tab-separated, no unicode)
+def toText (t : MemTable) : String := Id.run do
+  let nr := nRows t
+  let nc := t.names.size
+  let mut lines : Array String := #[]
+  -- header
+  lines := lines.push ("\t".intercalate t.names.toList)
+  -- data rows
+  for r in [:nr] do
+    let mut row : Array String := #[]
+    for c in [:nc] do
+      row := row.push ((t.cols.getD c default).get r).toRaw
+    lines := lines.push ("\t".intercalate row.toList)
+  "\n".intercalate lines.toList
 
 end MemTable
 end Tc

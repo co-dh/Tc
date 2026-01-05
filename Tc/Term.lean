@@ -72,6 +72,9 @@ structure Event where
   deriving Repr
 
 -- FFI declarations
+@[extern "lean_isatty_stdin"]
+opaque isattyStdin : IO Bool
+
 @[extern "lean_tb_init"]
 opaque init : IO Int32
 
