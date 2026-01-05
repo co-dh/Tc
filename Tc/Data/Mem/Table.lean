@@ -1,6 +1,7 @@
 /-
   In-memory table: column-major with typed columns
 -/
+import Std.Data.HashMap
 import Std.Data.HashSet
 import Tc.Data.CSV
 import Tc.Error
@@ -22,14 +23,13 @@ namespace MemTable
 @[extern "lean_string_to_float"]
 opaque stringToFloat : @& String → Float
 
--- | Detect column type from first non-empty value
+-- | Detect column type: only numeric if ALL non-empty values convert
 def detectType (vals : Array String) : Char :=
-  match vals.find? (·.length > 0) with
-  | none => 's'
-  | some v =>
-    if v.toInt?.isSome then 'i'
-    else if v.contains '.' then 'f'
-    else 's'
+  let nonEmpty := vals.filter (·.length > 0)
+  if nonEmpty.isEmpty then 's'
+  else if nonEmpty.all (·.toInt?.isSome) then 'i'
+  else if nonEmpty.all (fun s => !(stringToFloat s).isNaN) then 'f'
+  else 's'
 
 -- | Build typed column from string values
 def buildColumn (vals : Array String) : Column :=
@@ -60,21 +60,36 @@ def load (path : String) : IO (Except String MemTable) := do
 private def splitWs (s : String) : Array String :=
   s.splitOn " " |>.filter (·.length > 0) |>.toArray
 
+-- | Find mode (most common value) in array
+private def mode (xs : Array Nat) : Nat := Id.run do
+  let mut m : Std.HashMap Nat Nat := {}
+  for x in xs do m := m.insert x (m.getD x 0 + 1)
+  let mut best := 0; let mut cnt := 0
+  for (k, v) in m do if v > cnt then best := k; cnt := v
+  best
+
 -- | Parse space-separated text (like ps aux, ls -l output)
--- First line = headers, rest = data rows
+-- Auto-detects column count via mode (handles filenames with spaces)
+-- If header has fewer fields than mode, auto-generate column names
 def fromText (content : String) : Except String MemTable :=
   let lines := content.splitOn "\n" |>.filter (·.length > 0)
   match lines with
   | [] => .ok ⟨#[], #[]⟩
   | hdr :: rest =>
-    let names := splitWs hdr
-    let nc := names.size
+    let hdrFields := splitWs hdr
+    -- find mode of field counts across all lines
+    let allFields := lines.map (splitWs · |>.size) |>.toArray
+    let nc := mode allFields
+    -- use header if it has enough fields, else auto-generate
+    let (names, dataLines) := if hdrFields.size >= nc
+      then (hdrFields, rest)
+      else ((List.range nc).map (s!"c{·+1}") |>.toArray, hdr :: rest)
     let strCols : Array (Array String) := Id.run do
       let mut cols := (List.replicate nc #[]).toArray
-      for line in rest do
+      for line in dataLines do
         let fields := splitWs line
         for i in [:nc] do
-          -- last col gets rest of line if more fields than headers
+          -- last col gets rest of line if more fields than nc
           let v := if i == nc - 1 && fields.size > nc
             then " ".intercalate (fields.toList.drop i)
             else fields.getD i ""
