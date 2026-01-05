@@ -145,7 +145,6 @@ def errorPopup (msg : String) : IO Unit := do
   let boxW := max msg.length help.length + 4
   let x0 := (w.toNat - boxW) / 2
   let y0 := h.toNat / 2 - 1
-  -- draw 3-line box: border, message, help
   let pad := fun s => " " ++ s ++ "".pushn ' ' (boxW - s.length - 2) ++ " "
   Term.print x0.toUInt32 y0.toUInt32 Term.white Term.red (pad ("".pushn ' ' (boxW - 2)))
   Term.print x0.toUInt32 (y0 + 1).toUInt32 Term.white Term.red (pad msg)

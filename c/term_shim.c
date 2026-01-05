@@ -2,12 +2,21 @@
  * termbox2 FFI shim for Lean 4
  */
 #include <lean/lean.h>
+#include <stdio.h>
 #include <unistd.h>
 #include "termbox2.h"
 
 // | Check if stdin is a tty (false = piped input)
 lean_obj_res lean_isatty_stdin(lean_obj_arg world) {
     return lean_io_result_mk_ok(lean_box(isatty(STDIN_FILENO) ? 1 : 0));
+}
+
+// | Reopen stdin from /dev/tty (for pipe mode after reading stdin)
+lean_obj_res lean_reopen_tty(lean_obj_arg world) {
+    if (freopen("/dev/tty", "r", stdin) == NULL) {
+        return lean_io_result_mk_ok(lean_box(0));  // failed
+    }
+    return lean_io_result_mk_ok(lean_box(1));  // success
 }
 
 // tb_init() -> Int32

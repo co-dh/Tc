@@ -75,6 +75,9 @@ structure Event where
 @[extern "lean_isatty_stdin"]
 opaque isattyStdin : IO Bool
 
+@[extern "lean_reopen_tty"]
+opaque reopenTty : IO Bool
+
 @[extern "lean_tb_init"]
 opaque init : IO Int32
 
@@ -93,9 +96,6 @@ opaque clear : IO Unit
 @[extern "lean_tb_present"]
 opaque present : IO Unit
 
-@[extern "lean_tb_set_cell"]
-opaque setCell : UInt32 → UInt32 → UInt32 → UInt32 → UInt32 → IO Unit
-
 @[extern "lean_tb_poll_event"]
 opaque pollEvent : IO Event
 
@@ -105,11 +105,6 @@ opaque bufferStr : IO String
 -- | Batch print with padding (C FFI - fast)
 @[extern "lean_tb_print_pad"]
 opaque printPadC : UInt32 → UInt32 → UInt32 → UInt32 → UInt32 → @& String → UInt8 → IO Unit
-
--- | Batch render column (x, w, y0, fgs, bgs, strs, rights)
-@[extern "lean_tb_render_col"]
-opaque renderCol : UInt32 → UInt32 → UInt32 → @& Array UInt32 → @& Array UInt32
-                 → @& Array String → @& Array UInt8 → IO Unit
 
 -- | Unified table render (C reads Column directly, computes widths if needed)
 -- allCols, names, fmts, inWidths, colIdxs, nTotalRows, nKeys, colOff, r0, r1, curRow, curCol
@@ -123,14 +118,6 @@ opaque renderTable : @& Array Column → @& Array String → @& Array Char → @
                    → @& Array Nat → UInt64 → UInt64 → UInt64 → UInt64 → UInt64 → UInt64 → UInt64
                    → Int64 → @& Array Nat → @& Array Nat → @& Array UInt32
                    → Int64 → Int64 → IO (Array Nat)
-
--- | Print string left-aligned, truncated/padded to width
-def printPad (x y w : UInt32) (fg bg : UInt32) (s : String) : IO Unit :=
-  printPadC x y w fg bg s 0
-
--- | Print string right-aligned, truncated/padded to width
-def printPadR (x y w : UInt32) (fg bg : UInt32) (s : String) : IO Unit :=
-  printPadC x y w fg bg s 1
 
 -- | Print string at position (for backwards compat)
 def print (x y : UInt32) (fg bg : UInt32) (s : String) : IO Unit :=

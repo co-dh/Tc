@@ -93,9 +93,6 @@ namespace ViewStack
 -- | All views
 @[inline] def views (s : ViewStack) : Array View := s.val
 
--- | Stack depth
-@[inline] def depth (s : ViewStack) : Nat := s.val.size
-
 -- | Has parent?
 @[inline] def hasParent (s : ViewStack) : Bool := s.val.size > 1
 

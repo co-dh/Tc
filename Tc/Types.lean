@@ -64,12 +64,6 @@ def toRaw : Cell → String
   | .str s   => s
   | .bool b  => if b then "true" else "false"
 
--- | Extract string value
-def str? : Cell → Option String | .str s => some s | _ => none
-
--- | Extract int value
-def int? : Cell → Option Int64 | .int n => some n | _ => none
-
 -- | Format cell value as PRQL literal
 def toPrql : Cell → String
   | .null => "null"
@@ -79,12 +73,6 @@ def toPrql : Cell → String
   | .bool b => if b then "true" else "false"
 
 end Cell
-
--- | DisplayInfo: metadata for navigation/PRQL building (no cell access)
-structure DisplayInfo where
-  colNames : Array String
-  nRows    : Nat
-  nCols    : Nat
 
 -- Read-only table access
 class ReadTable (α : Type) where
@@ -105,9 +93,6 @@ class QueryTable (α : Type) where
   filter    : α → String → IO (Option α)
   distinct  : α → Nat → IO (Array String)
   findRow   : α → Nat → String → Nat → Bool → IO (Option Nat)  -- find row from start, fwd/bwd
-
--- Derived: column count from colNames.size
-def ReadTable.nCols [ReadTable α] (a : α) : Nat := (ReadTable.colNames a).size
 
 -- Mutable table operations (column-only; row deletion via SQL filter)
 class ModifyTable (α : Type) extends ReadTable α where

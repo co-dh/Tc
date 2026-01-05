@@ -94,10 +94,6 @@ instance : Parse Cmd where
     let (_, mk) ← objs.find? (·.1 == s.toList[0]!)
     pure (mk v)
 
--- | Parse space-separated command string
-def parseMany (s : String) : Array Cmd :=
-  (s.splitOn " ").toArray.filterMap Parse.parse?
-
 -- | Isomorphism: parse? ∘ toString = some
 theorem parse_toString (c : Cmd) : Parse.parse? (toString c) = some c := by
   cases c with

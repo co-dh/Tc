@@ -44,12 +44,6 @@ def fzf (opts : Array String) (input : String) : IO (Option String) := do
   let out ← fzfCore opts input
   pure (if out.isEmpty then none else some out)
 
--- | Multi select: testMode returns first as singleton
-def fzfMulti (opts : Array String) (input : String) : IO (Array String) := do
-  let out ← fzfCore (#["-m"] ++ opts) input
-  if ← getTestMode then pure (if out.isEmpty then #[] else #[out])
-  else pure (out.splitOn "\n" |>.map String.trim |>.filter (!·.isEmpty) |>.toArray)
-
 -- | Index select: testMode returns 0
 def fzfIdx (opts : Array String) (items : Array String) : IO (Option Nat) := do
   if ← getTestMode then pure (if items.isEmpty then none else some 0)
