@@ -68,35 +68,83 @@ private def mode (xs : Array Nat) : Nat := Id.run do
   for (k, v) in m do if v > cnt then best := k; cnt := v
   best
 
--- | Parse space-separated text (like ps aux, ls -l output)
--- Auto-detects column count via mode (handles filenames with spaces)
--- If header has fewer fields than mode, auto-generate column names
+-- | Count word starts (non-space after space, plus position 0 if non-space)
+private def countWordStarts (s : String) : Nat := Id.run do
+  let chars := s.toList.toArray
+  let n := chars.size
+  if n == 0 then return 0
+  let mut cnt := if chars[0]! != ' ' then 1 else 0
+  for i in [1:n] do
+    if chars[i]! != ' ' && chars[i-1]! == ' ' then cnt := cnt + 1
+  return cnt
+
+-- | Split line into n fields (last field gets remainder with spaces)
+private def splitN (s : String) (n : Nat) : Array String := Id.run do
+  if n == 0 then return #[]
+  let mut result : Array String := #[]
+  let mut rest := s.trimLeft
+  for _ in [:n-1] do
+    match rest.splitOn " " |>.filter (·.length > 0) with
+    | [] => result := result.push ""  -- pad with empty, don't break
+    | fld :: tl =>
+      result := result.push fld
+      rest := (" ".intercalate tl).trimLeft
+  result := result.push rest.trim  -- last field gets remainder
+  result
+
+-- | Find column start positions from header (2+ consecutive spaces = separator)
+private def findColStarts (hdr : String) : Array Nat := Id.run do
+  let chars := hdr.toList.toArray
+  let n := chars.size
+  let mut starts : Array Nat := #[0]
+  let mut spaceCount := 0
+  for i in [:n] do
+    if chars[i]! == ' ' then spaceCount := spaceCount + 1
+    else
+      if spaceCount >= 2 then starts := starts.push i
+      spaceCount := 0
+  return starts
+
+-- | Split line by column start positions (last col extends to end)
+private def splitByStarts (s : String) (starts : Array Nat) : Array String := Id.run do
+  let mut result : Array String := #[]
+  for i in [:starts.size] do
+    let st := starts[i]!
+    let en := if i + 1 < starts.size then starts[i + 1]! else s.length
+    result := result.push (s.drop st |>.take (en - st) |>.trim)
+  return result
+
+-- | Parse space-separated text (like ps aux, ls -l, systemctl output)
+-- Fixed-width if header has 2+ space gaps, else mode-based word count
 def fromText (content : String) : Except String MemTable :=
   let lines := content.splitOn "\n" |>.filter (·.length > 0)
   match lines with
   | [] => .ok ⟨#[], #[]⟩
   | hdr :: rest =>
-    let hdrFields := splitWs hdr
-    -- find mode of field counts across all lines
-    let allFields := lines.map (splitWs · |>.size) |>.toArray
-    let nc := mode allFields
-    -- use header if it has enough fields, else auto-generate
-    let (names, dataLines) := if hdrFields.size >= nc
-      then (hdrFields, rest)
-      else ((List.range nc).map (s!"c{·+1}") |>.toArray, hdr :: rest)
-    let strCols : Array (Array String) := Id.run do
-      let mut cols := (List.replicate nc #[]).toArray
-      for line in dataLines do
-        let fields := splitWs line
-        for i in [:nc] do
-          -- last col gets rest of line if more fields than nc
-          let v := if i == nc - 1 && fields.size > nc
-            then " ".intercalate (fields.toList.drop i)
-            else fields.getD i ""
-          cols := cols.modify i (·.push v)
-      cols
-    let cols := strCols.map buildColumn
-    .ok ⟨names, cols⟩
+    let starts := findColStarts hdr
+    -- if header has 2+ space gaps (multiple col starts), use fixed-width
+    if starts.size > 1 then
+      let names := splitByStarts hdr starts
+      let strCols : Array (Array String) := Id.run do
+        let mut cols := (List.replicate starts.size #[]).toArray
+        for line in rest do
+          let fields := splitByStarts line starts
+          for i in [:starts.size] do cols := cols.modify i (·.push (fields.getD i ""))
+        return cols
+      .ok ⟨names, strCols.map buildColumn⟩
+    else
+      -- else use mode of word counts (handles "total 836" outliers)
+      let allLines := (hdr :: rest).toArray
+      let nc := mode (allLines.map countWordStarts)
+      if nc == 0 then .ok ⟨#[], #[]⟩ else
+      let names := splitN hdr nc
+      let strCols : Array (Array String) := Id.run do
+        let mut cols := (List.replicate nc #[]).toArray
+        for line in rest do
+          let fields := splitN line nc
+          for i in [:nc] do cols := cols.modify i (·.push (fields.getD i ""))
+        return cols
+      .ok ⟨names, strCols.map buildColumn⟩
 
 -- | Load from stdin (reads all input)
 def fromStdin : IO (Except String MemTable) := do
@@ -166,8 +214,42 @@ instance : RenderTable MemTable where
 
 namespace MemTable
 
--- | Filter: no-op for MemTable (in-memory filter not yet impl)
-def filter (t : MemTable) (_ : String) : IO (Option MemTable) := pure (some t)
+-- | Parse filter expr "col == val" or "col == 'val'" into (colName, rawVal)
+private def parseEq (s : String) : Option (String × String) :=
+  match s.splitOn " == " with
+  | [col, val] =>
+    let v := if val.startsWith "'" && val.endsWith "'" then val.drop 1 |>.dropRight 1 else val
+    some (col.trim, v)
+  | _ => none
+
+-- | Filter MemTable by expr like "a == 1 && b == 'x'"
+def filter (t : MemTable) (expr : String) : IO (Option MemTable) := do
+  -- parse "col == val && col == val ..."
+  let parts := expr.splitOn " && "
+  let eqs := parts.filterMap parseEq
+  if eqs.isEmpty then return some t
+  -- find column indices and expected values
+  let colIdxs := eqs.filterMap fun (col, _) => t.names.idxOf? col
+  let vals := eqs.map (·.2)
+  if colIdxs.length != vals.length then return some t
+  -- find matching rows
+  let n := MemTable.nRows t
+  let mut rows : Array Nat := #[]
+  for r in [:n] do
+    let mut ok := true
+    for i in [:colIdxs.length] do
+      let cIdx := colIdxs.getD i 0
+      let exp := vals.getD i ""
+      let act := (t.cols.getD cIdx default).get r |>.toRaw
+      if act != exp then ok := false; break
+    if ok then rows := rows.push r
+  -- build filtered table
+  let cols' := t.cols.map fun col =>
+    match col with
+    | .ints data => .ints (rows.map fun r => data.getD r 0)
+    | .floats data => .floats (rows.map fun r => data.getD r 0)
+    | .strs data => .strs (rows.map fun r => data.getD r "")
+  return some ⟨t.names, cols'⟩
 
 -- | Distinct values for a column
 def distinct (t : MemTable) (col : Nat) : IO (Array String) := pure <| Id.run do

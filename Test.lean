@@ -363,21 +363,27 @@ def test_meta_0_enter_delete : IO Unit := do
   -- After M0<ret>d, null col b should be deleted, only col a remains
   assert (contains status "c0/1") "M0<ret>d deletes null column"
 
+-- === Stdin parsing tests ===
+
+-- | Headers with spaces like "UNIT FILE" should be parsed correctly
+def test_spaced_header : IO Unit := do
+  log "spaced_header"
+  let output ← runKeys "" "data/spaced_header.txt"
+  let (_, status) := footer output
+  -- Should have 3 columns (UNIT FILE, STATE, PRESET), not 4
+  assert (contains status "c0/3") "Spaced header: 3 columns"
+
 -- === Freq enter tests ===
 
+-- | F<ret> should pop freq, filter parent to matching rows
 def test_freq_enter_filters : IO Unit := do
   log "freq_enter"
-  let output ← runKeys "F<ret>" "data/basic.csv"
-  let (tab, _) := footer output
-  -- After F<ret>, should have filter view or be back at filtered data
-  assert (contains tab "filter" || contains tab "basic") "F<ret> filters or returns"
-
--- TODO: requires freqCol filter implementation
--- def test_freq_enter_then_quit : IO Unit := do
---   log "freq_enter_quit"
---   let output ← runKeys "F<ret>q" "data/basic.csv"
---   let (tab, _) := footer output
---   assert (contains tab "freq") "F<ret>q returns to freq view"
+  let output ← runKeys "F<ret>" "data/multi_freq.csv"
+  let (tab, status) := footer output
+  -- Should pop back to parent (not "filter" view)
+  assert (contains tab "multi_freq") "F<ret> pops to parent"
+  -- Parent filtered to a=1 (3 rows out of 6)
+  assert (contains status "r0/3") "F<ret> filters to 3 rows"
 
 -- === Cursor tracking ===
 
@@ -523,7 +529,9 @@ def main : IO Unit := do
 
   -- Freq enter
   test_freq_enter_filters
-  -- test_freq_enter_then_quit  -- TODO: requires freqCol filter
+
+  -- Stdin parsing
+  test_spaced_header
 
   -- Cursor tracking
   test_key_cursor_tracks

@@ -95,6 +95,8 @@ def parseArgs (args : List String) : String × Array Char × Bool :=
   match args with
   | [path, "-c", keys] => (path, (parseKeys keys).toList.toArray, true)
   | path :: "-c" :: keys :: _ => (path, (parseKeys keys).toList.toArray, true)
+  | ["-c", keys] => ("data.csv", (parseKeys keys).toList.toArray, true)  -- -c without path
+  | "-c" :: keys :: _ => ("data.csv", (parseKeys keys).toList.toArray, true)
   | path :: _ => (path, #[], false)
   | [] => ("data.csv", #[], false)
 
@@ -116,8 +118,9 @@ def main (args : List String) : IO Unit := do
   let variant := if dark then "dark" else "light"
   let themeIdx := Theme.themeIdx "default" variant
   let styles ← Theme.load "theme.csv" "default" variant <|> pure Theme.defaultDark
-  -- pipe mode: read from stdin, else from file
-  if pipeMode then
+  -- pipe mode: read from stdin only if stdin is piped AND no explicit path given
+  let useStdin := pipeMode && path == "data.csv"  -- default path means no arg given
+  if useStdin then
     match ← MemTable.fromStdin with
     | .error e => IO.eprintln s!"Parse error: {e}"
     | .ok tbl => match View.fromTbl (.mem tbl) "stdin" with
@@ -133,6 +136,18 @@ def main (args : List String) : IO Unit := do
     | .error e => IO.eprintln s!"CSV parse error: {e}"
     | .ok tbl => match View.fromTbl (.mem tbl) path with
       | some v =>
+        if pipeMode then let _ ← Term.reopenTty  -- reopen tty if stdin isn't tty
+        let _ ← Term.init
+        let _ ← mainLoop ⟨#[v], by simp⟩ ViewState.default styles themeIdx keys testMode
+        Term.shutdown
+      | none => IO.eprintln "Empty table"
+  else if path.endsWith ".txt" then
+    let content ← IO.FS.readFile path
+    match MemTable.fromText content with
+    | .error e => IO.eprintln s!"Parse error: {e}"
+    | .ok tbl => match View.fromTbl (.mem tbl) path with
+      | some v =>
+        if pipeMode then let _ ← Term.reopenTty
         let _ ← Term.init
         let _ ← mainLoop ⟨#[v], by simp⟩ ViewState.default styles themeIdx keys testMode
         Term.shutdown
@@ -140,11 +155,14 @@ def main (args : List String) : IO Unit := do
   else
     let ok ← AdbcTable.init
     if !ok then IO.eprintln "Backend init failed"; return
-    match ← AdbcTable.fromFile path with
-    | none => AdbcTable.shutdown; IO.eprintln "Query failed"
-    | some tbl => match View.fromTbl (.adbc tbl) path with
-      | some v =>
-        let _ ← Term.init
-        let _ ← mainLoop ⟨#[v], by simp⟩ ViewState.default styles themeIdx keys testMode
-        Term.shutdown; AdbcTable.shutdown
-      | none => AdbcTable.shutdown; IO.eprintln "Empty table"
+    try
+      match ← AdbcTable.fromFile path with
+      | none => AdbcTable.shutdown; IO.eprintln "Query failed"
+      | some tbl => match View.fromTbl (.adbc tbl) path with
+        | some v =>
+          if pipeMode then let _ ← Term.reopenTty
+          let _ ← Term.init
+          let _ ← mainLoop ⟨#[v], by simp⟩ ViewState.default styles themeIdx keys testMode
+          Term.shutdown; AdbcTable.shutdown
+        | none => AdbcTable.shutdown; IO.eprintln "Empty table"
+    catch e => AdbcTable.shutdown; IO.eprintln s!"Query error: {e}"
