@@ -115,15 +115,17 @@ private def splitByStarts (s : String) (starts : Array Nat) : Array String := Id
   return result
 
 -- | Parse space-separated text (like ps aux, ls -l, systemctl output)
--- Fixed-width if header has 2+ space gaps, else mode-based word count
+-- Fixed-width if header has 2+ space gaps AND gives more cols than mode-based
 def fromText (content : String) : Except String MemTable :=
   let lines := content.splitOn "\n" |>.filter (·.length > 0)
   match lines with
   | [] => .ok ⟨#[], #[]⟩
   | hdr :: rest =>
     let starts := findColStarts hdr
-    -- if header has 2+ space gaps (multiple col starts), use fixed-width
-    if starts.size > 1 then
+    let allLines := (hdr :: rest).toArray
+    let modeNc := mode (allLines.map countWordStarts)
+    -- use fixed-width only if it gives >= mode columns (handles mixed spacing)
+    if starts.size >= modeNc && starts.size > 1 then
       let names := splitByStarts hdr starts
       let strCols : Array (Array String) := Id.run do
         let mut cols := (List.replicate starts.size #[]).toArray
@@ -134,8 +136,7 @@ def fromText (content : String) : Except String MemTable :=
       .ok ⟨names, strCols.map buildColumn⟩
     else
       -- else use mode of word counts (handles "total 836" outliers)
-      let allLines := (hdr :: rest).toArray
-      let nc := mode (allLines.map countWordStarts)
+      let nc := modeNc
       if nc == 0 then .ok ⟨#[], #[]⟩ else
       let names := splitN hdr nc
       let strCols : Array (Array String) := Id.run do
