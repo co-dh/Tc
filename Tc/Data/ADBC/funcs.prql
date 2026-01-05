@@ -1,0 +1,36 @@
+# PRQL function definitions for tv
+# use std.count to avoid ambiguity with column named 'count'
+
+let freq = func c tbl <relation> -> (
+  from tbl
+  group {c} (aggregate {Cnt = std.count this})
+  derive {Pct = Cnt * 100 / std.sum Cnt, Bar = s"repeat('#', CAST({Pct}/5 AS INTEGER))"}
+  sort {-Cnt}
+)
+
+let cnt = func tbl <relation> -> (from tbl | aggregate {n = std.count this})
+
+let uniq = func c tbl <relation> -> (from tbl | group {c} (take 1) | select {c})
+
+let stats = func c tbl <relation> -> (
+  from tbl
+  aggregate {n = std.count this, min = std.min c, max = std.max c, avg = std.average c, std = std.stddev c}
+)
+
+let meta = func c tbl <relation> -> (
+  from tbl
+  aggregate {cnt = s"COUNT({c})", dist = std.count_distinct c, total = std.count this, min = std.min c, max = std.max c}
+)
+
+let colstat = func c nm tp tbl <relation> -> (
+  from tbl
+  aggregate {
+    cnt = s"CAST(COUNT({c}) AS BIGINT)",
+    dist = s"CAST(COUNT(DISTINCT {c}) AS BIGINT)",
+    null_pct = s"CAST(ROUND((1.0 - COUNT({c})::FLOAT / NULLIF(COUNT(*),0)) * 100) AS BIGINT)",
+    mn = s"CAST(MIN({c}) AS VARCHAR)",
+    mx = s"CAST(MAX({c}) AS VARCHAR)"
+  }
+  derive {column = nm, coltype = tp}
+  select {column, coltype, this.cnt, this.dist, null_pct, mn, mx}
+)

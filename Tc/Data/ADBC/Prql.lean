@@ -99,14 +99,8 @@ def Agg.parse : String → Option Agg
   | "dist" => some .dist | _ => none
 
 -- | PRQL function definitions (prepended to all queries)
--- Matches rust tv's cfg/funcs.prql (use std.count to avoid ambiguity with column named 'count')
-def funcs : String := "
-let freq  = func c tbl <relation> -> (from tbl | group {c} (aggregate {Cnt = std.count this}) | derive {Pct = Cnt * 100 / std.sum Cnt, Bar = s\"repeat('#', CAST({Pct} / 5 AS INTEGER))\"} | sort {-Cnt})
-let cnt   = func tbl   <relation> -> (from tbl | aggregate {n = std.count this})
-let uniq  = func c tbl <relation> -> (from tbl | group {c} (take 1) | select {c})
-let stats = func c tbl <relation> -> (from tbl | aggregate {n = std.count this, min = std.min c, max = std.max c, avg = std.average c, std = std.stddev c})
-let meta  = func c tbl <relation> -> (from tbl | aggregate {cnt = s\"COUNT({c})\", dist = std.count_distinct c, total = std.count this, min = std.min c, max = std.max c})
-"
+-- Loaded from funcs.prql at compile time
+def funcs : String := include_str "funcs.prql"
 
 -- | Theorems: freq PRQL includes required columns
 theorem funcs_has_pct : (funcs.splitOn "Pct").length > 1 := by native_decide

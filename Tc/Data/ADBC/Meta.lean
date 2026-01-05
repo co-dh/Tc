@@ -58,17 +58,10 @@ private def fmtToType : Char → String
   | 'u' | 'U' => "str" | 'b' => "bool"
   | _ => "?"
 
--- | Quote column name for SQL
-private def quoteCol (c : String) : String := "\"" ++ c.replace "\"" "\"\"" ++ "\""
-
--- | Build SQL for one column's stats
-private def colStatsSql (colName colType : String) : String :=
-  let q := quoteCol colName
-  s!"SELECT '{colName}' AS \"column\", '{colType}' AS type, " ++
-  s!"CAST(COUNT({q}) AS BIGINT) AS cnt, " ++
-  s!"CAST(COUNT(DISTINCT {q}) AS BIGINT) AS dist, " ++
-  s!"CAST(ROUND((1.0 - CAST(COUNT({q}) AS DOUBLE) / NULLIF(COUNT(*), 0)) * 100) AS BIGINT) AS \"null%\", " ++
-  s!"CAST(MIN({q}) AS VARCHAR) AS min, CAST(MAX({q}) AS VARCHAR) AS max"
+-- | Build PRQL colstat call for one column
+private def colstatPrql (base colName colType : String) : String :=
+  let q := Prql.quote colName
+  s!"{base} | colstat {q} \"{colName}\" \"{colType}\""
 
 -- | Extract source file path from PRQL base (e.g., "from `x.parquet`" → "x.parquet")
 private def extractPath (base : String) : Option String :=
@@ -83,29 +76,25 @@ private def canCache (t : AdbcTable) : Option String :=
     | none => none
   else none
 
--- | Query meta via SQL UNION (with parquet caching)
+-- | Query meta via PRQL colstat + append (with parquet caching)
 def queryMeta (t : AdbcTable) : IO MetaTuple := do
   let cachePath := canCache t
   -- Try cache for base parquet queries
   if let some p := cachePath then
     if let some cached ← loadCache p then return cached
-  let names := t.colNames
-  let types := t.colFmts.map fmtToType
-  let unions := (Array.range names.size).map fun i =>
-    colStatsSql (names.getD i "") (types.getD i "?")
-  -- Get FROM clause from base query
-  let some sql ← Prql.compile (t.query.render ++ " | take 1") | return (#[], #[], #[], #[], #[], #[], #[])
-  let sql' := sql.replace "\n" " " |>.replace "  " " "
-  let parts := sql'.splitOn "FROM "
-  let rest := parts.getD 1 ""
-  let tbl := ((rest.splitOn " WHERE").head?.getD rest).splitOn " ORDER"
-             |>.head?.getD rest |>.splitOn " LIMIT" |>.head?.getD rest
-  let metaSql := unions.map (· ++ " FROM " ++ tbl) |>.toList |> String.intercalate " UNION ALL "
-  Log.write "meta" metaSql
+  let names := t.colNames; let types := t.colFmts.map fmtToType
+  let base := t.query.base
+  -- Build PRQL: first col | append (second col) | append ...
+  let first := colstatPrql base (names.getD 0 "") (types.getD 0 "?")
+  let rest := (Array.range (names.size - 1)).map fun i =>
+    s!" | append ({colstatPrql base (names.getD (i+1) "") (types.getD (i+1) "?")})"
+  let prql := first ++ rest.foldl (· ++ ·) ""
+  Log.write "meta" prql
+  let some sql ← Prql.compile prql | return (#[], #[], #[], #[], #[], #[], #[])
   -- Save to cache for base parquet queries
   if let some p := cachePath then
-    try saveCache p metaSql catch _ => pure ()
-  let qr ← Adbc.query metaSql
+    try saveCache p sql catch _ => pure ()
+  let qr ← Adbc.query sql
   metaFromQuery qr
 
 end AdbcTable
