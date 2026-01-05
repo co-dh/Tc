@@ -85,13 +85,14 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
   Log.timing "render" ((t1 - t0) / 1000)
   -- cap widths (keep in original order for C)
   let widths := outWidths.map (min maxColWidth)
-  -- status: current column name + position info + precAdj/widthAdj if non-zero
-  let total := ReadTable.totalRows nav.tbl
-  let rowInfo := if total > nRows then s!"{nRows}/{total}" else s!"{nRows}"
+  -- status: left=colName+col+grp+sel+adj, right=row info (right-aligned)
   let colName := nav.colNames.getD nav.curColIdx ""
   let adj := (if precAdj != 0 then s!" p{precAdj}" else "") ++
              (if widthAdj != 0 then s!" w{widthAdj}" else "")
-  let status := s!"{colName} r{nav.row.cur.val}/{rowInfo} c{nav.curColIdx}/{nCols} grp={nav.grp.size} sel={nav.row.sels.size}{adj}"
+  let right := s!"c{nav.curColIdx}/{nCols} grp={nav.grp.size} sel={nav.row.sels.size}{adj} r{nav.row.cur.val}/{ReadTable.totalRows nav.tbl}"
+  let w ← Term.width
+  let pad := w.toNat - colName.length - right.length
+  let status := colName ++ "".pushn ' ' (max 1 pad) ++ right
   Term.print 0 (h - 1) Term.cyan Term.default status
   pure (⟨rowOff, colOff, nav.curColIdx, view.showInfo⟩, widths)
 

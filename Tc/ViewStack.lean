@@ -53,7 +53,7 @@ def metaSetKey (s : ViewStack) : Option ViewStack :=
     | none => some s
   | none => some s
 
--- | Filter parent by selected freq row, pop and replace parent table
+-- | Filter parent by selected freq row, pop freq and push filtered view
 def freqFilter (s : ViewStack) : IO (Option ViewStack) := do
   let .freqV cols := s.cur.vkind | return some s
   if !s.hasParent then return some s
@@ -62,13 +62,13 @@ def freqFilter (s : ViewStack) : IO (Option ViewStack) := do
   let expr := Freq.filterExpr tbl cols s.cur.nav.row.cur.val
   let some tbl' ← QueryTable.filter s'.cur.nav.tbl expr | return some s'
   let some v := View.fromTbl tbl' s'.cur.path 0 s'.cur.nav.grp 0 | return some s'
-  return some (s'.setCur v)
+  return some (s'.push v)  -- push filtered view, keep parent
 
 -- | Execute Cmd, returns IO (Option ViewStack) (none = quit or table empty)
 def exec (s : ViewStack) (cmd : Cmd) (rowPg colPg : Nat) : IO (Option ViewStack) := do
   match cmd with
   | .stk .inc    => pure (some s.dup)
-  | .stk .dec    => pure (s.pop.orElse fun _ => some s)  -- pop or no-op at base
+  | .stk .dec    => pure s.pop  -- pop, or quit at base (none)
   | .stk .ent => pure (some s.swap)
   | .stk .dup    => pure (some s.dup)
   | .stk _       => pure (some s)

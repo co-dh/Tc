@@ -408,7 +408,8 @@ lean_obj_res lean_render_table(
     }
 
     // header/footer (+ separators and type chars)
-    int yFoot = nRows + 1;
+    int screenH = tb_height();
+    int yFoot = screenH - 3;  // fixed: above status (h-2) and tab (h-1)
     for (size_t c = 0; c < nVisCols; c++) {
         size_t dispIdx = dispIdxs[c];  // index into colIdxs (pinned keys first)
         size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, dispIdx));

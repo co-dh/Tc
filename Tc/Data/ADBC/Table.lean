@@ -154,7 +154,8 @@ def queryFreq (t : AdbcTable) (colIdxs : Array Nat) : IO FreqTuple := do
   let keyNames := colIdxs.map fun i => names.getD i ""
   if keyNames.isEmpty then return (#[], #[], #[], #[], #[])
   let cols := keyNames.map Prql.quote |> (", ".intercalate ·.toList)
-  let prql := s!"{t.query.render} | group \{{cols}} (aggregate \{Cnt = std.count this})"
+  -- limit to top 1000 by count (many distinct values = slow cell-by-cell fetch)
+  let prql := s!"{t.query.render} | group \{{cols}} (aggregate \{Cnt = std.count this}) | sort \{-Cnt} | take 1000"
   Log.write "prql-freq" prql
   let some sql ← Prql.compile prql | return (#[], #[], #[], #[], #[])
   let qr ← Adbc.query sql
@@ -174,9 +175,11 @@ def queryFreq (t : AdbcTable) (colIdxs : Array Nat) : IO FreqTuple := do
   let barData := pctData.map fun p => String.ofList (List.replicate (p / 5).toUInt32.toNat '#')
   pure (keyNames, keyCols, cntData, pctData, barData)
 
--- | Filter: requery with filter
-def filter (t : AdbcTable) (expr : String) : IO (Option AdbcTable) :=
-  AdbcTable.requery (t.query.filter expr) t.totalRows
+-- | Filter: requery with filter (queries new filtered count)
+def filter (t : AdbcTable) (expr : String) : IO (Option AdbcTable) := do
+  let q := t.query.filter expr
+  let total ← queryCount q
+  AdbcTable.requery q total
 
 -- | Distinct: use SQL DISTINCT
 def distinct (t : AdbcTable) (col : Nat) : IO (Array String) := do
