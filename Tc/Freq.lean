@@ -2,7 +2,8 @@
   Freq view: group by columns, count, pct, bar
   Returns MemTable sorted by Cnt descending.
 -/
-import Tc.Data.Mem.Table
+import Tc.View
+import Tc.Data.Mem.Freq
 
 namespace Tc.Freq
 
@@ -23,5 +24,42 @@ def filterExpr (tbl : MemTable) (cols : Array String) (row : Nat) : String :=
     | .floats data => s!"{data.getD row 0}"
   let exprs := cols.zip vals |>.map fun (c, v) => s!"{c} == {v}"
   " && ".intercalate exprs.toList
+
+-- | Push frequency view (group by grp + cursor column)
+def push (s : ViewStack) : IO (Option ViewStack) := do
+  let n := s.cur.nav; let names := ReadTable.colNames n.tbl
+  let curCol := colIdxAt n.grp names n.col.cur.val
+  let curName := names.getD curCol ""
+  let colNames := if n.grp.contains curName then n.grp else n.grp.push curName
+  let colIdxs := colNames.filterMap names.idxOf?
+  let freq ← QueryTable.queryFreq n.tbl colIdxs
+  let tbl := toMemTable freq
+  let some v := View.fromTbl (.mem tbl) s.cur.path 0 colNames | return none
+  return some (s.push { v with vkind := .freqV colNames, disp := s!"freq {colNames.join ","}" })
+
+-- | Filter parent by selected freq row, pop freq and push filtered view
+def filter (s : ViewStack) : IO (Option ViewStack) := do
+  let .freqV cols := s.cur.vkind | return some s
+  if !s.hasParent then return some s
+  let some tbl := s.cur.nav.tbl.asMem? | return some s
+  let some s' := s.pop | return some s
+  let expr := filterExpr tbl cols s.cur.nav.row.cur.val
+  let some tbl' ← QueryTable.filter s'.cur.nav.tbl expr | return some s'
+  let some v := View.fromTbl tbl' s'.cur.path 0 s'.cur.nav.grp 0 | return some s'
+  return some (s'.push v)
+
+-- | Execute freq command
+def exec (s : ViewStack) (v : Verb) : IO (Option ViewStack) := do
+  match v with
+  | .dup => (← push s).orElse (fun _ => some s) |> pure
+  | _ => pure (some s)
+
+-- | Execute view-specific command for freqV view
+def viewExec (s : ViewStack) (v : Verb) : IO (Option ViewStack) := do
+  match s.cur.vkind with
+  | .freqV _ => match v with
+    | .ent => filter s
+    | _ => pure (some s)
+  | _ => pure none
 
 end Tc.Freq

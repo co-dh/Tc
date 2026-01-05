@@ -40,13 +40,14 @@ private def charCmds : Array (Char × Cmd) := #[
   ('[', .colSel .sortAsc), (']', .colSel .sortDesc),
   ('M', .metaV .dup), ('F', .freq .dup),   -- M=meta, F=freq view (dup=constructor)
   ('0', .metaV .dec), ('1', .metaV .inc),  -- meta: 0=selNull, 1=selSingle
-  ('\r', .metaV .ent),  -- Enter: meta set key cols
+  ('\r', .view .ent),  -- Enter: view-specific action
   ('s', .col .search),     -- col search: fzf jump to column
   ('/', .row .search),     -- row search: fzf jump to row (vim-style)
   ('n', .rowSel .inc),     -- search next: repeat last search forward
   ('N', .rowSel .dec),     -- search prev: repeat last search backward
   ('\\', .row .filter),    -- row filter: fzf PRQL filter (backslash)
-  ('q', .stk .dec), ('S', .stk .ent)  -- stack: q=pop, S=swap
+  ('q', .stk .dec), ('S', .stk .ent),  -- stack: q=pop, S=swap
+  ('I', .info .ent)  -- info: toggle overlay
 ]
 
 -- Normalize event to char (arrow→hjkl, Enter→\r, or raw char)
@@ -94,4 +95,29 @@ def evToCmd (ev : Term.Event) (verbPfx : Option Verb) : Option Cmd :=
     prefixObjs.findSome? fun (ch, mk) => if c.toLower == ch then some (mk v) else none
   | none =>
     navCmd c shift <|> lookup charCmds c <|> lookup keyCmds ev.key <|> lookup ctrlCmds ev.key
+
+-- | Parse key notation: <ret> → \r, <C-d> → Ctrl-D, etc.
+def parseKeys (s : String) : String :=
+  s.replace "<ret>" "\r"
+   |>.replace "<esc>" "\x1b"
+   |>.replace "<C-d>" "\x04"
+   |>.replace "<C-u>" "\x15"
+   |>.replace "<backslash>" "\\"
+   |>.replace "<key>" "!"
+
+-- | Convert char to synthetic Term.Event (matches termbox behavior)
+def charToEvent (c : Char) : Term.Event :=
+  let ch := c.toNat.toUInt32
+  -- Ctrl chars: termbox reports key=ctrl_code, ch=0, mod=2
+  if ch < 32 then ⟨Term.eventKey, 2, ch.toUInt16, 0, 0, 0⟩
+  else ⟨Term.eventKey, 0, 0, ch, 0, 0⟩
+
+-- | Check if event is a key press for given char
+def isKey (ev : Term.Event) (c : Char) : Bool :=
+  ev.type == Term.eventKey && ev.ch == c.toNat.toUInt32
+
+-- | Get next event from replay keys or poll
+def nextEvent (keys : Array Char) : IO (Term.Event × Array Char) :=
+  if h : keys.size > 0 then pure (charToEvent keys[0], keys.extract 1 keys.size)
+  else do let e ← Term.pollEvent; pure (e, #[])
 

@@ -2,7 +2,8 @@
   Meta view: column statistics (name, type, count, distinct, null%, min, max)
   Returns MemTable with typed columns for proper sorting.
 -/
-import Tc.Data.Mem.Table
+import Tc.View
+import Tc.Data.Mem.Meta
 
 namespace Tc.Meta
 
@@ -40,5 +41,50 @@ def selNames (t : MemTable) (selRows : Array Nat) : Array String :=
     match t.cols.getD 0 default with
     | .strs data => some (data.getD r "")
     | _ => none
+
+-- | Push column metadata view onto stack
+def push (s : ViewStack) : IO (Option ViewStack) := do
+  let tbl ← QueryTable.queryMeta s.cur.nav.tbl <&> toMemTable
+  let some v := View.fromTbl (.mem tbl) s.cur.path | return none
+  return some (s.push { v with vkind := .colMeta, disp := "meta" })
+
+-- | Select rows in meta view by predicate on MemTable
+def sel (s : ViewStack) (f : MemTable → Array Nat) : ViewStack :=
+  if s.cur.vkind != .colMeta then s else
+  match s.cur.nav.tbl.asMem? with
+  | some tbl =>
+    let rows := f tbl
+    let nav' := { s.cur.nav with row := { s.cur.nav.row with sels := rows } }
+    s.setCur { s.cur with nav := nav' }
+  | none => s
+
+-- | Set key cols from meta view selections, pop to parent, select cols
+def setKey (s : ViewStack) : Option ViewStack :=
+  if s.cur.vkind != .colMeta then some s else
+  if !s.hasParent then some s else
+  match s.cur.nav.tbl.asMem? with
+  | some tbl =>
+    let colNames := selNames tbl s.cur.nav.row.sels
+    match s.pop with
+    | some s' =>
+      let nav' := { s'.cur.nav with grp := colNames, col := { s'.cur.nav.col with sels := colNames } }
+      some (s'.setCur { s'.cur with nav := nav' })
+    | none => some s
+  | none => some s
+
+-- | Execute meta command
+def exec (s : ViewStack) (v : Verb) : IO (Option ViewStack) := do
+  match v with
+  | .dup => (← push s).orElse (fun _ => some s) |> pure
+  | .dec => pure (some (sel s selNull))
+  | .inc => pure (some (sel s selSingle))
+  | _ => pure (some s)
+
+-- | Execute view-specific command for colMeta view
+def viewExec (s : ViewStack) (v : Verb) : Option ViewStack :=
+  if s.cur.vkind != .colMeta then none else
+  match v with
+  | .ent => setKey s
+  | _ => some s
 
 end Tc.Meta

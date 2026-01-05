@@ -69,3 +69,17 @@ def rowFilter (s : ViewStack) : IO ViewStack := do
   return s.push { v' with disp := s!"\\{curName}" }
 
 end Tc.ViewStack
+
+namespace Tc.Filter
+
+-- | Execute search/filter command
+def exec (s : ViewStack) (cmd : Cmd) : IO (Option ViewStack) := do
+  match cmd with
+  | .col .search => some <$> s.colSearch
+  | .row .search => some <$> s.rowSearch
+  | .row .filter => some <$> s.rowFilter
+  | .rowSel .inc => some <$> s.searchNext
+  | .rowSel .dec => some <$> s.searchPrev
+  | _ => pure none  -- not handled
+
+end Tc.Filter

@@ -106,4 +106,11 @@ def load (path : String) (theme variant : String) : IO (Array UInt32) := do
       styles := styles.set! (idx * 2 + 1) bg
   return styles
 
+-- | Cycle theme by delta, returns (newStyles, newIdx)
+def doCycle (idx : Nat) (delta : Int) : IO (Array UInt32 × Nat) := do
+  let (theme, variant) := cycleTheme idx delta
+  let newIdx := themeIdx theme variant
+  let styles ← load "theme.csv" theme variant <|> pure defaultDark
+  pure (styles, newIdx)
+
 end Tc.Theme
