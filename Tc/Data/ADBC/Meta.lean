@@ -28,11 +28,11 @@ private def colStr (qr : Adbc.QueryResult) (nr : Nat) (c : UInt64) : IO (Array S
 private def colInt (qr : Adbc.QueryResult) (nr : Nat) (c : UInt64) : IO (Array Int64) :=
   (Array.range nr).mapM fun r => (·.toInt64) <$> Adbc.cellInt qr r.toUInt64 c
 
--- | Build MetaTuple from query result
+-- | Build MetaTuple from query result (cols: name,type,cnt,dist,null%,min,max)
 private def metaFromQuery (qr : Adbc.QueryResult) : IO MetaTuple := do
   let nr := (← Adbc.nrows qr).toNat
-  pure (← colStr qr nr 0, ← colStr qr nr 1, ← colInt qr nr 2,
-        ← colInt qr nr 3, ← colInt qr nr 4, ← colStr qr nr 5, ← colStr qr nr 6)
+  let s := colStr qr nr; let i := colInt qr nr  -- s/i: read col as str/int
+  pure (← s 0, ← s 1, ← i 2, ← i 3, ← i 4, ← s 5, ← s 6)  -- ← awaits IO
 
 -- | Load meta from parquet cache, returns MetaTuple
 def loadCache (path : String) : IO (Option MetaTuple) := do
