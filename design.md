@@ -81,7 +81,7 @@ Char │ Obj       │ + │ - │ ~ │ d │ [ │ ] │ c │ s │ f │ Des
  --- Views ---
  M   │ metaV     │ 1 │ 0 │ ⏎ │   │   │   │ M │   │   │ Meta view (c=push, -=selNull, +=selSingle)
  f   │ freq      │   │   │ ⏎ │   │   │   │ F │   │   │ Freq view (c=push, ~=filter)
- D   │ fld       │+d │-d │ ⏎ │   │   │   │ D │   │   │ Folder view (c=push, +/-=depth, ~=enter)
+ D   │ fld       │+d │-d │ ⏎ │ d │   │   │ D │   │   │ Folder view (c=push, +/-=depth, ~=enter, d=trash)
 ```
 
 ## Structures
@@ -116,7 +116,7 @@ Char │ Obj       │ + │ - │ ~ │ d │ [ │ ] │ c │ s │ f │ Des
 
 **No-file mode**: Running without args shows folder view of current directory via `find -maxdepth 1`.
 
-**Folder view**: Uses `find` with configurable depth. Enter on dir pushes new folder view, on file opens with `bat`/`less`. Stores path and depth in `ViewKind.fld`.
+**Folder view**: Uses `find` with configurable depth. Enter on dir pushes new folder view, on file opens with `bat`/`less`. Delete (`d`) trashes selected files via `trash-put` or `gio trash` with y/n confirmation. Stores path and depth in `ViewKind.fld`.
 
 ## Op Interface (planned)
 
