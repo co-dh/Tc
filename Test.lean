@@ -493,8 +493,8 @@ def test_folder_D_key : IO Unit := do
 -- | Test Enter on directory enters it
 def test_folder_enter_dir : IO Unit := do
   log "folder_enter_dir"
-  -- Navigate to tmp directory (row 1) and enter
-  let output ← runFolder "j<ret>"
+  -- Navigate to tmp directory (row 2, after ".." at row 0) and enter
+  let output ← runFolder "jj<ret>"
   let (tab, status) := footer output
   -- Tab should show [tmp] after entering
   assert (contains tab "[tmp]") "Enter on dir pushes new folder view"
@@ -503,7 +503,7 @@ def test_folder_enter_dir : IO Unit := do
 -- | Test q pops folder view back to parent
 def test_folder_pop : IO Unit := do
   log "folder_pop"
-  let output ← runFolder "j<ret>q"
+  let output ← runFolder "jj<ret>q"
   -- After q, should be back to [.] - check raw output
   assert (contains output "[.]") "q pops back to parent folder"
 

@@ -9,19 +9,32 @@ import Tc.Term
 
 namespace Tc.Folder
 
+-- | Strip "./" prefix from path
+private def stripDotSlash (s : String) : String :=
+  if s.startsWith "./" then s.drop 2 else s
+
 -- | List directory with find command, returns tab-separated output
 -- Cols: type (d/f/-), size, date, path
+-- Always includes ".." entry to allow navigation to parent
 def listDir (path : String) (depth : Nat) : IO String := do
   let p := if path.isEmpty then "." else path
   let out ← IO.Process.output {
     cmd := "find"
     args := #[p, "-maxdepth", toString depth, "-printf", "%y\t%s\t%T+\t%p\n"]
   }
-  -- add header and filter out first line (the path itself)
+  -- add header, ".." entry, then filtered content (skip directory itself)
   let lines := out.stdout.splitOn "\n" |>.filter (·.length > 0)
   let hdr := "type\tsize\tdate\tpath"
-  let body := lines.drop 1  -- skip the directory itself
-  pure (hdr ++ "\n" ++ "\n".intercalate body)
+  let parent := if p == "." then ".." else (p.splitOn "/" |>.dropLast |> "/".intercalate)
+  let parentEntry := s!"d\t0\t\t{if parent.isEmpty then ".." else parent}"
+  -- strip "./" from paths for cleaner display
+  let body := lines.drop 1 |>.map fun line =>
+    let parts := line.splitOn "\t"
+    if parts.length >= 4 then
+      let path := stripDotSlash (parts.getLast!)
+      (parts.take 3 ++ [path]) |> "\t".intercalate
+    else line
+  pure (hdr ++ "\n" ++ parentEntry ++ (if body.isEmpty then "" else "\n" ++ "\n".intercalate body))
 
 -- | Parse find output to MemTable (tab-separated)
 def toMemTable (output : String) : Except String MemTable := MemTable.fromTsv output
@@ -78,10 +91,19 @@ def push (s : ViewStack) : IO (Option ViewStack) := do
 def enter (s : ViewStack) : IO (Option ViewStack) := do
   match curType s.cur, curPath s.cur with
   | some 'd', some p =>  -- directory: push new folder view
-    let depth := match s.cur.vkind with | .fld _ d => d | _ => 1
-    match ← mkView p depth with
-    | some v => pure (some (s.push v))
-    | none => pure none
+    -- ".." navigates to parent (pop if possible, else go to parent path)
+    if p == ".." || p.endsWith "/.." then
+      if let some s' := s.pop then pure (some s')
+      else  -- at root, go to actual parent
+        let depth := match s.cur.vkind with | .fld _ d => d | _ => 1
+        match ← mkView ".." depth with
+        | some v => pure (some (s.setCur v))
+        | none => pure (some s)
+    else
+      let depth := match s.cur.vkind with | .fld _ d => d | _ => 1
+      match ← mkView p depth with
+      | some v => pure (some (s.push v))
+      | none => pure (some s)  -- shouldn't happen now with ".." always present
   | some 'f', some p =>  -- regular file: view with bat/less
     viewFile p
     pure (some s)  -- return unchanged stack after viewing
@@ -91,7 +113,7 @@ def enter (s : ViewStack) : IO (Option ViewStack) := do
       let depth := match s.cur.vkind with | .fld _ d => d | _ => 1
       match ← mkView p depth with
       | some v => pure (some (s.push v))
-      | none => pure none
+      | none => pure (some s)
     else  -- treat as file
       viewFile p
       pure (some s)
