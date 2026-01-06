@@ -37,14 +37,13 @@ partial def mainLoop (a : AppState) (testMode : Bool) (keys : Array Char) : IO A
   mainLoop a' testMode keys'
 
 -- | Parse args: path, optional -c for key replay (test mode)
-def parseArgs (args : List String) : String × Array Char × Bool :=
+def parseArgs (args : List String) : Option String × Array Char × Bool :=
+  let keys s := (parseKeys s).toList.toArray
   match args with
-  | [path, "-c", keys] => (path, (parseKeys keys).toList.toArray, true)
-  | path :: "-c" :: keys :: _ => (path, (parseKeys keys).toList.toArray, true)
-  | ["-c", keys] => ("data.csv", (parseKeys keys).toList.toArray, true)  -- -c without path
-  | "-c" :: keys :: _ => ("data.csv", (parseKeys keys).toList.toArray, true)
-  | path :: _ => (path, #[], false)
-  | [] => ("data.csv", #[], false)
+  | [p, "-c", k] | p :: "-c" :: k :: _ => (some p, keys k, true)  -- path + keys
+  | ["-c", k] | "-c" :: k :: _ => (none, keys k, true)  -- keys only (stdin)
+  | p :: _ => (some p, #[], false)
+  | [] => (none, #[], false)
 
 -- | Output table as plain text (for pipe mode)
 def outputTable (a : AppState) : IO Unit := do
@@ -68,15 +67,25 @@ def runMem (res : Except String MemTable) (name : String) (pipeMode testMode : B
     | some v => pure (some (← runApp v pipeMode testMode theme keys))
     | none => IO.eprintln "Empty table"; pure none
 
+-- | Get ls -l output (skip "total" line via tail)
+def lsDir (dir : String) : IO String := do
+  let d := if dir.isEmpty then "." else dir
+  let out ← IO.Process.output { cmd := "sh", args := #["-c", s!"ls -l {d} | tail -n +2"] }
+  pure out.stdout
+
 -- | Entry point
 def main (args : List String) : IO Unit := do
-  let (path, keys, testMode) := parseArgs args
+  let (path?, keys, testMode) := parseArgs args
   Fzf.setTestMode testMode
   let pipeMode ← (! ·) <$> Term.isattyStdin
   let theme ← Theme.State.init
-  -- stdin mode if piped and no explicit path
-  if pipeMode && path == "data.csv" then
+  -- stdin mode if piped
+  if pipeMode && path?.isNone then
     if let some a ← runMem (← MemTable.fromStdin) "stdin" true testMode theme keys then outputTable a
+    return
+  let path := path?.getD ""
+  if path.isEmpty then  -- no file: show current directory
+    let _ ← runMem (MemTable.fromText (← lsDir ".")) "." pipeMode testMode theme keys
   else if path.endsWith ".csv" then
     let _ ← runMem (← MemTable.load path) path pipeMode testMode theme keys
   else if path.endsWith ".txt" then
