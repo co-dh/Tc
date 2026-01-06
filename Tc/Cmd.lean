@@ -10,28 +10,22 @@ class Parse (α : Type) where
 
 -- | Verb: action type
 inductive Verb where
-  | inc | dec         -- +/- movement or adjustment
+  | inc | dec         -- +/- movement (colSel:[/], rowSel:/\, grp:n/N)
   | dup               -- copy/dup (info: select single-val cols)
   | del               -- delete
-  | ent            -- toggle selection
-  | sortAsc | sortDesc  -- sort
-  | search            -- search/jump (col=fzf name, row=fzf row#)
-  | filter            -- filter (col=select cols, row=PRQL filter)
+  | ent               -- toggle/enter (col:s, rowSel:T, grp:!)
   deriving Repr, BEq, DecidableEq
 
 namespace Verb
 
 -- | Verb to char
 def toChar : Verb → Char
-  | .inc => '+' | .dec => '-' | .ent => '~' | .del => 'd'
-  | .sortAsc => '[' | .sortDesc => ']' | .dup => 'c'
-  | .search => 's' | .filter => 'f'
+  | .inc => '+' | .dec => '-' | .ent => '~' | .del => 'd' | .dup => 'c'
 
 -- | Char to verb
 def ofChar? : Char → Option Verb
-  | '+' => some .inc | '-' => some .dec | '~' => some .ent | 'd' => some .del
-  | '[' => some .sortAsc | ']' => some .sortDesc | 'c' => some .dup
-  | 's' => some .search | 'f' => some .filter | _ => none
+  | '+' => some .inc | '-' => some .dec | '~' => some .ent
+  | 'd' => some .del | 'c' => some .dup | _ => none
 
 instance : ToString Verb where toString v := v.toChar.toString
 instance : Parse Verb where parse? s := if s.length == 1 then ofChar? s.toList[0]! else none
@@ -51,9 +45,9 @@ inductive Cmd where
   | hor (v : Verb)     -- hor -=home, +=end (column)
   | ver (v : Verb)     -- ver -=top, +=bottom (row)
 
-  | rowSel (v : Verb)  -- rowSel toggle
-  | colSel (v : Verb)  -- colSel toggle/sortAsc/sortDesc
-  | grp (v : Verb)     -- grp toggle
+  | rowSel (v : Verb)  -- rowSel +=search(/), -=filter(\), ~=toggle(T)
+  | colSel (v : Verb)  -- colSel +=sortAsc([), -=sortDesc(]), ~=toggle(t)
+  | grp (v : Verb)     -- grp +=next(n), -=prev(N), ~=toggle(!)
 
   | stk (v : Verb)     -- stk +push/-pop/~swap/cdup
 

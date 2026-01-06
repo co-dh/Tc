@@ -56,39 +56,39 @@
 Commands follow `Obj Verb` pattern. Grouped by: navigation, selection, options.
 
 ```
-                 │ I │ D │ E │ D │ A │ D │ D │ S │ F │
-                 │ N │ E │ N │ E │ S │ S │ U │ R │ L │
-                 │ C │ C │ T │ L │ C │ C │ P │ C │ T │
-Char │ Obj       │ + │ - │ ~ │ d │ [ │ ] │ c │ s │ f │ Description
-─────┴───────────┴───┴───┴───┴───┴───┴───┴───┴───┴───┴──────────────────
+                 │ I │ D │ E │ D │ D │
+                 │ N │ E │ N │ E │ U │
+                 │ C │ C │ T │ L │ P │
+Char │ Obj       │ + │ - │ ~ │ d │ c │ Description
+─────┴───────────┴───┴───┴───┴───┴───┴──────────────────
  --- Navigation ---
- r   │ row       │ j │ k │   │   │   │   │   │ / │ \ │ Row cursor, /=search, \=filter
- c   │ col       │ l │ h │   │   │   │   │   │ s │   │ Column cursor, s=fzf jump
- v   │ vPage     │ J │ K │   │   │   │   │   │   │   │ Vertical page
- h   │ hPage     │ L │ H │   │   │   │   │   │   │   │ Horizontal page
- V   │ ver       │+j │+k │   │   │   │   │   │   │   │ Vertical end
- H   │ hor       │+l │+h │   │   │   │   │   │   │   │ Horizontal end
+ r   │ row       │ j │ k │   │   │   │ Row cursor
+ c   │ col       │ l │ h │ s │   │   │ Column cursor, ~=fzf jump
+ v   │ vPage     │ J │ K │   │   │   │ Vertical page
+ h   │ hPage     │ L │ H │   │   │   │ Horizontal page
+ V   │ ver       │+j │+k │   │   │   │ Vertical end
+ H   │ hor       │+l │+h │   │   │   │ Horizontal end
  --- Selection ---
- R   │ rowSel    │ n │ N │ T │   │   │   │   │   │   │ Row selection, n/N=search next/prev
- C   │ colSel    │   │   │ t │ d │ [ │ ] │   │   │   │ Column selection
- g   │ grp       │   │   │ ! │   │   │   │   │   │   │ Group (pin left)
+ R   │ rowSel    │ / │ \ │ T │   │   │ Row: +=search, -=filter, ~=toggle
+ C   │ colSel    │ [ │ ] │ t │ d │   │ Col: +=sortAsc, -=sortDesc, ~=toggle
+ g   │ grp       │ n │ N │ ! │   │   │ Grp: +=next, -=prev, ~=toggle
  --- Options ---
- s   │ stk       │   │ q │ S │   │   │   │ c │   │   │ View stack (q=pop, S=swap, c=dup)
- p   │ prec      │+p │-p │   │   │   │   │   │   │   │ Display precision
- w   │ width     │+w │-w │   │   │   │   │   │   │   │ Column width
- T   │ thm       │+T │-T │   │   │   │   │   │   │   │ Theme cycle
- i   │ info      │+i │-i │ I │   │   │   │   │   │   │ Info overlay toggle
+ s   │ stk       │   │ q │ S │   │ c │ View stack (q=pop, S=swap, c=dup)
+ p   │ prec      │+p │-p │   │   │   │ Display precision
+ w   │ width     │+w │-w │   │   │   │ Column width
+ T   │ thm       │+T │-T │   │   │   │ Theme cycle
+ i   │ info      │+i │-i │ I │   │   │ Info overlay toggle
  --- Views ---
- M   │ metaV     │ 1 │ 0 │ ⏎ │   │   │   │ M │   │   │ Meta view (c=push, -=selNull, +=selSingle)
- f   │ freq      │   │   │ ⏎ │   │   │   │ F │   │   │ Freq view (c=push, ~=filter)
- D   │ fld       │+d │-d │ ⏎ │   │   │   │ D │   │   │ Folder view (c=push, +/-=depth, ~=enter)
+ M   │ metaV     │ 1 │ 0 │ ⏎ │   │ M │ Meta view (c=push, -=selNull, +=selSingle)
+ f   │ freq      │   │   │ ⏎ │   │ F │ Freq view (c=push, ~=filter)
+ D   │ fld       │+d │-d │ ⏎ │   │ D │ Folder view (c=push, +/-=depth, ~=enter)
 ```
 
 ## Structures
 
 | Struct       | Purpose                                      |
 |--------------|----------------------------------------------|
-| Verb         | Action type: inc/dec/ent/del/sort/dup/search/filter |
+| Verb         | Action type: inc/dec/ent/del/dup (5 verbs)   |
 | Cmd          | Object + Verb command pattern                |
 | NavState     | Table + row/col cursors + selections + group |
 | NavAxis      | Generic axis: cur (Fin n) + sels (Array)     |
@@ -102,7 +102,7 @@ Char │ Obj       │ + │ - │ ~ │ d │ [ │ ] │ c │ s │ f │ Des
 
 ## Design Notes
 
-**Obj/Verb pattern**: Commands are `Cmd obj verb`. Verbs are reusable (+/-/~/d/[/]/c).
+**Obj/Verb pattern**: Commands are `Cmd obj verb`. Only 5 verbs: +/-/~/d/c. Context determines meaning (e.g., colSel+/- = sort, rowSel+/- = search/filter).
 
 **View existential**: Wraps `NavState nRows nCols t` to hide type params, enabling heterogeneous stack.
 

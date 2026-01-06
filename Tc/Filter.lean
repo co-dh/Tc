@@ -75,11 +75,11 @@ namespace Tc.Filter
 -- | Execute search/filter command
 def exec (s : ViewStack) (cmd : Cmd) : IO (Option ViewStack) := do
   match cmd with
-  | .col .search => some <$> s.colSearch
-  | .row .search => some <$> s.rowSearch
-  | .row .filter => some <$> s.rowFilter
-  | .rowSel .inc => some <$> s.searchNext
-  | .rowSel .dec => some <$> s.searchPrev
+  | .col .ent    => some <$> s.colSearch   -- s: fzf jump to column
+  | .rowSel .inc => some <$> s.rowSearch   -- /: fzf search in column
+  | .rowSel .dec => some <$> s.rowFilter   -- \: fzf PRQL filter
+  | .grp .inc    => some <$> s.searchNext  -- n: repeat search forward
+  | .grp .dec    => some <$> s.searchPrev  -- N: repeat search backward
   | _ => pure none  -- not handled
 
 end Tc.Filter
