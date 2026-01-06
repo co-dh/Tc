@@ -2,7 +2,6 @@
   Folder: directory browser with configurable find depth
   Commands: .fld .dup (push), .fld .inc/.dec (depth), .view .ent (enter)
 -/
-import Tc.Data.Mem.Text
 import Tc.Fzf
 import Tc.View
 import Tc.Term
@@ -29,7 +28,7 @@ private def fmtType (s : String) : String :=
   if s == "f" then " " else s
 
 -- | List directory with find command, returns tab-separated output
--- Cols: type (d/f/-), size, date, path
+-- Cols: path, size, date, type (path first for visibility)
 -- Always includes ".." entry to allow navigation to parent
 def listDir (path : String) (depth : Nat) : IO String := do
   let p := if path.isEmpty then "." else path
@@ -39,8 +38,8 @@ def listDir (path : String) (depth : Nat) : IO String := do
   }
   -- add header, ".." entry, then filtered content (skip directory itself)
   let lines := out.stdout.splitOn "\n" |>.filter (·.length > 0)
-  let hdr := "type\tsize\tdate\tpath"
-  let parentEntry := "d\t0\t\t.."  -- always show ".." for parent navigation
+  let hdr := "path\tsize\tdate\ttype"
+  let parentEntry := "..\t0\t\td"  -- always show ".." for parent navigation
   -- format type, date, strip base path to get relative names
   let body := lines.drop 1 |>.map fun line =>
     let parts := line.splitOn "\t"
@@ -49,7 +48,7 @@ def listDir (path : String) (depth : Nat) : IO String := do
       let sz := parts.getD 1 ""
       let dt := fmtDate (parts.getD 2 "")
       let path := stripBase p (parts.getLast!)
-      [typ, sz, dt, path] |> "\t".intercalate
+      [path, sz, dt, typ] |> "\t".intercalate
     else line
   pure (hdr ++ "\n" ++ parentEntry ++ (if body.isEmpty then "" else "\n" ++ "\n".intercalate body))
 
@@ -65,6 +64,12 @@ def viewFile (path : String) : IO Unit := do
   else
     let _ ← IO.Process.spawn { cmd := "less", args := #[path], stdin := .inherit, stdout := .inherit, stderr := .inherit } >>= (·.wait)
   let _ ← Term.init  -- reinit terminal after pager
+
+-- | Open data file (csv/parquet) as table view, returns new stack or none
+def openDataFile (s : ViewStack) (path : String) : IO (Option ViewStack) := do
+  match ← View.fromFile path with
+  | some v => pure (some (s.push v))
+  | none => pure none
 
 -- | Get path column value from current row
 def curPath (v : View) : Option String := do
@@ -133,10 +138,15 @@ def enter (s : ViewStack) : IO (Option ViewStack) := do
       match ← mkView fullPath depth with
       | some v => pure (some (s.push v))
       | none => pure (some s)
-  | some ' ', some p =>  -- regular file: view with bat/less
+  | some ' ', some p =>  -- regular file: open data or view
     let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
-    viewFile (joinPath curDir p)
-    pure (some s)  -- return unchanged stack after viewing
+    let fullPath := joinPath curDir p
+    if p.endsWith ".csv" || p.endsWith ".parquet" then
+      match ← openDataFile s fullPath with
+      | some s' => pure (some s')
+      | none => viewFile fullPath; pure (some s)  -- fallback to viewer
+    else
+      viewFile fullPath; pure (some s)
   | some 'l', some p =>  -- symlink: check if dir or file
     let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
     let fullPath := joinPath curDir p
@@ -146,9 +156,12 @@ def enter (s : ViewStack) : IO (Option ViewStack) := do
       match ← mkView fullPath depth with
       | some v => pure (some (s.push v))
       | none => pure (some s)
-    else  -- treat as file
-      viewFile fullPath
-      pure (some s)
+    else if fullPath.endsWith ".csv" || fullPath.endsWith ".parquet" then
+      match ← openDataFile s fullPath with
+      | some s' => pure (some s')
+      | none => viewFile fullPath; pure (some s)
+    else
+      viewFile fullPath; pure (some s)
   | _, _ => pure none
 
 -- | Get trash command (trash-put or gio trash)

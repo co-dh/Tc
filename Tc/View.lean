@@ -5,6 +5,8 @@
 import Tc.Nav
 import Tc.Render
 import Tc.Table
+import Tc.Data.Mem.Text
+import Tc.Data.ADBC.Table
 
 namespace Tc
 
@@ -55,6 +57,17 @@ def fromTbl (tbl : Table) (path : String)
     if hr : nRows > 0 then some (View.new (NavState.newAt tbl rfl rfl hr hc col grp row) path)
     else none
   else none
+
+-- | Create View from file path (csv/parquet)
+def fromFile (path : String) : IO (Option View) := do
+  if path.endsWith ".csv" then
+    match ← MemTable.load path with
+    | .error _ => pure none
+    | .ok tbl => pure (fromTbl (.mem tbl) path)
+  else  -- parquet or other ADBC-supported format
+    match ← AdbcTable.fromFile path with
+    | none => pure none
+    | some tbl => pure (fromTbl (.adbc tbl) path)
 
 -- | Verb to delta: inc=+1, dec=-1
 private def verbDelta (verb : Verb) : Int := if verb == .inc then 1 else -1

@@ -83,22 +83,20 @@ def main (args : List String) : IO Unit := do
   if pipeMode && path?.isNone then
     if let some a ← runMem (← MemTable.fromStdin) "stdin" true testMode theme keys then outputTable a
     return
+  -- init ADBC for parquet support (used by folder view and CLI)
+  let ok ← AdbcTable.init
+  if !ok then IO.eprintln "Backend init failed"; return
   let path := path?.getD ""
-  if path.isEmpty then  -- no file: show current directory as folder view
-    match ← Folder.mkView "." 1 with
-    | some v => let _ ← runApp v pipeMode testMode theme keys
-    | none => IO.eprintln "Cannot list directory"
-  else if path.endsWith ".csv" then
-    let _ ← runMem (← MemTable.load path) path pipeMode testMode theme keys
-  else if path.endsWith ".txt" then
-    let _ ← runMem (MemTable.fromText (← IO.FS.readFile path)) path pipeMode testMode theme keys
-  else
-    let ok ← AdbcTable.init
-    if !ok then IO.eprintln "Backend init failed"; return
-    try
-      match ← AdbcTable.fromFile path with
-      | none => AdbcTable.shutdown; IO.eprintln "Query failed"
-      | some tbl => match View.fromTbl (.adbc tbl) path with
-        | some v => let _ ← runApp v pipeMode testMode theme keys; AdbcTable.shutdown
-        | none => AdbcTable.shutdown; IO.eprintln "Empty table"
-    catch e => AdbcTable.shutdown; IO.eprintln s!"Query error: {e}"
+  try
+    if path.isEmpty then  -- no file: show current directory as folder view
+      match ← Folder.mkView "." 1 with
+      | some v => let _ ← runApp v pipeMode testMode theme keys
+      | none => IO.eprintln "Cannot list directory"
+    else if path.endsWith ".txt" then  -- txt: parse as space-separated text
+      let _ ← runMem (MemTable.fromText (← IO.FS.readFile path)) path pipeMode testMode theme keys
+    else  -- csv/parquet: use View.fromFile
+      match ← View.fromFile path with
+      | some v => let _ ← runApp v pipeMode testMode theme keys
+      | none => IO.eprintln "Cannot open file"
+  finally
+    AdbcTable.shutdown
