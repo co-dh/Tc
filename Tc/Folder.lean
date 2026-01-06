@@ -3,6 +3,7 @@
   Commands: .fld .dup (push), .fld .inc/.dec (depth), .view .ent (enter)
 -/
 import Tc.Data.Mem.Text
+import Tc.Fzf
 import Tc.View
 import Tc.Term
 
@@ -96,6 +97,60 @@ def enter (s : ViewStack) : IO (Option ViewStack) := do
       pure (some s)
   | _, _ => pure none
 
+-- | Get trash command (trash-put or gio trash)
+def trashCmd : IO (Option (String × Array String)) := do
+  let tp ← IO.Process.output { cmd := "which", args := #["trash-put"] }
+  if tp.exitCode == 0 then return some ("trash-put", #[])
+  let gio ← IO.Process.output { cmd := "which", args := #["gio"] }
+  if gio.exitCode == 0 then return some ("gio", #["trash"])
+  return none
+
+-- | Get paths of selected rows, or current row if none selected
+def selPaths (v : View) : Array String :=
+  if !(v.vkind matches .fld _ _) then #[] else
+  match v.nav.tbl.asMem?, v.nav.tbl.asMem?.bind (·.names.idxOf? "path") with
+  | some tbl, some pathCol =>
+    let rows := if v.nav.row.sels.isEmpty then #[v.nav.row.cur.val] else v.nav.row.sels
+    rows.map fun r => ((tbl.cols.getD pathCol default).get r).toRaw
+  | _, _ => #[]
+
+-- | Confirm deletion with y/n prompt (auto-decline in test mode)
+def confirmDel (paths : Array String) : IO Bool := do
+  if ← Fzf.getTestMode then return false  -- skip in test mode
+  Term.shutdown
+  IO.println s!"Delete {paths.size} file(s)?"
+  for p in paths.toList.take 10 do IO.println s!"  {p}"
+  if paths.size > 10 then IO.println s!"  ... and {paths.size - 10} more"
+  IO.print "Confirm [y/N]: "
+  IO.FS.Stream.flush (← IO.getStdout)
+  let line ← (← IO.getStdin).getLine
+  let _ ← Term.init
+  pure (line.trim.toLower == "y")
+
+-- | Trash files, returns true if all succeeded
+def trashFiles (paths : Array String) : IO Bool := do
+  let some (cmd, baseArgs) ← trashCmd | return false
+  let mut ok := true
+  for p in paths do
+    let r ← IO.Process.output { cmd := cmd, args := baseArgs ++ #[p] }
+    if r.exitCode != 0 then ok := false
+  pure ok
+
+-- | Delete selected files and refresh view
+def del (s : ViewStack) : IO (Option ViewStack) := do
+  if !(s.cur.vkind matches .fld _ _) then return none
+  let paths := selPaths s.cur
+  if paths.isEmpty then return none
+  if !(← confirmDel paths) then return some s  -- cancelled
+  let _ ← trashFiles paths
+  -- refresh view to reflect deletions
+  match s.cur.vkind with
+  | .fld path depth =>
+    match ← mkView path depth with
+    | some v => pure (some (s.setCur { v with disp := s.cur.disp }))
+    | none => pure (some s)
+  | _ => pure (some s)
+
 -- | Adjust find depth (+1 or -1, min 1)
 def setDepth (s : ViewStack) (delta : Int) : IO (Option ViewStack) := do
   match s.cur.vkind with
@@ -118,6 +173,8 @@ def exec (s : ViewStack) (cmd : Cmd) : IO (Option ViewStack) :=
   | .fld .dup => push s               -- D: push folder view
   | .fld .inc => setDepth s 1         -- +d: increase depth
   | .fld .dec => setDepth s (-1)      -- -d: decrease depth
+  | .colSel .del =>                   -- d: delete files in folder view
+    if s.cur.vkind matches .fld _ _ then del s else pure none
   | .view .ent =>                     -- Enter: only for fld views
     if s.cur.vkind matches .fld _ _ then enter s else pure none
   | _ => pure none

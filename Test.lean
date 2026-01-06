@@ -520,6 +520,16 @@ def test_folder_depth_inc : IO Unit := do
   let r2 := status2.splitOn "r0/" |>.getD 1 "" |>.takeWhile (·.isDigit)
   assert (r2.toNat?.getD 0 >= r1.toNat?.getD 0) "+d increases depth (more files)"
 
+-- | Test d in folder view (auto-declines in test mode, view unchanged)
+def test_folder_del : IO Unit := do
+  log "folder_del"
+  let before ← runFolder ""
+  let after ← runFolder "d"  -- d triggers delete prompt, auto-declined
+  let (_, s1) := footer before
+  let (_, s2) := footer after
+  -- Row count should be same (nothing deleted)
+  assert (s1 == s2) "d in folder view (test mode) keeps view unchanged"
+
 -- === Run all tests ===
 
 def main : IO Unit := do
@@ -621,6 +631,7 @@ def main : IO Unit := do
   test_folder_enter_dir
   test_folder_pop
   test_folder_depth_inc
+  test_folder_del
 
   Tc.AdbcTable.shutdown
   IO.println "\nAll tests passed!"
