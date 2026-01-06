@@ -79,9 +79,9 @@ Char │ Obj       │ + │ - │ ~ │ d │ c │ Description
  T   │ thm       │+T │-T │   │   │   │ Theme cycle
  i   │ info      │+i │-i │ I │   │   │ Info overlay toggle
  --- Views ---
- M   │ metaV     │ 1 │ 0 │ ⏎ │   │   │   │ M │   │   │ Meta view (c=push, -=selNull, +=selSingle)
- f   │ freq      │   │   │ ⏎ │   │   │   │ F │   │   │ Freq view (c=push, ~=filter)
- D   │ fld       │+d │-d │ ⏎ │ d │   │   │ D │   │   │ Folder view (c=push, +/-=depth, ~=enter, d=trash)
+ M   │ metaV     │ 1 │ 0 │ ⏎ │   │ M │ Meta view (c=push, -=selNull, +=selSingle)
+ F   │ freq      │   │   │ ⏎ │   │ F │ Freq view (c=push, ~=filter)
+ D   │ fld       │+d │-d │ ⏎ │ d │ D │ Folder view (c=push, +/-=depth, ~=enter, d=trash)
 ```
 
 ## Structures
