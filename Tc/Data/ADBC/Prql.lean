@@ -1,29 +1,18 @@
 /-
-  Type-safe PRQL statement constructor
+  PRQL rendering and compilation
+  Uses common Op types from Tc/Op.lean
 -/
+import Tc.Op
 import Tc.Types
 import Tc.Error
 
 namespace Prql
 
--- | Aggregate function (for PRQL group/agg)
-inductive Agg where
-  | count | sum | avg | min | max | stddev | dist
-  deriving Repr, Inhabited
+open Tc
 
--- | PRQL operation (single pipe stage)
-inductive Op where
-  | filter (expr : String)                          -- filter <expr>
-  | sort (cols : Array (String × Bool))             -- sort {col, -col2}; Bool = asc
-  | sel (cols : Array String)                       -- select {a, b, c}
-  | derive (bindings : Array (String × String))     -- derive {x = expr}
-  | group (keys : Array String) (aggs : Array (Agg × String × String))  -- group {k} (agg {name = fn col})
-  | take (n : Nat)                                  -- take n
-  deriving Inhabited
-
--- | PRQL query: base table + operations
+-- | PRQL query: base table + operations (PRQL-specific base format)
 structure Query where
-  base : String := "from df"  -- PRQL from clause (df = placeholder)
+  base : String := "from df"  -- PRQL from clause
   ops  : Array Op := #[]
   deriving Inhabited
 
@@ -44,16 +33,11 @@ def renderSort (col : String) (asc : Bool) : String :=
   let qc := quote col
   if asc then qc else s!"-{qc}"
 
--- | Render aggregate function name (std. prefix to avoid column name conflicts)
-def Agg.name : Agg → String
+-- | Render aggregate function name (std. prefix for PRQL)
+def aggName : Agg → String
   | .count => "std.count" | .sum => "std.sum" | .avg => "std.average"
   | .min => "std.min" | .max => "std.max" | .stddev => "std.stddev"
   | .dist => "std.count_distinct"
-
--- | Short name for result column (no std. prefix)
-def Agg.short : Agg → String
-  | .count => "count" | .sum => "sum" | .avg => "average"
-  | .min => "min" | .max => "max" | .stddev => "stddev" | .dist => "dist"
 
 -- | Render single operation to PRQL string
 def Op.render : Op → String
@@ -62,7 +46,7 @@ def Op.render : Op → String
   | .sel cols => s!"select \{{(cols.map quote).join ", "}}"
   | .derive bs => s!"derive \{{(bs.map fun (n, e) => s!"{quote n} = {e}").join ", "}}"
   | .group keys aggs =>
-    let as := aggs.map fun (fn, name, col) => s!"{name} = {fn.name} {quote col}"
+    let as := aggs.map fun (fn, name, col) => s!"{name} = {aggName fn} {quote col}"
     s!"group \{{(keys.map quote).join ", "}} (aggregate \{{as.join ", "}})"
   | .take n => s!"take {n}"
 
@@ -74,7 +58,7 @@ def Query.render (q : Query) : String :=
 -- | Pipe: append operation to query
 def Query.pipe (q : Query) (op : Op) : Query := { q with ops := q.ops.push op }
 
-infixl:65 " |> " => Query.pipe  -- q |> .filter "x > 5"
+infixl:65 " |> " => Query.pipe
 
 -- | Builder helpers
 def Query.filter (q : Query) (expr : String) : Query := q.pipe (.filter expr)
@@ -87,7 +71,6 @@ def Query.agg (q : Query) (keys : Array String) (funcs : Array Agg) (cols : Arra
   q.pipe (.group keys aggs)
 
 -- | Build PRQL filter from column names and cell values
--- Example: cols=#["a","b"], vals=#[.int 1, .str "x"] → "a == 1 && b == 'x'"
 def buildFilter (cols : Array String) (vals : Array Cell) : String :=
   cols.mapIdx (fun i cn => s!"{quote cn} == {(vals.getD i .null).toPrql}")
     |>.toList |> String.intercalate " && "
@@ -99,14 +82,13 @@ def Agg.parse : String → Option Agg
   | "dist" => some .dist | _ => none
 
 -- | PRQL function definitions (prepended to all queries)
--- Loaded from funcs.prql at compile time
 def funcs : String := include_str "funcs.prql"
 
 -- | Theorems: freq PRQL includes required columns
 theorem funcs_has_pct : (funcs.splitOn "Pct").length > 1 := by native_decide
 theorem funcs_has_bar : (funcs.splitOn "Bar").length > 1 := by native_decide
 
--- | Compile PRQL to SQL using prqlc CLI (stdin → stdout)
+-- | Compile PRQL to SQL using prqlc CLI
 def compile (prql : String) : IO (Option String) := do
   let full := funcs ++ "\n" ++ prql
   let child ← IO.Process.spawn {

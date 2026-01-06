@@ -105,6 +105,12 @@ instance : RenderTable Table where
           0 (r1 - r0).toUInt64 adjCur.toUInt64 nav.curColIdx.toUInt64
           moveDir.toInt64 nav.selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
 
+-- | ExecOp instance for Table
+instance : ExecOp Table where
+  exec tbl op := match tbl with
+    | .mem t => ExecOp.exec t op <&> (·.map .mem)
+    | .adbc t => ExecOp.exec t op <&> (·.map .adbc)
+
 -- | Format table as plain text (tab-separated)
 def toText : Table → IO String
   | .mem t => pure (MemTable.toText t)

@@ -6,6 +6,7 @@ import Std.Data.HashSet
 import Tc.Data.CSV
 import Tc.Error
 import Tc.Nav
+import Tc.Op
 import Tc.Render
 import Tc.Term
 import Tc.Types
@@ -203,5 +204,37 @@ def toText (t : MemTable) : String := Id.run do
     lines := lines.push ("\t".intercalate row.toList)
   "\n".intercalate lines.toList
 
+-- | Select columns by name
+def selCols (t : MemTable) (names : Array String) : MemTable :=
+  let idxs := names.filterMap t.names.idxOf?
+  let cols' := idxs.map fun i => t.cols.getD i default
+  let names' := idxs.map fun i => t.names.getD i ""
+  ⟨names', cols'⟩
+
+-- | Take first n rows
+def take (t : MemTable) (n : Nat) : MemTable :=
+  let cols' := t.cols.map fun col =>
+    match col with
+    | .ints data => .ints (data.extract 0 n)
+    | .floats data => .floats (data.extract 0 n)
+    | .strs data => .strs (data.extract 0 n)
+  { t with cols := cols' }
+
+-- | Sort by column names (converts to indices)
+def sortByNames (t : MemTable) (cols : Array (String × Bool)) : MemTable :=
+  let idxs := cols.filterMap fun (n, _) => t.names.idxOf? n
+  let asc := if h : cols.size > 0 then cols[cols.size - 1].2 else true
+  sort t idxs asc
+
 end MemTable
+
+-- | ExecOp instance for MemTable (partial support)
+instance : ExecOp MemTable where
+  exec t op := match op with
+    | .filter expr => MemTable.filter t expr
+    | .sort cols => pure (some (MemTable.sortByNames t cols))
+    | .sel cols => pure (some (MemTable.selCols t cols))
+    | .take n => pure (some (MemTable.take t n))
+    | .derive _ | .group _ _ => pure none  -- unsupported
+
 end Tc

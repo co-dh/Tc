@@ -216,4 +216,9 @@ def findRow (t : AdbcTable) (col : Nat) (val : String) (start : Nat) (fwd : Bool
   return none
 
 end AdbcTable
+
+-- | ExecOp instance for AdbcTable (all ops via PRQL requery)
+instance : ExecOp AdbcTable where
+  exec t op := AdbcTable.requery (t.query.pipe op) t.totalRows
+
 end Tc
