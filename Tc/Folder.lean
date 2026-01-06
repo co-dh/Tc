@@ -114,18 +114,51 @@ def selPaths (v : View) : Array String :=
     rows.map fun r => ((tbl.cols.getD pathCol default).get r).toRaw
   | _, _ => #[]
 
--- | Confirm deletion with y/n prompt (auto-decline in test mode)
+-- | Draw centered dialog box
+def drawDialog (title : String) (lines : Array String) (footer : String) : IO Unit := do
+  let w ← Term.width; let h ← Term.height
+  let maxLen := lines.foldl (fun m l => max m l.length) (max title.length footer.length)
+  let boxW := maxLen + 4  -- padding
+  let boxH := lines.size + 4  -- title + blank + lines + footer
+  let x0 := (w.toNat - boxW) / 2
+  let y0 := (h.toNat - boxH) / 2
+  let fg := Term.white; let bg := Term.blue
+  -- top border
+  Term.print x0.toUInt32 y0.toUInt32 fg bg ("┌" ++ "".pushn '─' (boxW - 2) ++ "┐")
+  -- title
+  let tpad := (boxW - 2 - title.length) / 2
+  Term.print x0.toUInt32 (y0 + 1).toUInt32 fg bg ("│" ++ "".pushn ' ' tpad ++ title ++ "".pushn ' ' (boxW - 2 - tpad - title.length) ++ "│")
+  -- blank line
+  Term.print x0.toUInt32 (y0 + 2).toUInt32 fg bg ("│" ++ "".pushn ' ' (boxW - 2) ++ "│")
+  -- content lines
+  for i in [:lines.size] do
+    let ln := lines[i]!.take (boxW - 4)
+    Term.print x0.toUInt32 (y0 + 3 + i).toUInt32 fg bg ("│ " ++ ln ++ "".pushn ' ' (boxW - 3 - ln.length) ++ "│")
+  -- footer
+  let fpad := (boxW - 2 - footer.length) / 2
+  Term.print x0.toUInt32 (y0 + 3 + lines.size).toUInt32 fg bg ("│" ++ "".pushn ' ' fpad ++ footer ++ "".pushn ' ' (boxW - 2 - fpad - footer.length) ++ "│")
+  -- bottom border
+  Term.print x0.toUInt32 (y0 + 4 + lines.size).toUInt32 fg bg ("└" ++ "".pushn '─' (boxW - 2) ++ "┘")
+  Term.present
+
+-- | Wait for y/n keypress
+partial def waitYN : IO Bool := do
+  let ev ← Term.pollEvent
+  if ev.type != Term.eventKey then waitYN
+  else if ev.ch == 'y'.toNat.toUInt32 || ev.ch == 'Y'.toNat.toUInt32 then pure true
+  else if ev.ch == 'n'.toNat.toUInt32 || ev.ch == 'N'.toNat.toUInt32 || ev.key == Term.keyEsc then pure false
+  else waitYN
+
+-- | Confirm deletion with popup dialog (auto-decline in test mode)
 def confirmDel (paths : Array String) : IO Bool := do
-  if ← Fzf.getTestMode then return false  -- skip in test mode
-  Term.shutdown
-  IO.println s!"Delete {paths.size} file(s)?"
-  for p in paths.toList.take 10 do IO.println s!"  {p}"
-  if paths.size > 10 then IO.println s!"  ... and {paths.size - 10} more"
-  IO.print "Confirm [y/N]: "
-  IO.FS.Stream.flush (← IO.getStdout)
-  let line ← (← IO.getStdin).getLine
-  let _ ← Term.init
-  pure (line.trim.toLower == "y")
+  if ← Fzf.getTestMode then return false
+  let title := s!"Delete {paths.size} file(s)?"
+  let shown := paths.toList.take 8 |>.toArray
+  let lines := if paths.size > 8
+    then shown.push s!"... +{paths.size - 8} more"
+    else shown
+  drawDialog title lines "[Y]es  [N]o"
+  waitYN
 
 -- | Trash files, returns true if all succeeded
 def trashFiles (paths : Array String) : IO Bool := do
