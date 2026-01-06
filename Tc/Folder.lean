@@ -35,7 +35,7 @@ def listDir (path : String) (depth : Nat) : IO String := do
   let p := if path.isEmpty then "." else path
   let out ← IO.Process.output {
     cmd := "find"
-    args := #[p, "-maxdepth", toString depth, "-printf", "%y\t%s\t%T+\t%p\n"]
+    args := #["-L", p, "-maxdepth", toString depth, "-printf", "%y\t%s\t%T+\t%p\n"]
   }
   -- add header, ".." entry, then filtered content (skip directory itself)
   let lines := out.stdout.splitOn "\n" |>.filter (·.length > 0)
