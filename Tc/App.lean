@@ -38,12 +38,15 @@ partial def mainLoop (a : AppState) (testMode : Bool) (keys : Array Char) : IO A
 
 -- | Parse args: path, optional -c for key replay (test mode)
 def parseArgs (args : List String) : Option String × Array Char × Bool :=
-  let keys s := (parseKeys s).toList.toArray
-  match args with
-  | [p, "-c", k] | p :: "-c" :: k :: _ => (some p, keys k, true)  -- path + keys
-  | ["-c", k] | "-c" :: k :: _ => (none, keys k, true)  -- keys only (stdin)
-  | p :: _ => (some p, #[], false)
-  | [] => (none, #[], false)
+  let toKeys s := (parseKeys s).toList.toArray
+  let (path, rest) := match args with
+    | "-c" :: t => (none, t)  -- no path, -c first
+    | p :: "-c" :: t => (some p, t)  -- path then -c
+    | p :: _ => (some p, [])
+    | [] => (none, [])
+  match rest with
+  | k :: _ => (path, toKeys k, true)  -- test mode with keys
+  | [] => (path, #[], false)
 
 -- | Output table as plain text (for pipe mode)
 def outputTable (a : AppState) : IO Unit := do
@@ -61,11 +64,11 @@ def runApp (v : View) (pipeMode testMode : Bool) (theme : Theme.State) (keys : A
 -- | Run with MemTable result, returns AppState if successful
 def runMem (res : Except String MemTable) (name : String) (pipeMode testMode : Bool)
     (theme : Theme.State) (keys : Array Char) : IO (Option AppState) := do
-  match res with
-  | .error e => IO.eprintln s!"Parse error: {e}"; pure none
-  | .ok tbl => match View.fromTbl (.mem tbl) name with
-    | some v => pure (some (← runApp v pipeMode testMode theme keys))
-    | none => IO.eprintln "Empty table"; pure none
+  let tbl ← match res with
+    | .error e => IO.eprintln s!"Parse error: {e}"; return none
+    | .ok t => pure t
+  let some v := View.fromTbl (.mem tbl) name | IO.eprintln "Empty table"; return none
+  some <$> runApp v pipeMode testMode theme keys
 
 -- | Get ls -l output (skip "total" line via tail)
 def lsDir (dir : String) : IO String := do
