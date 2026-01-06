@@ -37,16 +37,16 @@ private def ctrlCmds : Array (UInt16 × Cmd) := #[
 private def charCmds : Array (Char × Cmd) := #[
   ('t', .colSel .ent), ('T', .rowSel .ent),
   ('!', .grp .ent), ('d', .colSel .del),
-  ('[', .colSel .sortAsc), (']', .colSel .sortDesc),
+  ('[', .colSel .inc), (']', .colSel .dec),
   ('M', .metaV .dup), ('F', .freq .dup),   -- M=meta, F=freq view (dup=constructor)
   ('D', .fld .dup),                        -- D=folder view (dup=constructor)
   ('0', .metaV .dec), ('1', .metaV .inc),  -- meta: 0=selNull, 1=selSingle
   ('\r', .view .ent),  -- Enter: view-specific action
-  ('s', .col .search),     -- col search: fzf jump to column
-  ('/', .row .search),     -- row search: fzf jump to row (vim-style)
-  ('n', .rowSel .inc),     -- search next: repeat last search forward
-  ('N', .rowSel .dec),     -- search prev: repeat last search backward
-  ('\\', .row .filter),    -- row filter: fzf PRQL filter (backslash)
+  ('s', .col .ent),        -- col search: fzf jump to column
+  ('/', .rowSel .inc),     -- row search: fzf jump to row (vim-style)
+  ('n', .grp .inc),        -- search next: repeat last search forward
+  ('N', .grp .dec),        -- search prev: repeat last search backward
+  ('\\', .rowSel .dec),    -- row filter: fzf PRQL filter (backslash)
   ('q', .stk .dec), ('S', .stk .ent),  -- stack: q=pop, S=swap
   ('I', .info .ent)  -- info: toggle overlay
 ]

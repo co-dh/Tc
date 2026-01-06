@@ -73,8 +73,8 @@ def exec (v : View) (cmd : Cmd) : IO (Option View) := do
   | .colSel .del =>
     let (tbl', grp') ← ModifyTable.del n.tbl curCol (n.col.sels.filterMap names.idxOf?) n.grp
     pure (mk tbl' n.col.cur.val grp' 0)
-  | .colSel .sortAsc | .colSel .sortDesc =>
-    let tbl' ← ModifyTable.sort n.tbl curCol (n.grp.filterMap names.idxOf?) (cmd == .colSel .sortAsc)
+  | .colSel .inc | .colSel .dec =>
+    let tbl' ← ModifyTable.sort n.tbl curCol (n.grp.filterMap names.idxOf?) (cmd == .colSel .inc)
     pure (mk tbl' curCol n.grp n.row.cur.val)
   | .prec verb  => pure (some { v with precAdj := v.precAdj + verbDelta verb })
   | .width verb => pure (some { v with widthAdj := v.widthAdj + verbDelta verb })

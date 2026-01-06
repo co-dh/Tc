@@ -23,7 +23,7 @@ namespace AppState
 -- | Commands that reset ViewState
 def resetsVS (cmd : Cmd) : Bool :=
   cmd matches .stk .dec | .colSel .del | .colSel _ | .metaV _ | .freq _ | .fld _
-    | .col .search | .row .search | .col .filter | .row .filter
+    | .col .ent | .rowSel .inc | .rowSel .dec
 
 -- | Update stk, reset vs if needed
 def withStk (a : AppState) (cmd : Cmd) (s' : ViewStack) : AppState :=
