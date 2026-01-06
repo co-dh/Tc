@@ -33,12 +33,13 @@ private def ctrlCmds : Array (UInt16 × Cmd) := #[
   (Term.ctrlD.toUInt16, .vPage .inc), (Term.ctrlU.toUInt16, .vPage .dec)
 ]
 
--- Other char → Cmd (selection, group, colSel ops, stack, info)
+-- Other char → Cmd (selection, group, colSel ops, stack, info, folder)
 private def charCmds : Array (Char × Cmd) := #[
   ('t', .colSel .ent), ('T', .rowSel .ent),
   ('!', .grp .ent), ('d', .colSel .del),
   ('[', .colSel .sortAsc), (']', .colSel .sortDesc),
   ('M', .metaV .dup), ('F', .freq .dup),   -- M=meta, F=freq view (dup=constructor)
+  ('D', .fld .dup),                        -- D=folder view (dup=constructor)
   ('0', .metaV .dec), ('1', .metaV .inc),  -- meta: 0=selNull, 1=selSingle
   ('\r', .view .ent),  -- Enter: view-specific action
   ('s', .col .search),     -- col search: fzf jump to column
@@ -76,7 +77,8 @@ def prefixMenu : Array (Char × String × (Verb → Cmd)) := #[
   ('V', "vert end",   .ver),
   ('j', "bottom",     .ver),
   ('k', "top",        .ver),
-  ('l', "end",        .hor)
+  ('l', "end",        .hor),
+  ('d', "depth",      .fld)   -- folder depth +d/-d
 ]
 
 -- +/- prefix targets: h=hPage, v=vPage, H=hor, V=ver, p=prec, w=width, t=thm, hjkl=ver/hor

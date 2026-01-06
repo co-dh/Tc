@@ -10,10 +10,10 @@ namespace Tc
 
 -- | View kind: how to render/interact
 inductive ViewKind where
-  | tbl                          -- table view
-  | freqV (cols : Array String)  -- frequency view
-  | colMeta                      -- column metadata
-  | fld                          -- folder browser
+  | tbl                                  -- table view
+  | freqV (cols : Array String)          -- frequency view
+  | colMeta                              -- column metadata
+  | fld (path : String) (depth : Nat)    -- folder browser: path + find depth
   deriving Inhabited, Repr, BEq
 
 -- | View: wraps NavState for unified Table type
