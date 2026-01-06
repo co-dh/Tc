@@ -4,6 +4,7 @@
 -/
 import Tc.Data.ADBC.Meta
 import Tc.Data.Mem.Meta
+import Tc.Data.Mem.Text
 import Tc.Fzf
 import Tc.Key
 import Tc.Render
