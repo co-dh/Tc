@@ -24,13 +24,20 @@
 ├─────────────────────────────────────────────────────────┤
 │  ViewStack                                              │
 │    cur : View, parents : Array View                     │
-│    exec dispatches Cmd to View or handles stk commands  │
-└─────────────────────────────────────────────────────────┘
+└───────────────────────────┬─────────────────────────────┘
+                            │ composed by
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│  AppState (Dispatch.lean)                               │
+│    stk : ViewStack, vs : ViewState                      │
+│    theme : Theme.State, info : UI.Info.State            │
+│    exec chains: theme → info → stk → meta → freq → ...  │
+└───────────────────────────┬─────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────┐
 │  App.mainLoop                                           │
-│    evToCmd → ViewStack.exec → View.doRender             │
+│    evToCmd → AppState.exec → View.doRender              │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -42,6 +49,7 @@
 |             | colWidths, cell    |                            |
 | ModifyTable | delRows, delCols   | Table mutations            |
 | RenderTable | render             | Render to terminal         |
+| Exec        | exec               | Execute Cmd, return state  |
 
 ## Obj/Verb Matrix
 
@@ -68,21 +76,27 @@ Char │ Obj       │ + │ - │ ~ │ d │ [ │ ] │ c │ s │ f │ Des
  s   │ stk       │   │ q │ S │   │   │   │ c │   │   │ View stack (q=pop, S=swap, c=dup)
  p   │ prec      │+p │-p │   │   │   │   │   │   │   │ Display precision
  w   │ width     │+w │-w │   │   │   │   │   │   │   │ Column width
+ T   │ thm       │+T │-T │   │   │   │   │   │   │   │ Theme cycle
+ i   │ info      │+i │-i │ I │   │   │   │   │   │   │ Info overlay toggle
+ --- Views ---
  M   │ metaV     │ 1 │ 0 │ ⏎ │   │   │   │ M │   │   │ Meta view (c=push, -=selNull, +=selSingle)
  f   │ freq      │   │   │ ⏎ │   │   │   │ F │   │   │ Freq view (c=push, ~=filter)
 ```
 
 ## Structures
 
-| Struct    | Purpose                                      |
-|-----------|----------------------------------------------|
-| Verb      | Action type: inc/dec/ent/del/sort/dup/search/filter |
-| Cmd       | Object + Verb command pattern                |
-| NavState  | Table + row/col cursors + selections + group |
-| NavAxis   | Generic axis: cur (Fin n) + sels (Array)     |
-| View      | Existential wrapper hiding table type        |
-| ViewStack | Non-empty stack of Views (cur + parents)     |
-| ViewState | Scroll offsets for rendering                 |
+| Struct       | Purpose                                      |
+|--------------|----------------------------------------------|
+| Verb         | Action type: inc/dec/ent/del/sort/dup/search/filter |
+| Cmd          | Object + Verb command pattern                |
+| NavState     | Table + row/col cursors + selections + group |
+| NavAxis      | Generic axis: cur (Fin n) + sels (Array)     |
+| View         | Existential wrapper hiding table type        |
+| ViewStack    | Non-empty stack of Views (cur + parents)     |
+| ViewState    | Scroll offsets for rendering                 |
+| AppState     | Top-level: stk + vs + theme + info           |
+| Theme.State  | Theme styles + index                         |
+| Info.State   | Info overlay visibility                      |
 
 ## Design Notes
 
@@ -90,8 +104,12 @@ Char │ Obj       │ + │ - │ ~ │ d │ [ │ ] │ c │ s │ f │ Des
 
 **View existential**: Wraps `NavState nRows nCols t` to hide type params, enabling heterogeneous stack.
 
-**ViewStack dispatch**: `stk` commands handled by stack, others delegated to `View.exec`.
+**Dispatch chain**: AppState.exec tries handlers in order: theme → info → stk → meta → freq → filter → view. First to return `some` wins.
+
+**Exec typeclass**: Unifies command handling. `exec : Cmd → IO (Option α)` returns new state or none.
 
 **Fin bounds**: Cursor uses `Fin n` for type-safe bounds. `Fin.clamp` handles delta movement.
 
 **Group columns**: Pinned left via `dispOrder`. Selection uses `Array.toggle`.
+
+**No-file mode**: Running without args shows `ls -l` of current directory via MemTable.fromText.
