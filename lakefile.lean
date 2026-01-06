@@ -29,7 +29,7 @@ lean_lib Tc where
              `Tc.Term, `Tc.Types, `Tc.Error, `Tc.View, `Tc.ViewStack, `Tc.Dispatch,
              `Tc.Meta, `Tc.Freq, `Tc.Fzf, `Tc.Table, `Tc.Search, `Tc.Filter, `Tc.Folder,
              `Tc.Theme, `Tc.UI.Info, `Tc.Data.CSV,
-             `Tc.Data.Mem.Table, `Tc.Data.Mem.Meta, `Tc.Data.Mem.Freq,
+             `Tc.Data.Mem.Table, `Tc.Data.Mem.Text, `Tc.Data.Mem.Meta, `Tc.Data.Mem.Freq,
              `Tc.Data.ADBC.FFI, `Tc.Data.ADBC.Prql,
              `Tc.Data.ADBC.Table, `Tc.Data.ADBC.Meta]
 

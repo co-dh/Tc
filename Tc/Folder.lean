@@ -2,6 +2,7 @@
   Folder: directory browser with configurable find depth
   Commands: .fld .dup (push), .fld .inc/.dec (depth), .view .ent (enter)
 -/
+import Tc.Data.Mem.Text
 import Tc.View
 import Tc.Term
 

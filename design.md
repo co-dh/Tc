@@ -117,3 +117,46 @@ Char │ Obj       │ + │ - │ ~ │ d │ [ │ ] │ c │ s │ f │ Des
 **No-file mode**: Running without args shows folder view of current directory via `find -maxdepth 1`.
 
 **Folder view**: Uses `find` with configurable depth. Enter on dir pushes new folder view, on file opens with `bat`/`less`. Stores path and depth in `ViewKind.fld`.
+
+## Op Interface (planned)
+
+Common table operations across backends (ADBC, Mem, future kdb/q):
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Tc/Op.lean (common operations)                         │
+│    inductive Agg = count | sum | avg | min | max | ...  │
+│    inductive Op = filter | sort | select | derive | ... │
+│    structure Query = ops : Array Op                     │
+│    class ExecOp α = exec : α → Op → IO α                │
+└───────────────────────────┬─────────────────────────────┘
+                            │ interpreted by
+          ┌─────────────────┼─────────────────┐
+          ▼                 ▼                 ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│ ADBC/Prql.lean  │ │ Mem/Exec.lean   │ │ Kdb/Exec.lean   │
+│ Op → PRQL → SQL │ │ Op → native     │ │ Op → q expr     │
+└─────────────────┘ └─────────────────┘ └─────────────────┘
+```
+
+**Tc/Op.lean**:
+```lean
+inductive Agg where
+  | count | sum | avg | min | max | stddev | dist
+
+inductive Op where
+  | filter (expr : String)
+  | sort (cols : Array (String × Bool))  -- Bool = asc
+  | select (cols : Array String)
+  | derive (bindings : Array (String × String))
+  | group (keys : Array String) (aggs : Array (Agg × String × String))
+  | take (n : Nat)
+
+class ExecOp (α : Type) where
+  exec : α → Op → IO α
+```
+
+**Backend implementations**:
+- ADBC: `Op → PRQL string → SQL → DuckDB`
+- Mem: `Op → direct Array ops`
+- Kdb: `Op → q expression → IPC`
