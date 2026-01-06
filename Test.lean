@@ -480,8 +480,8 @@ def test_folder_no_args : IO Unit := do
   let output ← runFolder ""
   -- Tab should show absolute path [/home/...] starting with /
   assert (contains output "[/") "No-args shows folder view with absolute path"
-  -- Has type column (from find output)
-  assert (contains output "type") "Folder view has type column"
+  -- Has path column (first column in folder view)
+  assert (contains output "path") "Folder view has path column"
 
 -- | Test D key pushes folder view from CSV
 def test_folder_D_key : IO Unit := do

@@ -68,17 +68,17 @@ private def navCmd (c : Char) (shift : Bool) : Option Cmd :=
 
 -- +/- prefix targets with descriptions for fzf
 def prefixMenu : Array (Char × String × (Verb → Cmd)) := #[
-  ('t', "theme",      .thm),
-  ('p', "precision",  .prec),
-  ('w', "width",      .width),
-  ('h', "horiz page", .hPage),
-  ('v', "vert page",  .vPage),
-  ('H', "horiz end",  .hor),
-  ('V', "vert end",   .ver),
-  ('j', "bottom",     .ver),
-  ('k', "top",        .ver),
-  ('l', "end",        .hor),
-  ('d', "depth",      .fld)   -- folder depth +d/-d
+  ('t', "theme: cycle color theme",       .thm),
+  ('p', "precision: decimal places",      .prec),
+  ('w', "width: column width",            .width),
+  ('h', "hPage: horizontal page scroll",  .hPage),
+  ('v', "vPage: vertical page scroll",    .vPage),
+  ('H', "hor: jump to first/last column", .hor),
+  ('V', "ver: jump to top/bottom row",    .ver),
+  ('j', "bottom: jump to last row",       .ver),
+  ('k', "top: jump to first row",         .ver),
+  ('l', "end: jump to last column",       .hor),
+  ('d', "depth: folder find depth",       .fld)
 ]
 
 -- +/- prefix targets: h=hPage, v=vPage, H=hor, V=ver, p=prec, w=width, t=thm, hjkl=ver/hor

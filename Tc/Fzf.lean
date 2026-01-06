@@ -86,9 +86,9 @@ def buildFilterExpr (col : String) (vals : Array String) (result : String) : Str
     then s!"{col} {input}" else input
   else ""
 
--- | Show fzf menu for +/- prefix commands, returns selected Cmd
+-- | Show fzf menu for ,/. prefix commands, returns selected Cmd
 def prefixCmd (verb : Verb) : IO (Option Cmd) := do
-  let prompt := if verb == .inc then "+" else "-"
+  let prompt := if verb == .inc then "," else "."
   let items := prefixMenu.map fun (c, desc, _) => s!"{c}\t{desc}"
   let input := "\n".intercalate items.toList
   match ← fzf #["--with-nth=2..", s!"--prompt={prompt}"] input with

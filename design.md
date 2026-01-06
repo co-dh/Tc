@@ -59,29 +59,29 @@ Commands follow `Obj Verb` pattern. Grouped by: navigation, selection, options.
                  │ I │ D │ E │ D │ D │
                  │ N │ E │ N │ E │ U │
                  │ C │ C │ T │ L │ P │
-Char │ Obj       │ + │ - │ ~ │ d │ c │ Description
+Char │ Obj       │ , │ . │ ~ │ d │ c │ Description
 ─────┴───────────┴───┴───┴───┴───┴───┴──────────────────
  --- Navigation ---
  r   │ row       │ j │ k │   │   │   │ Row cursor
  c   │ col       │ l │ h │ s │   │   │ Column cursor, ~=fzf jump
  v   │ vPage     │ J │ K │   │   │   │ Vertical page
  h   │ hPage     │ L │ H │   │   │   │ Horizontal page
- V   │ ver       │+j │+k │   │   │   │ Vertical end
- H   │ hor       │+l │+h │   │   │   │ Horizontal end
+ V   │ ver       │,j │.k │   │   │   │ Vertical end
+ H   │ hor       │,l │.h │   │   │   │ Horizontal end
  --- Selection ---
- R   │ rowSel    │ / │ \ │ T │   │   │ Row: +=search, -=filter, ~=toggle
- C   │ colSel    │ [ │ ] │ t │ d │   │ Col: +=sortAsc, -=sortDesc, ~=toggle
- g   │ grp       │ n │ N │ ! │   │   │ Grp: +=next, -=prev, ~=toggle
+ R   │ rowSel    │ / │ \ │ T │   │   │ Row: ,=search, .=filter, ~=toggle
+ C   │ colSel    │ [ │ ] │ t │ d │   │ Col: ,=sortAsc, .=sortDesc, ~=toggle
+ g   │ grp       │ n │ N │ ! │   │   │ Grp: ,=next, .=prev, ~=toggle
  --- Options ---
  s   │ stk       │   │ q │ S │   │ c │ View stack (q=pop, S=swap, c=dup)
- p   │ prec      │+p │-p │   │   │   │ Display precision
- w   │ width     │+w │-w │   │   │   │ Column width
- T   │ thm       │+T │-T │   │   │   │ Theme cycle
- i   │ info      │+i │-i │ I │   │   │ Info overlay toggle
+ p   │ prec      │,p │.p │   │   │   │ Display precision
+ w   │ width     │,w │.w │   │   │   │ Column width
+ T   │ thm       │,T │.T │   │   │   │ Theme cycle
+ i   │ info      │,i │.i │ I │   │   │ Info overlay toggle
  --- Views ---
- M   │ metaV     │ 1 │ 0 │ ⏎ │   │ M │ Meta view (c=push, -=selNull, +=selSingle)
+ M   │ metaV     │ 1 │ 0 │ ⏎ │   │ M │ Meta view (c=push, .=selNull, ,=selSingle)
  F   │ freq      │   │   │ ⏎ │   │ F │ Freq view (c=push, ~=filter)
- D   │ fld       │+d │-d │ ⏎ │ d │ D │ Folder view (c=push, +/-=depth, ~=enter, d=trash)
+ D   │ fld       │,d │.d │ ⏎ │ d │ D │ Folder view (c=push, ,/.=depth, ~=enter, d=trash)
 ```
 
 ## Structures
@@ -100,25 +100,7 @@ Char │ Obj       │ + │ - │ ~ │ d │ c │ Description
 | Theme.State  | Theme styles + index                         |
 | Info.State   | Info overlay visibility                      |
 
-## Design Notes
-
-**Obj/Verb pattern**: Commands are `Cmd obj verb`. Only 5 verbs: +/-/~/d/c. Context determines meaning (e.g., colSel+/- = sort, rowSel+/- = search/filter).
-
-**View existential**: Wraps `NavState nRows nCols t` to hide type params, enabling heterogeneous stack.
-
-**Dispatch chain**: AppState.exec tries handlers in order: theme → info → stk → fld → meta → freq → filter → view. First to return `some` wins.
-
-**Exec typeclass**: Unifies command handling. `exec : Cmd → IO (Option α)` returns new state or none.
-
-**Fin bounds**: Cursor uses `Fin n` for type-safe bounds. `Fin.clamp` handles delta movement.
-
-**Group columns**: Pinned left via `dispOrder`. Selection uses `Array.toggle`.
-
-**No-file mode**: Running without args shows folder view of current directory via `find -maxdepth 1`.
-
-**Folder view**: Uses `find` with configurable depth. Enter on dir pushes new folder view, on file opens with `bat`/`less`. Delete (`d`) trashes selected files via `trash-put` or `gio trash` with y/n confirmation. Stores path and depth in `ViewKind.fld`.
-
-## Op Interface (planned)
+## Op Interface
 
 Common table operations across backends (ADBC, Mem, future kdb/q):
 

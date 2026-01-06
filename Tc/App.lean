@@ -27,9 +27,9 @@ partial def mainLoop (a : AppState) (testMode : Bool) (keys : Array Char) : IO A
   let (ev, keys') ← nextEvent keys
   -- Q=quit
   if isKey ev 'Q' then return a
-  -- +/- prefix: fzf menu for object selection
-  let cmd? ← if isKey ev '+' then Fzf.prefixCmd .inc
-             else if isKey ev '-' then Fzf.prefixCmd .dec
+  -- ,/. prefix: fzf menu for object selection
+  let cmd? ← if isKey ev ',' then Fzf.prefixCmd .inc
+             else if isKey ev '.' then Fzf.prefixCmd .dec
              else pure (evToCmd ev none)
   -- no cmd (unrecognized key): continue loop unchanged
   let some cmd := cmd? | mainLoop a testMode keys'
