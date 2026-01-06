@@ -1,9 +1,28 @@
 /-
   Info overlay: key hints display
 -/
+import Tc.Cmd
 import Tc.Term
 
 namespace Tc.UI.Info
+
+-- | Info state
+structure State where
+  vis : Bool := false
+
+namespace State
+
+-- | Execute info command
+def exec (s : State) (cmd : Cmd) : IO (Option State) := pure <|
+  match cmd with
+  | .info .inc => some { s with vis := true }
+  | .info .dec => some { s with vis := false }
+  | .info .ent => some { s with vis := !s.vis }
+  | _ => none
+
+instance : Exec State where exec := exec
+
+end State
 
 -- | Key hints for info overlay (key | description)
 def keyHints : Array (String × String) := #[

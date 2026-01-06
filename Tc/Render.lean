@@ -13,10 +13,9 @@ structure ViewState where
   rowOff   : Nat := 0           -- first visible row
   colOff   : Nat := 0           -- first visible column (display index)
   lastCol  : Nat := 0           -- last cursor column (for tooltip direction)
-  showInfo : Bool := false      -- show info overlay (toggle with I)
 
 -- Default ViewState
-def ViewState.default : ViewState := ⟨0, 0, 0, false⟩
+def ViewState.default : ViewState := ⟨0, 0, 0⟩
 
 -- Max column width cap
 def maxColWidth : Nat := 50
@@ -94,7 +93,7 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
   let pad := w.toNat - colName.length - right.length
   let status := colName ++ "".pushn ' ' (max 1 pad) ++ right
   Term.print 0 (h - 1) Term.cyan Term.default status
-  pure (⟨rowOff, colOff, nav.curColIdx, view.showInfo⟩, widths)
+  pure (⟨rowOff, colOff, nav.curColIdx⟩, widths)
 
 -- | Render tab line: parent2 │ parent1 │ [current] (stack top on right)
 def renderTabLine (tabs : Array String) (curIdx : Nat) : IO Unit := do

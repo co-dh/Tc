@@ -129,8 +129,7 @@ def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option
   | .rowSel .ent => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
   | .colSel .ent => some { nav with col := { nav.col with sels := nav.col.sels.toggle nav.curColName } }
   | .grp .ent    => some { nav with grp := nav.grp.toggle nav.curColName }
-  | .col .del | .colSel .sortAsc | .colSel .sortDesc => none  -- handled by View.exec
-  | _ => some nav
+  | _ => none  -- unhandled: .col .del, .colSel .sort*, .prec, .width, etc.
 
 end NavState
 

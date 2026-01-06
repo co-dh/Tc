@@ -3,6 +3,7 @@
   Uses closed sum Table (Type 0) instead of existential (Type 1).
 -/
 import Tc.Nav
+import Tc.Render
 import Tc.Table
 
 namespace Tc
@@ -61,10 +62,11 @@ private def preserve (v : View) (v' : Option View) : Option View :=
   v'.map fun x => { x with precAdj := v.precAdj, widthAdj := v.widthAdj }
 
 -- | Execute Cmd, returns IO (Option View) (none if table becomes empty after del)
-def exec (v : View) (cmd : Cmd) (rowPg colPg : Nat) : IO (Option View) := do
+def exec (v : View) (cmd : Cmd) : IO (Option View) := do
   let n := v.nav; let names := ReadTable.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   let mk tbl col grp row := preserve v (fromTbl tbl v.path col grp row)
+  let rowPg := ((← Term.height).toNat - reservedLines) / 2
   match cmd with
   | .colSel .del =>
     let (tbl', grp') ← ModifyTable.del n.tbl curCol (n.col.sels.filterMap names.idxOf?) n.grp
@@ -74,9 +76,11 @@ def exec (v : View) (cmd : Cmd) (rowPg colPg : Nat) : IO (Option View) := do
     pure (mk tbl' curCol n.grp n.row.cur.val)
   | .prec verb  => pure (some { v with precAdj := v.precAdj + verbDelta verb })
   | .width verb => pure (some { v with widthAdj := v.widthAdj + verbDelta verb })
-  | _ => pure <| match NavState.exec cmd n rowPg colPg with
+  | _ => pure <| match NavState.exec cmd n rowPg colPageSize with
     | some nav' => some { v with nav := nav' }
     | none => none
+
+instance : Exec View where exec := exec
 
 end View
 

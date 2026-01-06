@@ -120,3 +120,7 @@ theorem parse_toString (c : Cmd) : Parse.parse? (toString c) = some c := by
   | freq v => cases v <;> native_decide
 
 end Cmd
+
+-- | Exec typeclass: handle Cmd, return updated state or none
+class Exec (α : Type) where
+  exec : α → Cmd → IO (Option α)

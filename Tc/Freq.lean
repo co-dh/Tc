@@ -49,17 +49,12 @@ def filter (s : ViewStack) : IO (Option ViewStack) := do
   return some (s'.push v)
 
 -- | Execute freq command
-def exec (s : ViewStack) (v : Verb) : IO (Option ViewStack) := do
-  match v with
-  | .dup => (← push s).orElse (fun _ => some s) |> pure
-  | _ => pure (some s)
-
--- | Execute view-specific command for freqV view
-def viewExec (s : ViewStack) (v : Verb) : IO (Option ViewStack) := do
-  match s.cur.vkind with
-  | .freqV _ => match v with
-    | .ent => filter s
-    | _ => pure (some s)
+def exec (s : ViewStack) (cmd : Cmd) : IO (Option ViewStack) := do
+  match cmd with
+  | .freq .dup => (← push s).orElse (fun _ => some s) |> pure
+  | .view .ent => match s.cur.vkind with
+    | .freqV _ => filter s
+    | _ => pure none
   | _ => pure none
 
 end Tc.Freq

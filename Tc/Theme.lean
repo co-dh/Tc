@@ -2,9 +2,15 @@
   Theme: CSV-based color themes
   Format: theme,variant,name,fg,bg
 -/
+import Tc.Cmd
 import Tc.Term
 
 namespace Tc.Theme
+
+-- | Theme state
+structure State where
+  styles   : Array UInt32
+  themeIdx : Nat
 
 -- | Color name to UInt32 lookup
 def colorMap : Array (String × UInt32) := #[
@@ -113,4 +119,17 @@ def doCycle (idx : Nat) (delta : Int) : IO (Array UInt32 × Nat) := do
   let styles ← load "theme.csv" theme variant <|> pure defaultDark
   pure (styles, newIdx)
 
+namespace State
+
+-- | Execute theme command
+def exec (s : State) (cmd : Cmd) : IO (Option State) := do
+  match cmd with
+  | .thm v =>
+    let (sty, idx) ← doCycle s.themeIdx (if v == .inc then 1 else -1)
+    pure (some ⟨sty, idx⟩)
+  | _ => pure none
+
+instance : Exec State where exec := exec
+
+end State
 end Tc.Theme

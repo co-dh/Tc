@@ -73,18 +73,12 @@ def setKey (s : ViewStack) : Option ViewStack :=
   | none => some s
 
 -- | Execute meta command
-def exec (s : ViewStack) (v : Verb) : IO (Option ViewStack) := do
-  match v with
-  | .dup => (← push s).orElse (fun _ => some s) |> pure
-  | .dec => pure (some (sel s selNull))
-  | .inc => pure (some (sel s selSingle))
-  | _ => pure (some s)
-
--- | Execute view-specific command for colMeta view
-def viewExec (s : ViewStack) (v : Verb) : Option ViewStack :=
-  if s.cur.vkind != .colMeta then none else
-  match v with
-  | .ent => setKey s
-  | _ => some s
+def exec (s : ViewStack) (cmd : Cmd) : IO (Option ViewStack) := do
+  match cmd with
+  | .metaV .dup => (← push s).orElse (fun _ => some s) |> pure
+  | .metaV .dec => pure (some (sel s selNull))
+  | .metaV .inc => pure (some (sel s selSingle))
+  | .view .ent => if s.cur.vkind == .colMeta then pure (setKey s) else pure none
+  | _ => pure none
 
 end Tc.Meta

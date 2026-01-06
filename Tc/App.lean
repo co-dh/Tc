@@ -10,47 +10,32 @@ import Tc.Render
 import Tc.Term
 import Tc.Theme
 import Tc.UI.Info
-import Tc.ViewStack
+import Tc.Dispatch
 
 open Tc
 
--- | Loop context (immutable per iteration)
-structure LoopCtx where
-  styles   : Array UInt32
-  themeIdx : Nat
-  testMode : Bool
-
--- | Main loop with ViewStack. Returns final ViewStack for pipe mode output
-partial def mainLoop (stk : ViewStack) (vs : ViewState) (ctx : LoopCtx) (keys : Array Char) : IO ViewStack := do
-  let (vs', v') ← stk.cur.doRender vs ctx.styles  -- v' has updated widths
-  let stk := stk.setCur v'
-  renderTabLine stk.tabNames 0
-  if vs'.showInfo then UI.Info.render (← Term.height).toNat (← Term.width).toNat
+-- | Main loop. Returns final AppState for pipe mode output
+partial def mainLoop (a : AppState) (testMode : Bool) (keys : Array Char) : IO AppState := do
+  let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles  -- v' has updated widths
+  let a := { a with stk := a.stk.setCur v', vs := vs' }
+  renderTabLine a.stk.tabNames 0
+  if a.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat
   Term.present
   -- test mode: exit after render when keys exhausted
-  if ctx.testMode && keys.isEmpty then IO.print (← Term.bufferStr); return stk
+  if testMode && keys.isEmpty then IO.print (← Term.bufferStr); return a
   let (ev, keys') ← nextEvent keys
-  let rowPg := ((← Term.height).toNat - reservedLines) / 2
   -- Q=quit
-  if isKey ev 'Q' then return stk
+  if isKey ev 'Q' then return a
   -- +/- prefix: fzf menu for object selection
   let cmd? ← if isKey ev '+' then Fzf.prefixCmd .inc
              else if isKey ev '-' then Fzf.prefixCmd .dec
              else pure (evToCmd ev none)
   -- dispatch command
   match cmd? with
-  | some (.thm verb) =>
-    let (sty, idx) ← Theme.doCycle ctx.themeIdx (if verb == .inc then 1 else -1)
-    mainLoop stk vs' { ctx with styles := sty, themeIdx := idx } keys'
-  | some (.info v) =>
-    let vis := match v with | .inc => true | .dec => false | _ => !vs'.showInfo
-    mainLoop stk { vs' with showInfo := vis } ctx keys'
-  | some cmd => match ← stk.exec cmd rowPg colPageSize with
-    | some stk' =>
-      let reset := cmd matches .stk .dec | .colSel .del | .colSel _ | .metaV _ | .freq _ | .col .search | .row .search | .col .filter | .row .filter
-      mainLoop stk' (if reset then ViewState.default else vs') ctx keys'
-    | none => return stk
-  | none => mainLoop stk vs' ctx keys'
+  | some cmd => match ← a.exec cmd with
+    | some a' => mainLoop a' testMode keys'
+    | none => return a
+  | none => mainLoop a testMode keys'
 
 -- | Parse args: path, optional -c for key replay (test mode)
 def parseArgs (args : List String) : String × Array Char × Bool :=
@@ -63,25 +48,27 @@ def parseArgs (args : List String) : String × Array Char × Bool :=
   | [] => ("data.csv", #[], false)
 
 -- | Output table as plain text (for pipe mode)
-def outputTable (stk : ViewStack) : IO Unit := do
-  match stk.cur.nav.tbl with
+def outputTable (a : AppState) : IO Unit := do
+  match a.stk.cur.nav.tbl with
   | .mem tbl => IO.println (MemTable.toText tbl)
   | .adbc _ => pure ()  -- ADBC output not yet supported
 
--- | Run app with view, returns final ViewStack
-def runApp (v : View) (pipeMode : Bool) (ctx : LoopCtx) (keys : Array Char) : IO ViewStack := do
+-- | Run app with view, returns final AppState
+def runApp (v : View) (pipeMode testMode : Bool) (theme : Theme.State) (keys : Array Char) : IO AppState := do
   if pipeMode then let _ ← Term.reopenTty
   let _ ← Term.init
-  let stk ← mainLoop ⟨#[v], by simp⟩ ViewState.default ctx keys
+  let a : AppState := ⟨⟨#[v], by simp⟩, .default, theme, {}⟩
+  let a' ← mainLoop a testMode keys
   Term.shutdown
-  pure stk
+  pure a'
 
--- | Run with MemTable result, returns ViewStack if successful
-def runMem (res : Except String MemTable) (name : String) (pipeMode : Bool) (ctx : LoopCtx) (keys : Array Char) : IO (Option ViewStack) := do
+-- | Run with MemTable result, returns AppState if successful
+def runMem (res : Except String MemTable) (name : String) (pipeMode testMode : Bool)
+    (theme : Theme.State) (keys : Array Char) : IO (Option AppState) := do
   match res with
   | .error e => IO.eprintln s!"Parse error: {e}"; pure none
   | .ok tbl => match View.fromTbl (.mem tbl) name with
-    | some v => pure (some (← runApp v pipeMode ctx keys))
+    | some v => pure (some (← runApp v pipeMode testMode theme keys))
     | none => IO.eprintln "Empty table"; pure none
 
 -- | Entry point
@@ -93,14 +80,14 @@ def main (args : List String) : IO Unit := do
   let dark ← Theme.isDark
   let variant := if dark then "dark" else "light"
   let styles ← Theme.load "theme.csv" "default" variant <|> pure Theme.defaultDark
-  let ctx : LoopCtx := ⟨styles, Theme.themeIdx "default" variant, testMode⟩
+  let theme : Theme.State := ⟨styles, Theme.themeIdx "default" variant⟩
   -- stdin mode if piped and no explicit path
   if pipeMode && path == "data.csv" then
-    if let some stk ← runMem (← MemTable.fromStdin) "stdin" true ctx keys then outputTable stk
+    if let some a ← runMem (← MemTable.fromStdin) "stdin" true testMode theme keys then outputTable a
   else if path.endsWith ".csv" then
-    let _ ← runMem (← MemTable.load path) path pipeMode ctx keys
+    let _ ← runMem (← MemTable.load path) path pipeMode testMode theme keys
   else if path.endsWith ".txt" then
-    let _ ← runMem (MemTable.fromText (← IO.FS.readFile path)) path pipeMode ctx keys
+    let _ ← runMem (MemTable.fromText (← IO.FS.readFile path)) path pipeMode testMode theme keys
   else
     let ok ← AdbcTable.init
     if !ok then IO.eprintln "Backend init failed"; return
@@ -108,6 +95,6 @@ def main (args : List String) : IO Unit := do
       match ← AdbcTable.fromFile path with
       | none => AdbcTable.shutdown; IO.eprintln "Query failed"
       | some tbl => match View.fromTbl (.adbc tbl) path with
-        | some v => let _ ← runApp v pipeMode ctx keys; AdbcTable.shutdown
+        | some v => let _ ← runApp v pipeMode testMode theme keys; AdbcTable.shutdown
         | none => AdbcTable.shutdown; IO.eprintln "Empty table"
     catch e => AdbcTable.shutdown; IO.eprintln s!"Query error: {e}"
