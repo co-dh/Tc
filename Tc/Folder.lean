@@ -153,11 +153,18 @@ partial def waitYN : IO Bool := do
 def confirmDel (paths : Array String) : IO Bool := do
   if ← Fzf.getTestMode then return false
   let title := s!"Delete {paths.size} file(s)?"
-  let shown := paths.toList.take 8 |>.toArray
-  let lines := if paths.size > 8
-    then shown.push s!"... +{paths.size - 8} more"
+  let shown := paths.toList.take 6 |>.toArray
+  let lines := if paths.size > 6
+    then shown.push s!"... +{paths.size - 6} more"
     else shown
-  drawDialog title lines "[Y]es  [N]o"
+  -- add trash command info
+  let cmd ← trashCmd
+  let cmdInfo := match cmd with
+    | some ("trash-put", _) => "via trash-put (undo: trash-restore)"
+    | some ("gio", _) => "via gio trash (undo: gio trash --restore)"
+    | _ => "no trash command found"
+  let lines := lines.push "" ++ #[cmdInfo, "[Y]es  [N]o"]
+  drawDialog title lines ""
   waitYN
 
 -- | Trash files, returns true if all succeeded
@@ -176,11 +183,15 @@ def del (s : ViewStack) : IO (Option ViewStack) := do
   if paths.isEmpty then return none
   if !(← confirmDel paths) then return some s  -- cancelled
   let _ ← trashFiles paths
-  -- refresh view to reflect deletions
+  -- refresh view, preserve cursor (clamped to new row count)
   match s.cur.vkind with
   | .fld path depth =>
     match ← mkView path depth with
-    | some v => pure (some (s.setCur { v with disp := s.cur.disp }))
+    | some v =>
+      let row := min s.cur.nav.row.cur.val (if v.nRows > 0 then v.nRows - 1 else 0)
+      let v' := View.fromTbl v.nav.tbl path (row := row) |>.map fun x =>
+        { x with vkind := .fld path depth, disp := s.cur.disp }
+      pure (v'.map s.setCur)
     | none => pure (some s)
   | _ => pure (some s)
 
