@@ -30,12 +30,11 @@ partial def mainLoop (a : AppState) (testMode : Bool) (keys : Array Char) : IO A
   let cmd? ← if isKey ev '+' then Fzf.prefixCmd .inc
              else if isKey ev '-' then Fzf.prefixCmd .dec
              else pure (evToCmd ev none)
-  -- dispatch command
-  match cmd? with
-  | some cmd => match ← a.exec cmd with
-    | some a' => mainLoop a' testMode keys'
-    | none => return a
-  | none => mainLoop a testMode keys'
+  -- no cmd (unrecognized key): continue loop unchanged
+  let some cmd := cmd? | mainLoop a testMode keys'
+  -- exec returns none when table becomes empty (e.g. delete all cols): quit
+  let some a' ← a.exec cmd | return a
+  mainLoop a' testMode keys'
 
 -- | Parse args: path, optional -c for key replay (test mode)
 def parseArgs (args : List String) : String × Array Char × Bool :=
