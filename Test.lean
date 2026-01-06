@@ -30,6 +30,24 @@ def runKeys (keys : String) (file : String) : IO String := do
   log "  done"
   return stdout
 
+-- | Run tc without file (folder view mode) with -c keys
+def runFolder (keys : String) : IO String := do
+  log s!"  spawn: (folder) keys={keys}"
+  let child ← IO.Process.spawn {
+    cmd := "bash"
+    args := #["-c", s!"script -q -c 'stty rows 24 cols 80; .lake/build/bin/tc -c \"{keys}\"' /dev/null | ansi2txt | tail -24"]
+    stdin := .null
+    stdout := .piped
+    stderr := .piped
+    env := #[("TERM", "xterm")]
+  }
+  log "  spawned"
+  let stdout ← child.stdout.readToEnd
+  log "  read"
+  let _ ← child.wait
+  log "  done"
+  return stdout
+
 -- | Check if line has content (letters/digits)
 def isContent (l : String) : Bool := l.any (fun c => c.isAlpha || c.isDigit)
 
@@ -454,6 +472,54 @@ def test_search_disabled_parquet : IO Unit := do
   -- In testMode popup is skipped; verify cursor didn't move (search was no-op)
   assert (contains status "r0/") "/ on parquet is no-op (search disabled)"
 
+-- === Folder tests ===
+
+-- | Test folder view shows on no-arg invocation
+def test_folder_no_args : IO Unit := do
+  log "folder_no_args"
+  let output ← runFolder ""
+  -- Tab should show [.] (current directory) - check raw output since [.] has no alphanumeric chars
+  assert (contains output "[.]") "No-args shows folder view [.]"
+  -- Has type column (from find output)
+  assert (contains output "type") "Folder view has type column"
+
+-- | Test D key pushes folder view from CSV
+def test_folder_D_key : IO Unit := do
+  log "folder_D_key"
+  let output ← runKeys "D" "data/basic.csv"
+  -- Tab should show [.] folder view pushed on top - check raw output
+  assert (contains output "[.]") "D pushes folder view"
+
+-- | Test Enter on directory enters it
+def test_folder_enter_dir : IO Unit := do
+  log "folder_enter_dir"
+  -- Navigate to tmp directory (row 2) and enter
+  let output ← runFolder "jj<ret>"
+  let (tab, status) := footer output
+  -- Tab should show [tmp] after entering
+  assert (contains tab "[tmp]") "Enter on dir pushes new folder view"
+  -- Should show contents of tmp
+  assert (contains status "r0/") "Entered directory has rows"
+
+-- | Test q pops folder view back to parent
+def test_folder_pop : IO Unit := do
+  log "folder_pop"
+  let output ← runFolder "jj<ret>q"
+  -- After q, should be back to [.] - check raw output
+  assert (contains output "[.]") "q pops back to parent folder"
+
+-- | Test +d increases depth
+def test_folder_depth_inc : IO Unit := do
+  log "folder_depth_inc"
+  let before ← runFolder ""
+  let after ← runFolder "+d"
+  let (_, status1) := footer before
+  let (_, status2) := footer after
+  -- After +d, should have more rows (find with higher depth)
+  let r1 := status1.splitOn "r0/" |>.getD 1 "" |>.takeWhile (·.isDigit)
+  let r2 := status2.splitOn "r0/" |>.getD 1 "" |>.takeWhile (·.isDigit)
+  assert (r2.toNat?.getD 0 >= r1.toNat?.getD 0) "+d increases depth (more files)"
+
 -- === Run all tests ===
 
 def main : IO Unit := do
@@ -548,6 +614,13 @@ def main : IO Unit := do
   test_search_prev
   test_col_search
   test_search_disabled_parquet
+
+  -- Folder
+  test_folder_no_args
+  test_folder_D_key
+  test_folder_enter_dir
+  test_folder_pop
+  test_folder_depth_inc
 
   Tc.AdbcTable.shutdown
   IO.println "\nAll tests passed!"

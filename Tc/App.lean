@@ -71,25 +71,23 @@ def runMem (res : Except String MemTable) (name : String) (pipeMode testMode : B
   let some v := View.fromTbl (.mem tbl) name | IO.eprintln "Empty table"; return none
   some <$> runApp v pipeMode testMode theme keys
 
--- | Get ls -l output (skip "total" line via tail)
-def lsDir (dir : String) : IO String := do
-  let d := if dir.isEmpty then "." else dir
-  let out ← IO.Process.output { cmd := "sh", args := #["-c", s!"ls -l {d} | tail -n +2"] }
-  pure out.stdout
 
 -- | Entry point
 def main (args : List String) : IO Unit := do
   let (path?, keys, testMode) := parseArgs args
   Fzf.setTestMode testMode
-  let pipeMode ← (! ·) <$> Term.isattyStdin
+  -- pipe mode: stdin is not tty AND not test mode (test mode uses -c for replay)
+  let pipeMode ← if testMode then pure false else (! ·) <$> Term.isattyStdin
   let theme ← Theme.State.init
   -- stdin mode if piped
   if pipeMode && path?.isNone then
     if let some a ← runMem (← MemTable.fromStdin) "stdin" true testMode theme keys then outputTable a
     return
   let path := path?.getD ""
-  if path.isEmpty then  -- no file: show current directory
-    let _ ← runMem (MemTable.fromText (← lsDir ".")) "." pipeMode testMode theme keys
+  if path.isEmpty then  -- no file: show current directory as folder view
+    match ← Folder.mkView "." 1 with
+    | some v => let _ ← runApp v pipeMode testMode theme keys
+    | none => IO.eprintln "Cannot list directory"
   else if path.endsWith ".csv" then
     let _ ← runMem (← MemTable.load path) path pipeMode testMode theme keys
   else if path.endsWith ".txt" then
