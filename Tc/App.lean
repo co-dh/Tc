@@ -19,11 +19,7 @@ open Tc
 partial def mainLoop (a : AppState) (testMode : Bool) (keys : Array Char) : IO AppState := do
   let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles  -- v' has updated widths
   let a := { a with stk := a.stk.setCur v', vs := vs' }
-  -- for folder views, show full path on line h-3
-  let fldPath := match a.stk.cur.vkind with
-    | .fld p _ => some p
-    | _ => none
-  renderTabLine a.stk.tabNames 0 fldPath
+  renderTabLine a.stk.tabNames 0
   if a.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat
   Term.present
   -- test mode: exit after render when keys exhausted

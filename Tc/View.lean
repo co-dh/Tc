@@ -37,7 +37,9 @@ def new {nr nc : Nat} (nav : NavState nr nc Table) (path : String) : View :=
 
 -- | Tab display name: custom disp or filename from path
 @[inline] def tabName (v : View) : String :=
-  if v.disp.isEmpty then v.path.splitOn "/" |>.getLast? |>.getD v.path else v.disp
+  match v.vkind with
+  | .fld p _ => p  -- folder: show full path
+  | _ => if v.disp.isEmpty then v.path.splitOn "/" |>.getLast? |>.getD v.path else v.disp
 
 -- | Render the view, returns (ViewState, updated View with new widths)
 @[inline] def doRender (v : View) (vs : ViewState) (styles : Array UInt32) : IO (ViewState × View) := do

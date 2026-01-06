@@ -96,8 +96,7 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
   pure (⟨rowOff, colOff, nav.curColIdx⟩, widths)
 
 -- | Render tab line: parent2 │ parent1 │ [current] (stack top on right)
--- Optional path shown on line h-3 for folder views
-def renderTabLine (tabs : Array String) (curIdx : Nat) (path : Option String := none) : IO Unit := do
+def renderTabLine (tabs : Array String) (curIdx : Nat) : IO Unit := do
   let h ← Term.height
   let w ← Term.width
   let marked := tabs.mapIdx fun i t => if i == curIdx then s!"[{t}]" else t
@@ -106,12 +105,6 @@ def renderTabLine (tabs : Array String) (curIdx : Nat) (path : Option String := 
   -- pad rest of line with bg color
   if line.length < w.toNat then
     Term.print line.length.toUInt32 (h - 2) Term.white Term.blue ("".pushn ' ' (w.toNat - line.length))
-  -- show folder path if provided
-  if let some p := path then
-    let pathLine := s!" {p} "
-    Term.print 0 (h - 3) Term.brBlack Term.default pathLine
-    if pathLine.length < w.toNat then
-      Term.print pathLine.length.toUInt32 (h - 3) Term.default Term.default ("".pushn ' ' (w.toNat - pathLine.length))
 
 -- | Wait for 'q' key press
 partial def waitForQ : IO Unit := do
