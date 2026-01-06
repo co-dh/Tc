@@ -9,9 +9,24 @@ import Tc.Term
 
 namespace Tc.Folder
 
--- | Strip "./" prefix from path
-private def stripDotSlash (s : String) : String :=
-  if s.startsWith "./" then s.drop 2 else s
+-- | Strip base path prefix to get relative entry name
+-- "/home/x/foo/bar" with base "/home/x/foo" → "bar"
+private def stripBase (base path : String) : String :=
+  if path.startsWith base then
+    let rest := path.drop base.length
+    if rest.startsWith "/" then rest.drop 1 else rest
+  else if path.startsWith "./" then path.drop 2
+  else path
+
+-- | Format date: "2024-01-05+12:34:56.123" → "2024-01-05 12:34:56"
+private def fmtDate (s : String) : String :=
+  let s := s.replace "+" " "  -- replace + with space
+  let parts := s.splitOn "."  -- drop fractional seconds
+  parts.head!.take 19         -- YYYY-MM-DD HH:MM:SS
+
+-- | Format type: f→space, d→d, l→l
+private def fmtType (s : String) : String :=
+  if s == "f" then " " else s
 
 -- | List directory with find command, returns tab-separated output
 -- Cols: type (d/f/-), size, date, path
@@ -25,14 +40,16 @@ def listDir (path : String) (depth : Nat) : IO String := do
   -- add header, ".." entry, then filtered content (skip directory itself)
   let lines := out.stdout.splitOn "\n" |>.filter (·.length > 0)
   let hdr := "type\tsize\tdate\tpath"
-  let parent := if p == "." then ".." else (p.splitOn "/" |>.dropLast |> "/".intercalate)
-  let parentEntry := s!"d\t0\t\t{if parent.isEmpty then ".." else parent}"
-  -- strip "./" from paths for cleaner display
+  let parentEntry := "d\t0\t\t.."  -- always show ".." for parent navigation
+  -- format type, date, strip base path to get relative names
   let body := lines.drop 1 |>.map fun line =>
     let parts := line.splitOn "\t"
     if parts.length >= 4 then
-      let path := stripDotSlash (parts.getLast!)
-      (parts.take 3 ++ [path]) |> "\t".intercalate
+      let typ := fmtType (parts.getD 0 "")
+      let sz := parts.getD 1 ""
+      let dt := fmtDate (parts.getD 2 "")
+      let path := stripBase p (parts.getLast!)
+      [typ, sz, dt, path] |> "\t".intercalate
     else line
   pure (hdr ++ "\n" ++ parentEntry ++ (if body.isEmpty then "" else "\n" ++ "\n".intercalate body))
 
@@ -57,7 +74,7 @@ def curPath (v : View) : Option String := do
   let row := v.nav.row.cur.val
   pure ((tbl.cols.getD pathCol default).get row).toRaw
 
--- | Get type column value from current row (d=dir, f=file, l=link)
+-- | Get type column value from current row (d=dir, space=file, l=link)
 def curType (v : View) : Option Char := do
   guard (v.vkind matches .fld _ _)
   let tbl ← v.nav.tbl.asMem?
@@ -68,13 +85,16 @@ def curType (v : View) : Option Char := do
 
 -- | Create folder view from path with given depth
 def mkView (path : String) (depth : Nat) : IO (Option View) := do
+  -- resolve to absolute path
+  let rp ← IO.Process.output { cmd := "realpath", args := #[path] }
+  let absPath := if rp.exitCode == 0 then rp.stdout.trim else path
   let output ← listDir path depth
   match toMemTable output with
   | .error _ => pure none
   | .ok tbl =>
-    let disp := path.splitOn "/" |>.getLast? |>.getD path
-    pure <| View.fromTbl (.mem tbl) path |>.map fun v =>
-      { v with vkind := .fld path depth, disp := disp }
+    let disp := absPath.splitOn "/" |>.getLast? |>.getD absPath
+    pure <| View.fromTbl (.mem tbl) absPath |>.map fun v =>
+      { v with vkind := .fld absPath depth, disp := disp }
 
 -- | Push new folder view onto stack (use current path or ".")
 def push (s : ViewStack) : IO (Option ViewStack) := do
@@ -86,6 +106,12 @@ def push (s : ViewStack) : IO (Option ViewStack) := do
   match ← mkView path 1 with
   | some v => pure (some (s.push v))
   | none => pure none
+
+-- | Join parent path with entry name
+private def joinPath (parent entry : String) : String :=
+  if parent == "." then s!"./{entry}"
+  else if parent.endsWith "/" then s!"{parent}{entry}"
+  else s!"{parent}/{entry}"
 
 -- | Enter directory or view file based on current row
 def enter (s : ViewStack) : IO (Option ViewStack) := do
@@ -101,21 +127,27 @@ def enter (s : ViewStack) : IO (Option ViewStack) := do
         | none => pure (some s)
     else
       let depth := match s.cur.vkind with | .fld _ d => d | _ => 1
-      match ← mkView p depth with
+      -- join current folder path with entry to get full path
+      let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
+      let fullPath := joinPath curDir p
+      match ← mkView fullPath depth with
       | some v => pure (some (s.push v))
-      | none => pure (some s)  -- shouldn't happen now with ".." always present
-  | some 'f', some p =>  -- regular file: view with bat/less
-    viewFile p
+      | none => pure (some s)
+  | some ' ', some p =>  -- regular file: view with bat/less
+    let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
+    viewFile (joinPath curDir p)
     pure (some s)  -- return unchanged stack after viewing
   | some 'l', some p =>  -- symlink: check if dir or file
-    let stat ← IO.Process.output { cmd := "test", args := #["-d", p] }
+    let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
+    let fullPath := joinPath curDir p
+    let stat ← IO.Process.output { cmd := "test", args := #["-d", fullPath] }
     if stat.exitCode == 0 then  -- is directory
       let depth := match s.cur.vkind with | .fld _ d => d | _ => 1
-      match ← mkView p depth with
+      match ← mkView fullPath depth with
       | some v => pure (some (s.push v))
       | none => pure (some s)
     else  -- treat as file
-      viewFile p
+      viewFile fullPath
       pure (some s)
   | _, _ => pure none
 
@@ -127,14 +159,16 @@ def trashCmd : IO (Option (String × Array String)) := do
   if gio.exitCode == 0 then return some ("gio", #["trash"])
   return none
 
--- | Get paths of selected rows, or current row if none selected
+-- | Get full paths of selected rows, or current row if none selected
 def selPaths (v : View) : Array String :=
-  if !(v.vkind matches .fld _ _) then #[] else
-  match v.nav.tbl.asMem?, v.nav.tbl.asMem?.bind (·.names.idxOf? "path") with
-  | some tbl, some pathCol =>
-    let rows := if v.nav.row.sels.isEmpty then #[v.nav.row.cur.val] else v.nav.row.sels
-    rows.map fun r => ((tbl.cols.getD pathCol default).get r).toRaw
-  | _, _ => #[]
+  match v.vkind with
+  | .fld curDir _ =>
+    match v.nav.tbl.asMem?, v.nav.tbl.asMem?.bind (·.names.idxOf? "path") with
+    | some tbl, some pathCol =>
+      let rows := if v.nav.row.sels.isEmpty then #[v.nav.row.cur.val] else v.nav.row.sels
+      rows.map fun r => joinPath curDir ((tbl.cols.getD pathCol default).get r).toRaw
+    | _, _ => #[]
+  | _ => #[]
 
 -- | Draw centered dialog box
 def drawDialog (title : String) (lines : Array String) (footer : String) : IO Unit := do

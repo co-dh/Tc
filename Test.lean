@@ -478,8 +478,8 @@ def test_search_disabled_parquet : IO Unit := do
 def test_folder_no_args : IO Unit := do
   log "folder_no_args"
   let output ← runFolder ""
-  -- Tab should show [.] (current directory) - check raw output since [.] has no alphanumeric chars
-  assert (contains output "[.]") "No-args shows folder view [.]"
+  -- Tab should show absolute path [/home/...] starting with /
+  assert (contains output "[/") "No-args shows folder view with absolute path"
   -- Has type column (from find output)
   assert (contains output "type") "Folder view has type column"
 
@@ -487,8 +487,18 @@ def test_folder_no_args : IO Unit := do
 def test_folder_D_key : IO Unit := do
   log "folder_D_key"
   let output ← runKeys "D" "data/basic.csv"
-  -- Tab should show [.] folder view pushed on top - check raw output
-  assert (contains output "[.]") "D pushes folder view"
+  -- Tab should show absolute path folder view pushed on top
+  assert (contains output "[/") "D pushes folder view with absolute path"
+
+-- | Test folder tab shows absolute path
+def test_folder_tab_path : IO Unit := do
+  log "folder_tab_path"
+  -- Navigate to tmp directory (row 2, after ".." at row 0) and enter
+  let output ← runFolder "jj<ret>"
+  let (tab, _) := footer output
+  -- Tab should show absolute path [/...../tmp] starting with /
+  assert (contains tab "[/") "Folder tab shows absolute path (starts with /)"
+  assert (contains tab "/tmp]") "Folder tab shows absolute path (ends with /tmp])"
 
 -- | Test Enter on directory enters it
 def test_folder_enter_dir : IO Unit := do
@@ -496,16 +506,25 @@ def test_folder_enter_dir : IO Unit := do
   -- Navigate to tmp directory (row 2, after ".." at row 0) and enter
   let output ← runFolder "jj<ret>"
   let (tab, status) := footer output
-  -- Tab should show [tmp] after entering
-  assert (contains tab "[tmp]") "Enter on dir pushes new folder view"
+  -- Tab should show absolute path after entering
+  assert (contains tab "/tmp]") "Enter on dir pushes new folder view"
   assert (contains status "r0/") "Entered directory has rows"
+
+-- | Test path column shows relative names after entering folder
+def test_folder_path_relative : IO Unit := do
+  log "folder_path_relative"
+  -- Enter tmp folder and check path column doesn't show full path
+  let output ← runFolder "jj<ret>"
+  -- Path column should show "test_tables.sh" not full path "/home/.../tmp/test_tables.sh"
+  assert (contains output "test_tables.sh") "Path shows entry name"
+  assert (not (contains output "/tmp/test_tables")) "Path column is relative (no /tmp/test_tables)"
 
 -- | Test q pops folder view back to parent
 def test_folder_pop : IO Unit := do
   log "folder_pop"
   let output ← runFolder "jj<ret>q"
-  -- After q, should be back to [.] - check raw output
-  assert (contains output "[.]") "q pops back to parent folder"
+  -- After q, should be back to parent (absolute path)
+  assert (contains output "[/") "q pops back to parent folder"
 
 -- | Test +d increases depth
 def test_folder_depth_inc : IO Unit := do
@@ -627,7 +646,9 @@ def main : IO Unit := do
   -- Folder
   test_folder_no_args
   test_folder_D_key
+  test_folder_tab_path
   test_folder_enter_dir
+  test_folder_path_relative
   test_folder_pop
   test_folder_depth_inc
   test_folder_del
