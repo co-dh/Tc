@@ -121,12 +121,18 @@ def doCycle (idx : Nat) (delta : Int) : IO (Array UInt32 × Nat) := do
 
 namespace State
 
+-- | Initialize theme: detect dark/light, load default theme
+def init : IO State := do
+  let dark ← isDark
+  let variant := if dark then "dark" else "light"
+  let styles ← load "theme.csv" "default" variant <|> pure defaultDark
+  pure ⟨styles, Theme.themeIdx "default" variant⟩
+
 -- | Execute theme command
 def exec (s : State) (cmd : Cmd) : IO (Option State) := do
   match cmd with
-  | .thm v =>
-    let (sty, idx) ← doCycle s.themeIdx (if v == .inc then 1 else -1)
-    pure (some ⟨sty, idx⟩)
+  | .thm .inc => let (sty, idx) ← doCycle s.themeIdx 1; pure (some ⟨sty, idx⟩)
+  | .thm .dec => let (sty, idx) ← doCycle s.themeIdx (-1); pure (some ⟨sty, idx⟩)
   | _ => pure none
 
 instance : Exec State where exec := exec

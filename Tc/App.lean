@@ -48,9 +48,7 @@ def parseArgs (args : List String) : String × Array Char × Bool :=
 
 -- | Output table as plain text (for pipe mode)
 def outputTable (a : AppState) : IO Unit := do
-  match a.stk.cur.nav.tbl with
-  | .mem tbl => IO.println (MemTable.toText tbl)
-  | .adbc _ => pure ()  -- ADBC output not yet supported
+  IO.println (← a.stk.cur.nav.tbl.toText)
 
 -- | Run app with view, returns final AppState
 def runApp (v : View) (pipeMode testMode : Bool) (theme : Theme.State) (keys : Array Char) : IO AppState := do
@@ -75,11 +73,7 @@ def main (args : List String) : IO Unit := do
   let (path, keys, testMode) := parseArgs args
   Fzf.setTestMode testMode
   let pipeMode ← (! ·) <$> Term.isattyStdin
-  -- detect terminal bg, load theme
-  let dark ← Theme.isDark
-  let variant := if dark then "dark" else "light"
-  let styles ← Theme.load "theme.csv" "default" variant <|> pure Theme.defaultDark
-  let theme : Theme.State := ⟨styles, Theme.themeIdx "default" variant⟩
+  let theme ← Theme.State.init
   -- stdin mode if piped and no explicit path
   if pipeMode && path == "data.csv" then
     if let some a ← runMem (← MemTable.fromStdin) "stdin" true testMode theme keys then outputTable a

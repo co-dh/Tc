@@ -105,5 +105,17 @@ instance : RenderTable Table where
           0 (r1 - r0).toUInt64 adjCur.toUInt64 nav.curColIdx.toUInt64
           moveDir.toInt64 nav.selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
 
+-- | Format table as plain text (tab-separated)
+def toText : Table → IO String
+  | .mem t => pure (MemTable.toText t)
+  | .adbc t => do
+    let nr := t.nRows; let nc := t.nCols
+    let cols ← (Array.range nc).mapM fun c => t.getCol c 0 nr
+    let mut lines : Array String := #["\t".intercalate t.colNames.toList]
+    for r in [:nr] do
+      let row := cols.map fun col => (col.get r).toRaw
+      lines := lines.push ("\t".intercalate row.toList)
+    pure ("\n".intercalate lines.toList)
+
 end Table
 end Tc
