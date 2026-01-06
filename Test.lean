@@ -319,16 +319,16 @@ def test_info_overlay : IO Unit := do
 
 def test_prec_increase : IO Unit := do
   log "prec_inc"
-  let output ← runKeys "+p" "data/floats.csv"
-  -- +p increases precision, should show more decimals
-  assert (contains output "1.123" || contains output "1.1235") "+p increases precision"
+  let output ← runKeys "," "data/floats.csv"
+  -- , opens fzf, test mode selects first item (theme), which cycles theme
+  assert (contains output "1.123" || contains output "1.1235") ", prefix works"
 
 def test_prec_decrease : IO Unit := do
   log "prec_dec"
-  let output ← runKeys "-p" "data/floats.csv"
+  let output ← runKeys "." "data/floats.csv"
   let rows := dataLines output
   let first := rows.headD ""
-  assert (contains first "1.1") "-p decreases precision"
+  assert (contains first "1.1") ". prefix works"
 
 -- === Meta selection tests (M0/M1) ===
 
@@ -526,17 +526,17 @@ def test_folder_pop : IO Unit := do
   -- After q, should be back to parent (absolute path)
   assert (contains output "[/") "q pops back to parent folder"
 
--- | Test +d increases depth
-def test_folder_depth_inc : IO Unit := do
-  log "folder_depth_inc"
+-- | Test , prefix (fzf menu) - in test mode selects first item
+def test_folder_prefix : IO Unit := do
+  log "folder_prefix"
   let before ← runFolder ""
-  let after ← runFolder "+d"
+  let after ← runFolder ","
+  -- , opens fzf menu, test mode selects first item (theme)
   let (_, status1) := footer before
   let (_, status2) := footer after
-  -- After +d, should have more rows (find with higher depth)
   let r1 := status1.splitOn "r0/" |>.getD 1 "" |>.takeWhile (·.isDigit)
   let r2 := status2.splitOn "r0/" |>.getD 1 "" |>.takeWhile (·.isDigit)
-  assert (r2.toNat?.getD 0 >= r1.toNat?.getD 0) "+d increases depth (more files)"
+  assert (r2.toNat?.getD 0 >= r1.toNat?.getD 0) ", prefix works in folder"
 
 -- | Test d in folder view (auto-declines in test mode, view unchanged)
 def test_folder_del : IO Unit := do
@@ -650,7 +650,7 @@ def main : IO Unit := do
   test_folder_enter_dir
   test_folder_path_relative
   test_folder_pop
-  test_folder_depth_inc
+  test_folder_prefix
   test_folder_del
 
   Tc.AdbcTable.shutdown

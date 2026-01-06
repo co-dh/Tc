@@ -56,32 +56,32 @@
 Commands follow `Obj Verb` pattern. Grouped by: navigation, selection, options.
 
 ```
-                 │ I │ D │ E │ D │ D │
-                 │ N │ E │ N │ E │ U │
+                 │ D │ I │ E │ D │ D │
+                 │ E │ N │ N │ E │ U │
                  │ C │ C │ T │ L │ P │
 Char │ Obj       │ , │ . │ ~ │ d │ c │ Description
 ─────┴───────────┴───┴───┴───┴───┴───┴──────────────────
  --- Navigation ---
- r   │ row       │ j │ k │   │   │   │ Row cursor
- c   │ col       │ l │ h │ s │   │   │ Column cursor, ~=fzf jump
- v   │ vPage     │ J │ K │   │   │   │ Vertical page
- h   │ hPage     │ L │ H │   │   │   │ Horizontal page
- V   │ ver       │,j │.k │   │   │   │ Vertical end
- H   │ hor       │,l │.h │   │   │   │ Horizontal end
+ r   │ row       │ k │ j │   │   │   │ Row cursor
+ c   │ col       │ h │ l │ s │   │   │ Column cursor, ~=fzf jump
+ v   │ vPage     │ K │ J │   │   │   │ Vertical page
+ h   │ hPage     │ H │ L │   │   │   │ Horizontal page
+ V   │ ver       │Hom│End│   │   │   │ Vertical end
+ H   │ hor       │   │   │   │   │   │ Horizontal end
  --- Selection ---
- R   │ rowSel    │ / │ \ │ T │   │   │ Row: ,=search, .=filter, ~=toggle
- C   │ colSel    │ [ │ ] │ t │ d │   │ Col: ,=sortAsc, .=sortDesc, ~=toggle
- g   │ grp       │ n │ N │ ! │   │   │ Grp: ,=next, .=prev, ~=toggle
+ R   │ rowSel    │ \ │ / │ T │   │   │ Row: ,=filter, .=search, ~=toggle
+ C   │ colSel    │ ] │ [ │ t │ d │   │ Col: ,=sortDesc, .=sortAsc, ~=toggle
+ g   │ grp       │ N │ n │ ! │   │   │ Grp: ,=prev, .=next, ~=toggle
  --- Options ---
- s   │ stk       │   │ q │ S │   │ c │ View stack (q=pop, S=swap, c=dup)
- p   │ prec      │,p │.p │   │   │   │ Display precision
- w   │ width     │,w │.w │   │   │   │ Column width
- T   │ thm       │,T │.T │   │   │   │ Theme cycle
- i   │ info      │,i │.i │ I │   │   │ Info overlay toggle
+ s   │ stk       │ q │   │ S │   │ c │ View stack (q=pop, S=swap, c=dup)
+ p   │ prec      │.p │,p │   │   │   │ Display precision (,=dec, .=inc)
+ w   │ width     │.w │,w │   │   │   │ Column width (,=dec, .=inc)
+ T   │ thm       │.T │,T │   │   │   │ Theme cycle (,=prev, .=next)
+ i   │ info      │   │   │ I │   │   │ Info overlay toggle
  --- Views ---
- M   │ metaV     │ 1 │ 0 │ ⏎ │   │ M │ Meta view (c=push, .=selNull, ,=selSingle)
+ M   │ metaV     │ 0 │ 1 │ ⏎ │   │ M │ Meta view (c=push, ,=selNull, .=selSingle)
  F   │ freq      │   │   │ ⏎ │   │ F │ Freq view (c=push, ~=filter)
- D   │ fld       │,d │.d │ ⏎ │ d │ D │ Folder view (c=push, ,/.=depth, ~=enter, d=trash)
+ D   │ fld       │.d │,d │ ⏎ │ d │ D │ Folder view (c=push, ,/.=depth, ~=enter, d=trash)
 ```
 
 ## Structures

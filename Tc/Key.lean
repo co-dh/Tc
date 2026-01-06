@@ -66,22 +66,15 @@ private def navCmd (c : Char) (shift : Bool) : Option Cmd :=
                   else (if isRow then .row v else .col v))
     else none
 
--- +/- prefix targets with descriptions for fzf
+-- ,/. prefix targets: ,t=theme, ,p=precision, ,w=width, ,d=depth
 def prefixMenu : Array (Char × String × (Verb → Cmd)) := #[
-  ('t', "theme: cycle color theme",       .thm),
-  ('p', "precision: decimal places",      .prec),
-  ('w', "width: column width",            .width),
-  ('h', "hPage: horizontal page scroll",  .hPage),
-  ('v', "vPage: vertical page scroll",    .vPage),
-  ('H', "hor: jump to first/last column", .hor),
-  ('V', "ver: jump to top/bottom row",    .ver),
-  ('j', "bottom: jump to last row",       .ver),
-  ('k', "top: jump to first row",         .ver),
-  ('l', "end: jump to last column",       .hor),
-  ('d', "depth: folder find depth",       .fld)
+  ('t', "theme     : cycle color theme", .thm),
+  ('p', "precision : decimal places",    .prec),
+  ('w', "width     : column width",      .width),
+  ('d', "depth     : folder find depth", .fld)
 ]
 
--- +/- prefix targets: h=hPage, v=vPage, H=hor, V=ver, p=prec, w=width, t=thm, hjkl=ver/hor
+-- ,/. prefix targets
 private def prefixObjs : Array (Char × (Verb → Cmd)) :=
   prefixMenu.map fun (c, _, mk) => (c, mk)
 
