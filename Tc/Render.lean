@@ -139,3 +139,6 @@ def errorPopup (msg : String) : IO Unit := do
   Term.print x0.toUInt32 (y0 + 2).toUInt32 Term.brBlack Term.red (pad help)
   Term.present
   waitForQ
+
+-- | Compile-time check: errorPopup has correct signature
+#check (errorPopup : String → IO Unit)

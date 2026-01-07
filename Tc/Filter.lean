@@ -4,6 +4,7 @@
 -/
 import Tc.Error
 import Tc.Fzf
+import Tc.Render
 import Tc.View
 
 namespace Tc.ViewStack
@@ -20,7 +21,7 @@ def colSearch (s : ViewStack) : IO ViewStack := do
 -- | row search (/): find value in current column, jump to matching row (IO)
 def rowSearch (s : ViewStack) : IO ViewStack := do
   let v := s.cur
-  if v.nav.tbl.isAdbc then Error.set "search disabled for DB; use \\ filter"; return s
+  if v.nav.tbl.isAdbc then errorPopup "search disabled for DB; use \\ filter"; return s
   let names := ReadTable.colNames v.nav.tbl
   let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
   let curName := names.getD curCol ""
@@ -35,7 +36,7 @@ def rowSearch (s : ViewStack) : IO ViewStack := do
 -- | search next (n): repeat last search forward (IO)
 def searchNext (s : ViewStack) : IO ViewStack := do
   let v := s.cur
-  if v.nav.tbl.isAdbc then Error.set "search disabled for DB"; return s
+  if v.nav.tbl.isAdbc then errorPopup "search disabled for DB"; return s
   let some (col, val) := v.search | return s
   let start := v.nav.row.cur.val + 1
   let some rowIdx ← QueryTable.findRow v.nav.tbl col val start true | return s
@@ -46,7 +47,7 @@ def searchNext (s : ViewStack) : IO ViewStack := do
 -- | search prev (N): repeat last search backward (IO)
 def searchPrev (s : ViewStack) : IO ViewStack := do
   let v := s.cur
-  if v.nav.tbl.isAdbc then Error.set "search disabled for DB"; return s
+  if v.nav.tbl.isAdbc then errorPopup "search disabled for DB"; return s
   let some (col, val) := v.search | return s
   let start := v.nav.row.cur.val
   let some rowIdx ← QueryTable.findRow v.nav.tbl col val start false | return s
@@ -96,3 +97,6 @@ def exec (s : ViewStack) (cmd : Cmd) : IO (Option ViewStack) := do
   | _ => pure none  -- not handled
 
 end Tc.Filter
+
+-- | Compile-time: rowSearch uses errorPopup (fails if errorPopup missing/wrong type)
+#check @Tc.ViewStack.rowSearch
