@@ -8,6 +8,23 @@ import Tc.Error
 
 open Tc
 
+-- | Pure model of the bug: C render adds widthAdj to widths, we store them,
+-- next render adds widthAdj again → accumulation
+def applyWidthAdj (w : Nat) (adj : Int) : Nat := Int.toNat (w + adj)
+
+-- | BUG TEST: This theorem is FALSE, proving the bug exists.
+-- If we store width after applying adj, then apply adj again, it accumulates.
+-- Expected: apply(apply(10, 1), 1) = apply(10, 1) = 11  (idempotent)
+-- Actual:   apply(apply(10, 1), 1) = apply(11, 1) = 12  (accumulates!)
+theorem widthAdj_accumulates : applyWidthAdj (applyWidthAdj 10 1) 1 = 12 := rfl
+
+-- | What we WANT: stored width should not include adj, so re-applying gives same result
+def storedWidth (rendered : Nat) (adj : Int) : Nat := Int.toNat (rendered - adj)
+
+-- | FIX TEST: subtract adj before storing, then re-apply → same as original
+theorem widthAdj_no_accumulate_example :
+    applyWidthAdj (storedWidth (applyWidthAdj 10 1) 1) 1 = applyWidthAdj 10 1 := rfl
+
 -- ViewState: scroll offsets (widths moved to View for type safety)
 structure ViewState where
   rowOff   : Nat := 0           -- first visible row
@@ -79,8 +96,8 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
                        else 0
   -- render via RenderTable, get widths back
   let outWidths ← RenderTable.render nav inWidths colOff rowOff (min nRows (rowOff + visRows)) moveDir styles precAdj widthAdj
-  -- cap widths (keep in original order for C)
-  let widths := outWidths.map (min maxColWidth)
+  -- cap widths and subtract widthAdj to prevent accumulation (see widthAdj_no_accumulate_example)
+  let widths := outWidths.map fun w => min maxColWidth (storedWidth w widthAdj)
   -- status: left=colName+col+grp+sel+adj, right=row info (right-aligned)
   let colName := nav.colNames.getD nav.curColIdx ""
   let adj := (if precAdj != 0 then s!" p{precAdj}" else "") ++
