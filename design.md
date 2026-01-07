@@ -20,7 +20,7 @@
                             ▼
 ┌─────────────────────────────────────────────────────────┐
 │  View (existential wrapper)                             │
-│    hides table type, exposes exec/doRender              │
+│    hides table type, exposes update/doRender            │
 ├─────────────────────────────────────────────────────────┤
 │  ViewStack                                              │
 │    cur : View, parents : Array View                     │
@@ -31,13 +31,54 @@
 │  AppState (Dispatch.lean)                               │
 │    stk : ViewStack, vs : ViewState                      │
 │    theme : Theme.State, info : UI.Info.State            │
-│    exec chains: theme → info → stk → fld → meta → freq → ...│
+│    update chains: theme → info → stk → fld → meta → ...│
+└───────────────────────────┬─────────────────────────────┘
+                            │ returns Effect
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│  Effect (Effect.lean)                                   │
+│    none | quit | fzf* | query* | folder* | theme* | ...│
+└───────────────────────────┬─────────────────────────────┘
+                            │ interpreted by
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│  Runner (Runner.lean)                                   │
+│    runStackEffect : ViewStack → Effect → IO ViewStack   │
 └───────────────────────────┬─────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────┐
 │  App.mainLoop                                           │
-│    evToCmd → AppState.exec → View.doRender              │
+│    evToCmd → AppState.update → runEffect → render       │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Pure/IO Separation
+
+The architecture separates pure state logic from IO effects:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   Pure State Machine                     │
+│  update : AppState → Cmd → Option (AppState × Effect)   │
+│  - Nav.update (cursor, selection, group)                │
+│  - Theme.update (returns Effect.themeLoad)              │
+│  - Info.update (toggle visibility)                      │
+│  - View.update (prec/width, returns query effects)      │
+│  - Filter.update (returns fzf effects)                  │
+│  - Meta/Freq.update (returns query effects)             │
+│  - Folder.update (returns folder effects)               │
+└─────────────────────────────────────────────────────────┘
+                            │ Effect
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│                   IO Effect Runner                       │
+│  runEffect : AppState → Effect → IO AppState            │
+│  runStackEffect : ViewStack → Effect → IO ViewStack     │
+│  - fzf spawning (Fzf.lean)                              │
+│  - database queries (QueryTable)                        │
+│  - filesystem operations (Folder.lean)                  │
+│  - terminal rendering (Term.lean)                       │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -49,7 +90,8 @@
 |             | colWidths, cell    |                            |
 | ModifyTable | delRows, delCols   | Table mutations            |
 | RenderTable | render             | Render to terminal         |
-| Exec        | exec               | Execute Cmd, return state  |
+| Update      | update             | Pure: Cmd → (State, Effect)|
+| Exec        | exec               | IO: Cmd → IO State (compat)|
 
 ## Obj/Verb Matrix
 
@@ -90,6 +132,7 @@ Char │ Obj       │ , │ . │ ~ │ d │ c │ Description
 |--------------|----------------------------------------------|
 | Verb         | Action type: inc/dec/ent/del/dup (5 verbs)   |
 | Cmd          | Object + Verb command pattern                |
+| Effect       | IO operation descriptor (fzf/query/folder)   |
 | NavState     | Table + row/col cursors + selections + group |
 | NavAxis      | Generic axis: cur (Fin n) + sels (Array)     |
 | View         | Existential wrapper hiding table type        |
@@ -142,3 +185,52 @@ class ExecOp (α : Type) where
 - ADBC: `Op → PRQL string → SQL → DuckDB`
 - Mem: `Op → direct Array ops`
 - Kdb: `Op → q expression → IPC`
+
+## Effect DSL
+
+Effect describes IO operations without executing them. Pure `update` returns Effect; Runner interprets it.
+
+```lean
+inductive Effect where
+  | none                                    -- no effect
+  | quit                                    -- exit app
+  -- fzf (user selection)
+  | fzfCol                                  -- column picker: s
+  | fzfRow (col : Nat) (name : String)      -- row search: /
+  | fzfFilter (col : Nat) (name : String)   -- row filter: \
+  | fzfPrefix (verb : Verb)                 -- ,/. menu
+  -- query (database/table ops)
+  | queryMeta                               -- push meta view: M
+  | queryFreq (cols : Array Nat) (names : Array String)  -- push freq: F
+  | freqFilter (cols : Array String) (row : Nat)         -- filter from freq
+  | queryFilter (expr : String)             -- apply filter expr
+  | querySort (col : Nat) (grp : Array Nat) (asc : Bool) -- sort: [/]
+  | queryDel (col : Nat) (sels : Array Nat) (grp : Array String)  -- delete: d
+  -- folder (filesystem)
+  | folderPush                              -- push folder view: D
+  | folderEnter                             -- enter dir/file: Enter
+  | folderDel                               -- delete file: d
+  | folderDepth (delta : Int)               -- change find depth: ,d/.d
+  -- search
+  | findNext                                -- search next: n
+  | findPrev                                -- search prev: N
+  -- theme
+  | themeLoad (delta : Int)                 -- cycle theme: ,T/.T
+```
+
+**Functor pattern**: `update` maps `Cmd → Effect` (state passes through):
+
+```lean
+class Update (α : Type) where
+  update : α → Cmd → Option (α × Effect)
+
+-- Example: Folder.update
+def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
+  match cmd with
+  | .fld .dup => some (s, .folderPush)      -- Cmd.fld.dup → Effect.folderPush
+  | .fld .inc => some (s, .folderDepth 1)   -- Cmd.fld.inc → Effect.folderDepth 1
+  | .fld .dec => some (s, .folderDepth (-1))
+  | .colSel .del => some (s, .folderDel)
+  | .view .ent => some (s, .folderEnter)
+  | _ => none
+```

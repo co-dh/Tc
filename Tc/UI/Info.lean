@@ -1,7 +1,7 @@
 /-
   Info overlay: key hints display
 -/
-import Tc.Cmd
+import Tc.Effect
 import Tc.Term
 
 namespace Tc.UI.Info
@@ -12,13 +12,21 @@ structure State where
 
 namespace State
 
--- | Execute info command
-def exec (s : State) (cmd : Cmd) : IO (Option State) := pure <|
+-- | Pure update: returns (new state, effect)
+def update (s : State) (cmd : Cmd) : Option (State × Effect) :=
   match cmd with
-  | .info .inc => some { s with vis := true }
-  | .info .dec => some { s with vis := false }
-  | .info .ent => some { s with vis := !s.vis }
+  | .info .inc => some ({ s with vis := true }, .none)
+  | .info .dec => some ({ s with vis := false }, .none)
+  | .info .ent => some ({ s with vis := !s.vis }, .none)
   | _ => none
+
+instance : Update State where update := update
+
+-- | IO wrapper (for backward compat)
+def exec (s : State) (cmd : Cmd) : IO (Option State) := pure <|
+  match update s cmd with
+  | some (s', _) => some s'
+  | none => none
 
 instance : Exec State where exec := exec
 

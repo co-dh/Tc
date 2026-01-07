@@ -1,6 +1,7 @@
 /-
   App with ViewStack support
   CSV: pure Lean MemTable, other: ADBC (DuckDB+PRQL)
+  Uses pure update + effect runner pattern.
 -/
 import Tc.Data.ADBC.Meta
 import Tc.Data.Mem.Meta
@@ -8,6 +9,7 @@ import Tc.Data.Mem.Text
 import Tc.Fzf
 import Tc.Key
 import Tc.Render
+import Tc.Runner
 import Tc.Term
 import Tc.Theme
 import Tc.UI.Info
@@ -15,27 +17,60 @@ import Tc.Dispatch
 
 open Tc
 
+-- | Run effect on AppState, returns updated state
+partial def runEffect (a : AppState) (eff : Effect) : IO AppState := do
+  match eff with
+  | .none => pure a
+  | .quit => pure a  -- handled by caller
+  | .fzfPrefix verb =>
+    match ← Fzf.prefixCmd verb with
+    | some cmd =>
+      -- recursively process the command from fzf
+      match a.update cmd with
+      | some (a', eff') =>
+        if eff'.isNone then pure a'
+        else runEffect a' eff'
+      | none => pure a
+    | none => pure a
+  | .themeLoad delta =>
+    let t' ← a.theme.runEffect delta
+    pure { a with theme := t' }
+  | _ =>
+    -- delegate stack effects to Runner
+    let stk' ← Runner.runStackEffect a.stk eff
+    pure { a with stk := stk', vs := if eff.isNone then a.vs else .default }
+
 -- | Main loop. Returns final AppState for pipe mode output
+-- Uses pure update + effect runner pattern
 partial def mainLoop (a : AppState) (testMode : Bool) (keys : Array Char) : IO AppState := do
-  let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles  -- v' has updated widths
+  -- 1. Render (IO)
+  let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles
   let a := { a with stk := a.stk.setCur v', vs := vs' }
   renderTabLine a.stk.tabNames 0
   if a.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat
   Term.present
-  -- test mode: exit after render when keys exhausted
+
+  -- 2. Exit in test mode when keys exhausted
   if testMode && keys.isEmpty then IO.print (← Term.bufferStr); return a
+
+  -- 3. Get input (IO)
   let (ev, keys') ← nextEvent keys
-  -- Q=quit
   if isKey ev 'Q' then return a
-  -- ,/. prefix: fzf menu for object selection (,=dec, .=inc)
+
+  -- 4. Map event to cmd (,/. prefix handled specially)
   let cmd? ← if isKey ev ',' then Fzf.prefixCmd .dec
              else if isKey ev '.' then Fzf.prefixCmd .inc
              else pure (evToCmd ev none)
-  -- no cmd (unrecognized key): continue loop unchanged
   let some cmd := cmd? | mainLoop a testMode keys'
-  -- exec returns none when table becomes empty (e.g. delete all cols): quit
-  let some a' ← a.exec cmd | return a
-  mainLoop a' testMode keys'
+
+  -- 5. Pure update: returns (state', effect)
+  let some (a', eff) := a.update cmd | return a
+
+  -- 6. Run effect (IO)
+  let a'' ← if eff.isNone then pure a' else runEffect a' eff
+
+  -- 7. Loop
+  mainLoop a'' testMode keys'
 
 -- | Parse args: path, optional -c for key replay (test mode)
 def parseArgs (args : List String) : Option String × Array Char × Bool :=

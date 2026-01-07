@@ -280,7 +280,19 @@ def setDepth (s : ViewStack) (delta : Int) : IO (Option ViewStack) := do
       | none => pure (some s)  -- keep current if refresh fails
   | _ => pure none
 
--- | Execute folder commands
+-- | Pure update: returns Effect for IO operations
+def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
+  match cmd with
+  | .fld .dup => some (s, .folderPush)                          -- D: push folder view
+  | .fld .inc => some (s, .folderDepth 1)                       -- +d: increase depth
+  | .fld .dec => some (s, .folderDepth (-1))                    -- -d: decrease depth
+  | .colSel .del =>                                             -- d: delete files
+    if s.cur.vkind matches .fld _ _ then some (s, .folderDel) else none
+  | .view .ent =>                                               -- Enter: enter dir/file
+    if s.cur.vkind matches .fld _ _ then some (s, .folderEnter) else none
+  | _ => none
+
+-- | Execute folder commands (IO version for backward compat)
 def exec (s : ViewStack) (cmd : Cmd) : IO (Option ViewStack) :=
   match cmd with
   | .fld .dup => push s               -- D: push folder view

@@ -2,7 +2,7 @@
   View: wraps NavState + metadata for unified Table type
   Uses closed sum Table (Type 0) instead of existential (Type 1).
 -/
-import Tc.Nav
+import Tc.Effect
 import Tc.Render
 import Tc.Table
 import Tc.Data.Mem.Text
@@ -76,7 +76,28 @@ private def verbDelta (verb : Verb) : Int := if verb == .inc then 1 else -1
 private def preserve (v : View) (v' : Option View) : Option View :=
   v'.map fun x => { x with precAdj := v.precAdj, widthAdj := v.widthAdj }
 
--- | Execute Cmd, returns IO (Option View) (none if table becomes empty after del)
+-- | Pure update: returns (new view, effect). IO ops return Effect to defer.
+def update (v : View) (cmd : Cmd) (rowPg : Nat) : Option (View × Effect) :=
+  let n := v.nav; let names := ReadTable.colNames n.tbl
+  let curCol := colIdxAt n.grp names n.col.cur.val
+  match cmd with
+  -- pure: precision/width adjustment
+  | .prec verb  => some ({ v with precAdj := v.precAdj + verbDelta verb }, .none)
+  | .width verb => some ({ v with widthAdj := v.widthAdj + verbDelta verb }, .none)
+  -- effect: column delete (runner will execute and rebuild view)
+  | .colSel .del =>
+    let sels := n.col.sels.filterMap names.idxOf?
+    some (v, .queryDel curCol sels n.grp)
+  -- effect: sort (runner will execute and rebuild view)
+  | .colSel .inc => some (v, .querySort curCol (n.grp.filterMap names.idxOf?) true)
+  | .colSel .dec => some (v, .querySort curCol (n.grp.filterMap names.idxOf?) false)
+  -- pure: navigation
+  | _ => (NavState.exec cmd n rowPg colPageSize).map fun nav' => ({ v with nav := nav' }, .none)
+
+instance : Update View where update v cmd := update v cmd defaultRowPg
+  where defaultRowPg := 20  -- will be overridden by Runner with actual height
+
+-- | Execute Cmd, returns IO (Option View) (for backward compat)
 def exec (v : View) (cmd : Cmd) : IO (Option View) := do
   let n := v.nav; let names := ReadTable.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val

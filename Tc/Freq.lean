@@ -1,6 +1,7 @@
 /-
   Freq view: group by columns, count, pct, bar
   Returns MemTable sorted by Cnt descending.
+  Pure update returns Effect; Runner executes IO.
 -/
 import Tc.View
 import Tc.Data.Mem.Freq
@@ -48,7 +49,21 @@ def filter (s : ViewStack) : IO (Option ViewStack) := do
   let some v := View.fromTbl tbl' s'.cur.path 0 s'.cur.nav.grp 0 | return some s'
   return some (s'.push v)
 
--- | Execute freq command
+-- | Pure update: returns Effect for IO operations
+def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
+  let n := s.cur.nav; let names := ReadTable.colNames n.tbl
+  let curCol := colIdxAt n.grp names n.col.cur.val
+  let curName := names.getD curCol ""
+  let colNames := if n.grp.contains curName then n.grp else n.grp.push curName
+  let colIdxs := colNames.filterMap names.idxOf?
+  match cmd with
+  | .freq .dup => some (s, .queryFreq colIdxs colNames)  -- push freq view (IO)
+  | .view .ent => match s.cur.vkind with
+    | .freqV cols => some (s, .freqFilter cols s.cur.nav.row.cur.val)  -- filter (IO)
+    | _ => none
+  | _ => none
+
+-- | Execute freq command (IO version for backward compat)
 def exec (s : ViewStack) (cmd : Cmd) : IO (Option ViewStack) := do
   match cmd with
   | .freq .dup => (← push s).orElse (fun _ => some s) |> pure

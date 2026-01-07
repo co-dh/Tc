@@ -117,6 +117,6 @@ theorem parse_toString (c : Cmd) : Parse.parse? (toString c) = some c := by
 
 end Cmd
 
--- | Exec typeclass: handle Cmd, return updated state or none
+-- | Exec typeclass: handle Cmd, return updated state or none (IO version)
 class Exec (α : Type) where
   exec : α → Cmd → IO (Option α)

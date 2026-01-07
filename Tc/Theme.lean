@@ -2,7 +2,7 @@
   Theme: CSV-based color themes
   Format: theme,variant,name,fg,bg
 -/
-import Tc.Cmd
+import Tc.Effect
 import Tc.Term
 
 namespace Tc.Theme
@@ -128,11 +128,25 @@ def init : IO State := do
   let styles ← load "theme.csv" "default" variant <|> pure defaultDark
   pure ⟨styles, Theme.themeIdx "default" variant⟩
 
--- | Execute theme command
+-- | Pure update: returns Effect.themeLoad to defer IO
+def update (s : State) (cmd : Cmd) : Option (State × Effect) :=
+  match cmd with
+  | .thm .inc => some (s, .themeLoad 1)    -- runner will load and update
+  | .thm .dec => some (s, .themeLoad (-1))
+  | _ => none
+
+instance : Update State where update := update
+
+-- | Execute theme effect: load theme with delta
+def runEffect (s : State) (delta : Int) : IO State := do
+  let (sty, idx) ← doCycle s.themeIdx delta
+  pure ⟨sty, idx⟩
+
+-- | IO wrapper (for backward compat)
 def exec (s : State) (cmd : Cmd) : IO (Option State) := do
   match cmd with
-  | .thm .inc => let (sty, idx) ← doCycle s.themeIdx 1; pure (some ⟨sty, idx⟩)
-  | .thm .dec => let (sty, idx) ← doCycle s.themeIdx (-1); pure (some ⟨sty, idx⟩)
+  | .thm .inc => some <$> runEffect s 1
+  | .thm .dec => some <$> runEffect s (-1)
   | _ => pure none
 
 instance : Exec State where exec := exec

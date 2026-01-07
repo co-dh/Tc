@@ -7,7 +7,7 @@
 -/
 import Tc.Offset
 import Tc.Types
-import Tc.Cmd
+import Tc.Effect
 
 -- Clamp Fin by delta, staying in [0, n)
 namespace Fin
@@ -130,6 +130,11 @@ def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option
   | .colSel .ent => some { nav with col := { nav.col with sels := nav.col.sels.toggle nav.curColName } }
   | .grp .ent    => some { nav with grp := nav.grp.toggle nav.curColName }
   | _ => none  -- unhandled: .col .del, .colSel .sort*, .prec, .width, etc.
+
+-- | Pure update: wrap exec to return Effect
+def update (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat)
+    : Option (NavState nRows nCols t × Effect) :=
+  (exec cmd nav rowPg colPg).map (·, .none)
 
 end NavState
 

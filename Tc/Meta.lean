@@ -1,6 +1,7 @@
 /-
   Meta view: column statistics (name, type, count, distinct, null%, min, max)
   Returns MemTable with typed columns for proper sorting.
+  Pure update returns Effect; Runner executes IO.
 -/
 import Tc.View
 import Tc.Data.Mem.Meta
@@ -72,7 +73,16 @@ def setKey (s : ViewStack) : Option ViewStack :=
     | none => some s
   | none => some s
 
--- | Execute meta command
+-- | Pure update: returns Effect for IO operations, pure for selections
+def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
+  match cmd with
+  | .metaV .dup => some (s, .queryMeta)              -- push meta view (IO)
+  | .metaV .dec => some (sel s selNull, .none)       -- select null cols (pure)
+  | .metaV .inc => some (sel s selSingle, .none)     -- select single-val cols (pure)
+  | .view .ent => if s.cur.vkind == .colMeta then setKey s |>.map (·, .none) else none
+  | _ => none
+
+-- | Execute meta command (IO version for backward compat)
 def exec (s : ViewStack) (cmd : Cmd) : IO (Option ViewStack) := do
   match cmd with
   | .metaV .dup => (← push s).orElse (fun _ => some s) |> pure
