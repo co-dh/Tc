@@ -19,28 +19,14 @@ def write (tag msg : String) : IO Unit := do
   let h ← IO.FS.Handle.mk path .append
   h.putStrLn s!"[{←timestamp}] [{tag}] {msg}"
 
--- | Log debug message
-def debug (msg : String) : IO Unit := write "debug" msg
-
 -- | Log error message
 def error (msg : String) : IO Unit := write "error" msg
-
--- | Log timing in microseconds
-def timing (label : String) (us : Nat) : IO Unit := write "time" s!"{label}: {us}μs"
 
 end Log
 
 namespace Error
 
--- | Last error (for status bar display)
-initialize lastErr : IO.Ref String ← IO.mkRef ""
-
--- | Get and clear last error
-def pop : IO String := lastErr.modifyGet fun e => ("", e)
-
--- | Set last error (logs + stores for status bar)
-def set (msg : String) : IO Unit := do
-  Log.error msg
-  lastErr.set msg
+-- | Set error (logs to file)
+def set (msg : String) : IO Unit := Log.error msg
 
 end Error

@@ -47,12 +47,4 @@ opaque cellInt : @& QueryResult → UInt64 → UInt64 → IO Int
 @[extern "lean_qr_cell_float"]
 opaque cellFloat : @& QueryResult → UInt64 → UInt64 → IO Float
 
--- | Check if cell is null
-@[extern "lean_qr_cell_is_null"]
-opaque cellIsNull : @& QueryResult → UInt64 → UInt64 → IO Bool
-
--- | Get column widths (max of header and data)
-@[extern "lean_qr_col_widths"]
-opaque colWidths : @& QueryResult → IO (Array Nat)
-
 end Adbc

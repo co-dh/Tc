@@ -60,33 +60,11 @@ def Query.pipe (q : Query) (op : Op) : Query := { q with ops := q.ops.push op }
 
 infixl:65 " |> " => Query.pipe
 
--- | Builder helpers
+-- | Filter helper
 def Query.filter (q : Query) (expr : String) : Query := q.pipe (.filter expr)
-def Query.select (q : Query) (cols : Array String) : Query := q.pipe (.sel cols)
-def Query.derive1 (q : Query) (name expr : String) : Query := q.pipe (.derive #[(name, expr)])
-
--- | Aggregate query (group by keys, apply funcs to cols)
-def Query.agg (q : Query) (keys : Array String) (funcs : Array Agg) (cols : Array String) : Query :=
-  let aggs := funcs.flatMap fun f => cols.map fun c => (f, s!"{f.short}_{c}", c)
-  q.pipe (.group keys aggs)
-
--- | Build PRQL filter from column names and cell values
-def buildFilter (cols : Array String) (vals : Array Cell) : String :=
-  cols.mapIdx (fun i cn => s!"{quote cn} == {(vals.getD i .null).toPrql}")
-    |>.toList |> String.intercalate " && "
-
--- | Parse agg function name to Agg
-def Agg.parse : String → Option Agg
-  | "count" => some .count | "sum" => some .sum | "average" => some .avg
-  | "min" => some .min | "max" => some .max | "stddev" => some .stddev
-  | "dist" => some .dist | _ => none
 
 -- | PRQL function definitions (prepended to all queries)
 def funcs : String := include_str "funcs.prql"
-
--- | Theorems: freq PRQL includes required columns
-theorem funcs_has_pct : (funcs.splitOn "Pct").length > 1 := by native_decide
-theorem funcs_has_bar : (funcs.splitOn "Bar").length > 1 := by native_decide
 
 -- | Compile PRQL to SQL using prqlc CLI
 def compile (prql : String) : IO (Option String) := do
