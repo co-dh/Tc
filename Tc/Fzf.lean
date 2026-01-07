@@ -86,22 +86,10 @@ def buildFilterExpr (col : String) (vals : Array String) (result : String) : Str
     then s!"{col} {input}" else input
   else ""
 
--- | Show fzf menu for ,/. prefix commands, returns selected Cmd (,=dec, .=inc)
-def prefixCmd (verb : Verb) : IO (Option Cmd) := do
-  let prompt := if verb == .dec then "," else "."
-  -- Format: "t  theme     : ..." with key at start, space-padded
-  let items := prefixMenu.map fun (c, desc, _) => s!"{c}  {desc}"
-  let input := "\n".intercalate items.toList
-  match ← fzf #[s!"--prompt={prompt} "] input with
-  | some sel =>
-    let key := sel.toList.getD 0 ' '
-    pure (prefixMenu.findSome? fun (c, _, mk) => if c == key then some (mk verb) else none)
-  | none => pure none
-
 -- | Build fzf args for 1-char selection using jump mode
 -- jump-labels shows keys as labels, load:jump enters jump mode when list ready, jump:accept selects
 private def jumpArgs (keys : Array Char) : Array String :=
-  let labels := String.mk keys.toList
+  let labels := String.ofList keys.toList
   #[s!"--jump-labels={labels}", "--bind=load:jump,jump:accept"]
 
 -- | Extract first char from fzf selection (same as toList.getD 0)
@@ -119,20 +107,19 @@ theorem parse_comma_verb : (verbsFor 'r').find? (·.1 == selKey ",  up") = some 
 def cmdMode : IO (Option Cmd) := do
   -- step 1: select object (1-char select via jump mode)
   let objKeys := objMenu.map (·.1)
-  let objItems := objMenu.map fun (c, desc, _) => s!"{c}  {desc}"
+  let objItems := objMenu.map fun (_, desc, _) => desc  -- no prefix, jump label shows key
   let objInput := "\n".intercalate objItems.toList
   let some objSel ← fzf (#["--prompt=obj "] ++ jumpArgs objKeys) objInput | return none
-  let objKey := objSel.toList.getD 0 ' '
-  let some (_, _, mk) := objMenu.find? (·.1 == objKey) | return none
+  -- find by matching description (jump label not in output)
+  let some (objKey, _, mk) := objMenu.find? (·.2.1 == objSel) | return none
   -- step 2: select verb (1-char select via jump mode, context-sensitive)
   let verbs := verbsFor objKey
   if verbs.isEmpty then return none
   let verbKeys := verbs.map (·.1)
-  let verbItems := verbs.map fun (c, desc, _) => s!"{c}  {desc}"
+  let verbItems := verbs.map fun (_, desc, _) => desc  -- no prefix, jump label shows key
   let verbInput := "\n".intercalate verbItems.toList
   let some verbSel ← fzf (#["--prompt=verb "] ++ jumpArgs verbKeys) verbInput | return none
-  let verbKey := verbSel.toList.getD 0 ' '
-  let some (_, _, verb) := verbs.find? (·.1 == verbKey) | return none
+  let some (_, _, verb) := verbs.find? (·.2.1 == verbSel) | return none
   pure (some (mk verb))
 
 end Tc.Fzf

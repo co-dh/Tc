@@ -22,16 +22,6 @@ partial def runEffect (a : AppState) (eff : Effect) : IO AppState := do
   match eff with
   | .none => pure a
   | .quit => pure a  -- handled by caller
-  | .fzfPrefix verb =>
-    match ← Fzf.prefixCmd verb with
-    | some cmd =>
-      -- recursively process the command from fzf
-      match a.update cmd with
-      | some (a', eff') =>
-        if eff'.isNone then pure a'
-        else runEffect a' eff'
-      | none => pure a
-    | none => pure a
   | .themeLoad delta =>
     let t' ← a.theme.runEffect delta
     pure { a with theme := t' }
@@ -57,11 +47,9 @@ partial def mainLoop (a : AppState) (testMode : Bool) (keys : Array Char) : IO A
   let (ev, keys') ← nextEvent keys
   if isKey ev 'Q' then return a
 
-  -- 4. Map event to cmd (,/./space handled specially)
-  let cmd? ← if isKey ev ',' then Fzf.prefixCmd .dec
-             else if isKey ev '.' then Fzf.prefixCmd .inc
-             else if isKey ev ' ' then Fzf.cmdMode
-             else pure (evToCmd ev none)
+  -- 4. Map event to cmd (space → command mode)
+  let cmd? ← if isKey ev ' ' then Fzf.cmdMode
+             else pure (evToCmd ev)
   let some cmd := cmd? | mainLoop a testMode keys'
 
   -- 5. Pure update: returns (state', effect)

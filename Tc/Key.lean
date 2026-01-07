@@ -66,14 +66,6 @@ private def navCmd (c : Char) (shift : Bool) : Option Cmd :=
                   else (if isRow then .row v else .col v))
     else none
 
--- ,/. prefix targets: ,t=theme, ,p=precision, ,w=width, ,d=depth
-def prefixMenu : Array (Char × String × (Verb → Cmd)) := #[
-  ('t', "theme     : cycle color theme", .thm),
-  ('p', "precision : decimal places",    .prec),
-  ('w', "width     : column width",      .width),
-  ('d', "depth     : folder find depth", .fld)
-]
-
 -- | Object menu for command mode (space key)
 def objMenu : Array (Char × String × (Verb → Cmd)) := #[
   -- navigation
@@ -139,22 +131,21 @@ theorem cmdMode_r_dot : (objMenu.find? (·.1 == 'r')).bind (fun (_, _, mk) =>
 theorem cmdMode_r_comma : (objMenu.find? (·.1 == 'r')).bind (fun (_, _, mk) =>
     (verbsFor 'r').find? (·.1 == ',') |>.map (fun (_, _, v) => mk v)) = some (.row .dec) := by native_decide
 
--- ,/. prefix targets
-private def prefixObjs : Array (Char × (Verb → Cmd)) :=
-  prefixMenu.map fun (c, _, mk) => (c, mk)
+-- | cmdMode uses description matching: space w . → width wider → .inc
+-- Find by description (how cmdMode actually works)
+theorem cmdMode_w_wider : (objMenu.find? (·.2.1 == "width  : column width")).bind (fun (objKey, _, mk) =>
+    (verbsFor objKey).find? (·.2.1 == "wider") |>.map (fun (_, _, v) => mk v)) = some (.width .inc) := by native_decide
 
--- Convert Term.Event to Cmd
--- verbPfx: none = normal, some .inc = after +, some .dec = after -
-def evToCmd (ev : Term.Event) (verbPfx : Option Verb) : Option Cmd :=
+-- | space w , → width narrower → .dec
+theorem cmdMode_w_narrower : (objMenu.find? (·.2.1 == "width  : column width")).bind (fun (objKey, _, mk) =>
+    (verbsFor objKey).find? (·.2.1 == "narrower") |>.map (fun (_, _, v) => mk v)) = some (.width .dec) := by native_decide
+
+-- | Convert Term.Event to Cmd
+def evToCmd (ev : Term.Event) : Option Cmd :=
   if ev.type != Term.eventKey then none else
   let c := evToChar ev
   let shift := ev.mod &&& Term.modShift != 0
-  match verbPfx with
-  | some v =>
-    -- +/- prefix: map to hor/ver/prec/width objects
-    prefixObjs.findSome? fun (ch, mk) => if c.toLower == ch then some (mk v) else none
-  | none =>
-    navCmd c shift <|> lookup charCmds c <|> lookup keyCmds ev.key <|> lookup ctrlCmds ev.key
+  navCmd c shift <|> lookup charCmds c <|> lookup keyCmds ev.key <|> lookup ctrlCmds ev.key
 
 -- | Parse key notation: <ret> → \r, <C-d> → Ctrl-D, etc.
 def parseKeys (s : String) : String :=

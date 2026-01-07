@@ -15,7 +15,6 @@ inductive Effect where
   | fzfCol                                            -- column picker: s
   | fzfRow (colIdx : Nat) (colName : String)          -- row search: /
   | fzfFilter (colIdx : Nat) (colName : String)       -- row filter: \
-  | fzfPrefix (verb : Verb)                           -- ,/. menu
   -- query effects (database/table operations)
   | queryMeta                                         -- push meta view: M
   | queryFreq (cols : Array Nat) (colNames : Array String)  -- push freq view: F

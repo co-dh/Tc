@@ -118,14 +118,14 @@ Char │ Obj       │ , │ . │ ~ │ d │ c │ Description
  g   │ grp       │ N │ n │ ! │   │   │ Grp: ,=prev, .=next, ~=toggle
  --- Options ---
  s   │ stk       │ q │   │ S │   │ c │ View stack (q=pop, S=swap, c=dup)
- p   │ prec      │,p │.p │   │   │   │ Display precision (,=dec, .=inc)
- w   │ width     │,w │.w │   │   │   │ Column width (,=dec, .=inc)
- T   │ thm       │,T │.T │   │   │   │ Theme cycle (,=prev, .=next)
+ p   │ prec      │   │   │   │   │   │ Display precision (space p ,/.)
+ w   │ width     │   │   │   │   │   │ Column width (space w ,/.)
+ T   │ thm       │   │   │   │   │   │ Theme cycle (space T ,/.)
  i   │ info      │   │   │ I │   │   │ Info overlay toggle
  --- Views ---
  M   │ metaV     │ 0 │ 1 │ ⏎ │   │ M │ Meta view (c=push, ,=selNull, .=selSingle)
  F   │ freq      │   │   │ ⏎ │   │ F │ Freq view (c=push, ~=filter)
- D   │ fld       │,d │.d │ ⏎ │ d │ D │ Folder view (c=push, ,/.=depth, ~=enter, d=trash)
+ D   │ fld       │   │   │ ⏎ │ d │ D │ Folder view (c=push, space D ,/.=depth, ~=enter, d=trash)
 ```
 
 ## Structures
@@ -200,7 +200,6 @@ inductive Effect where
   | fzfCol                                  -- column picker: s
   | fzfRow (col : Nat) (name : String)      -- row search: /
   | fzfFilter (col : Nat) (name : String)   -- row filter: \
-  | fzfPrefix (verb : Verb)                 -- ,/. menu
   -- query (database/table ops)
   | queryMeta                               -- push meta view: M
   | queryFreq (cols : Array Nat) (names : Array String)  -- push freq: F
