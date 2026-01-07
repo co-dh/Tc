@@ -98,4 +98,41 @@ def prefixCmd (verb : Verb) : IO (Option Cmd) := do
     pure (prefixMenu.findSome? fun (c, _, mk) => if c == key then some (mk verb) else none)
   | none => pure none
 
+-- | Build fzf args for 1-char selection using jump mode
+-- jump-labels shows keys as labels, load:jump enters jump mode when list ready, jump:accept selects
+private def jumpArgs (keys : Array Char) : Array String :=
+  let labels := String.mk keys.toList
+  #[s!"--jump-labels={labels}", "--bind=load:jump,jump:accept"]
+
+-- | Extract first char from fzf selection (same as toList.getD 0)
+def selKey (s : String) : Char := s.toList.getD 0 ' '
+
+-- | Parsing verb selection: ".  down" → '.' (the verb key)
+theorem selKey_dot : selKey ".  down" = '.' := by native_decide
+theorem selKey_comma : selKey ",  up" = ',' := by native_decide
+
+-- | Full pipeline: if fzf returns ".  down", we get .inc verb, which with row = .row .inc (down)
+theorem parse_dot_verb : (verbsFor 'r').find? (·.1 == selKey ".  down") = some ('.', "down", .inc) := by native_decide
+theorem parse_comma_verb : (verbsFor 'r').find? (·.1 == selKey ",  up") = some (',', "up", .dec) := by native_decide
+
+-- | Command mode: space → select object → select verb → return Cmd
+def cmdMode : IO (Option Cmd) := do
+  -- step 1: select object (1-char select via jump mode)
+  let objKeys := objMenu.map (·.1)
+  let objItems := objMenu.map fun (c, desc, _) => s!"{c}  {desc}"
+  let objInput := "\n".intercalate objItems.toList
+  let some objSel ← fzf (#["--prompt=obj "] ++ jumpArgs objKeys) objInput | return none
+  let objKey := objSel.toList.getD 0 ' '
+  let some (_, _, mk) := objMenu.find? (·.1 == objKey) | return none
+  -- step 2: select verb (1-char select via jump mode, context-sensitive)
+  let verbs := verbsFor objKey
+  if verbs.isEmpty then return none
+  let verbKeys := verbs.map (·.1)
+  let verbItems := verbs.map fun (c, desc, _) => s!"{c}  {desc}"
+  let verbInput := "\n".intercalate verbItems.toList
+  let some verbSel ← fzf (#["--prompt=verb "] ++ jumpArgs verbKeys) verbInput | return none
+  let verbKey := verbSel.toList.getD 0 ' '
+  let some (_, _, verb) := verbs.find? (·.1 == verbKey) | return none
+  pure (some (mk verb))
+
 end Tc.Fzf

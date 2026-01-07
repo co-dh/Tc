@@ -74,6 +74,71 @@ def prefixMenu : Array (Char × String × (Verb → Cmd)) := #[
   ('d', "depth     : folder find depth", .fld)
 ]
 
+-- | Object menu for command mode (space key)
+def objMenu : Array (Char × String × (Verb → Cmd)) := #[
+  -- navigation
+  ('r', "row    : cursor up/down",       .row),
+  ('c', "col    : cursor left/right",    .col),
+  ('v', "vPage  : vertical page",        .vPage),
+  ('h', "hPage  : horizontal page",      .hPage),
+  ('V', "ver    : top/bottom",           .ver),
+  ('H', "hor    : first/last column",    .hor),
+  -- selection
+  ('R', "rowSel : filter/search/toggle", .rowSel),
+  ('C', "colSel : sort/toggle/delete",   .colSel),
+  ('g', "grp    : group prev/next",      .grp),
+  -- options
+  ('s', "stk    : view stack pop/swap",  .stk),
+  ('p', "prec   : decimal precision",    .prec),
+  ('w', "width  : column width",         .width),
+  ('T', "thm    : theme cycle",          .thm),
+  ('i', "info   : overlay toggle",       .info),
+  -- views
+  ('W', "view   : enter/confirm",        .view),
+  ('M', "metaV  : meta view",            .metaV),
+  ('F', "freq   : frequency view",       .freq),
+  ('D', "fld    : folder view",          .fld)
+]
+
+-- | Verb menu for command mode, context-sensitive per object
+def verbsFor (obj : Char) : Array (Char × String × Verb) :=
+  match obj with
+  -- navigation
+  | 'r' => #[(',', "up",    .dec), ('.', "down",  .inc)]
+  | 'c' => #[(',', "left",  .dec), ('.', "right", .inc), ('~', "fzf jump", .ent)]
+  | 'v' => #[(',', "page up",   .dec), ('.', "page down",  .inc)]
+  | 'h' => #[(',', "page left", .dec), ('.', "page right", .inc)]
+  | 'V' => #[(',', "top",    .dec), ('.', "bottom", .inc)]
+  | 'H' => #[(',', "first",  .dec), ('.', "last",   .inc)]
+  -- selection
+  | 'R' => #[(',', "filter", .dec), ('.', "search", .inc), ('~', "toggle", .ent)]
+  | 'C' => #[(',', "sort desc", .dec), ('.', "sort asc", .inc), ('~', "toggle", .ent), ('d', "delete", .del)]
+  | 'g' => #[(',', "prev match", .dec), ('.', "next match", .inc), ('~', "toggle group", .ent)]
+  -- options
+  | 's' => #[(',', "pop", .dec), ('~', "swap", .ent), ('c', "dup", .dup)]
+  | 'p' => #[(',', "less digits",  .dec), ('.', "more digits",  .inc)]
+  | 'w' => #[(',', "narrower",     .dec), ('.', "wider",        .inc)]
+  | 'T' => #[(',', "prev theme",   .dec), ('.', "next theme",   .inc)]
+  | 'i' => #[('~', "toggle info", .ent)]
+  -- views
+  | 'W' => #[('~', "enter/confirm", .ent)]
+  | 'M' => #[(',', "sel nulls", .dec), ('.', "sel singles", .inc), ('~', "enter", .ent), ('c', "push meta", .dup)]
+  | 'F' => #[('~', "filter", .ent), ('c', "push freq", .dup)]
+  | 'D' => #[(',', "depth--", .dec), ('.', "depth++", .inc), ('~', "enter", .ent), ('d', "trash", .del), ('c', "push folder", .dup)]
+  | _   => #[]
+
+-- | row '.' = down (.inc), row ',' = up (.dec)
+theorem verbsFor_row_dot_is_inc : (verbsFor 'r').find? (·.1 == '.') = some ('.', "down", .inc) := by native_decide
+theorem verbsFor_row_comma_is_dec : (verbsFor 'r').find? (·.1 == ',') = some (',', "up", .dec) := by native_decide
+
+-- | cmdMode: obj 'r' + verb '.' = .row .inc (down)
+theorem cmdMode_r_dot : (objMenu.find? (·.1 == 'r')).bind (fun (_, _, mk) =>
+    (verbsFor 'r').find? (·.1 == '.') |>.map (fun (_, _, v) => mk v)) = some (.row .inc) := by native_decide
+
+-- | cmdMode: obj 'r' + verb ',' = .row .dec (up)
+theorem cmdMode_r_comma : (objMenu.find? (·.1 == 'r')).bind (fun (_, _, mk) =>
+    (verbsFor 'r').find? (·.1 == ',') |>.map (fun (_, _, v) => mk v)) = some (.row .dec) := by native_decide
+
 -- ,/. prefix targets
 private def prefixObjs : Array (Char × (Verb → Cmd)) :=
   prefixMenu.map fun (c, _, mk) => (c, mk)

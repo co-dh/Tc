@@ -57,9 +57,10 @@ partial def mainLoop (a : AppState) (testMode : Bool) (keys : Array Char) : IO A
   let (ev, keys') ← nextEvent keys
   if isKey ev 'Q' then return a
 
-  -- 4. Map event to cmd (,/. prefix handled specially)
+  -- 4. Map event to cmd (,/./space handled specially)
   let cmd? ← if isKey ev ',' then Fzf.prefixCmd .dec
              else if isKey ev '.' then Fzf.prefixCmd .inc
+             else if isKey ev ' ' then Fzf.cmdMode
              else pure (evToCmd ev none)
   let some cmd := cmd? | mainLoop a testMode keys'
 

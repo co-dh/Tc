@@ -97,6 +97,8 @@ The architecture separates pure state logic from IO effects:
 
 Commands follow `Obj Verb` pattern. Grouped by: navigation, selection, options.
 
+**Command mode**: Press `space` to open fzf object picker, then fzf verb picker.
+
 ```
                  │ D │ I │ E │ D │ D │
                  │ E │ N │ N │ E │ U │
