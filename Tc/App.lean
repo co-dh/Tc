@@ -24,7 +24,7 @@ partial def runEffect (a : AppState) (eff : Effect) : IO AppState := do
   | .quit => pure a  -- handled by caller
   | .fzfCmd =>
     -- command mode: fzf object → fzf verb → execute resulting cmd
-    match ← Fzf.cmdMode with
+    match ← Fzf.cmdMode a.stk.cur.vkind with
     | some cmd =>
       match a.update cmd with
       | some (a', eff') => if eff'.isNone then pure a' else runEffect a' eff'

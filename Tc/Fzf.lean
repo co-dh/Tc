@@ -100,30 +100,31 @@ theorem selKey_dot : selKey ".  down" = '.' := by native_decide
 theorem selKey_comma : selKey ",  up" = ',' := by native_decide
 
 -- | Full pipeline: if fzf returns ".  down", we get .inc verb, which with row = .row .inc (down)
-theorem parse_dot_verb : (verbsFor 'r').find? (·.1 == selKey ".  down") = some ('.', "down", .inc) := by native_decide
-theorem parse_comma_verb : (verbsFor 'r').find? (·.1 == selKey ",  up") = some (',', "up", .dec) := by native_decide
+theorem parse_dot_verb : (verbsFor 'r' .tbl).find? (·.1 == selKey ".  down") = some ('.', "down", .inc) := by native_decide
+theorem parse_comma_verb : (verbsFor 'r' .tbl).find? (·.1 == selKey ",  up") = some (',', "up", .dec) := by native_decide
 
--- | Pure cmdMode: given fzf object/verb selections, compute resulting Cmd
-def cmdModePure (objSel verbSel : String) : Option Cmd :=
+-- | Pure cmdMode: given fzf object/verb selections and view kind, compute resulting Cmd
+def cmdModePure (objSel verbSel : String) (vk : ViewKind) : Option Cmd :=
   match objMenu.find? (·.2.1 == objSel) with
   | none => none
   | some (objKey, _, mk) =>
-    let verbs := verbsFor objKey
+    let verbs := verbsFor objKey vk
     match verbs.find? (·.2.1 == verbSel) with
     | none => none
     | some (_, _, verb) => some (mk verb)
 
 -- | w + wider → .width .inc
-theorem cmdModePure_w_wider : cmdModePure "width  : column width" "wider" = some (.width .inc) := by native_decide
+theorem cmdModePure_w_wider : cmdModePure "width  : column width" "wider" .tbl = some (.width .inc) := by native_decide
 -- | w + narrower → .width .dec
-theorem cmdModePure_w_narrower : cmdModePure "width  : column width" "narrower" = some (.width .dec) := by native_decide
+theorem cmdModePure_w_narrower : cmdModePure "width  : column width" "narrower" .tbl = some (.width .dec) := by native_decide
 -- | r + down → .row .inc
-theorem cmdModePure_r_down : cmdModePure "row    : cursor up/down" "down" = some (.row .inc) := by native_decide
+theorem cmdModePure_r_down : cmdModePure "row    : cursor up/down" "down" .tbl = some (.row .inc) := by native_decide
 -- | r + up → .row .dec
-theorem cmdModePure_r_up : cmdModePure "row    : cursor up/down" "up" = some (.row .dec) := by native_decide
+theorem cmdModePure_r_up : cmdModePure "row    : cursor up/down" "up" .tbl = some (.row .dec) := by native_decide
 
 -- | Command mode: space → select object → select verb → return Cmd
-def cmdMode : IO (Option Cmd) := do
+-- vk = current view kind, for context-sensitive verb filtering
+def cmdMode (vk : ViewKind) : IO (Option Cmd) := do
   -- step 1: select object (1-char select via jump mode)
   let objKeys := objMenu.map (·.1)
   let objItems := objMenu.map fun (_, desc, _) => desc  -- no prefix, jump label shows key
@@ -131,8 +132,8 @@ def cmdMode : IO (Option Cmd) := do
   let some objSel ← fzf (#["--prompt=obj "] ++ jumpArgs objKeys) objInput | return none
   -- find by matching description (jump label not in output)
   let some (objKey, _, mk) := objMenu.find? (·.2.1 == objSel) | return none
-  -- step 2: select verb (1-char select via jump mode, context-sensitive)
-  let verbs := verbsFor objKey
+  -- step 2: select verb (1-char select via jump mode, context-sensitive per view)
+  let verbs := verbsFor objKey vk
   if verbs.isEmpty then return none
   let verbKeys := verbs.map (·.1)
   let verbItems := verbs.map fun (_, desc, _) => desc  -- no prefix, jump label shows key

@@ -10,14 +10,6 @@ import Tc.Data.ADBC.Table
 
 namespace Tc
 
--- | View kind: how to render/interact
-inductive ViewKind where
-  | tbl                                  -- table view
-  | freqV (cols : Array String)          -- frequency view
-  | colMeta                              -- column metadata
-  | fld (path : String) (depth : Nat)    -- folder browser: path + find depth
-  deriving Inhabited, Repr, BEq
-
 -- | View: wraps NavState for unified Table type
 structure View where
   nRows : Nat

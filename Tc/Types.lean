@@ -117,3 +117,11 @@ def ModifyTable.del [ModifyTable α] (tbl : α) (cursor : Nat) (sels : Array Nat
 -- Sort table by group indices (asc) then cursor column
 def ModifyTable.sort [ModifyTable α] (tbl : α) (cursor : Nat) (grpIdxs : Array Nat) (asc : Bool) : IO α :=
   sortBy (grpIdxs.push cursor) asc tbl
+
+-- | View kind: how to render/interact (used by key mapping for context-sensitive verbs)
+inductive ViewKind where
+  | tbl                                  -- table view
+  | freqV (cols : Array String)          -- frequency view
+  | colMeta                              -- column metadata
+  | fld (path : String) (depth : Nat)    -- folder browser: path + find depth
+  deriving Inhabited, Repr, BEq

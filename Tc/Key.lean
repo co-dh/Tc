@@ -92,8 +92,8 @@ def objMenu : Array (Char × String × (Verb → Cmd)) := #[
   ('D', "fld    : folder view",          .fld)
 ]
 
--- | Verb menu for command mode, context-sensitive per object
-def verbsFor (obj : Char) : Array (Char × String × Verb) :=
+-- | Verb menu for command mode, context-sensitive per object and view kind
+def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
   match obj with
   -- navigation
   | 'r' => #[(',', "up",    .dec), ('.', "down",  .inc)]
@@ -115,30 +115,36 @@ def verbsFor (obj : Char) : Array (Char × String × Verb) :=
   -- views
   | 'W' => #[('~', "enter/confirm", .ent)]
   | 'M' => #[(',', "sel nulls", .dec), ('.', "sel singles", .inc), ('~', "enter", .ent), ('c', "push meta", .dup)]
-  | 'F' => #[('~', "filter", .ent), ('c', "push freq", .dup)]
+  | 'F' => match vk with
+    | .freqV _ => #[('~', "filter by row", .ent), ('c', "push freq", .dup)]
+    | _ => #[('c', "push freq", .dup)]
   | 'D' => #[(',', "depth--", .dec), ('.', "depth++", .inc), ('~', "enter", .ent), ('d', "trash", .del), ('c', "push folder", .dup)]
   | _   => #[]
 
 -- | row '.' = down (.inc), row ',' = up (.dec)
-theorem verbsFor_row_dot_is_inc : (verbsFor 'r').find? (·.1 == '.') = some ('.', "down", .inc) := by native_decide
-theorem verbsFor_row_comma_is_dec : (verbsFor 'r').find? (·.1 == ',') = some (',', "up", .dec) := by native_decide
+theorem verbsFor_row_dot_is_inc : (verbsFor 'r' .tbl).find? (·.1 == '.') = some ('.', "down", .inc) := by native_decide
+theorem verbsFor_row_comma_is_dec : (verbsFor 'r' .tbl).find? (·.1 == ',') = some (',', "up", .dec) := by native_decide
 
 -- | cmdMode: obj 'r' + verb '.' = .row .inc (down)
 theorem cmdMode_r_dot : (objMenu.find? (·.1 == 'r')).bind (fun (_, _, mk) =>
-    (verbsFor 'r').find? (·.1 == '.') |>.map (fun (_, _, v) => mk v)) = some (.row .inc) := by native_decide
+    (verbsFor 'r' .tbl).find? (·.1 == '.') |>.map (fun (_, _, v) => mk v)) = some (.row .inc) := by native_decide
 
 -- | cmdMode: obj 'r' + verb ',' = .row .dec (up)
 theorem cmdMode_r_comma : (objMenu.find? (·.1 == 'r')).bind (fun (_, _, mk) =>
-    (verbsFor 'r').find? (·.1 == ',') |>.map (fun (_, _, v) => mk v)) = some (.row .dec) := by native_decide
+    (verbsFor 'r' .tbl).find? (·.1 == ',') |>.map (fun (_, _, v) => mk v)) = some (.row .dec) := by native_decide
 
 -- | cmdMode uses description matching: space w . → width wider → .inc
 -- Find by description (how cmdMode actually works)
 theorem cmdMode_w_wider : (objMenu.find? (·.2.1 == "width  : column width")).bind (fun (objKey, _, mk) =>
-    (verbsFor objKey).find? (·.2.1 == "wider") |>.map (fun (_, _, v) => mk v)) = some (.width .inc) := by native_decide
+    (verbsFor objKey .tbl).find? (·.2.1 == "wider") |>.map (fun (_, _, v) => mk v)) = some (.width .inc) := by native_decide
 
 -- | space w , → width narrower → .dec
 theorem cmdMode_w_narrower : (objMenu.find? (·.2.1 == "width  : column width")).bind (fun (objKey, _, mk) =>
-    (verbsFor objKey).find? (·.2.1 == "narrower") |>.map (fun (_, _, v) => mk v)) = some (.width .dec) := by native_decide
+    (verbsFor objKey .tbl).find? (·.2.1 == "narrower") |>.map (fun (_, _, v) => mk v)) = some (.width .dec) := by native_decide
+
+-- | freq F: "filter by row" only in freqV, not in tbl
+theorem verbsFor_F_tbl_no_filter : (verbsFor 'F' .tbl).find? (·.2.1 == "filter by row") = none := by native_decide
+theorem verbsFor_F_freqV_has_filter : (verbsFor 'F' (.freqV #["x"])).find? (·.2.1 == "filter by row") = some ('~', "filter by row", .ent) := by native_decide
 
 -- | Convert Term.Event to Cmd
 def evToCmd (ev : Term.Event) : Option Cmd :=

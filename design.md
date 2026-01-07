@@ -124,7 +124,7 @@ Char │ Obj       │ , │ . │ ~ │ d │ c │ Description
  i   │ info      │   │   │ I │   │   │ Info overlay toggle
  --- Views ---
  M   │ metaV     │ 0 │ 1 │ ⏎ │   │ M │ Meta view (c=push, ,=selNull, .=selSingle)
- F   │ freq      │   │   │ ⏎ │   │ F │ Freq view (c=push, ~=filter)
+ F   │ freq      │   │   │ ⏎ │   │ F │ Freq view (c=push, ~=filter by row when in freq)
  D   │ fld       │   │   │ ⏎ │ d │ D │ Folder view (c=push, space D ,/.=depth, ~=enter, d=trash)
 ```
 
