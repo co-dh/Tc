@@ -47,7 +47,7 @@ partial def mainLoop (a : AppState) (testMode : Bool) (keys : Array Char) : IO A
   let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles
   let a := { a with stk := a.stk.setCur v', vs := vs' }
   renderTabLine a.stk.tabNames 0
-  if a.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat
+  if a.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat a.stk.cur.vkind
   Term.present
 
   -- 2. Exit in test mode when keys exhausted
