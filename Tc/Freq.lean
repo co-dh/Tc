@@ -58,7 +58,7 @@ def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
   let colIdxs := colNames.filterMap names.idxOf?
   match cmd with
   | .freq .dup => some (s, .queryFreq colIdxs colNames)  -- push freq view (IO)
-  | .view .ent => match s.cur.vkind with
+  | .freq .ent => match s.cur.vkind with  -- Enter and space F ~ both map to .freq .ent
     | .freqV cols => some (s, .freqFilter cols s.cur.nav.row.cur.val)  -- filter (IO)
     | _ => none
   | _ => none
@@ -67,7 +67,7 @@ def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
 def exec (s : ViewStack) (cmd : Cmd) : IO (Option ViewStack) := do
   match cmd with
   | .freq .dup => (← push s).orElse (fun _ => some s) |> pure
-  | .view .ent => match s.cur.vkind with
+  | .freq .ent => match s.cur.vkind with
     | .freqV _ => filter s
     | _ => pure none
   | _ => pure none

@@ -41,7 +41,6 @@ private def charCmds : Array (Char × Cmd) := #[
   ('M', .metaV .dup), ('F', .freq .dup),   -- M=meta, F=freq view (dup=constructor)
   ('D', .fld .dup),                        -- D=folder view (dup=constructor)
   ('0', .metaV .dec), ('1', .metaV .inc),  -- meta: 0=selNull, 1=selSingle
-  ('\r', .view .ent),  -- Enter: view-specific action
   ('s', .col .ent),        -- col search: fzf jump to column
   ('/', .rowSel .inc),     -- row search: fzf jump to row (vim-style)
   ('n', .grp .inc),        -- search next: repeat last search forward
@@ -86,7 +85,6 @@ def objMenu : Array (Char × String × (Verb → Cmd)) := #[
   ('T', "thm    : theme cycle",          .thm),
   ('i', "info   : overlay toggle",       .info),
   -- views
-  ('W', "view   : enter/confirm",        .view),
   ('M', "metaV  : meta view",            .metaV),
   ('F', "freq   : frequency view",       .freq),
   ('D', "fld    : folder view",          .fld)
@@ -113,7 +111,6 @@ def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
   | 'T' => #[(',', "prev theme",   .dec), ('.', "next theme",   .inc)]
   | 'i' => #[('~', "toggle info", .ent)]
   -- views
-  | 'W' => #[('~', "enter/confirm", .ent)]
   | 'M' => #[(',', "sel nulls", .dec), ('.', "sel singles", .inc), ('~', "enter", .ent), ('c', "push meta", .dup)]
   | 'F' => match vk with
     | .freqV _ => #[('~', "filter by row", .ent), ('c', "push freq", .dup)]
@@ -146,9 +143,18 @@ theorem cmdMode_w_narrower : (objMenu.find? (·.2.1 == "width  : column width"))
 theorem verbsFor_F_tbl_no_filter : (verbsFor 'F' .tbl).find? (·.2.1 == "filter by row") = none := by native_decide
 theorem verbsFor_F_freqV_has_filter : (verbsFor 'F' (.freqV #["x"])).find? (·.2.1 == "filter by row") = some ('~', "filter by row", .ent) := by native_decide
 
--- | Convert Term.Event to Cmd
-def evToCmd (ev : Term.Event) : Option Cmd :=
+-- | Enter key → context-specific command based on view kind
+def enterCmd (vk : ViewKind) : Option Cmd :=
+  match vk with
+  | .freqV _  => some (.freq .ent)   -- filter by row
+  | .colMeta  => some (.metaV .ent)  -- set group key
+  | .fld _ _  => some (.fld .ent)    -- enter dir/file
+  | .tbl      => none                -- no action in table view
+
+-- | Convert Term.Event to Cmd (view-aware for Enter key)
+def evToCmd (ev : Term.Event) (vk : ViewKind) : Option Cmd :=
   if ev.type != Term.eventKey then none else
+  if ev.key == Term.keyEnter then enterCmd vk else  -- context-sensitive Enter
   let c := evToChar ev
   let shift := ev.mod &&& Term.modShift != 0
   navCmd c shift <|> lookup charCmds c <|> lookup keyCmds ev.key <|> lookup ctrlCmds ev.key

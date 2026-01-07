@@ -1,6 +1,6 @@
 /-
   Folder: directory browser with configurable find depth
-  Commands: .fld .dup (push), .fld .inc/.dec (depth), .view .ent (enter)
+  Commands: .fld .dup (push), .fld .inc/.dec (depth), .fld .ent (enter)
 -/
 import Tc.Fzf
 import Tc.View
@@ -289,7 +289,7 @@ def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
   | .fld .dec => some (s, .folderDepth (-1))                    -- -d: decrease depth
   | .colSel .del =>                                             -- d: delete files
     if s.cur.vkind matches .fld _ _ then some (s, .folderDel) else none
-  | .view .ent =>                                               -- Enter: enter dir/file
+  | .fld .ent =>                                                -- Enter: enter dir/file
     if s.cur.vkind matches .fld _ _ then some (s, .folderEnter) else none
   | _ => none
 
@@ -301,7 +301,7 @@ def exec (s : ViewStack) (cmd : Cmd) : IO (Option ViewStack) :=
   | .fld .dec => setDepth s (-1)      -- -d: decrease depth
   | .colSel .del =>                   -- d: delete files in folder view
     if s.cur.vkind matches .fld _ _ then del s else pure none
-  | .view .ent =>                     -- Enter: only for fld views
+  | .fld .ent =>                      -- Enter: only for fld views
     if s.cur.vkind matches .fld _ _ then enter s else pure none
   | _ => pure none
 

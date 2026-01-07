@@ -60,7 +60,7 @@ partial def mainLoop (a : AppState) (testMode : Bool) (keys : Array Char) : IO A
     let a' ← runEffect a .fzfCmd
     mainLoop a' testMode keys'
   else
-    let some cmd := evToCmd ev | mainLoop a testMode keys'
+    let some cmd := evToCmd ev a.stk.cur.vkind | mainLoop a testMode keys'
     -- 5. Pure update: returns (state', effect)
     let some (a', eff) := a.update cmd | mainLoop a testMode keys'
     -- 6. Check for quit effect

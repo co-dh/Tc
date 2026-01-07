@@ -233,6 +233,6 @@ def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
   | .fld .inc => some (s, .folderDepth 1)   -- Cmd.fld.inc → Effect.folderDepth 1
   | .fld .dec => some (s, .folderDepth (-1))
   | .colSel .del => some (s, .folderDel)
-  | .view .ent => some (s, .folderEnter)
+  | .fld .ent => some (s, .folderEnter)
   | _ => none
 ```

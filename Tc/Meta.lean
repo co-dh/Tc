@@ -79,7 +79,7 @@ def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
   | .metaV .dup => some (s, .queryMeta)              -- push meta view (IO)
   | .metaV .dec => some (sel s selNull, .none)       -- select null cols (pure)
   | .metaV .inc => some (sel s selSingle, .none)     -- select single-val cols (pure)
-  | .view .ent => if s.cur.vkind == .colMeta then setKey s |>.map (·, .none) else none
+  | .metaV .ent => if s.cur.vkind == .colMeta then setKey s |>.map (·, .none) else none
   | _ => none
 
 -- | Execute meta command (IO version for backward compat)
@@ -88,7 +88,7 @@ def exec (s : ViewStack) (cmd : Cmd) : IO (Option ViewStack) := do
   | .metaV .dup => (← push s).orElse (fun _ => some s) |> pure
   | .metaV .dec => pure (some (sel s selNull))
   | .metaV .inc => pure (some (sel s selSingle))
-  | .view .ent => if s.cur.vkind == .colMeta then pure (setKey s) else pure none
+  | .metaV .ent => if s.cur.vkind == .colMeta then pure (setKey s) else pure none
   | _ => pure none
 
 end Tc.Meta
