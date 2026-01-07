@@ -70,6 +70,6 @@ def runStackEffect (s : ViewStack) (eff : Effect) : IO ViewStack := do
   | .folderDel => runOpt s (Folder.del s)
   | .folderDepth delta => runOpt s (Folder.setDepth s delta)
   -- other effects handled at AppState level
-  | .quit | .themeLoad _ => pure s
+  | .quit | .fzfCmd | .themeLoad _ => pure s
 
 end Tc.Runner

@@ -22,6 +22,14 @@ partial def runEffect (a : AppState) (eff : Effect) : IO AppState := do
   match eff with
   | .none => pure a
   | .quit => pure a  -- handled by caller
+  | .fzfCmd =>
+    -- command mode: fzf object → fzf verb → execute resulting cmd
+    match ← Fzf.cmdMode with
+    | some cmd =>
+      match a.update cmd with
+      | some (a', eff') => if eff'.isNone then pure a' else runEffect a' eff'
+      | none => pure a
+    | none => pure a
   | .themeLoad delta =>
     let t' ← a.theme.runEffect delta
     pure { a with theme := t' }
@@ -47,23 +55,20 @@ partial def mainLoop (a : AppState) (testMode : Bool) (keys : Array Char) : IO A
   let (ev, keys') ← nextEvent keys
   if isKey ev 'Q' then return a
 
-  -- 4. Map event to cmd (space → command mode)
-  let cmd? ← if isKey ev ' ' then Fzf.cmdMode
-             else pure (evToCmd ev)
-  let some cmd := cmd? | mainLoop a testMode keys'
-
-  -- 5. Pure update: returns (state', effect)
-  -- none = unhandled cmd, continue (don't quit)
-  let some (a', eff) := a.update cmd | mainLoop a testMode keys'
-
-  -- 6. Check for quit effect
-  if eff == .quit then return a'
-
-  -- 7. Run effect (IO)
-  let a'' ← if eff.isNone then pure a' else runEffect a' eff
-
-  -- 8. Loop
-  mainLoop a'' testMode keys'
+  -- 4. Handle space → fzfCmd effect, else map event to cmd
+  if isKey ev ' ' then
+    let a' ← runEffect a .fzfCmd
+    mainLoop a' testMode keys'
+  else
+    let some cmd := evToCmd ev | mainLoop a testMode keys'
+    -- 5. Pure update: returns (state', effect)
+    let some (a', eff) := a.update cmd | mainLoop a testMode keys'
+    -- 6. Check for quit effect
+    if eff == .quit then return a'
+    -- 7. Run effect (IO)
+    let a'' ← if eff.isNone then pure a' else runEffect a' eff
+    -- 8. Loop
+    mainLoop a'' testMode keys'
 
 -- | Parse args: path, optional -c for key replay (test mode)
 def parseArgs (args : List String) : Option String × Array Char × Bool :=

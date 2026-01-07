@@ -12,6 +12,7 @@ inductive Effect where
   | none                                              -- no effect
   | quit                                              -- exit app
   -- fzf effects (user selection via fzf)
+  | fzfCmd                                            -- command mode: space
   | fzfCol                                            -- column picker: s
   | fzfRow (colIdx : Nat) (colName : String)          -- row search: /
   | fzfFilter (colIdx : Nat) (colName : String)       -- row filter: \
