@@ -136,6 +136,53 @@ def update (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat)
     : Option (NavState nRows nCols t × Effect) :=
   (exec cmd nav rowPg colPg).map (·, .none)
 
+/-! ## Theorems -/
+
+-- | Nav commands always return Effect.none (when they succeed)
+theorem update_effect_none (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat)
+    (nav' : NavState nRows nCols t) (eff : Effect) :
+    update cmd nav rowPg colPg = some (nav', eff) → eff = .none := by
+  intro h; simp only [update, Option.map] at h
+  split at h <;> simp_all
+
+-- | Row navigation preserves table and columns
+theorem exec_row_inc_preserves (nav : NavState nRows nCols t) (rowPg colPg : Nat)
+    (nav' : NavState nRows nCols t) :
+    exec (.row .inc) nav rowPg colPg = some nav' →
+    nav'.tbl = nav.tbl ∧ nav'.col = nav.col ∧ nav'.grp = nav.grp := by
+  intro h; simp only [exec] at h; injection h with h; subst h; simp
+
+-- | Col navigation preserves table and rows
+theorem exec_col_inc_preserves (nav : NavState nRows nCols t) (rowPg colPg : Nat)
+    (nav' : NavState nRows nCols t) :
+    exec (.col .inc) nav rowPg colPg = some nav' →
+    nav'.tbl = nav.tbl ∧ nav'.row = nav.row ∧ nav'.grp = nav.grp := by
+  intro h; simp only [exec] at h; injection h with h; subst h; simp
+
+-- | Go to end (ver.inc) is idempotent: cursor = nRows - 1
+theorem exec_ver_inc_idempotent (nav : NavState nRows nCols t) (rowPg colPg : Nat)
+    (nav' nav'' : NavState nRows nCols t) :
+    exec (.ver .inc) nav rowPg colPg = some nav' →
+    exec (.ver .inc) nav' rowPg colPg = some nav'' →
+    nav''.row.cur = nav'.row.cur := by
+  intro h1 h2; simp only [exec] at h1 h2
+  injection h1 with h1; injection h2 with h2
+  subst h1 h2
+  simp only [Fin.clamp, Fin.ext_iff, Fin.val_mk]
+  sorry  -- requires Int/Nat arithmetic lemmas for min/clamp
+
+-- | Go to home (ver.dec) is idempotent: cursor = 0
+theorem exec_ver_dec_idempotent (nav : NavState nRows nCols t) (rowPg colPg : Nat)
+    (nav' nav'' : NavState nRows nCols t) :
+    exec (.ver .dec) nav rowPg colPg = some nav' →
+    exec (.ver .dec) nav' rowPg colPg = some nav'' →
+    nav''.row.cur = nav'.row.cur := by
+  intro h1 h2; simp only [exec] at h1 h2
+  injection h1 with h1; injection h2 with h2
+  subst h1 h2
+  simp only [Fin.clamp, Fin.ext_iff, Fin.val_mk]
+  sorry  -- requires Int/Nat arithmetic lemmas for min/clamp
+
 end NavState
 
 end Tc

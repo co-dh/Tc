@@ -472,6 +472,17 @@ def test_search_disabled_parquet : IO Unit := do
   -- In testMode popup is skipped; verify cursor didn't move (search was no-op)
   assert (contains status "r0/") "/ on parquet is no-op (search disabled)"
 
+-- === Enter key tests ===
+
+-- | Test Enter on parquet table view should NOT quit (bug: was quitting)
+def test_enter_no_quit_parquet : IO Unit := do
+  log "enter_no_quit_parquet"
+  -- Press Enter then j - if app quit on Enter, j won't move cursor
+  let output ← runKeys "<ret>j" "data/nyse/1.parquet"
+  let (_, status) := footer output
+  -- If app survived Enter, j moved to row 1
+  assert (contains status "r1/") "Enter on parquet should not quit (j moves to r1)"
+
 -- === Folder tests ===
 
 -- | Test folder view shows on no-arg invocation
@@ -642,6 +653,9 @@ def main : IO Unit := do
   test_search_prev
   test_col_search
   test_search_disabled_parquet
+
+  -- Enter key
+  test_enter_no_quit_parquet
 
   -- Folder
   test_folder_no_args

@@ -64,7 +64,8 @@ partial def mainLoop (a : AppState) (testMode : Bool) (keys : Array Char) : IO A
   let some cmd := cmd? | mainLoop a testMode keys'
 
   -- 5. Pure update: returns (state', effect)
-  let some (a', eff) := a.update cmd | return a
+  -- none = unhandled cmd, continue (don't quit)
+  let some (a', eff) := a.update cmd | mainLoop a testMode keys'
 
   -- 6. Run effect (IO)
   let a'' ← if eff.isNone then pure a' else runEffect a' eff

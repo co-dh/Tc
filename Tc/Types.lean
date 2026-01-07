@@ -14,6 +14,13 @@ def Array.join (arr : Array String) (sep : String) : String :=
 def Array.toggle [BEq α] (arr : Array α) (x : α) : Array α :=
   if arr.contains x then arr.filter (· != x) else arr.push x
 
+-- | Toggle same element twice: if x not in arr, returns arr
+-- (add x, then remove x = original)
+-- Proof sketch: arr.push(x).filter(≠x) = arr since x ∉ arr
+theorem Array.toggle_toggle_not_mem [BEq α] [LawfulBEq α] (arr : Array α) (x : α)
+    (h : !arr.contains x) : (arr.toggle x).toggle x = arr := by
+  sorry  -- requires Array.filter lemmas
+
 -- | Cell value (sum type)
 -- Uses Int64 to guarantee scalar representation (no MPZ boxing)
 inductive Cell where
