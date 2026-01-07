@@ -72,6 +72,10 @@ def fromFile (path : String) : IO (Option View) := do
 -- | Verb to delta: inc=+1, dec=-1
 private def verbDelta (verb : Verb) : Int := if verb == .inc then 1 else -1
 
+-- | verbDelta theorems: .inc → +1, .dec → -1
+theorem verbDelta_inc : verbDelta .inc = 1 := rfl
+theorem verbDelta_dec : verbDelta .dec = -1 := rfl
+
 -- | Preserve precAdj/widthAdj when recreating View
 private def preserve (v : View) (v' : Option View) : Option View :=
   v'.map fun x => { x with precAdj := v.precAdj, widthAdj := v.widthAdj }
@@ -96,6 +100,12 @@ def update (v : View) (cmd : Cmd) (rowPg : Nat) : Option (View × Effect) :=
 
 instance : Update View where update v cmd := update v cmd defaultRowPg
   where defaultRowPg := 20  -- will be overridden by Runner with actual height
+
+-- | width update: .inc adds 1, .dec subtracts 1
+theorem width_inc_adds (v : View) (rowPg : Nat) :
+    (update v (.width .inc) rowPg).map (fun p => p.1.widthAdj) = some (v.widthAdj + 1) := rfl
+theorem width_dec_subs (v : View) (rowPg : Nat) :
+    (update v (.width .dec) rowPg).map (fun p => p.1.widthAdj) = some (v.widthAdj - 1) := rfl
 
 -- | Execute Cmd, returns IO (Option View) (for backward compat)
 def exec (v : View) (cmd : Cmd) : IO (Option View) := do

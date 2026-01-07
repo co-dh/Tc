@@ -103,6 +103,25 @@ theorem selKey_comma : selKey ",  up" = ',' := by native_decide
 theorem parse_dot_verb : (verbsFor 'r').find? (·.1 == selKey ".  down") = some ('.', "down", .inc) := by native_decide
 theorem parse_comma_verb : (verbsFor 'r').find? (·.1 == selKey ",  up") = some (',', "up", .dec) := by native_decide
 
+-- | Pure cmdMode: given fzf object/verb selections, compute resulting Cmd
+def cmdModePure (objSel verbSel : String) : Option Cmd :=
+  match objMenu.find? (·.2.1 == objSel) with
+  | none => none
+  | some (objKey, _, mk) =>
+    let verbs := verbsFor objKey
+    match verbs.find? (·.2.1 == verbSel) with
+    | none => none
+    | some (_, _, verb) => some (mk verb)
+
+-- | w + wider → .width .inc
+theorem cmdModePure_w_wider : cmdModePure "width  : column width" "wider" = some (.width .inc) := by native_decide
+-- | w + narrower → .width .dec
+theorem cmdModePure_w_narrower : cmdModePure "width  : column width" "narrower" = some (.width .dec) := by native_decide
+-- | r + down → .row .inc
+theorem cmdModePure_r_down : cmdModePure "row    : cursor up/down" "down" = some (.row .inc) := by native_decide
+-- | r + up → .row .dec
+theorem cmdModePure_r_up : cmdModePure "row    : cursor up/down" "up" = some (.row .dec) := by native_decide
+
 -- | Command mode: space → select object → select verb → return Cmd
 def cmdMode : IO (Option Cmd) := do
   -- step 1: select object (1-char select via jump mode)

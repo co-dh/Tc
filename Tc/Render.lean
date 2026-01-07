@@ -78,10 +78,7 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
                        else if nav.curColIdx < view.lastCol then -1
                        else 0
   -- render via RenderTable, get widths back
-  let t0 ← IO.monoNanosNow
   let outWidths ← RenderTable.render nav inWidths colOff rowOff (min nRows (rowOff + visRows)) moveDir styles precAdj widthAdj
-  let t1 ← IO.monoNanosNow
-  Log.timing "render" ((t1 - t0) / 1000)
   -- cap widths (keep in original order for C)
   let widths := outWidths.map (min maxColWidth)
   -- status: left=colName+col+grp+sel+adj, right=row info (right-aligned)
