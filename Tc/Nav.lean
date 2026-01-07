@@ -58,12 +58,11 @@ def dispOrder (group : Array String) (names : Array String) : Array Nat :=
   gIdxs ++ (Array.range names.size).filter (!gIdxs.contains ·)
 
 -- dispOrder preserves size: gIdxs ⊆ range n, filter keeps n - gIdxs.size elements
--- Proof sketch: filterMap returns subset of [0,n), filter keeps exactly the complement
--- Full proof requires Finset partition lemma - deferred for TUI app
+-- Proof: gIdxs indices from group ∪ complement from range = full range
+-- Requires: Array.filterMap_subset, Array.filter_complement_partition
 theorem dispOrder_size (group : Array String) (names : Array String) :
     (dispOrder group names).size = names.size := by
-  simp only [dispOrder, Array.size_append]
-  sorry
+  sorry  -- deferred: requires Array partition lemmas
 
 -- Get column index at display position
 def colIdxAt (group : Array String) (names : Array String) (i : Nat) : Nat :=

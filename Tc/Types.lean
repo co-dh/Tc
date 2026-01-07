@@ -16,10 +16,12 @@ def Array.toggle [BEq α] (arr : Array α) (x : α) : Array α :=
 
 -- | Toggle same element twice: if x not in arr, returns arr
 -- (add x, then remove x = original)
--- Proof sketch: arr.push(x).filter(≠x) = arr since x ∉ arr
+-- Proof requires Array.filter lemmas not in stdlib:
+--   1. (arr.push x).contains x = true
+--   2. (arr.push x).filter (· != x) = arr when x ∉ arr
 theorem Array.toggle_toggle_not_mem [BEq α] [LawfulBEq α] (arr : Array α) (x : α)
     (h : !arr.contains x) : (arr.toggle x).toggle x = arr := by
-  sorry  -- requires Array.filter lemmas
+  sorry  -- deferred: requires Array.filter_push lemmas
 
 -- | Cell value (sum type)
 -- Uses Int64 to guarantee scalar representation (no MPZ boxing)

@@ -9,14 +9,26 @@ import Tc.View
 
 namespace Tc.ViewStack
 
+-- | Move row cursor to target index (pure helper)
+private def moveRowTo (s : ViewStack) (rowIdx : Nat) (search : Option (Nat × String) := none) : ViewStack :=
+  let v := s.cur
+  let delta : Int := rowIdx - v.nav.row.cur.val
+  let nav' := { v.nav with row := { v.nav.row with cur := v.nav.row.cur.clamp delta } }
+  s.setCur { v with nav := nav', search := search.orElse (fun _ => v.search) }
+
+-- | Move col cursor to target index (pure helper)
+private def moveColTo (s : ViewStack) (colIdx : Nat) : ViewStack :=
+  let v := s.cur
+  let delta : Int := colIdx - v.nav.col.cur.val
+  let nav' := { v.nav with col := { v.nav.col with cur := v.nav.col.cur.clamp delta } }
+  s.setCur { v with nav := nav' }
+
 -- | col search: fzf jump to column by name (IO version for backward compat)
 def colSearch (s : ViewStack) : IO ViewStack := do
   let v := s.cur; let names := ReadTable.colNames v.nav.tbl
   let dispNames := v.nav.grp ++ names.filter (!v.nav.grp.contains ·)
   let some idx ← Fzf.fzfIdx #["--prompt=Column: "] dispNames | return s
-  let delta : Int := idx - v.nav.col.cur.val
-  let nav' := { v.nav with col := { v.nav.col with cur := v.nav.col.cur.clamp delta } }
-  return s.setCur { v with nav := nav' }
+  return moveColTo s idx
 
 -- | row search (/): find value in current column, jump to matching row (IO)
 def rowSearch (s : ViewStack) : IO ViewStack := do
@@ -29,9 +41,7 @@ def rowSearch (s : ViewStack) : IO ViewStack := do
   let some result ← Fzf.fzf #[s!"--prompt=/{curName}: "] ("\n".intercalate vals.toList) | return s
   let start := v.nav.row.cur.val + 1
   let some rowIdx ← QueryTable.findRow v.nav.tbl curCol result start true | return s
-  let delta : Int := rowIdx - v.nav.row.cur.val
-  let nav' := { v.nav with row := { v.nav.row with cur := v.nav.row.cur.clamp delta } }
-  return s.setCur { v with nav := nav', search := some (curCol, result) }
+  return moveRowTo s rowIdx (some (curCol, result))
 
 -- | search next (n): repeat last search forward (IO)
 def searchNext (s : ViewStack) : IO ViewStack := do
@@ -40,9 +50,7 @@ def searchNext (s : ViewStack) : IO ViewStack := do
   let some (col, val) := v.search | return s
   let start := v.nav.row.cur.val + 1
   let some rowIdx ← QueryTable.findRow v.nav.tbl col val start true | return s
-  let delta : Int := rowIdx - v.nav.row.cur.val
-  let nav' := { v.nav with row := { v.nav.row with cur := v.nav.row.cur.clamp delta } }
-  return s.setCur { v with nav := nav' }
+  return moveRowTo s rowIdx
 
 -- | search prev (N): repeat last search backward (IO)
 def searchPrev (s : ViewStack) : IO ViewStack := do
@@ -51,9 +59,7 @@ def searchPrev (s : ViewStack) : IO ViewStack := do
   let some (col, val) := v.search | return s
   let start := v.nav.row.cur.val
   let some rowIdx ← QueryTable.findRow v.nav.tbl col val start false | return s
-  let delta : Int := rowIdx - v.nav.row.cur.val
-  let nav' := { v.nav with row := { v.nav.row with cur := v.nav.row.cur.clamp delta } }
-  return s.setCur { v with nav := nav' }
+  return moveRowTo s rowIdx
 
 -- | row filter (\): filter rows by PRQL expression, push filtered view (IO)
 def rowFilter (s : ViewStack) : IO ViewStack := do

@@ -30,36 +30,22 @@ def resetsVS (cmd : Cmd) : Bool :=
 def withStk (a : AppState) (cmd : Cmd) (s' : ViewStack) : AppState :=
   { a with stk := s', vs := if resetsVS cmd then .default else a.vs }
 
--- | Pure update: chain handlers, return (new state, effect)
+-- | Lift stack update to AppState (Kleisli helper for <|> chain)
+private def liftStk (a : AppState) (cmd : Cmd) (r : Option (ViewStack × Effect)) : Option (AppState × Effect) :=
+  r.map fun (s', eff) => (withStk a cmd s', eff)
+
+-- | Pure update: chain handlers with <|> (Alternative), return (new state, effect)
+-- Uses Kleisli-style composition: try each handler, first Some wins
 -- Priority: theme > info > stack > folder > meta > freq > filter > view
 def update (a : AppState) (cmd : Cmd) : Option (AppState × Effect) :=
-  -- theme
-  if let some (t', eff) := a.theme.update cmd
-  then some ({ a with theme := t' }, eff)
-  -- info
-  else if let some (i', eff) := a.info.update cmd
-  then some ({ a with info := i' }, eff)
-  -- stack ops
-  else if let some (s', eff) := ViewStack.update a.stk cmd
-  then some (withStk a cmd s', eff)
-  -- folder
-  else if let some (s', eff) := Folder.update a.stk cmd
-  then some (withStk a cmd s', eff)
-  -- meta
-  else if let some (s', eff) := Meta.update a.stk cmd
-  then some (withStk a cmd s', eff)
-  -- freq
-  else if let some (s', eff) := Freq.update a.stk cmd
-  then some (withStk a cmd s', eff)
-  -- filter
-  else if let some (s', eff) := Filter.update a.stk cmd
-  then some (withStk a cmd s', eff)
-  -- view (nav, prec, width, sort, delete)
-  else
-    let rowPg := 20  -- default, will use actual height in runner
-    match View.update a.stk.cur cmd rowPg with
-    | some (v', eff) => some (withStk a cmd (a.stk.setCur v'), eff)
-    | none => none
+  (a.theme.update cmd |>.map fun (t', eff) => ({ a with theme := t' }, eff))
+  <|> (a.info.update cmd |>.map fun (i', eff) => ({ a with info := i' }, eff))
+  <|> (liftStk a cmd (ViewStack.update a.stk cmd))
+  <|> (liftStk a cmd (Folder.update a.stk cmd))
+  <|> (liftStk a cmd (Meta.update a.stk cmd))
+  <|> (liftStk a cmd (Freq.update a.stk cmd))
+  <|> (liftStk a cmd (Filter.update a.stk cmd))
+  <|> (View.update a.stk.cur cmd 20 |>.map fun (v', eff) => (withStk a cmd (a.stk.setCur v'), eff))
 
 instance : Update AppState where update := update
 

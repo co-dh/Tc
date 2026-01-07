@@ -104,14 +104,10 @@ theorem parse_dot_verb : (verbsFor 'r' .tbl).find? (·.1 == selKey ".  down") = 
 theorem parse_comma_verb : (verbsFor 'r' .tbl).find? (·.1 == selKey ",  up") = some (',', "up", .dec) := by native_decide
 
 -- | Pure cmdMode: given fzf object/verb selections and view kind, compute resulting Cmd
+-- Uses >>= (bind) for Kleisli composition: find obj → find verb → construct Cmd
 def cmdModePure (objSel verbSel : String) (vk : ViewKind) : Option Cmd :=
-  match objMenu.find? (·.2.1 == objSel) with
-  | none => none
-  | some (objKey, _, mk) =>
-    let verbs := verbsFor objKey vk
-    match verbs.find? (·.2.1 == verbSel) with
-    | none => none
-    | some (_, _, verb) => some (mk verb)
+  objMenu.find? (·.2.1 == objSel) >>= fun (objKey, _, mk) =>
+    (verbsFor objKey vk).find? (·.2.1 == verbSel) |>.map fun (_, _, verb) => mk verb
 
 -- | w + wider → .width .inc
 theorem cmdModePure_w_wider : cmdModePure "width  : column width" "wider" .tbl = some (.width .inc) := by native_decide
