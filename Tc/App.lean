@@ -67,10 +67,13 @@ partial def mainLoop (a : AppState) (testMode : Bool) (keys : Array Char) : IO A
   -- none = unhandled cmd, continue (don't quit)
   let some (a', eff) := a.update cmd | mainLoop a testMode keys'
 
-  -- 6. Run effect (IO)
+  -- 6. Check for quit effect
+  if eff == .quit then return a'
+
+  -- 7. Run effect (IO)
   let a'' ← if eff.isNone then pure a' else runEffect a' eff
 
-  -- 7. Loop
+  -- 8. Loop
   mainLoop a'' testMode keys'
 
 -- | Parse args: path, optional -c for key replay (test mode)

@@ -57,6 +57,7 @@ def toMemTable (output : String) : Except String MemTable := MemTable.fromTsv ou
 
 -- | View file with bat (if available) or less
 def viewFile (path : String) : IO Unit := do
+  if ← Fzf.getTestMode then return  -- skip pager in test mode
   Term.shutdown  -- restore terminal before spawning pager
   let hasBat ← IO.Process.output { cmd := "which", args := #["bat"] }
   if hasBat.exitCode == 0 then

@@ -41,3 +41,7 @@ lean_exe tc where
 lean_exe test where
   root := `Test
 
+-- | Pure tests (compile-time checks via #guard)
+lean_lib PureTest where
+  roots := #[`PureTest]
+

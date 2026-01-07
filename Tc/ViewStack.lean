@@ -6,10 +6,13 @@ import Tc.View
 namespace Tc.ViewStack
 
 -- | Pure update: returns (new stack, effect)
+-- q on empty stack → quit
 def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
   match cmd with
   | .stk .inc | .stk .dup => some (s.dup, .none)
-  | .stk .dec => s.pop.map (·, .none)
+  | .stk .dec => match s.pop with
+    | some s' => some (s', .none)
+    | none => some (s, .quit)  -- can't pop → quit
   | .stk .ent => some (s.swap, .none)
   | _ => none
 

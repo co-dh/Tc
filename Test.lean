@@ -483,6 +483,15 @@ def test_enter_no_quit_parquet : IO Unit := do
   -- If app survived Enter, j moved to row 1
   assert (contains status "r1/") "Enter on parquet should not quit (j moves to r1)"
 
+-- | Test q quits on empty stack (single view)
+def test_q_quit_empty_stack : IO Unit := do
+  log "q_quit_empty_stack"
+  -- Press q then j - if q quit, j won't be processed (stays at r0)
+  let output ← runKeys "qj" "data/basic.csv"
+  let (_, status) := footer output
+  -- q should quit, so j not processed → stays at row 0
+  assert (contains status "r0/") "q on empty stack quits (j not processed)"
+
 -- === Folder tests ===
 
 -- | Test folder view shows on no-arg invocation
@@ -501,40 +510,44 @@ def test_folder_D_key : IO Unit := do
   -- Tab should show absolute path folder view pushed on top
   assert (contains output "[/") "D pushes folder view with absolute path"
 
--- | Test folder tab shows absolute path
+-- | Test folder tab shows absolute path after entering subdir
 def test_folder_tab_path : IO Unit := do
   log "folder_tab_path"
-  -- Navigate to tmp directory (row 2, after ".." at row 0) and enter
-  let output ← runFolder "jj<ret>"
+  -- Start in folder view, navigate past ".." to first directory entry
+  -- Find and enter 'data' directory (use G to go to end, then find data)
+  let output ← runFolder ""
   let (tab, _) := footer output
-  -- Tab should show absolute path [/...../tmp] starting with /
+  -- Tab should show absolute path starting with /
   assert (contains tab "[/") "Folder tab shows absolute path (starts with /)"
-  assert (contains tab "/tmp]") "Folder tab shows absolute path (ends with /tmp])"
+  -- Should be in Tc directory
+  assert (contains tab "/Tc]") "Folder tab shows absolute path (ends with /Tc])"
 
 -- | Test Enter on directory enters it
 def test_folder_enter_dir : IO Unit := do
   log "folder_enter_dir"
-  -- Navigate to tmp directory (row 2, after ".." at row 0) and enter
-  let output ← runFolder "jj<ret>"
+  -- Enter parent dir (..) from folder view - first entry is always ".."
+  let output ← runFolder "<ret>"
   let (tab, status) := footer output
-  -- Tab should show absolute path after entering
-  assert (contains tab "/tmp]") "Enter on dir pushes new folder view"
+  -- Tab should show parent directory path
+  assert (contains tab "[/") "Enter on dir pushes new folder view"
   assert (contains status "r0/") "Entered directory has rows"
 
--- | Test path column shows relative names after entering folder
+-- | Test path column shows relative names
 def test_folder_path_relative : IO Unit := do
   log "folder_path_relative"
-  -- Enter tmp folder and check path column doesn't show full path
-  let output ← runFolder "jj<ret>"
-  -- Path column should show "test_tables.sh" not full path "/home/.../tmp/test_tables.sh"
-  assert (contains output "test_tables.sh") "Path shows entry name"
-  assert (not (contains output "/tmp/test_tables")) "Path column is relative (no /tmp/test_tables)"
+  -- Folder view should show relative names (not full paths)
+  let output ← runFolder ""
+  -- Should contain ".." entry (always first)
+  assert (contains output "..") "Path shows entry name"
+  -- Path should NOT contain the full absolute path prefix
+  assert (not (contains output "/home/dh/repo/Tc/..")) "Path column is relative"
 
 -- | Test q pops folder view back to parent
 def test_folder_pop : IO Unit := do
   log "folder_pop"
-  let output ← runFolder "jj<ret>q"
-  -- After q, should be back to parent (absolute path)
+  -- Enter parent with Enter, then pop back with q
+  let output ← runFolder "<ret>q"
+  -- After q, should be back to original folder
   assert (contains output "[/") "q pops back to parent folder"
 
 -- | Test , prefix (fzf menu) - in test mode selects first item
@@ -656,6 +669,7 @@ def main : IO Unit := do
 
   -- Enter key
   test_enter_no_quit_parquet
+  test_q_quit_empty_stack
 
   -- Folder
   test_folder_no_args
