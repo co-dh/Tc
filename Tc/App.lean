@@ -1,9 +1,10 @@
 /-
   App with ViewStack support
-  CSV: pure Lean MemTable, other: ADBC (DuckDB+PRQL)
+  CSV: pure Lean MemTable, other: ADBC (DuckDB+PRQL), kdb via IPC
   Uses pure update + effect runner pattern.
 -/
 import Tc.Data.ADBC.Meta
+import Tc.Data.Kdb.Table
 import Tc.Data.Mem.Meta
 import Tc.Data.Mem.Text
 import Tc.Fzf
@@ -16,6 +17,13 @@ import Tc.UI.Info
 import Tc.Dispatch
 
 open Tc
+
+-- | Parse host:port string (default port 5001)
+def parseHostPort (s : String) : String × UInt16 :=
+  match s.splitOn ":" with
+  | [h, p] => (h, p.toNat!.toUInt16)
+  | [h] => (h, 5001)
+  | _ => ("localhost", 5001)
 
 -- | Run effect on AppState, returns updated state
 partial def runEffect (a : AppState) (eff : Effect) : IO AppState := do
@@ -125,6 +133,12 @@ def main (args : List String) : IO Unit := do
       match ← Folder.mkView "." 1 with
       | some v => let _ ← runApp v pipeMode testMode theme keys
       | none => IO.eprintln "Cannot list directory"
+    else if path.startsWith "kdb://" then  -- kdb://host:port/table
+      match ← KdbTable.fromUrl path with
+      | some t => match View.fromTbl (.kdb t) path with
+        | some v => let _ ← runApp v pipeMode testMode theme keys; KdbTable.disconnect
+        | none => IO.eprintln "Empty kdb table"
+      | none => IO.eprintln "Cannot open kdb table"
     else if path.endsWith ".txt" then  -- txt: parse as space-separated text
       let _ ← runMem (MemTable.fromText (← IO.FS.readFile path)) path pipeMode testMode theme keys
     else  -- csv/parquet: use View.fromFile

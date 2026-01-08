@@ -2,7 +2,7 @@
 LEAN_HOME := $(shell ~/.elan/bin/lean --print-prefix)
 CFLAGS := -g -fPIC -I$(LEAN_HOME)/include
 
-all: libtermbox2.a libadbcshim.a libtermshim.a
+all: libtermbox2.a libadbcshim.a libtermshim.a libkdbshim.a
 
 # termbox2: use -std=c11 to avoid C23 sscanf redirect
 libtermbox2.a: termbox2.c termbox2.h
@@ -15,8 +15,14 @@ libadbcshim.a: adbc_shim.o
 libtermshim.a: term_shim.o
 	ar rcs $@ $<
 
+libkdbshim.a: kdb_shim.o kdb/c.o
+	ar rcs $@ $^
+
 term_shim.o: term_shim.c termbox2.h
 	$(CC) $(CFLAGS) -c $< -o $@
+
+kdb_shim.o: kdb_shim.c kdb/k.h
+	$(CC) $(CFLAGS) -I. -c $< -o $@
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
