@@ -133,7 +133,7 @@ def fromUrl (url : String) : IO (Option KdbTable) := do
   | none => pure none
   | some (host, port, tbl) =>
     let ok ← connect host port
-    if !ok then IO.eprintln s!"kdb: cannot connect {host}:{port}"; return none
+    if !ok then return none
     load tbl
 
 -- | Sort by columns
