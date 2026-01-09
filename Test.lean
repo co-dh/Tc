@@ -9,47 +9,29 @@ namespace Test
 -- | Log to file
 def log (msg : String) : IO Unit := do
   let h ← IO.FS.Handle.mk "test.log" .append
-  h.putStrLn msg
-  h.flush
+  h.putStrLn msg; h.flush
 
--- | Run tc with -c keys and capture rendered output
-def runKeys (keys : String) (file : String) : IO String := do
+-- | Run tc with keys, optional file
+def run (keys : String) (file : String := "") : IO String := do
+  let f := if file.isEmpty then "" else s!"\"{file}\" "
   log s!"  spawn: {file} keys={keys}"
   let child ← IO.Process.spawn {
     cmd := "bash"
-    args := #["-c", s!"script -q -c 'stty rows 24 cols 80; .lake/build/bin/tc \"{file}\" -c \"{keys}\"' /dev/null | ansi2txt | tail -24"]
-    stdin := .null
-    stdout := .piped
-    stderr := .piped
+    args := #["-c", s!"script -q -c 'stty rows 24 cols 80; .lake/build/bin/tc {f}-c \"{keys}\"' /dev/null | ansi2txt | tail -24"]
+    stdin := .null, stdout := .piped, stderr := .piped
     env := #[("TERM", "xterm")]
   }
-  log "  spawned"
   let stdout ← child.stdout.readToEnd
-  log "  read"
   let _ ← child.wait
   log "  done"
-  return stdout
+  pure stdout
 
--- | Run tc without file (folder view mode) with -c keys
-def runFolder (keys : String) : IO String := do
-  log s!"  spawn: (folder) keys={keys}"
-  let child ← IO.Process.spawn {
-    cmd := "bash"
-    args := #["-c", s!"script -q -c 'stty rows 24 cols 80; .lake/build/bin/tc -c \"{keys}\"' /dev/null | ansi2txt | tail -24"]
-    stdin := .null
-    stdout := .piped
-    stderr := .piped
-    env := #[("TERM", "xterm")]
-  }
-  log "  spawned"
-  let stdout ← child.stdout.readToEnd
-  log "  read"
-  let _ ← child.wait
-  log "  done"
-  return stdout
+-- | Aliases for backward compat
+def runKeys (keys file : String) : IO String := run keys file
+def runFolder (keys : String) : IO String := run keys
 
--- | Check if line has content (letters/digits)
-def isContent (l : String) : Bool := l.any (fun c => c.isAlpha || c.isDigit)
+-- | Check if line has content
+def isContent (l : String) : Bool := l.any fun c => c.isAlpha || c.isDigit
 
 -- | Check string contains substring
 def contains (s sub : String) : Bool := (s.splitOn sub).length > 1
@@ -72,10 +54,9 @@ def dataLines (output : String) : List String :=
   let n := lines.length
   lines.drop 1 |>.take (n - 3)
 
--- | Assert with message
-def assert (cond : Bool) (msg : String) : IO Unit := do
-  if cond then IO.println s!"✓ {msg}"
-  else throw (IO.userError s!"✗ {msg}")
+-- | Assert with message (silent on success)
+def assert (cond : Bool) (msg : String) : IO Unit :=
+  unless cond do throw (IO.userError msg)
 
 -- | Check string ends with substring
 def endsWith (s sub : String) : Bool := s.endsWith sub

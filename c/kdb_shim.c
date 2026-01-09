@@ -201,27 +201,41 @@ lean_obj_res lean_kdb_col_type(b_lean_obj_arg qr_obj, uint64_t col, lean_obj_arg
     return lean_io_result_mk_ok(lean_box_uint32((uint32_t)type_char(column->t)));
 }
 
+/* === Days in month (handles leap years) === */
+static int days_in_month(int y, int m) {
+    static const int dm[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    if (m == 2 && (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0))) return 29;
+    return dm[m - 1];
+}
+
+/* === Convert days since 2000.01.01 to yyyy.mm.dd === */
+static void days_to_ymd(I d, int* y, int* m, int* day) {
+    *y = 2000; *m = 1; *day = 1;
+    d += 1;  /* kdb day 0 = 2000.01.01 */
+    while (d > 365 + (*y % 4 == 0 && (*y % 100 != 0 || *y % 400 == 0))) {
+        d -= 365 + (*y % 4 == 0 && (*y % 100 != 0 || *y % 400 == 0));
+        (*y)++;
+    }
+    while (d > days_in_month(*y, *m)) { d -= days_in_month(*y, *m); (*m)++; }
+    *day = d;
+}
+
 /* === Format timestamp (ns from 2000.01.01) === */
 static void format_timestamp(J ns, char* buf, size_t sz) {
-    // Days since 2000.01.01
     J day = ns / 86400000000000LL;
     J rem = ns % 86400000000000LL;
     if (rem < 0) { day--; rem += 86400000000000LL; }
-
-    // Convert to year/month/day (simplified)
-    J y = 2000 + day / 365;  // approximate
-    snprintf(buf, sz, "%lld.%02lld:%02lld:%02lld",
-             (long long)(day + 730119),  // days since epoch as simple number
+    int y, m, d; days_to_ymd((I)day, &y, &m, &d);
+    snprintf(buf, sz, "%04d.%02d.%02dT%02lld:%02lld:%02lld", y, m, d,
              (long long)(rem / 3600000000000LL),
              (long long)((rem / 60000000000LL) % 60),
              (long long)((rem / 1000000000LL) % 60));
 }
 
-/* === Format date (days from 2000.01.01) === */
+/* === Format date (days from 2000.01.01) → yyyy.mm.dd === */
 static void format_date(I d, char* buf, size_t sz) {
-    // Simple: just show as integer offset for now
-    // A proper implementation would convert to yyyy.mm.dd
-    snprintf(buf, sz, "%d", d);
+    int y, m, day; days_to_ymd(d, &y, &m, &day);
+    snprintf(buf, sz, "%04d.%02d.%02d", y, m, day);
 }
 
 /* === Format cell from vector at row === */

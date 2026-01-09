@@ -13,6 +13,27 @@ namespace Tc
 -- | Default row limit for kdb queries
 def kdbLimit : Nat := 1000
 
+-- | Parse float string "3.14", "-1.5", "1e10", etc. (no stdlib support)
+def parseFloat (s : String) : Option Float := do
+  let s := s.trim
+  guard (!s.isEmpty)
+  let (neg, s) := if s.startsWith "-" then (true, s.drop 1) else (false, s)
+  let parts := s.splitOn "e"  -- handle scientific notation
+  let (mant, exp) := (parts[0]!, (parts.getD 1 "0").toInt?.getD 0)
+  let dp := mant.splitOn "."  -- decimal point
+  let whole := (dp[0]!).toNat?.getD 0
+  let (frac, fracLen) := if dp.length > 1 then
+    let f := dp[1]!; (f.toNat?.getD 0, f.length)
+  else (0, 0)
+  let m := whole.toFloat + frac.toFloat / (10 ^ fracLen).toFloat
+  let v := m * (10 : Float) ^ (Float.ofInt exp)
+  some (if neg then -v else v)
+
+#guard parseFloat "3.14" == some 3.14
+#guard parseFloat "-1.5" == some (-1.5)
+#guard parseFloat "100" == some 100.0
+#guard parseFloat "" == none
+
 -- | kdb table with cached metadata and query
 structure KdbTable where
   qr        : Kdb.QueryResult   -- K object (opaque, C memory)
@@ -25,24 +46,19 @@ structure KdbTable where
 
 namespace KdbTable
 
--- | Parse kdb://host:port/table URL
--- Returns (host, port, tableName) or none if not kdb URL
-def parseUrl (s : String) : Option (String × UInt16 × String) :=
-  if !s.startsWith "kdb://" then none
-  else
-    let rest := s.drop 6  -- drop "kdb://"
-    match rest.splitOn "/" with
-    | [hp, tbl] =>
-      match hp.splitOn ":" with
-      | [h, p] => some (h, p.toNat!.toUInt16, tbl)
-      | [h] => some (h, 5001, tbl)  -- default port
-      | _ => none
-    | hp :: tbl :: _ =>
-      match hp.splitOn ":" with
-      | [h, p] => some (h, p.toNat!.toUInt16, tbl)
-      | [h] => some (h, 5001, tbl)
-      | _ => none
-    | _ => none
+-- | Parse kdb://host:port/table URL → (host, port, table)
+def parseUrl (s : String) : Option (String × UInt16 × String) := do
+  guard (s.startsWith "kdb://")
+  let p := (s.drop 6).splitOn "/"  -- drop "kdb://", split on /
+  let hp := p[0]!.splitOn ":"      -- host:port
+  let tbl := p[1]?                 -- table name
+  guard (hp.length > 0 && tbl.isSome)
+  some (hp[0]!, (hp.getD 1 "5001").toNat!.toUInt16, tbl.get!)
+
+#guard parseUrl "kdb://localhost:8888/nbbo" == some ("localhost", 8888, "nbbo")
+#guard parseUrl "kdb://host/tbl" == some ("host", 5001, "tbl")  -- default port
+#guard parseUrl "http://x/y" == none  -- wrong scheme
+#guard parseUrl "kdb://host" == none  -- no table
 
 -- | Connect to kdb server
 def connect (host : String) (port : UInt16) : IO Bool := Kdb.connect host port
@@ -64,31 +80,19 @@ def ofQueryResult (qr : Kdb.QueryResult) (query : Q.Query) (total : Nat := 0) : 
     types := types.push (← Kdb.colType qr i.toUInt64)
   pure ⟨qr, names, types, nr.toNat, nc.toNat, query, total⟩
 
+-- | Fetch cells [r0,r1) as strings
+private def fetchCells (qr : Kdb.QueryResult) (col r0 r1 : Nat) : IO (Array String) := do
+  let mut a := #[]
+  for r in [r0:r1] do a := a.push (← Kdb.cellStr qr r.toUInt64 col.toUInt64)
+  pure a
+
 -- | Extract column slice [r0, r1) as typed Column
 def getCol (t : KdbTable) (col r0 r1 : Nat) : IO Column := do
-  let typ := t.colTypes.getD col '?'
-  match typ with
-  | 'j' | 'i' | 'h' =>  -- long, int, short
-    let mut arr : Array Int64 := #[]
-    for r in [r0:r1] do
-      let s ← Kdb.cellStr t.qr r.toUInt64 col.toUInt64
-      arr := arr.push (s.toInt?.getD 0).toInt64
-    pure (.ints arr)
-  | 'f' | 'e' =>  -- float, real
-    let mut arr : Array Float := #[]
-    for r in [r0:r1] do
-      let s ← Kdb.cellStr t.qr r.toUInt64 col.toUInt64
-      -- parse float: try nat, else 0 (TODO: proper float parsing)
-      let v := match s.toNat? with
-        | some n => n.toFloat
-        | none => 0.0
-      arr := arr.push v
-    pure (.floats arr)
-  | _ =>  -- symbol, char, temporal, etc.
-    let mut arr : Array String := #[]
-    for r in [r0:r1] do
-      arr := arr.push (← Kdb.cellStr t.qr r.toUInt64 col.toUInt64)
-    pure (.strs arr)
+  let cells ← fetchCells t.qr col r0 r1
+  match t.colTypes.getD col '?' with
+  | 'j' | 'i' | 'h' => pure (.ints (cells.map fun s => (s.toInt?.getD 0).toInt64))
+  | 'f' | 'e' => pure (.floats (cells.map fun s => (parseFloat s).getD 0))
+  | _ => pure (.strs cells)
 
 -- | Check if table is partitioned via .Q.qp
 def isPartitioned (tblName : String) : IO Bool := do
@@ -136,15 +140,10 @@ def fromUrl (url : String) : IO (Option KdbTable) := do
     if !ok then return none
     load tbl
 
--- | Sort by columns
+-- | Sort by columns (all same direction)
 def sortBy (t : KdbTable) (idxs : Array Nat) (asc : Bool) : IO KdbTable := do
-  let n := idxs.size
-  let sortCols := idxs.mapIdx fun i idx =>
-    let name := t.colNames.getD idx ""
-    let isLast := i + 1 == n
-    (name, if isLast then asc else true)
-  let newQuery := t.query.pipe (.sort sortCols)
-  match ← requery newQuery t.totalRows with
+  let sortCols := idxs.map fun idx => (t.colNames.getD idx "", asc)
+  match ← requery (t.query.pipe (.sort sortCols)) t.totalRows with
   | some t' => pure t'
   | none => pure t
 
