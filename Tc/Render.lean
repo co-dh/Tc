@@ -93,38 +93,25 @@ def adjColOff (cur colOff : Nat) (widths : Array Nat) (dispIdxs : Array Nat) (sc
   else if cumW cur < offX then cur
   else colOff
 
--- Render table to terminal, returns (ViewState, widths)
+-- | Render table to terminal, returns (ViewState, widths)
 def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
     (nav : NavState nRows nCols t) (view : ViewState) (inWidths : Array Nat)
     (styles : Array UInt32) (precAdj widthAdj : Int) : IO (ViewState × Array Nat) := do
   Term.clear
-  let h ← Term.height
-  let w ← Term.width
-  -- clamp visRows to maxVisRows to prevent runaway rendering
+  let h ← Term.height; let w ← Term.width
   let visRows := min maxVisRows (h.toNat - reservedLines)
-  -- adjust row offset
   let rowOff := adjOff nav.row.cur.val view.rowOff visRows
-  -- first render: use colOff=0, no scroll adjust (no widths yet)
-  -- subsequent: use cached widths for scroll (widths in orig order, dispColIdxs for lookup)
   let colOff := if inWidths.isEmpty then 0
                 else adjColOff nav.col.cur.val view.colOff inWidths nav.dispColIdxs w.toNat
-  -- compute move direction: 1 = moved right, -1 = moved left, 0 = same
-  let moveDir : Int := if nav.curColIdx > view.lastCol then 1
-                       else if nav.curColIdx < view.lastCol then -1
-                       else 0
-  -- render via RenderTable, get widths back
+  let moveDir := if nav.curColIdx > view.lastCol then 1 else if nav.curColIdx < view.lastCol then -1 else 0
   let outWidths ← RenderTable.render nav inWidths colOff rowOff (min nRows (rowOff + visRows)) moveDir styles precAdj widthAdj
-  -- cap widths and subtract widthAdj to prevent accumulation (see widthAdj_no_accumulate_example)
-  let widths := outWidths.map fun w => min maxColWidth (storedWidth w widthAdj)
-  -- status: left=colName+col+grp+sel+adj, right=row info (right-aligned)
+  let widths := outWidths.map fun x => min maxColWidth (storedWidth x widthAdj)
+  -- status line: colName left, stats right
   let colName := nav.colNames.getD nav.curColIdx ""
-  let adj := (if precAdj != 0 then s!" p{precAdj}" else "") ++
-             (if widthAdj != 0 then s!" w{widthAdj}" else "")
+  let adj := (if precAdj != 0 then s!" p{precAdj}" else "") ++ (if widthAdj != 0 then s!" w{widthAdj}" else "")
   let right := s!"c{nav.curColIdx}/{nCols} grp={nav.grp.size} sel={nav.row.sels.size}{adj} r{nav.row.cur.val}/{ReadTable.totalRows nav.tbl}"
-  let w ← Term.width
   let pad := w.toNat - colName.length - right.length
-  let status := colName ++ "".pushn ' ' (max 1 pad) ++ right
-  Term.print 0 (h - 1) Term.cyan Term.default status
+  Term.print 0 (h - 1) Term.cyan Term.default (colName ++ "".pushn ' ' (max 1 pad) ++ right)
   pure (⟨rowOff, colOff, nav.curColIdx⟩, widths)
 
 -- | Render tab line: parent2 │ parent1 │ [current] (stack top on right)

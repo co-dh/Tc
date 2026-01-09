@@ -3,33 +3,17 @@ open Lake DSL
 
 package tc
 
--- | Build libtermbox2.a from vendored termbox2.h
-extern_lib termbox2 pkg := do
-  let src := pkg.dir / "c" / "termbox2.h"
-  let dst := pkg.dir / "c" / "libtermbox2.a"
-  buildFileAfterDep dst (←inputTextFile src) fun _ => do
-    proc { cmd := "make", args := #["-C", (pkg.dir / "c").toString, "libtermbox2.a"] }
+-- | Build lib{name}.a from c/{src}, via make
+def mkCLib (pkg : Package) (name src : String) := do
+  let srcF := pkg.dir / "c" / src
+  let dst := pkg.dir / "c" / s!"lib{name}.a"
+  buildFileAfterDep dst (←inputTextFile srcF) fun _ =>
+    proc { cmd := "make", args := #["-C", (pkg.dir / "c").toString, s!"lib{name}.a"] }
 
--- | Build libtermshim.a tracking term_shim.c
-extern_lib termshim pkg := do
-  let src := pkg.dir / "c" / "term_shim.c"
-  let dst := pkg.dir / "c" / "libtermshim.a"
-  buildFileAfterDep dst (←inputTextFile src) fun _ => do
-    proc { cmd := "make", args := #["-C", (pkg.dir / "c").toString, "libtermshim.a"] }
-
--- | Build libadbcshim.a tracking adbc_shim.c
-extern_lib adbcshim pkg := do
-  let src := pkg.dir / "c" / "adbc_shim.c"
-  let dst := pkg.dir / "c" / "libadbcshim.a"
-  buildFileAfterDep dst (←inputTextFile src) fun _ => do
-    proc { cmd := "make", args := #["-C", (pkg.dir / "c").toString, "libadbcshim.a"] }
-
--- | Build libkdbshim.a tracking kdb_shim.c
-extern_lib kdbshim pkg := do
-  let src := pkg.dir / "c" / "kdb_shim.c"
-  let dst := pkg.dir / "c" / "libkdbshim.a"
-  buildFileAfterDep dst (←inputTextFile src) fun _ => do
-    proc { cmd := "make", args := #["-C", (pkg.dir / "c").toString, "libkdbshim.a"] }
+extern_lib termbox2 pkg := mkCLib pkg "termbox2" "termbox2.h"
+extern_lib termshim pkg := mkCLib pkg "termshim" "term_shim.c"
+extern_lib adbcshim pkg := mkCLib pkg "adbcshim" "adbc_shim.c"
+extern_lib kdbshim pkg := mkCLib pkg "kdbshim" "kdb_shim.c"
 
 lean_lib Tc where
   roots := #[`Tc.Offset, `Tc.Cmd, `Tc.Effect, `Tc.Nav, `Tc.Render, `Tc.Key, `Tc.App,
