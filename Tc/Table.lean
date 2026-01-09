@@ -74,7 +74,7 @@ instance : QueryTable AdbcTable where
 
 -- | QueryTable instance for KdbTable
 instance : QueryTable KdbTable where
-  queryMeta _ := pure (#[], #[], #[], #[], #[], #[], #[])  -- TODO: kdb meta
+  queryMeta := KdbTable.queryMeta
   queryFreq := KdbTable.queryFreq
   filter    := KdbTable.filter
   distinct  := KdbTable.distinct
@@ -85,7 +85,7 @@ instance : QueryTable Table where
   queryMeta
     | .mem t => MemTable.queryMeta t
     | .adbc t => AdbcTable.queryMeta t
-    | .kdb t => QueryTable.queryMeta t
+    | .kdb t => KdbTable.queryMeta t
   queryFreq tbl idxs := match tbl with
     | .mem t => MemTable.queryFreq t idxs
     | .adbc t => AdbcTable.queryFreq t idxs

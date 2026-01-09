@@ -63,6 +63,9 @@ lean_obj_res lean_kdb_disconnect(lean_obj_arg world) {
 /* === Check if K is a table === */
 static int is_table(K x) { return x && x->t == XT; }
 
+/* === Check if K is a keyed table (dict of tables) === */
+static int is_keyed(K x) { return x && x->t == XD && kK(x)[0]->t == XT; }
+
 /* === Check if K is atom (negative type) === */
 static int is_atom(K x) { return x && x->t < 0 && x->t > -20; }
 
@@ -92,7 +95,16 @@ lean_obj_res lean_kdb_query(b_lean_obj_arg expr_obj, lean_obj_arg world) {
 
     QueryResult* qr = calloc(1, sizeof(QueryResult));
 
-    if (is_table(r)) {
+    if (is_keyed(r)) {
+        // Keyed table: unkey via ktd (converts to regular table)
+        K t = ktd(r);  // ktd consumes r, returns unkeyed table
+        qr->result = t;
+        K dict = t->k;
+        qr->keys = kK(dict)[0];
+        qr->vals = kK(dict)[1];
+        qr->ncols = qr->keys->n;
+        qr->nrows = (qr->ncols > 0) ? kK(qr->vals)[0]->n : 0;
+    } else if (is_table(r)) {
         // Table: XT means r->k is dict (XD)
         qr->result = r;
         K dict = r->k;

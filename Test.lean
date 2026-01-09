@@ -359,14 +359,14 @@ def test_meta_1_enter_sets_keycols : IO Unit := do
 -- | Test M0 on parquet with known null columns (9 cols with 100% null)
 def test_parquet_meta_0_null_cols : IO Unit := do
   log "parquet_meta_0"
-  let output ← runKeys "M0" "data/nyse/1.parquet"
+  let output ← runKeys "M0" "data/nbbo/1.parquet"
   let (_, status) := footer output
   assert (contains status "sel=9") "M0 on parquet selects 9 null columns"
 
 -- | Test M0<ret> groups null columns as key columns
 def test_parquet_meta_0_enter_groups : IO Unit := do
   log "parquet_meta_0_enter"
-  let output ← runKeys "M0<ret>" "data/nyse/1.parquet"
+  let output ← runKeys "M0<ret>" "data/nbbo/1.parquet"
   let (tab, status) := footer output
   -- Should pop meta, return to parent with grp=9 (9 null cols as key)
   -- Tab must be "[1.parquet]" not "[meta] │ 1.parquet"
@@ -470,7 +470,7 @@ def test_col_search : IO Unit := do
 def test_enter_no_quit_parquet : IO Unit := do
   log "enter_no_quit_parquet"
   -- Press Enter then j - if app quit on Enter, j won't move cursor
-  let output ← runKeys "<ret>j" "data/nyse/1.parquet"
+  let output ← runKeys "<ret>j" "data/nbbo/1.parquet"
   let (_, status) := footer output
   -- If app survived Enter, j moved to row 1
   assert (contains status "r1/") "Enter on parquet should not quit (j moves to r1)"

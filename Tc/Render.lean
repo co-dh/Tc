@@ -40,6 +40,23 @@ def maxColWidth : Nat := 50
 -- Reserved lines: 1 header + 1 footer + 1 tab + 1 status
 def reservedLines : Nat := 4
 
+-- Max visible rows (no terminal should exceed this)
+def maxVisRows : Nat := 200
+
+-- Theorem: clamped visible rows bounded by maxVisRows
+theorem visRows_bounded (h : Nat) : min maxVisRows (h - reservedLines) ≤ maxVisRows := by
+  simp only [maxVisRows]
+  omega
+
+-- Render row count: r1 - r0 where r1 = min nRows (r0 + visRows)
+def renderRowCount (nRows r0 visRows : Nat) : Nat := min nRows (r0 + visRows) - r0
+
+-- Theorem: render row count bounded by visRows
+theorem renderRowCount_le_visRows (nRows r0 visRows : Nat) :
+    renderRowCount nRows r0 visRows ≤ visRows := by
+  simp only [renderRowCount]
+  omega
+
 -- Column page size (fixed, since widths vary)
 def colPageSize : Nat := 5
 
@@ -83,7 +100,8 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
   Term.clear
   let h ← Term.height
   let w ← Term.width
-  let visRows := h.toNat - reservedLines
+  -- clamp visRows to maxVisRows to prevent runaway rendering
+  let visRows := min maxVisRows (h.toNat - reservedLines)
   -- adjust row offset
   let rowOff := adjOff nav.row.cur.val view.rowOff visRows
   -- first render: use colOff=0, no scroll adjust (no widths yet)

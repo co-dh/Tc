@@ -161,14 +161,36 @@ def delCols (t : KdbTable) (delIdxs : Array Nat) : IO KdbTable := do
 def wrapTbl (tbl : String) : String :=
   if tbl.startsWith "select" then s!"({tbl})" else tbl
 
--- | Freq: group by + count
+-- | Extract partition filter from query (e.g. "date=max date" from "select from t where date=max date, i<1000")
+def extractPartFilter (tbl : String) : String :=
+  match tbl.splitOn "where " with
+  | [_, rest] =>
+    -- take up to first comma that's followed by i< (row limit)
+    match rest.splitOn ", i<" with
+    | [filt, _] => filt
+    | _ => match rest.splitOn ",i<" with
+      | [filt, _] => filt
+      | _ => ""
+  | _ => ""
+
+-- | Extract table name from query
+def extractTblName (tbl : String) : String :=
+  -- "select from nbbo where ..." -> "nbbo"
+  let parts := tbl.splitOn " "
+  match parts.findIdx? (· == "from") with
+  | some i => parts.getD (i + 1) "t"
+  | none => parts.getLast!
+
+-- | Freq: group by + count (partition-aware)
 def queryFreq (t : KdbTable) (colIdxs : Array Nat) : IO FreqTuple := do
   let names := t.colNames
   let keyNames := colIdxs.map fun i => names.getD i ""
   if keyNames.isEmpty then return (#[], #[], #[], #[], #[])
-  let cols := keyNames.map ("`" ++ ·) |>.toList |> String.intercalate ""
-  -- select cnt:count i by col1,col2 from tbl
-  let q := s!"select Cnt:count i by {cols} from {wrapTbl t.query.tbl}"
+  let cols := keyNames.toList |> String.intercalate ","
+  let tblName := extractTblName t.query.tbl
+  let partFilt := extractPartFilter t.query.tbl
+  let whr := if partFilt.isEmpty then "" else s!" where {partFilt}"
+  let q := s!"select Cnt:count i by {cols} from {tblName}{whr}"
   Log.write "q-freq" q
   let qr ← Kdb.query q
   let nr ← Kdb.nrows qr
@@ -217,6 +239,21 @@ def distinct (t : KdbTable) (col : Nat) : IO (Array String) := do
 def findRow (_ : KdbTable) (_ : Nat) (_ : String) (_ : Nat) (_ : Bool) : IO (Option Nat) :=
   pure none
 
+-- | Query meta: column stats (name, type, cnt, dist, null%, min, max)
+-- Uses q `meta` for names/types, basic stats for rest
+def queryMeta (t : KdbTable) : IO MetaTuple := do
+  let names := t.colNames
+  let types := t.colTypes.map String.singleton
+  let cnt := t.totalRows.toInt64
+  let n := names.size
+  let cnts := #[].append (Array.range n |>.map fun _ => cnt)
+  -- dists/nulls/mins/maxs: expensive, use placeholders
+  let dists := #[].append (Array.range n |>.map fun _ => (0 : Int64))
+  let nulls := #[].append (Array.range n |>.map fun _ => (0 : Int64))
+  let mins := #[].append (Array.range n |>.map fun _ => "")
+  let maxs := #[].append (Array.range n |>.map fun _ => "")
+  pure (names, types, cnts, dists, nulls, mins, maxs)
+
 end KdbTable
 
 -- | ReadTable instance
@@ -230,24 +267,22 @@ instance : ModifyTable KdbTable where
   delCols := fun delIdxs t => KdbTable.delCols t delIdxs
   sortBy  := fun idxs asc t => KdbTable.sortBy t idxs asc
 
--- | RenderTable instance
+-- | Max rows to render (safety bound)
+def maxRenderRows : Nat := 200
+
+-- | RenderTable instance (always use visible range r0..r1, capped to maxRenderRows)
 instance : RenderTable KdbTable where
   render nav inWidths colOff r0 r1 moveDir st precAdj widthAdj := do
-    if inWidths.isEmpty then
-      let cols ← (Array.range nav.tbl.nCols).mapM fun c => nav.tbl.getCol c 0 nav.tbl.nRows
-      Term.renderTable cols nav.tbl.colNames nav.tbl.colTypes inWidths nav.dispColIdxs
-        nav.tbl.nRows.toUInt64 nav.grp.size.toUInt64 colOff.toUInt64
-        0 nav.tbl.nRows.toUInt64 nav.row.cur.val.toUInt64 nav.curColIdx.toUInt64
-        moveDir.toInt64 nav.selColIdxs nav.row.sels st precAdj.toInt64 widthAdj.toInt64
-    else
-      let cols ← (Array.range nav.tbl.nCols).mapM fun c => nav.tbl.getCol c r0 r1
-      let adjCur := nav.row.cur.val - r0
-      let adjSel := nav.row.sels.filterMap fun r =>
-        if r >= r0 && r < r1 then some (r - r0) else none
-      Term.renderTable cols nav.tbl.colNames nav.tbl.colTypes inWidths nav.dispColIdxs
-        nav.tbl.nRows.toUInt64 nav.grp.size.toUInt64 colOff.toUInt64
-        0 (r1 - r0).toUInt64 adjCur.toUInt64 nav.curColIdx.toUInt64
-        moveDir.toInt64 nav.selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
+    -- clamp row range to prevent runaway fetching
+    let r1' := min r1 (r0 + maxRenderRows)
+    let cols ← (Array.range nav.tbl.nCols).mapM fun c => nav.tbl.getCol c r0 r1'
+    let adjCur := nav.row.cur.val - r0
+    let adjSel := nav.row.sels.filterMap fun r =>
+      if r >= r0 && r < r1' then some (r - r0) else none
+    Term.renderTable cols nav.tbl.colNames nav.tbl.colTypes inWidths nav.dispColIdxs
+      nav.tbl.nRows.toUInt64 nav.grp.size.toUInt64 colOff.toUInt64
+      0 (r1' - r0).toUInt64 adjCur.toUInt64 nav.curColIdx.toUInt64
+      moveDir.toInt64 nav.selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
 
 -- | ExecOp instance (re-query on op)
 instance : ExecOp KdbTable where
