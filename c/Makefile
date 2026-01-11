@@ -2,15 +2,29 @@
 LEAN_HOME := $(shell ~/.elan/bin/lean --print-prefix)
 CFLAGS := -g -fPIC -I$(LEAN_HOME)/include
 
-all: libtermbox2.a libadbcshim.a libtermshim.a libkdbshim.a
+all: libtermbox2.a libadbcshim.a libadbcstub.a libtermshim.a libkdbshim.a
 
 # termbox2: use -std=c11 to avoid C23 sscanf redirect
 libtermbox2.a: termbox2.c termbox2.h
 	gcc -std=c11 -g -fPIC -c termbox2.c -o termbox2.o
 	ar rcs $@ termbox2.o
 
-libadbcshim.a: adbc_shim.o
-	ar rcs $@ $<
+# ADBC: core + DuckDB driver (for full build)
+libadbcshim.a: adbc_core.o duckdb_driver.o
+	ar rcs $@ $^
+
+# ADBC stub: for tc-core (CSV only, no ADBC)
+libadbcstub.a: adbc_stub.o
+	ar rcs $@ $^
+
+adbc_core.o: adbc_core.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+duckdb_driver.o: duckdb_driver.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+adbc_stub.o: adbc_stub.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 libtermshim.a: term_shim.o
 	ar rcs $@ $<

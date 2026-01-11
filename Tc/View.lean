@@ -56,10 +56,12 @@ def fromFile (path : String) : IO (Option View) := do
     match ← MemTable.load path with
     | .error _ => pure none
     | .ok tbl => pure (fromTbl (.mem tbl) path)
-  else  -- parquet or other ADBC-supported format
-    match ← AdbcTable.fromFile path with
-    | none => pure none
-    | some tbl => pure (fromTbl (.adbc tbl) path)
+  else  -- parquet or other ADBC-supported format (may fail in tc-core build)
+    try
+      match ← AdbcTable.fromFile path with
+      | none => pure none
+      | some tbl => pure (fromTbl (.adbc tbl) path)
+    catch _ => pure none
 
 -- | Verb to delta: inc=+1, dec=-1
 private def verbDelta (verb : Verb) : Int := if verb == .inc then 1 else -1
