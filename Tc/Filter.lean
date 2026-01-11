@@ -9,20 +9,6 @@ import Tc.View
 
 namespace Tc.ViewStack
 
--- | Move row cursor to target index (pure helper)
-private def moveRowTo (s : ViewStack) (rowIdx : Nat) (search : Option (Nat × String) := none) : ViewStack :=
-  let v := s.cur
-  let delta : Int := rowIdx - v.nav.row.cur.val
-  let nav' := { v.nav with row := { v.nav.row with cur := v.nav.row.cur.clamp delta } }
-  s.setCur { v with nav := nav', search := search.orElse (fun _ => v.search) }
-
--- | Move col cursor to target index (pure helper)
-private def moveColTo (s : ViewStack) (colIdx : Nat) : ViewStack :=
-  let v := s.cur
-  let delta : Int := colIdx - v.nav.col.cur.val
-  let nav' := { v.nav with col := { v.nav.col with cur := v.nav.col.cur.clamp delta } }
-  s.setCur { v with nav := nav' }
-
 -- | col search: fzf jump to column by name (IO version for backward compat)
 def colSearch (s : ViewStack) : IO ViewStack := do
   let v := s.cur; let names := ReadTable.colNames v.nav.tbl

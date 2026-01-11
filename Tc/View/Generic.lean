@@ -124,6 +124,20 @@ def dup (s : GViewStack T) : GViewStack T :=
 
 def tabNames (s : GViewStack T) : Array String := s.views.map (·.tabName)
 
+-- | Move row cursor to target index
+def moveRowTo (s : GViewStack T) (rowIdx : Nat) (search : Option (Nat × String) := none) : GViewStack T :=
+  let v := s.cur
+  let delta : Int := rowIdx - v.nav.row.cur.val
+  let nav' := { v.nav with row := { v.nav.row with cur := v.nav.row.cur.clamp delta } }
+  s.setCur { v with nav := nav', search := search.orElse (fun _ => v.search) }
+
+-- | Move col cursor to target index
+def moveColTo (s : GViewStack T) (colIdx : Nat) : GViewStack T :=
+  let v := s.cur
+  let delta : Int := colIdx - v.nav.col.cur.val
+  let nav' := { v.nav with col := { v.nav.col with cur := v.nav.col.cur.clamp delta } }
+  s.setCur { v with nav := nav' }
+
 end GViewStack
 
 end Tc

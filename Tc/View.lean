@@ -168,6 +168,20 @@ def dup (s : ViewStack) : ViewStack :=
 -- | Tab names for display (current first)
 def tabNames (s : ViewStack) : Array String := s.views.map (·.tabName)
 
+-- | Move row cursor to target index
+def moveRowTo (s : ViewStack) (rowIdx : Nat) (search : Option (Nat × String) := none) : ViewStack :=
+  let v := s.cur
+  let delta : Int := rowIdx - v.nav.row.cur.val
+  let nav' := { v.nav with row := { v.nav.row with cur := v.nav.row.cur.clamp delta } }
+  s.setCur { v with nav := nav', search := search.orElse (fun _ => v.search) }
+
+-- | Move col cursor to target index
+def moveColTo (s : ViewStack) (colIdx : Nat) : ViewStack :=
+  let v := s.cur
+  let delta : Int := colIdx - v.nav.col.cur.val
+  let nav' := { v.nav with col := { v.nav.col with cur := v.nav.col.cur.clamp delta } }
+  s.setCur { v with nav := nav' }
+
 end ViewStack
 
 end Tc

@@ -29,24 +29,12 @@ private def metaSetKey (s : ViewStack) : Option ViewStack :=
     let nav' := { s'.cur.nav with grp := colNames, col := { s'.cur.nav.col with sels := colNames } }
     s'.setCur { s'.cur with nav := nav' }
 
--- | Search helpers (inlined to avoid Tc.Filter → Tc.View → ADBC chain)
-private def moveRowTo (s : ViewStack) (rowIdx : Nat) (srch : Option (Nat × String) := none) : ViewStack :=
-  let v := s.cur
-  let delta : Int := rowIdx - v.nav.row.cur.val
-  let nav' := { v.nav with row := { v.nav.row with cur := v.nav.row.cur.clamp delta } }
-  s.setCur { v with nav := nav', search := srch.orElse (fun _ => v.search) }
-
-private def moveColTo (s : ViewStack) (colIdx : Nat) : ViewStack :=
-  let v := s.cur
-  let delta : Int := colIdx - v.nav.col.cur.val
-  let nav' := { v.nav with col := { v.nav.col with cur := v.nav.col.cur.clamp delta } }
-  s.setCur { v with nav := nav' }
-
+-- | Search helpers
 private def colSearch (s : ViewStack) : IO ViewStack := do
   let names := ReadTable.colNames s.cur.nav.tbl
   let dispNames := s.cur.nav.grp ++ names.filter (!s.cur.nav.grp.contains ·)
   let some idx ← Fzf.fzfIdx #["--prompt=Column: "] dispNames | return s
-  pure (moveColTo s idx)
+  pure (s.moveColTo idx)
 
 private def rowSearch (s : ViewStack) : IO ViewStack := do
   let v := s.cur; let names := ReadTable.colNames v.nav.tbl
@@ -56,21 +44,21 @@ private def rowSearch (s : ViewStack) : IO ViewStack := do
   let some result ← Fzf.fzf #[s!"--prompt=/{curName}: "] ("\n".intercalate vals.toList) | return s
   let start := v.nav.row.cur.val + 1
   let some rowIdx ← MemTable.findRow v.nav.tbl curCol result start true | return s
-  pure (moveRowTo s rowIdx (some (curCol, result)))
+  pure (s.moveRowTo rowIdx (some (curCol, result)))
 
 private def searchNext (s : ViewStack) : IO ViewStack := do
   let v := s.cur
   let some (col, val) := v.search | return s
   let start := v.nav.row.cur.val + 1
   let some rowIdx ← MemTable.findRow v.nav.tbl col val start true | return s
-  pure (moveRowTo s rowIdx)
+  pure (s.moveRowTo rowIdx)
 
 private def searchPrev (s : ViewStack) : IO ViewStack := do
   let v := s.cur
   let some (col, val) := v.search | return s
   let start := v.nav.row.cur.val
   let some rowIdx ← MemTable.findRow v.nav.tbl col val start false | return s
-  pure (moveRowTo s rowIdx)
+  pure (s.moveRowTo rowIdx)
 
 private def rowFilter (s : ViewStack) : IO ViewStack := do
   let v := s.cur; let names := ReadTable.colNames v.nav.tbl
