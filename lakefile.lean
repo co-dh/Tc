@@ -28,7 +28,7 @@ lean_lib Tc where
              `Tc.Data.Kdb.FFI, `Tc.Data.Kdb.Q, `Tc.Data.Kdb.Table,
              `Tc.Backend, `Tc.Backend.Full, `Tc.Backend.Core,
              `Tc.Table.Mem, `Tc.Table.Full,
-             `Tc.View.Core, `Tc.App.Core]
+             `Tc.View.Core, `Tc.App.Core, `Tc.UI.Info.Core]
 
 @[default_target]
 lean_exe tc where
@@ -38,9 +38,17 @@ lean_exe tc where
 lean_exe «tc-core» where
   root := `Tc.App.Core
 
--- | Test executable (spawns tc subprocess)
+-- | Test executable (spawns tc subprocess) - runs all tests
 lean_exe test where
   root := `test.Test
+
+-- | Core tests (CSV only, uses tc-core)
+lean_exe «test-core» where
+  root := `test.TestCore
+
+-- | ADBC tests (parquet/folder, uses full tc)
+lean_exe «test-adbc» where
+  root := `test.TestAdbc
 
 -- | Kdb backend tests (requires localhost:8888/nbbo)
 lean_exe «kdb-test» where
@@ -53,4 +61,8 @@ lean_exe «kdb-key-test» where
 -- | Pure tests (compile-time checks via #guard)
 lean_lib PureTest where
   roots := #[`test.PureTest]
+
+-- | Test utilities (shared between test-core and test-adbc)
+lean_lib TestUtil where
+  roots := #[`test.TestUtil]
 
