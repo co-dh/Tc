@@ -51,11 +51,6 @@ lean_exe «tc-core» where
   root := `Tc.App
   moreLinkArgs := #["-L./c", "-ladbcstub"]
 
--- | Test executable (spawns tc subprocess) - runs all tests
-lean_exe test where
-  root := `test.Test
-  moreLinkArgs := #["-L./c", "-ladbcshim", "-ldl"]
-
 -- | Core tests (CSV only, uses tc-core)
 lean_exe «test-core» where
   root := `test.TestCore
