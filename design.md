@@ -14,7 +14,7 @@
                             │ instance
                             ▼
 ┌─────────────────────────────────────────────────────────┐
-│  Backends: AdbcTable, MemTable                          │
+│  Backends: AdbcTable, MemTable, KdbTable                │
 └───────────────────────────┬─────────────────────────────┘
                             │ wrapped by
                             ▼
@@ -92,62 +92,125 @@ The architecture separates pure state logic from IO effects:
 | RenderTable | render             | Render to terminal         |
 | Update      | update             | Pure: Cmd → (State, Effect)|
 | Exec        | exec               | IO: Cmd → IO State (compat)|
+| ExecOp      | exec               | IO: Op → IO Table          |
 
-## Obj/Verb Matrix
+## Cmd System (Cmd.lean)
 
-Commands follow `Obj Verb` pattern. Grouped by: navigation, selection, options.
+### Verb (5 actions)
+
+| Verb | Char | Meaning                       |
+|------|------|-------------------------------|
+| inc  | +    | increment, forward, next      |
+| dec  | -    | decrement, backward, prev     |
+| ent  | ~    | enter, toggle                 |
+| del  | d    | delete                        |
+| dup  | c    | copy, push, create            |
+
+### Cmd Objects (17 objects)
+
+| Obj    | Char | Purpose                          |
+|--------|------|----------------------------------|
+| row    | r    | row cursor                       |
+| col    | c    | column cursor                    |
+| vPage  | v    | vertical page scroll             |
+| hPage  | h    | horizontal page scroll           |
+| ver    | V    | vertical end (top/bottom)        |
+| hor    | H    | horizontal end (first/last col)  |
+| rowSel | R    | row selection/search/filter      |
+| colSel | C    | column selection/sort/delete     |
+| grp    | g    | group (key columns)              |
+| stk    | s    | view stack operations            |
+| prec   | p    | decimal precision                |
+| width  | w    | column width                     |
+| thm    | T    | theme                            |
+| info   | i    | info overlay                     |
+| metaV  | M    | meta view                        |
+| freq   | F    | frequency view                   |
+| fld    | D    | folder view                      |
+
+### Isomorphism
+
+```lean
+theorem parse_toString (c : Cmd) : Parse.parse? (toString c) = some c
+theorem ofChar_toChar (v : Verb) : Verb.ofChar? (Verb.toChar v) = some v
+```
+
+## Obj/Verb Matrix (Key.lean)
+
+Direct key bindings and command mode (`space` + obj + verb):
+
+```
+                 │ DEC │ INC │ ENT │ DEL │ DUP │
+                 │  -  │  +  │  ~  │  d  │  c  │
+Char │ Obj       │  ,  │  .  │     │     │     │ Description
+─────┴───────────┴─────┴─────┴─────┴─────┴─────┴──────────────────
+ --- Navigation (direct keys) ---
+ r   │ row       │  k  │  j  │     │     │     │ Row cursor up/down
+ c   │ col       │  h  │  l  │  s  │     │     │ Col cursor, s=fzf jump
+ v   │ vPage     │ ^U  │ ^D  │     │     │     │ Vertical page (also JK)
+ h   │ hPage     │     │     │     │     │     │ Horizontal page
+ V   │ ver       │Home │End  │     │     │     │ Top/bottom
+ H   │ hor       │  ←  │  →  │     │     │     │ First/last col
+ --- Selection ---
+ R   │ rowSel    │  \  │  /  │  T  │     │     │ \=filter, /=search, T=toggle
+ C   │ colSel    │  ]  │  [  │  t  │  d  │     │ ]=sortDesc, [=sortAsc, t=toggle
+ g   │ grp       │  N  │  n  │  !  │     │     │ N=prev, n=next, !=toggle
+ --- Options ---
+ s   │ stk       │  q  │     │  S  │     │     │ q=pop, S=swap
+ p   │ prec      │     │     │     │     │     │ (space p ,/.)
+ w   │ width     │     │     │     │     │     │ (space w ,/.)
+ T   │ thm       │     │     │     │     │     │ (space T ,/.)
+ i   │ info      │     │     │  I  │     │     │ I=toggle overlay
+ --- Views ---
+ M   │ metaV     │  0  │  1  │ ⏎   │     │  M  │ 0=selNull, 1=selSingle, M=push
+ F   │ freq      │     │     │ ⏎   │     │  F  │ ⏎=filter by row, F=push
+ D   │ fld       │     │     │ ⏎   │  d  │  D  │ ⏎=enter, d=trash, D=push
+```
 
 **Command mode**: Press `space` to open fzf object picker, then fzf verb picker.
 
-```
-                 │ D │ I │ E │ D │ D │
-                 │ E │ N │ N │ E │ U │
-                 │ C │ C │ T │ L │ P │
-Char │ Obj       │ , │ . │ ~ │ d │ c │ Description
-─────┴───────────┴───┴───┴───┴───┴───┴──────────────────
- --- Navigation ---
- r   │ row       │ k │ j │   │   │   │ Row cursor
- c   │ col       │ h │ l │ s │   │   │ Column cursor, ~=fzf jump
- v   │ vPage     │ K │ J │   │   │   │ Vertical page
- h   │ hPage     │ H │ L │   │   │   │ Horizontal page
- V   │ ver       │Hom│End│   │   │   │ Vertical end
- H   │ hor       │ ← │ → │   │   │   │ Horizontal end (,=first, .=last col)
- --- Selection ---
- R   │ rowSel    │ \ │ / │ T │   │   │ Row: ,=filter, .=search, ~=toggle
- C   │ colSel    │ ] │ [ │ t │ d │   │ Col: ,=sortDesc, .=sortAsc, ~=toggle
- g   │ grp       │ N │ n │ ! │   │   │ Grp: ,=prev, .=next, ~=toggle
- --- Options ---
- s   │ stk       │ q │   │ S │   │ c │ View stack (q=pop, S=swap, c=dup)
- p   │ prec      │   │   │   │   │   │ Display precision (space p ,/.)
- w   │ width     │   │   │   │   │   │ Column width (space w ,/.)
- T   │ thm       │   │   │   │   │   │ Theme cycle (space T ,/.)
- i   │ info      │   │   │ I │   │   │ Info overlay toggle
- --- Views ---
- M   │ metaV     │ 0 │ 1 │ ⏎ │   │ M │ Meta view (c=push, ,=selNull, .=selSingle)
- F   │ freq      │   │   │ ⏎ │   │ F │ Freq view (c=push, ~=filter by row when in freq)
- D   │ fld       │   │   │ ⏎ │ d │ D │ Folder view (c=push, space D ,/.=depth, ~=enter, d=trash)
+## Effect DSL (Effect.lean)
+
+Effect describes IO operations without executing them:
+
+```lean
+inductive Effect where
+  | none                                              -- no effect
+  | quit                                              -- exit app
+  -- fzf (user selection)
+  | fzfCmd                                            -- command mode: space
+  | fzfCol                                            -- column picker: s
+  | fzfRow (colIdx : Nat) (colName : String)          -- row search: /
+  | fzfFilter (colIdx : Nat) (colName : String)       -- row filter: \
+  -- query (database/table ops)
+  | queryMeta                                         -- push meta view: M
+  | queryFreq (cols : Array Nat) (colNames : Array String)  -- push freq: F
+  | freqFilter (cols : Array String) (row : Nat)      -- filter from freq
+  | queryFilter (expr : String)                       -- apply filter expr
+  | querySort (colIdx : Nat) (grp : Array Nat) (asc : Bool)  -- sort: [/]
+  | queryDel (colIdx : Nat) (sels : Array Nat) (grp : Array String)  -- del: d
+  -- folder (filesystem)
+  | folderPush                                        -- push folder view: D
+  | folderEnter                                       -- enter dir/file: ⏎
+  | folderDel                                         -- delete file: d
+  | folderDepth (delta : Int)                         -- change find depth
+  -- search
+  | findNext                                          -- search next: n
+  | findPrev                                          -- search prev: N
+  -- theme
+  | themeLoad (delta : Int)                           -- cycle theme
 ```
 
-## Structures
+**Functor pattern**: `update` maps `Cmd → Effect`:
 
-| Struct       | Purpose                                      |
-|--------------|----------------------------------------------|
-| Verb         | Action type: inc/dec/ent/del/dup (5 verbs)   |
-| Cmd          | Object + Verb command pattern                |
-| Effect       | IO operation descriptor (fzf/query/folder)   |
-| NavState     | Table + row/col cursors + selections + group |
-| NavAxis      | Generic axis: cur (Fin n) + sels (Array)     |
-| View         | Existential wrapper hiding table type        |
-| ViewKind     | View type: tbl, colMeta, freqV, fld          |
-| ViewStack    | Non-empty stack of Views (cur + parents)     |
-| ViewState    | Scroll offsets for rendering                 |
-| AppState     | Top-level: stk + vs + theme + info           |
-| Theme.State  | Theme styles + index                         |
-| Info.State   | Info overlay visibility                      |
+```lean
+class Update (α : Type) where
+  update : α → Cmd → Option (α × Effect)
+```
 
 ## Op Interface
 
-Common table operations across backends (ADBC, Mem, future kdb/q):
+Common table operations across backends (ADBC, Mem, Kdb):
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -161,78 +224,58 @@ Common table operations across backends (ADBC, Mem, future kdb/q):
           ┌─────────────────┼─────────────────┐
           ▼                 ▼                 ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│ ADBC/Prql.lean  │ │ Mem/Exec.lean   │ │ Kdb/Exec.lean   │
+│ ADBC/Prql.lean  │ │ Mem/Exec.lean   │ │ Kdb/Q.lean      │
 │ Op → PRQL → SQL │ │ Op → native     │ │ Op → q expr     │
 └─────────────────┘ └─────────────────┘ └─────────────────┘
 ```
 
-**Tc/Op.lean**:
-```lean
-inductive Agg where
-  | count | sum | avg | min | max | stddev | dist
+## Structures
 
-inductive Op where
-  | filter (expr : String)
-  | sort (cols : Array (String × Bool))  -- Bool = asc
-  | select (cols : Array String)
-  | derive (bindings : Array (String × String))
-  | group (keys : Array String) (aggs : Array (Agg × String × String))
-  | take (n : Nat)
+| Struct       | Purpose                                      |
+|--------------|----------------------------------------------|
+| Verb         | Action type: inc/dec/ent/del/dup (5 verbs)   |
+| Cmd          | Object + Verb command pattern (17 objects)   |
+| Effect       | IO operation descriptor (fzf/query/folder)   |
+| NavState     | Table + row/col cursors + selections + group |
+| NavAxis      | Generic axis: cur (Fin n) + sels (Array)     |
+| View         | Existential wrapper hiding table type        |
+| ViewKind     | View type: tbl, colMeta, freqV, fld          |
+| ViewStack    | Non-empty stack of Views (cur + parents)     |
+| ViewState    | Scroll offsets for rendering                 |
+| AppState     | Top-level: stk + vs + theme + info           |
+| Theme.State  | Theme styles + index                         |
+| Info.State   | Info overlay visibility                      |
 
-class ExecOp (α : Type) where
-  exec : α → Op → IO α
+## Testing (Test.lean)
+
+Tests use tmux for screen capture instead of custom C FFI:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Test Harness                                           │
+│  1. tmux new-session -d -s tctest -e TC_TEST_MODE=1     │
+│  2. tmux send-keys (with key notation conversion)       │
+│  3. tmux capture-pane -p                                │
+│  4. tmux kill-session                                   │
+└─────────────────────────────────────────────────────────┘
 ```
 
-**Backend implementations**:
-- ADBC: `Op → PRQL string → SQL → DuckDB`
-- Mem: `Op → direct Array ops`
-- Kdb: `Op → q expression → IPC`
+### Key Notation Conversion
 
-## Effect DSL
+| Test notation | tmux send-keys |
+|---------------|----------------|
+| `<C-d>`       | `C-d`          |
+| `<C-u>`       | `C-u`          |
+| `<ret>`       | `Enter`        |
+| `abc`         | `-l abc`       |
 
-Effect describes IO operations without executing them. Pure `update` returns Effect; Runner interprets it.
+### Test Mode
 
-```lean
-inductive Effect where
-  | none                                    -- no effect
-  | quit                                    -- exit app
-  -- fzf (user selection)
-  | fzfCmd                                  -- command mode: space
-  | fzfCol                                  -- column picker: s
-  | fzfRow (col : Nat) (name : String)      -- row search: /
-  | fzfFilter (col : Nat) (name : String)   -- row filter: \
-  -- query (database/table ops)
-  | queryMeta                               -- push meta view: M
-  | queryFreq (cols : Array Nat) (names : Array String)  -- push freq: F
-  | freqFilter (cols : Array String) (row : Nat)         -- filter from freq
-  | queryFilter (expr : String)             -- apply filter expr
-  | querySort (col : Nat) (grp : Array Nat) (asc : Bool) -- sort: [/]
-  | queryDel (col : Nat) (sels : Array Nat) (grp : Array String)  -- delete: d
-  -- folder (filesystem)
-  | folderPush                              -- push folder view: D
-  | folderEnter                             -- enter dir/file: Enter
-  | folderDel                               -- delete file: d
-  | folderDepth (delta : Int)               -- change find depth: ,d/.d
-  -- search
-  | findNext                                -- search next: n
-  | findPrev                                -- search prev: N
-  -- theme
-  | themeLoad (delta : Int)                 -- cycle theme: ,T/.T
-```
+`TC_TEST_MODE=1` env var enables test mode (Fzf.lean):
+- fzf auto-selects first item without spawning
+- Folder delete auto-declines confirmation
 
-**Functor pattern**: `update` maps `Cmd → Effect` (state passes through):
+### Render Performance
 
-```lean
-class Update (α : Type) where
-  update : α → Cmd → Option (α × Effect)
-
--- Example: Folder.update
-def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
-  match cmd with
-  | .fld .dup => some (s, .folderPush)      -- Cmd.fld.dup → Effect.folderPush
-  | .fld .inc => some (s, .folderDepth 1)   -- Cmd.fld.inc → Effect.folderDepth 1
-  | .fld .dec => some (s, .folderDepth (-1))
-  | .colSel .del => some (s, .folderDel)
-  | .fld .ent => some (s, .folderEnter)
-  | _ => none
-```
+Column width computation scans visible rows only (`r0` to `r1`), not all rows.
+This prevents CPU burn on large tables (e.g., 300M row parquet).
