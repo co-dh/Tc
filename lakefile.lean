@@ -29,6 +29,7 @@ target adbcstub pkg : System.FilePath := do
   buildFileAfterDep dst (← inputTextFile src) fun _ =>
     proc { cmd := "make", args := #["-C", (pkg.dir / "c").toString, "libadbcstub.a"] }
 
+-- | Full library (all backends)
 lean_lib Tc where
   roots := #[`Tc.Offset, `Tc.Cmd, `Tc.Effect, `Tc.Nav, `Tc.Render, `Tc.Key, `Tc.App,
              `Tc.Term, `Tc.Types, `Tc.Error, `Tc.Op, `Tc.View, `Tc.ViewStack, `Tc.Dispatch,
@@ -39,20 +40,26 @@ lean_lib Tc where
              `Tc.Data.ADBC.Table, `Tc.Data.ADBC.Meta,
              `Tc.Data.Kdb.FFI, `Tc.Data.Kdb.Q, `Tc.Data.Kdb.Table]
 
+-- | Core library (no ADBC/Kdb)
+lean_lib TcCore where
+  roots := #[`Tc.Offset, `Tc.Cmd, `Tc.Effect, `Tc.Nav, `Tc.Render, `Tc.Key,
+             `Tc.Term, `Tc.Types, `Tc.Error, `Tc.Op, `Tc.Fzf, `Tc.Theme,
+             `Tc.Data.CSV, `Tc.Data.Mem.Table, `Tc.Data.Mem.Text,
+             `Tc.Data.Mem.Meta, `Tc.Data.Mem.Freq,
+             `Tc.View.Generic, `Tc.View.Mem, `Tc.App.Mem]
+
 @[default_target]
 lean_exe tc where
   root := `Tc.App
   moreLinkArgs := #["-L./c", "-ladbcshim", "-ldl"]
 
--- | Core build: CSV/stdin only (uses ADBC stub)
+-- | Core build: CSV only (no ADBC/Kdb)
 lean_exe «tc-core» where
-  root := `Tc.App
-  moreLinkArgs := #["-L./c", "-ladbcstub"]
+  root := `Tc.App.Mem
 
 -- | Core tests (CSV only, uses tc-core)
 lean_exe «test-core» where
   root := `test.TestCore
-  moreLinkArgs := #["-L./c", "-ladbcstub"]
 
 -- | ADBC tests (parquet/folder, uses full tc)
 lean_exe «test-adbc» where

@@ -248,7 +248,7 @@ def test_key_cursor_tracks : IO Unit := do
 
 def test_no_stderr : IO Unit := do
   log "no_stderr"
-  let out ← IO.Process.output { cmd := "grep", args := #["-r", "eprintln", "Tc/", "--exclude=App.lean", "--exclude=Core.lean"] }
+  let out ← IO.Process.output { cmd := "grep", args := #["-r", "eprintln", "Tc/", "--exclude=App.lean", "--exclude=Mem.lean"] }
   assert (out.stdout.trim.isEmpty) "No eprintln in Tc/ (except App*.lean)"
 
 -- === Search tests ===
