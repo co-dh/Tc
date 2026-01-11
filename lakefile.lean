@@ -38,8 +38,7 @@ lean_lib Tc where
              `Tc.Data.ADBC.FFI, `Tc.Data.ADBC.Prql,
              `Tc.Data.ADBC.Table, `Tc.Data.ADBC.Meta,
              `Tc.Data.Kdb.FFI, `Tc.Data.Kdb.Q, `Tc.Data.Kdb.Table,
-             `Tc.Backend, `Tc.Backend.Full, `Tc.Backend.Core,
-             `Tc.Table.Mem, `Tc.Table.Full]
+                          `Tc.Table.Mem, `Tc.Table.Full]
 
 @[default_target]
 lean_exe tc where
