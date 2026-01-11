@@ -9,49 +9,22 @@ import Tc.Theme
 import Tc.View.Mem
 import Tc.Data.Mem.Meta
 import Tc.Data.Mem.Freq
+import Tc.UI.Info
 
 open Tc
 
--- | Meta/Freq table builders (inlined to avoid importing Tc.Meta/Tc.Freq)
-private def metaHeaders : Array String := #["column", "type", "cnt", "dist", "null%", "min", "max"]
-
-private def metaToTbl (m : MetaTuple) : MemTable :=
-  let (names, types, cnts, dists, nulls, mins, maxs) := m
-  ⟨metaHeaders, #[.strs names, .strs types, .ints cnts, .ints dists, .ints nulls, .strs mins, .strs maxs]⟩
-
-private def freqToTbl (f : FreqTuple) : MemTable :=
-  let (keyNames, keyCols, cntData, pctData, barData) := f
-  MemTable.sort ⟨keyNames ++ #["Cnt", "Pct", "Bar"], keyCols ++ #[.ints cntData, .floats pctData, .strs barData]⟩ #[keyCols.size] false
-
--- | Meta selection helpers (inlined to avoid Tc.Meta → Tc.View → ADBC chain)
-private def metaGetInt (t : MemTable) (col row : Nat) : Int64 :=
-  match t.cols.getD col default with | .ints d => d.getD row 0 | _ => 0
-private def metaSelRows (t : MemTable) (col : Nat) (p : Int64 → Bool) : Array Nat :=
-  (Array.range (MemTable.nRows t)).filter fun r => p (metaGetInt t col r)
-private def metaSelNull (t : MemTable) : Array Nat := metaSelRows t 4 (· == 100)  -- col 4 = null%
-private def metaSelSingle (t : MemTable) : Array Nat := metaSelRows t 3 (· == 1)  -- col 3 = dist
-private def metaSelNames (t : MemTable) (rows : Array Nat) : Array String :=
-  rows.filterMap fun r => match t.cols.getD 0 default with | .strs d => some (d.getD r "") | _ => none
-
+-- | Meta selection on view stack
 private def metaSel (s : ViewStack) (f : MemTable → Array Nat) : ViewStack :=
   if s.cur.vkind != .colMeta then s else
   let rows := f s.cur.nav.tbl
   let nav' := { s.cur.nav with row := { s.cur.nav.row with sels := rows } }
   s.setCur { s.cur with nav := nav' }
 
--- | Freq filter expr builder (inlined from Tc.Freq)
-private def freqFilterExpr (tbl : MemTable) (cols : Array String) (row : Nat) : String :=
-  let vals := cols.mapIdx fun i _ =>
-    match tbl.cols.getD i default with
-    | .strs d => s!"'{d.getD row ""}'"
-    | .ints d => s!"{d.getD row 0}"
-    | .floats d => s!"{d.getD row 0}"
-  " && ".intercalate (cols.zip vals |>.map fun (c, v) => s!"{c} == {v}").toList
-
+-- | Set key cols from meta view selections
 private def metaSetKey (s : ViewStack) : Option ViewStack :=
   if s.cur.vkind != .colMeta then some s else
   if !s.hasParent then some s else
-  let colNames := metaSelNames s.cur.nav.tbl s.cur.nav.row.sels
+  let colNames := Meta.selNames s.cur.nav.tbl s.cur.nav.row.sels
   s.pop.map fun s' =>
     let nav' := { s'.cur.nav with grp := colNames, col := { s'.cur.nav.col with sels := colNames } }
     s'.setCur { s'.cur with nav := nav' }
@@ -114,27 +87,6 @@ private def rowFilter (s : ViewStack) : IO ViewStack := do
     | none => pure s
   | none => pure s
 
--- | Info overlay (inlined to avoid Tc.UI.Info → Tc.View → ADBC chain)
-private def infoHints (vk : ViewKind) : Array (String × String) :=
-  let vh := match vk with
-    | .colMeta => #[("0", "sel null"), ("1", "sel single"), ("⏎", "set key"), ("q", "back")]
-    | .freqV _ => #[("⏎", "filter"), ("q", "back")]
-    | .fld _ _ => #[("⏎", "enter"), ("d", "trash"), (",d", "depth-"), (".d", "depth+")]
-    | .tbl => #[("M", "meta"), ("F", "freq"), ("D", "folder")]
-  vh ++ #[("j/k", "up/down"), ("h/l", "left/right"), ("g/G", "top/end"), ("^D/^U", "page"),
-          ("[/]", "sort"), ("/", "search"), ("\\", "filter"), ("!", "key col"),
-          ("t/T", "sel"), ("d", "delete"), ("s", "col jump"), ("S", "stack"),
-          ("I", "info"), ("q", "pop"), ("Q", "quit")]
-
-private def renderInfo (h w : Nat) (vk : ViewKind) : IO Unit := do
-  let hints := infoHints vk
-  let (kW, hW, boxW) := (5, 10, 16)
-  let (x0, y0) := (w - boxW - 2, h - hints.size - 3)
-  for i in [:hints.size] do
-    let (k, d) := hints.getD i ("", "")
-    let line := "".pushn ' ' (kW - k.length) ++ k ++ " " ++ d.take hW ++ "".pushn ' ' (hW - min d.length hW)
-    Term.print x0.toUInt32 (y0 + i).toUInt32 Term.black Term.yellow line
-
 -- | Info state
 structure InfoState where
   vis : Bool := false
@@ -153,7 +105,6 @@ def update (a : AppState) (cmd : Cmd) : Option (AppState × Effect) :=
   | some (v', eff) => some ({ a with stk := a.stk.setCur v' }, eff)
   | none =>
     let n := a.stk.cur.nav; let names := ReadTable.colNames n.tbl
-    let colIdxs := n.grp.filterMap names.idxOf?
     match cmd with
     | .info .ent => some ({ a with info := { vis := !a.info.vis } }, .none)
     | .stk .dec => match a.stk.pop with
@@ -162,8 +113,8 @@ def update (a : AppState) (cmd : Cmd) : Option (AppState × Effect) :=
     | .stk .ent => some ({ a with stk := a.stk.swap }, .none)
     | .stk .dup => some ({ a with stk := a.stk.dup }, .none)
     | .metaV .dup => some (a, .queryMeta)
-    | .metaV .dec => some ({ a with stk := metaSel a.stk metaSelNull }, .none)
-    | .metaV .inc => some ({ a with stk := metaSel a.stk metaSelSingle }, .none)
+    | .metaV .dec => some ({ a with stk := metaSel a.stk Meta.selNull }, .none)
+    | .metaV .inc => some ({ a with stk := metaSel a.stk Meta.selSingle }, .none)
     | .metaV .ent => metaSetKey a.stk |>.map fun s' => ({ a with stk := s' }, .none)
     | .freq .dup =>
       let curCol := colIdxAt n.grp names n.col.cur.val
@@ -209,18 +160,18 @@ partial def runEffect (a : AppState) (eff : Effect) : IO AppState := do
     | none => pure a
   | .queryMeta =>
     let m ← MemTable.queryMeta a.stk.cur.nav.tbl
-    match GView.fromTbl (metaToTbl m) a.stk.cur.path with
+    match GView.fromTbl (Meta.toMemTable m) a.stk.cur.path with
     | some v => pure { a with stk := a.stk.push { v with vkind := .colMeta, disp := "meta" } }
     | none => pure a
   | .queryFreq colIdxs colNames =>
     let f ← MemTable.queryFreq a.stk.cur.nav.tbl colIdxs
-    match GView.fromTbl (freqToTbl f) a.stk.cur.path 0 colNames with
+    match GView.fromTbl (Freq.toMemTable f) a.stk.cur.path 0 colNames with
     | some v => pure { a with stk := a.stk.push { v with vkind := .freqV colNames, disp := s!"freq {colNames.join ","}" } }
     | none => pure a
   | .freqFilter cols row =>
     match a.stk.cur.vkind, a.stk.pop with
     | .freqV _, some s' =>
-      let expr := freqFilterExpr a.stk.cur.nav.tbl cols row
+      let expr := Freq.filterExpr a.stk.cur.nav.tbl cols row
       match ← MemTable.filter s'.cur.nav.tbl expr with
       | some tbl' => match GView.fromTbl tbl' s'.cur.path 0 s'.cur.nav.grp 0 with
         | some v => pure { a with stk := s'.push v }
@@ -238,7 +189,7 @@ partial def mainLoop (a : AppState) (testMode : Bool) (keys : Array Char) : IO A
   let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles
   let a := { a with stk := a.stk.setCur v', vs := vs' }
   renderTabLine a.stk.tabNames 0
-  if a.info.vis then renderInfo (← Term.height).toNat (← Term.width).toNat a.stk.cur.vkind
+  if a.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat a.stk.cur.vkind
   Term.present
   if testMode && keys.isEmpty then IO.print (← Term.bufferStr); return a
   let (ev, keys') ← nextEvent keys

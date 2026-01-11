@@ -4,7 +4,7 @@
 -/
 import Tc.Effect
 import Tc.Term
-import Tc.View
+import Tc.Types
 
 namespace Tc.UI.Info
 

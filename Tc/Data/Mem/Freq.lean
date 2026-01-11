@@ -51,4 +51,25 @@ def queryFreq (t : MemTable) (colIdxs : Array Nat) : IO FreqTuple := pure $
   (keyNames, keyCols, cntData, pctData, barData)
 
 end MemTable
+
+-- | Freq table helpers (shared by Tc.Freq and App.Mem)
+namespace Freq
+
+-- | Convert FreqTuple to MemTable (sorted by Cnt desc)
+def toMemTable (f : FreqTuple) : MemTable :=
+  let (keyNames, keyCols, cntData, pctData, barData) := f
+  let names := keyNames ++ #["Cnt", "Pct", "Bar"]
+  let cols := keyCols ++ #[.ints cntData, .floats pctData, .strs barData]
+  MemTable.sort ⟨names, cols⟩ #[keyCols.size] false
+
+-- | Build filter expression from freq row (col1 == val1 && col2 == val2 ...)
+def filterExpr (tbl : MemTable) (cols : Array String) (row : Nat) : String :=
+  let vals := cols.mapIdx fun i _ =>
+    match tbl.cols.getD i default with
+    | .strs d => s!"'{d.getD row ""}'"
+    | .ints d => s!"{d.getD row 0}"
+    | .floats d => s!"{d.getD row 0}"
+  " && ".intercalate (cols.zip vals |>.map fun (c, v) => s!"{c} == {v}").toList
+
+end Freq
 end Tc

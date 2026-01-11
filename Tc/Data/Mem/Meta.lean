@@ -59,4 +59,36 @@ def queryMeta (t : MemTable) : IO MetaTuple := do
   pure (names, types, cnts, dists, nulls, mins, maxs)
 
 end MemTable
+
+-- | Meta table helpers (shared by Tc.Meta and App.Mem)
+namespace Meta
+
+def headers : Array String := #["column", "type", "cnt", "dist", "null%", "min", "max"]
+def colDist : Nat := 3  -- distinct count column index
+def colNull : Nat := 4  -- null% column index
+
+-- | Convert MetaTuple to MemTable
+def toMemTable (m : MetaTuple) : MemTable :=
+  let (names, types, cnts, dists, nulls, mins, maxs) := m
+  ⟨headers, #[.strs names, .strs types, .ints cnts, .ints dists, .ints nulls, .strs mins, .strs maxs]⟩
+
+-- | Get int value from meta table column at row
+def getInt (t : MemTable) (col row : Nat) : Int64 :=
+  match t.cols.getD col default with | .ints d => d.getD row 0 | _ => 0
+
+-- | Select rows where int column satisfies predicate
+def selectRows (t : MemTable) (col : Nat) (p : Int64 → Bool) : Array Nat :=
+  (Array.range (MemTable.nRows t)).filter fun r => p (getInt t col r)
+
+-- | Select 100% null columns
+def selNull (t : MemTable) : Array Nat := selectRows t colNull (· == 100)
+
+-- | Select single-value columns (distinct == 1)
+def selSingle (t : MemTable) : Array Nat := selectRows t colDist (· == 1)
+
+-- | Get column names from selected rows (col 0 is "column")
+def selNames (t : MemTable) (rows : Array Nat) : Array String :=
+  rows.filterMap fun r => match t.cols.getD 0 default with | .strs d => some (d.getD r "") | _ => none
+
+end Meta
 end Tc
