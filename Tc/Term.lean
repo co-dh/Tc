@@ -99,8 +99,10 @@ opaque present : IO Unit
 @[extern "lean_tb_poll_event"]
 opaque pollEvent : IO Event
 
-@[extern "lean_tb_buffer_str"]
-opaque bufferStr : IO String
+-- | Capture screen via tmux capture-pane
+def bufferStr : IO String := do
+  let out ← IO.Process.output { cmd := "tmux", args := #["capture-pane", "-p"] }
+  pure out.stdout
 
 -- | Batch print with padding (C FFI - fast)
 @[extern "lean_tb_print_pad"]

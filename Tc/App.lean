@@ -116,7 +116,9 @@ def runMem (res : Except String MemTable) (name : String) (pipeMode testMode : B
 -- | Entry point
 def main (args : List String) : IO Unit := do
   let (path?, keys, testMode) := parseArgs args
-  Fzf.setTestMode testMode
+  -- testMode from -c flag or TC_TEST_MODE env (for tmux-based tests)
+  let envTest := (← IO.getEnv "TC_TEST_MODE").isSome
+  Fzf.setTestMode (testMode || envTest)
   -- pipe mode: stdin is not tty AND not test mode (test mode uses -c for replay)
   let pipeMode ← if testMode then pure false else (! ·) <$> Term.isattyStdin
   let theme ← Theme.State.init

@@ -357,13 +357,14 @@ lean_obj_res lean_render_table(
     // compute or use widths for ALL columns (+2 for leading space + type char)
     // use max(data_width, MIN_HDR_WIDTH) + 2 for minimum header visibility
     // apply widthAdj offset (clamped to min 3)
+    // NOTE: only scan visible rows [r0,r1) for width - scanning all rows kills perf
     int* allWidths = malloc(nCols * sizeof(int));
     int needCompute = lean_array_size(inWidths) == 0;
     for (size_t c = 0; c < nCols; c++) {
         int w;
         if (needCompute) {
             lean_obj_arg col = lean_array_get_core(allCols, c);
-            int dw = compute_data_width(col, 0, nTotalRows, (int)precAdj);
+            int dw = compute_data_width(col, r0, r1, (int)precAdj);  // visible rows only
             w = (dw > MIN_HDR_WIDTH ? dw : MIN_HDR_WIDTH) + 2;
         } else {
             w = lean_unbox(lean_array_get_core(inWidths, c));
@@ -523,47 +524,6 @@ lean_obj_res lean_render_table(
     free(ws);
     free(allWidths);
     return lean_io_result_mk_ok(outWidths);
-}
-
-// | UTF-8 encode codepoint, returns bytes written
-static int utf8_encode(uint32_t ch, char *buf) {
-    if (ch < 0x80) { buf[0] = ch; return 1; }
-    if (ch < 0x800) { buf[0] = 0xC0 | (ch >> 6); buf[1] = 0x80 | (ch & 0x3F); return 2; }
-    if (ch < 0x10000) {
-        buf[0] = 0xE0 | (ch >> 12); buf[1] = 0x80 | ((ch >> 6) & 0x3F); buf[2] = 0x80 | (ch & 0x3F);
-        return 3;
-    }
-    buf[0] = 0xF0 | (ch >> 18); buf[1] = 0x80 | ((ch >> 12) & 0x3F);
-    buf[2] = 0x80 | ((ch >> 6) & 0x3F); buf[3] = 0x80 | (ch & 0x3F);
-    return 4;
-}
-
-// tb_buffer_str() -> String (screen as UTF-8 string)
-lean_obj_res lean_tb_buffer_str(lean_obj_arg world) {
-    int w = tb_width();
-    int h = tb_height();
-    struct tb_cell *buf = tb_cell_buffer();
-    if (!buf || w <= 0 || h <= 0) {
-        char hdr[64];
-        snprintf(hdr, sizeof(hdr), "(no buffer: %dx%d buf=%p)\n", w, h, (void*)buf);
-        return lean_io_result_mk_ok(lean_mk_string(hdr));
-    }
-    // max 4 bytes per char (UTF-8) + newline per row
-    char *str = malloc((size_t)(w * 4 + 1) * h + 1);
-    if (!str) return lean_io_result_mk_ok(lean_mk_string("(malloc fail)"));
-    size_t pos = 0;
-    for (int y = 0; y < h; y++) {
-        for (int x = 0; x < w; x++) {
-            uint32_t ch = buf[y * w + x].ch;
-            if (ch == 0) ch = ' ';  // null → space
-            pos += utf8_encode(ch, str + pos);
-        }
-        str[pos++] = '\n';
-    }
-    str[pos] = '\0';
-    lean_object *res = lean_mk_string(str);
-    free(str);
-    return lean_io_result_mk_ok(res);
 }
 
 // String -> Float (returns NaN on parse failure)
