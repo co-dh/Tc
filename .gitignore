@@ -8,3 +8,4 @@ perf.data*
 tc.log
 test.log
 run_test.sh
+test/qcon

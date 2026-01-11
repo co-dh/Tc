@@ -31,17 +31,17 @@ lean_exe tc where
 
 -- | Test executable (spawns tc subprocess)
 lean_exe test where
-  root := `Test
+  root := `test.Test
 
 -- | Kdb backend tests (requires localhost:8888/nbbo)
 lean_exe «kdb-test» where
-  root := `KdbTest
+  root := `test.KdbTest
 
 -- | Kdb key tests (UI tests, requires localhost:8888/nbbo)
 lean_exe «kdb-key-test» where
-  root := `KdbKeyTest
+  root := `test.KdbKeyTest
 
 -- | Pure tests (compile-time checks via #guard)
 lean_lib PureTest where
-  roots := #[`PureTest]
+  roots := #[`test.PureTest]
 
