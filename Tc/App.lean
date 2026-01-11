@@ -126,9 +126,8 @@ def main (args : List String) : IO Unit := do
   if pipeMode && path?.isNone then
     if let some a ← runMem (← MemTable.fromStdin) "stdin" true testMode theme keys then outputTable a
     return
-  -- init ADBC for parquet support (used by folder view and CLI)
-  let ok ← AdbcTable.init
-  if !ok then IO.eprintln "Backend init failed"; return
+  -- init ADBC for parquet support (optional - tc-core build has stub)
+  let _ ← AdbcTable.init
   let path := path?.getD ""
   try
     if path.isEmpty then  -- no file: show current directory as folder view
