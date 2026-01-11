@@ -176,19 +176,21 @@ This enables true runtime plugins, though with some Lean runtime overhead per pl
    - `Tc/Backend/Full.lean` - AdbcTable.init/shutdown
    - `Tc/Backend.lean` - re-exports Full for backwards compatibility
 
+5. **tc-core executable**: `Tc/App/Core.lean` - standalone CSV-only viewer
+   - Uses `Table.Mem` (MemTable only)
+   - Uses `Backend.Core` (no-op init/shutdown)
+   - Rejects parquet files with helpful error message
+   - No kdb://, no folder view
+
+### Build Targets
+
+```bash
+lake build tc        # Full build (all backends)
+lake build tc-core   # Core build (CSV/stdin only)
+```
+
 ### Remaining Work
 
-1. **App variants**: Create `Tc/App/Core.lean` that:
-   - Uses `Table.Mem` instead of `Table`
-   - Uses `Backend.Core` instead of `Backend.Full`
-   - Removes kdb:// and folder view support
-
-2. **Lakefile targets**: Add conditional build targets:
-   ```lean
-   lean_exe «tc-core» where root := `Tc.App.Core
-   lean_exe «tc-duckdb» where root := `Tc.App
-   ```
-
-3. **View dispatch**: Make `View.fromFile` backend-aware:
-   - Core: `.csv` only, error on parquet
-   - DuckDB: `.csv` → MemTable, else AdbcTable
+1. **Smaller tc-core binary**: Currently links all C libs. Need separate extern_lib config.
+2. **tc-duckdb variant**: ADBC without kdb (intermediate size)
+3. **Pure ADBC driver support**: Connection string for Snowflake/Postgres

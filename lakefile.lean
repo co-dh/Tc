@@ -27,11 +27,16 @@ lean_lib Tc where
              `Tc.Data.ADBC.Table, `Tc.Data.ADBC.Meta,
              `Tc.Data.Kdb.FFI, `Tc.Data.Kdb.Q, `Tc.Data.Kdb.Table,
              `Tc.Backend, `Tc.Backend.Full, `Tc.Backend.Core,
-             `Tc.Table.Mem, `Tc.Table.Full]
+             `Tc.Table.Mem, `Tc.Table.Full,
+             `Tc.View.Core, `Tc.App.Core]
 
 @[default_target]
 lean_exe tc where
   root := `Tc.App
+
+-- | Core build: CSV/stdin only, no ADBC/Kdb
+lean_exe «tc-core» where
+  root := `Tc.App.Core
 
 -- | Test executable (spawns tc subprocess)
 lean_exe test where
