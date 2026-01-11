@@ -1,6 +1,6 @@
 /*
- * ADBC FFI shim for Lean 4
- * Dynamically loads libduckdb.so to avoid glibc version conflicts
+ * ADBC Core FFI - Generic ADBC interface for Lean 4
+ * Dynamically loads ADBC driver via dlopen
  */
 #include <lean/lean.h>
 #include <stdint.h>
@@ -135,7 +135,7 @@ static struct AdbcConnection g_conn = {0};
 static int g_initialized = 0;
 static FILE* g_log = NULL;
 
-/* === Logging to file === */
+/* === Logging === */
 static void log_msg(const char* fmt, ...) {
     if (!g_log) g_log = fopen("/tmp/tv.log", "a");
     if (!g_log) return;
@@ -149,29 +149,18 @@ static void log_msg(const char* fmt, ...) {
     fflush(g_log);
 }
 
-/* === Helper: init error struct === */
-static void init_error(struct AdbcError* err) {
-    memset(err, 0, sizeof(*err));
-}
+/* === Helpers === */
+static void init_error(struct AdbcError* err) { memset(err, 0, sizeof(*err)); }
+static void free_error(struct AdbcError* err) { if (err->release) err->release(err); }
 
-/* === Helper: free error if needed === */
-static void free_error(struct AdbcError* err) {
-    if (err->release) err->release(err);
-}
-
-/* === Lean FFI Functions === */
-
-// | Load ADBC functions from libduckdb.so
-static int load_adbc_funcs(void) {
-    const char* paths[] = {"/usr/lib/libduckdb.so", "/usr/local/lib/libduckdb.so", "libduckdb.so", NULL};
-    for (int i = 0; paths[i]; i++) {
-        g_lib = dlopen(paths[i], RTLD_NOW | RTLD_GLOBAL);
-        if (g_lib) { log_msg("[adbc] loaded %s\n", paths[i]); break; }
-    }
-    if (!g_lib) { log_msg("[adbc] dlopen failed: %s\n", dlerror()); return 0; }
+/* === Load ADBC functions from driver === */
+static int load_adbc_funcs_from_path(const char* path) {
+    g_lib = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+    if (!g_lib) { log_msg("[adbc] dlopen %s failed: %s\n", path, dlerror()); return 0; }
+    log_msg("[adbc] loaded %s\n", path);
     for (int i = 0; i < FN_COUNT; i++) {
         g_fn[i] = dlsym(g_lib, g_fn_names[i]);
-        if (!g_fn[i]) return 0;
+        if (!g_fn[i]) { log_msg("[adbc] missing symbol: %s\n", g_fn_names[i]); return 0; }
     }
     return 1;
 }
@@ -184,10 +173,14 @@ static int load_adbc_funcs(void) {
     } \
 } while(0)
 
-// | Init ADBC (in-memory DuckDB)
-lean_obj_res lean_adbc_init(lean_obj_arg world) {
+// | Generic ADBC init with configurable driver
+lean_obj_res lean_adbc_init_driver(b_lean_obj_arg driver_obj, b_lean_obj_arg entry_obj, lean_obj_arg world) {
     if (g_initialized) return lean_io_result_mk_ok(lean_box(1));
-    if (!load_adbc_funcs()) { log_msg("[adbc] load_adbc_funcs failed\n"); return lean_io_result_mk_ok(lean_box(0)); }
+
+    const char* driver = lean_string_cstr(driver_obj);
+    const char* entry = lean_string_cstr(entry_obj);
+
+    if (!load_adbc_funcs_from_path(driver)) return lean_io_result_mk_ok(lean_box(0));
 
     struct AdbcError err;
     init_error(&err);
@@ -195,15 +188,15 @@ lean_obj_res lean_adbc_init(lean_obj_arg world) {
 
     ADBC_CHECK(pAdbcDatabaseNew(&g_db, &err), "DatabaseNew");
     have_db = 1;
-    ADBC_CHECK(pAdbcDatabaseSetOption(&g_db, "driver", "/usr/lib/libduckdb.so", &err), "SetOption(driver)");
-    ADBC_CHECK(pAdbcDatabaseSetOption(&g_db, "entrypoint", "duckdb_adbc_init", &err), "SetOption(entrypoint)");
+    ADBC_CHECK(pAdbcDatabaseSetOption(&g_db, "driver", driver, &err), "SetOption(driver)");
+    ADBC_CHECK(pAdbcDatabaseSetOption(&g_db, "entrypoint", entry, &err), "SetOption(entrypoint)");
     ADBC_CHECK(pAdbcDatabaseSetOption(&g_db, "path", "", &err), "SetOption(path)");
     ADBC_CHECK(pAdbcDatabaseInit(&g_db, &err), "DatabaseInit");
     ADBC_CHECK(pAdbcConnectionNew(&g_conn, &err), "ConnectionNew");
     have_conn = 1;
     ADBC_CHECK(pAdbcConnectionInit(&g_conn, &g_db, &err), "ConnectionInit");
 
-    log_msg("[adbc] initialized OK\n");
+    log_msg("[adbc] initialized OK with driver=%s entry=%s\n", driver, entry);
     g_initialized = 1;
     return lean_io_result_mk_ok(lean_box(1));
 
@@ -216,13 +209,10 @@ fail:
 
 // | Shutdown ADBC
 lean_obj_res lean_adbc_shutdown(lean_obj_arg world) {
-    if (!g_initialized) {
-        return lean_io_result_mk_ok(lean_box(0));
-    }
+    if (!g_initialized) return lean_io_result_mk_ok(lean_box(0));
 
     struct AdbcError err;
     init_error(&err);
-
     pAdbcConnectionRelease(&g_conn, &err);
     pAdbcDatabaseRelease(&g_db, &err);
     free_error(&err);
@@ -231,11 +221,7 @@ lean_obj_res lean_adbc_shutdown(lean_obj_arg world) {
     memset(&g_conn, 0, sizeof(g_conn));
     memset(&g_db, 0, sizeof(g_db));
 
-    if (g_lib) {
-        dlclose(g_lib);
-        g_lib = NULL;
-    }
-
+    if (g_lib) { dlclose(g_lib); g_lib = NULL; }
     return lean_io_result_mk_ok(lean_box(0));
 }
 
@@ -244,7 +230,7 @@ lean_obj_res lean_adbc_shutdown(lean_obj_arg world) {
 typedef struct {
     struct ArrowSchema schema;
     struct ArrowArray* batches;
-    int64_t* prefix;      // prefix[i] = sum of rows in batches[0..i-1], prefix[n_batches] = total
+    int64_t* prefix;      // prefix[i] = sum of rows in batches[0..i-1]
     int64_t n_batches;
     int64_t total_rows;
 } QueryResult;
@@ -261,15 +247,12 @@ static void qr_finalize(void* p) {
     free(qr);
 }
 
-// | Foreach noop
 static void qr_foreach(void* p, b_lean_obj_arg f) { (void)p; (void)f; }
 
 static lean_external_class* g_qr_class = NULL;
 
 static lean_external_class* get_qr_class(void) {
-    if (!g_qr_class) {
-        g_qr_class = lean_register_external_class(qr_finalize, qr_foreach);
-    }
+    if (!g_qr_class) g_qr_class = lean_register_external_class(qr_finalize, qr_foreach);
     return g_qr_class;
 }
 
@@ -344,9 +327,7 @@ lean_obj_res lean_qr_nrows(b_lean_obj_arg qr_obj, lean_obj_arg world) {
 // | Get column name
 lean_obj_res lean_qr_col_name(b_lean_obj_arg qr_obj, uint64_t col, lean_obj_arg world) {
     QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
-    if ((int64_t)col >= qr->schema.n_children) {
-        return lean_io_result_mk_ok(lean_mk_string(""));
-    }
+    if ((int64_t)col >= qr->schema.n_children) return lean_io_result_mk_ok(lean_mk_string(""));
     const char* name = qr->schema.children[col]->name;
     return lean_io_result_mk_ok(lean_mk_string(name ? name : ""));
 }
@@ -354,19 +335,16 @@ lean_obj_res lean_qr_col_name(b_lean_obj_arg qr_obj, uint64_t col, lean_obj_arg 
 // | Get column format (Arrow type string)
 lean_obj_res lean_qr_col_fmt(b_lean_obj_arg qr_obj, uint64_t col, lean_obj_arg world) {
     QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
-    if ((int64_t)col >= qr->schema.n_children) {
-        return lean_io_result_mk_ok(lean_mk_string(""));
-    }
+    if ((int64_t)col >= qr->schema.n_children) return lean_io_result_mk_ok(lean_mk_string(""));
     const char* fmt = qr->schema.children[col]->format;
     return lean_io_result_mk_ok(lean_mk_string(fmt ? fmt : ""));
 }
 
-/* === Cell Access Helpers === */
+/* === Cell Access === */
 
-// | Find batch and local row for global row index (binary search on prefix sums)
+// | Binary search for batch containing global row
 static int find_batch(QueryResult* qr, int64_t row, int64_t* batch_idx, int64_t* local_row) {
     if (row < 0 || row >= qr->total_rows) return 0;
-    // binary search: find largest i where prefix[i] <= row
     int64_t lo = 0, hi = qr->n_batches;
     while (lo < hi) {
         int64_t mid = lo + (hi - lo + 1) / 2;
@@ -378,19 +356,16 @@ static int find_batch(QueryResult* qr, int64_t row, int64_t* batch_idx, int64_t*
     return 1;
 }
 
-// | Check if cell is null
+// | Check validity bitmap for null
 static int is_null(struct ArrowArray* arr, int64_t row) {
-    if (arr->null_count == 0) return 0;
-    if (arr->buffers[0] == NULL) return 0;
+    if (arr->null_count == 0 || !arr->buffers[0]) return 0;
     const uint8_t* validity = (const uint8_t*)arr->buffers[0];
     int64_t idx = arr->offset + row;
     return !(validity[idx / 8] & (1 << (idx % 8)));
 }
 
-// | Cell info: batch array + schema + format + local row (NULL arr if invalid)
 typedef struct { struct ArrowArray* arr; struct ArrowSchema* sch; const char* fmt; int64_t lr; } CellInfo;
 
-// | Get cell info (returns NULL arr if out of bounds)
 static CellInfo get_cell(QueryResult* qr, int64_t row, int64_t col) {
     CellInfo ci = {NULL, NULL, NULL, 0};
     int64_t bi;
@@ -402,11 +377,11 @@ static CellInfo get_cell(QueryResult* qr, int64_t row, int64_t col) {
     return ci;
 }
 
-// forward decl
+// forward decls
 static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t lr, char* buf, size_t buflen, uint8_t decimals);
 static size_t format_cell_full(struct ArrowArray* arr, struct ArrowSchema* sch, int64_t lr, char* buf, size_t buflen, uint8_t decimals);
 
-// | Get cell as string (uses format_cell_full with schema, 3 decimal places)
+// | Get cell as string
 lean_obj_res lean_qr_cell_str(b_lean_obj_arg qr_obj, uint64_t row, uint64_t col, lean_obj_arg world) {
     QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
     CellInfo c = get_cell(qr, row, col);
@@ -416,8 +391,7 @@ lean_obj_res lean_qr_cell_str(b_lean_obj_arg qr_obj, uint64_t row, uint64_t col,
     return lean_io_result_mk_ok(lean_mk_string(buf));
 }
 
-// | Get cell as Int (0 for null/non-int)
-// Handles signed (l/i/s/c) and unsigned (L/I/S/C) integer types
+// | Get cell as Int (handles signed/unsigned integer types)
 lean_obj_res lean_qr_cell_int(b_lean_obj_arg qr_obj, uint64_t row, uint64_t col, lean_obj_arg world) {
     QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
     CellInfo c = get_cell(qr, row, col);
@@ -435,7 +409,7 @@ lean_obj_res lean_qr_cell_int(b_lean_obj_arg qr_obj, uint64_t row, uint64_t col,
     return lean_io_result_mk_ok(lean_int64_to_int(val));
 }
 
-// | Get cell as Float (0.0 for null/non-float)
+// | Get cell as Float
 lean_obj_res lean_qr_cell_float(b_lean_obj_arg qr_obj, uint64_t row, uint64_t col, lean_obj_arg world) {
     QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
     CellInfo c = get_cell(qr, row, col);
@@ -453,23 +427,12 @@ lean_obj_res lean_qr_cell_is_null(b_lean_obj_arg qr_obj, uint64_t row, uint64_t 
     return lean_io_result_mk_ok(lean_box(!c.arr || is_null(c.arr, c.lr) ? 1 : 0));
 }
 
-// | Format cell or compute length (buf=NULL for length only)
-//
-// Arrow buffer layout:
-//   buffers[0]: validity bitmap (1 bit per row, 0=null)
-//   buffers[1]: data (fixed-width) or offsets (variable-length)
-//   buffers[2]: data bytes (variable-length only: utf8, binary)
-//
-// arr: column ArrowArray from batch
-// fmt: Arrow format string (l=int64, u=utf8, g=float64, etc.)
-// lr: local row index within batch
-// buf: output buffer (NULL = length only mode)
-// buflen: buffer size (ignored if buf=NULL)
-// decimals: decimal places for floats
-// returns: length written/needed
+/* === Cell Formatting === */
+
+// | Format cell value to string
 static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t lr, char* buf, size_t buflen, uint8_t decimals) {
     char tmp[CELL_BUF_SIZE];
-    if (!buf) { buf = tmp; buflen = sizeof(tmp); }  // length-only mode
+    if (!buf) { buf = tmp; buflen = sizeof(tmp); }
     if (is_null(arr, lr)) { buf[0] = '\0'; return 0; }
 
     char f = fmt[0];
@@ -483,15 +446,15 @@ static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t
     if (f == 'C') return snprintf(buf, buflen, "%u", ((const uint8_t*)arr->buffers[1])[arr->offset + lr]);
     if (f == 'g') return snprintf(buf, buflen, "%.*f", decimals, ((const double*)arr->buffers[1])[arr->offset + lr]);
     if (f == 'f') return snprintf(buf, buflen, "%.*f", decimals, ((const float*)arr->buffers[1])[arr->offset + lr]);
-    if (f == 'e') {  // half-float (16-bit) - convert via bit manipulation
+    if (f == 'e') {  // half-float
         uint16_t h = ((const uint16_t*)arr->buffers[1])[arr->offset + lr];
         uint32_t sign = (h & 0x8000) << 16;
         uint32_t exp = (h >> 10) & 0x1F;
         uint32_t mant = h & 0x3FF;
         uint32_t f32;
-        if (exp == 0) f32 = sign | (mant << 13);  // subnormal
-        else if (exp == 31) f32 = sign | 0x7F800000 | (mant << 13);  // inf/nan
-        else f32 = sign | ((exp + 112) << 23) | (mant << 13);  // normal
+        if (exp == 0) f32 = sign | (mant << 13);
+        else if (exp == 31) f32 = sign | 0x7F800000 | (mant << 13);
+        else f32 = sign | ((exp + 112) << 23) | (mant << 13);
         float val; memcpy(&val, &f32, 4);
         return snprintf(buf, buflen, "%.*f", decimals, (double)val);
     }
@@ -505,7 +468,7 @@ static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t
         buf[len] = '\0';
         return len;
     }
-    if (f == 'z') {  // binary: show hex (max 8 bytes)
+    if (f == 'z') {  // binary: hex
         const int32_t* off = (const int32_t*)arr->buffers[1];
         const uint8_t* data = (const uint8_t*)arr->buffers[2];
         int64_t idx = arr->offset + lr;
@@ -527,7 +490,7 @@ static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t
         buf[len] = '\0';
         return len;
     }
-    if (f == 'Z') {  // large binary: show hex (max 8 bytes)
+    if (f == 'Z') {  // large binary
         const int64_t* off = (const int64_t*)arr->buffers[1];
         const uint8_t* data = (const uint8_t*)arr->buffers[2];
         int64_t idx = arr->offset + lr;
@@ -553,24 +516,24 @@ static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t
         for (int i = 0; i < scale; i++) val /= 10.0;
         return snprintf(buf, buflen, "%.*f", scale, val);
     }
-    if (f == 't' && fmt[1] == 's') {  // timestamp (us since epoch)
+    if (f == 't' && fmt[1] == 's') {  // timestamp
         int64_t us = ((const int64_t*)arr->buffers[1])[arr->offset + lr];
         time_t secs = us / 1000000;
         struct tm* tm = gmtime(&secs);
         return snprintf(buf, buflen, "%04d-%02d-%02d %02d:%02d:%02d",
                  tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec);
     }
-    if (f == 't' && fmt[1] == 't') {  // time (us since midnight)
+    if (f == 't' && fmt[1] == 't') {  // time
         int64_t s = ((const int64_t*)arr->buffers[1])[arr->offset + lr] / 1000000;
         return snprintf(buf, buflen, "%02d:%02d:%02d", (int)((s/3600)%24), (int)((s/60)%60), (int)(s%60));
     }
-    if (f == 't' && fmt[1] == 'd') {  // date32 (days since epoch)
+    if (f == 't' && fmt[1] == 'd') {  // date32
         int32_t days = ((const int32_t*)arr->buffers[1])[arr->offset + lr];
         time_t secs = (time_t)days * 86400;
         struct tm* tm = gmtime(&secs);
         return snprintf(buf, buflen, "%04d-%02d-%02d", tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday);
     }
-    if (f == '+' && fmt[1] == 'l') {  // list: show [n] v1; v2; v3
+    if (f == '+' && fmt[1] == 'l') {  // list
         if (!arr->buffers[1]) { buf[0] = '\0'; return 0; }
         const int32_t* off = (const int32_t*)arr->buffers[1];
         int64_t idx = arr->offset + lr;
@@ -588,7 +551,7 @@ static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t
         }
         return pos;
     }
-    if (f == '+' && fmt[1] == 'L') {  // large_list: show [n] v1; v2; v3
+    if (f == '+' && fmt[1] == 'L') {  // large_list
         if (!arr->buffers[1]) { buf[0] = '\0'; return 0; }
         const int64_t* off = (const int64_t*)arr->buffers[1];
         int64_t idx = arr->offset + lr;
@@ -606,9 +569,9 @@ static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t
         }
         return pos;
     }
-    if (f == '+' && fmt[1] == 'w') {  // fixed_size_list: show [n] v1; v2
+    if (f == '+' && fmt[1] == 'w') {  // fixed_size_list
         int n = 0;
-        const char* p = fmt + 3;  // skip "+w:"
+        const char* p = fmt + 3;
         while (*p >= '0' && *p <= '9') n = n * 10 + (*p++ - '0');
         int pos = snprintf(buf, buflen, "[%d]", n);
         if (n > 0 && arr->n_children > 0 && arr->children && arr->children[0] && arr->children[0]->buffers[1]) {
@@ -623,35 +586,32 @@ static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t
         }
         return pos;
     }
-    if (f == '+' && fmt[1] == 's') {  // struct: handled by format_cell_full
+    if (f == '+' && fmt[1] == 's') {  // struct
         return snprintf(buf, buflen, "{%d}", (int)arr->n_children);
     }
-    if (f == 't' && fmt[1] == 'D') {  // duration: tDu=us, tDn=ns, tDm=ms, tDs=s
+    if (f == 't' && fmt[1] == 'D') {  // duration
         char unit = fmt[2];
         int64_t v = ((const int64_t*)arr->buffers[1])[arr->offset + lr];
         int neg = v < 0; if (neg) v = -v;
         int64_t s, ms;
-        if (unit == 'n') { s = v / 1000000000; ms = (v % 1000000000) / 1000000; }       // ns
-        else if (unit == 'u') { s = v / 1000000; ms = (v % 1000000) / 1000; }           // us
-        else if (unit == 'm') { s = v / 1000; ms = v % 1000; }                          // ms
-        else { s = v; ms = 0; }                                                          // s
+        if (unit == 'n') { s = v / 1000000000; ms = (v % 1000000000) / 1000000; }
+        else if (unit == 'u') { s = v / 1000000; ms = (v % 1000000) / 1000; }
+        else if (unit == 'm') { s = v / 1000; ms = v % 1000; }
+        else { s = v; ms = 0; }
         return snprintf(buf, buflen, "%s%ld.%03ld s", neg ? "-" : "", (long)s, (long)ms);
     }
     buf[0] = '\0';
     return 0;
 }
 
-// | Format cell with schema (handles struct: {n} name=val name=val, max 3 fields)
+// | Format cell with struct support
 static size_t format_cell_full(struct ArrowArray* arr, struct ArrowSchema* sch, int64_t lr, char* buf, size_t buflen, uint8_t decimals) {
     if (!arr || !sch || !sch->format) { buf[0] = '\0'; return 0; }
     const char* fmt = sch->format;
 
-    // struct: {n} name=val name=val (max 3 fields, no recursion)
     if (fmt[0] == '+' && fmt[1] == 's') {
         int n = arr->n_children;
-        if (!arr->children || !sch->children || n == 0) {
-            return snprintf(buf, buflen, "{%d}", n);
-        }
+        if (!arr->children || !sch->children || n == 0) return snprintf(buf, buflen, "{%d}", n);
         int show = n > 3 ? 3 : n;
         int pos = snprintf(buf, buflen, "{%d}", n);
         for (int i = 0; i < show && (size_t)pos < buflen - 10; i++) {
@@ -660,7 +620,6 @@ static size_t format_cell_full(struct ArrowArray* arr, struct ArrowSchema* sch, 
             if (!ch || !cs || !cs->format) continue;
             const char* nm = cs->name ? cs->name : "";
             pos += snprintf(buf + pos, buflen - pos, " %s=", nm);
-            // simple child formatting (no recursion)
             char cf = cs->format[0];
             if (cf == 'l' && ch->buffers[1]) {
                 pos += snprintf(buf + pos, buflen - pos, "%ld", (long)((int64_t*)ch->buffers[1])[ch->offset + lr]);
@@ -686,30 +645,23 @@ static size_t format_cell_full(struct ArrowArray* arr, struct ArrowSchema* sch, 
     return format_cell_batch(arr, fmt, lr, buf, buflen, decimals);
 }
 
-// | Get column widths (max of header and all cells, capped at 50)
+// | Get column widths
 lean_obj_res lean_qr_col_widths(b_lean_obj_arg qr_obj, lean_obj_arg world) {
     QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
     int64_t nc = qr->schema.n_children;
     int64_t nr = qr->total_rows;
 
-    // Alloc Lean array
     lean_object* arr = lean_alloc_array(nc, nc);
-
     for (int64_t c = 0; c < nc; c++) {
-        // Start with header width
         const char* name = qr->schema.children[c]->name;
         size_t w = name ? strlen(name) : 0;
-
-        // Scan all rows for max width (default decimals=3)
         for (int64_t r = 0; r < nr; r++) {
             CellInfo ci = get_cell(qr, r, c);
             if (!ci.arr) continue;
             size_t cw = format_cell_batch(ci.arr, ci.fmt, ci.lr, NULL, 0, 3);
             if (cw > w) w = cw;
         }
-
         lean_array_set_core(arr, c, lean_box(w));
     }
-
     return lean_io_result_mk_ok(arr);
 }

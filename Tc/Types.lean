@@ -3,7 +3,6 @@
   Table stores columns by name (HashMap) for direct name-based access
 -/
 import Std.Data.HashMap
-import Tc.Data.ADBC.FFI
 
 -- | Join array of strings with separator (no intermediate List)
 def Array.join (arr : Array String) (sep : String) : String :=

@@ -10,9 +10,11 @@ def mkCLib (pkg : Package) (name src : String) := do
   buildFileAfterDep dst (←inputTextFile srcF) fun _ =>
     proc { cmd := "make", args := #["-C", (pkg.dir / "c").toString, s!"lib{name}.a"] }
 
+-- | C libraries
 extern_lib termbox2 pkg := mkCLib pkg "termbox2" "termbox2.h"
 extern_lib termshim pkg := mkCLib pkg "termshim" "term_shim.c"
-extern_lib adbcshim pkg := mkCLib pkg "adbcshim" "adbc_shim.c"
+-- ADBC: adbc_core.c (generic) + duckdb_driver.c (DuckDB init)
+extern_lib adbcshim pkg := mkCLib pkg "adbcshim" "adbc_core.c"
 extern_lib kdbshim pkg := mkCLib pkg "kdbshim" "kdb_shim.c"
 
 lean_lib Tc where
@@ -23,7 +25,9 @@ lean_lib Tc where
              `Tc.Data.Mem.Table, `Tc.Data.Mem.Text, `Tc.Data.Mem.Meta, `Tc.Data.Mem.Freq,
              `Tc.Data.ADBC.FFI, `Tc.Data.ADBC.Prql,
              `Tc.Data.ADBC.Table, `Tc.Data.ADBC.Meta,
-             `Tc.Data.Kdb.FFI, `Tc.Data.Kdb.Q, `Tc.Data.Kdb.Table]
+             `Tc.Data.Kdb.FFI, `Tc.Data.Kdb.Q, `Tc.Data.Kdb.Table,
+             `Tc.Backend, `Tc.Backend.Full, `Tc.Backend.Core,
+             `Tc.Table.Mem, `Tc.Table.Full]
 
 @[default_target]
 lean_exe tc where
