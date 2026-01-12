@@ -5,6 +5,7 @@
 import Tc.Effect
 import Tc.Fzf
 import Tc.Render
+import Tc.Theme
 
 namespace Tc
 
@@ -193,5 +194,33 @@ def rowFilter (s : GViewStack T) : IO (GViewStack T) := do
 end Search
 
 end GViewStack
+
+/-! ## GAppState: generic app state -/
+
+-- | Info state for overlay
+structure InfoState where
+  vis : Bool := false
+
+-- | Generic app state over table type T
+structure GAppState (T : Type) [ReadTable T] [RenderTable T] where
+  stk   : GViewStack T
+  vs    : ViewState := .default
+  theme : Theme.State
+  info  : InfoState := {}
+
+namespace GAppState
+
+variable {T : Type} [ReadTable T] [ModifyTable T] [RenderTable T]
+
+-- | Commands that reset ViewState
+def resetsVS (cmd : Cmd) : Bool :=
+  cmd matches .stk .dec | .colSel .del | .colSel _ | .metaV _ | .freq _ | .fld _
+    | .col .ent | .rowSel .inc | .rowSel .dec
+
+-- | Update stk, reset vs if needed
+def withStk (a : GAppState T) (cmd : Cmd) (s' : GViewStack T) : GAppState T :=
+  { a with stk := s', vs := if resetsVS cmd then .default else a.vs }
+
+end GAppState
 
 end Tc

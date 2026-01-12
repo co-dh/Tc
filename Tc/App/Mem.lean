@@ -5,7 +5,6 @@ import Tc.Fzf
 import Tc.Key
 import Tc.Render
 import Tc.Term
-import Tc.Theme
 import Tc.View.Mem
 import Tc.Data.Mem.Meta
 import Tc.Data.Mem.Freq
@@ -13,7 +12,8 @@ import Tc.UI.Info
 
 open Tc
 
--- | Meta selection on view stack
+-- | Select rows in meta view by predicate f (e.g. Meta.selNull, Meta.selSingle)
+-- In meta view, rows = columns from parent table, so selecting rows = selecting columns
 private def metaSel (s : ViewStack) (f : MemTable → Array Nat) : ViewStack :=
   if s.cur.vkind != .colMeta then s else
   let rows := f s.cur.nav.tbl
@@ -29,16 +29,8 @@ private def metaSetKey (s : ViewStack) : Option ViewStack :=
     let nav' := { s'.cur.nav with grp := colNames, col := { s'.cur.nav.col with sels := colNames } }
     s'.setCur { s'.cur with nav := nav' }
 
--- | Info state
-structure InfoState where
-  vis : Bool := false
-
--- | App state
-structure AppState where
-  stk : ViewStack
-  vs : ViewState := .default
-  theme : Theme.State
-  info : InfoState := {}
+-- | AppState for tc-core (MemTable only)
+abbrev AppState := GAppState MemTable
 
 namespace AppState
 
@@ -156,6 +148,6 @@ def main (args : List String) : IO Unit := do
   match ← View.fromFile path with
   | some v =>
     let _ ← Term.init
-    let _ ← mainLoop ⟨⟨#[v], by simp⟩, .default, ← Theme.State.init, {}⟩ testMode keys
+    let _ ← mainLoop { stk := ⟨#[v], by simp⟩, theme := ← Theme.State.init } testMode keys
     Term.shutdown
   | none => IO.eprintln "Cannot open file"

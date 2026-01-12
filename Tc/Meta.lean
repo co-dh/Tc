@@ -16,7 +16,8 @@ def push (s : ViewStack) : IO (Option ViewStack) := do
   let some v := View.fromTbl (.mem tbl) s.cur.path | return none
   return some (s.push { v with vkind := .colMeta, disp := "meta" })
 
--- | Select rows in meta view by predicate on MemTable
+-- | Select rows in meta view by predicate f (e.g. selNull, selSingle)
+-- In meta view, rows = columns from parent table, so selecting rows = selecting columns
 def sel (s : ViewStack) (f : MemTable → Array Nat) : ViewStack :=
   if s.cur.vkind != .colMeta then s else
   match s.cur.nav.tbl.asMem? with
