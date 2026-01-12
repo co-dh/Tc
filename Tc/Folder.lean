@@ -3,8 +3,9 @@
   Commands: .fld .dup (push), .fld .inc/.dec (depth), .fld .ent (enter)
 -/
 import Tc.Fzf
-import Tc.View
+import Tc.Table
 import Tc.Term
+import Tc.Data.Mem.Text
 
 namespace Tc.Folder
 

@@ -4,7 +4,7 @@
   ADBC check wrappers around generic GViewStack search functions.
 -/
 import Tc.Error
-import Tc.View
+import Tc.Table
 
 namespace Tc.ViewStack
 

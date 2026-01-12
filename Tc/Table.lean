@@ -8,6 +8,7 @@ import Tc.Data.Mem.Freq
 import Tc.Data.ADBC.Table
 import Tc.Data.ADBC.Meta
 import Tc.Data.Kdb.Table
+import Tc.View.Generic
 
 namespace Tc
 
@@ -185,4 +186,28 @@ def toText : Table → IO String
     pure ("\n".intercalate lines.toList)
 
 end Table
+
+-- | View and ViewStack for unified Table type
+abbrev View := GView Table
+abbrev ViewStack := GViewStack Table
+
+namespace View
+
+-- | Create View from Table + path (alias for GView.fromTbl)
+def fromTbl (tbl : Table) (path : String)
+    (col : Nat := 0) (grp : Array String := #[]) (row : Nat := 0) : Option View :=
+  GView.fromTbl tbl path col grp row
+
+-- | Pure update (alias for GView.update)
+def update (v : View) (cmd : Cmd) (rowPg : Nat) : Option (View × Effect) :=
+  GView.update v cmd rowPg
+
+-- | Create View from file path (uses LoadTable typeclass)
+def fromFile (path : String) : IO (Option View) := do
+  match ← LoadTable.fromFile (α := Table) path with
+  | some tbl => pure (GView.fromTbl tbl path)
+  | none => pure none
+
+end View
+
 end Tc

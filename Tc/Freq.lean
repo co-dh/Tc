@@ -3,7 +3,7 @@
   Returns MemTable sorted by Cnt descending.
   Pure update returns Effect; Runner executes IO.
 -/
-import Tc.View
+import Tc.Table
 import Tc.Data.Mem.Freq
 
 namespace Tc.Freq

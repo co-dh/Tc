@@ -1,7 +1,7 @@
 /-
   ViewStack: stack command execution
 -/
-import Tc.View
+import Tc.Table
 import Tc.Data.Mem.Meta
 
 namespace Tc.ViewStack
