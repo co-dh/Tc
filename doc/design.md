@@ -279,3 +279,71 @@ Tests use tmux for screen capture instead of custom C FFI:
 
 Column width computation scans visible rows only (`r0` to `r1`), not all rows.
 This prevents CPU burn on large tables (e.g., 300M row parquet).
+
+## Module Dependency Graph
+
+```
+LAYER 1: FOUNDATION
+┌─────────────────────────────────────────────────────────────────┐
+│ Types   Offset   Error   Cmd   Effect   Term   Op              │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+LAYER 2: DATA
+┌─────────────────────────────────────────────────────────────────┐
+│ Data/CSV ──→ Data/Mem/Table ──→ Data/Mem/{Meta,Freq,Text}      │
+│                                                                 │
+│ Data/ADBC/FFI ──→ Data/ADBC/Table ──→ Data/ADBC/Meta           │
+│              └──→ Data/ADBC/Prql                                │
+│                                                                 │
+│ Data/Kdb/FFI ──→ Data/Kdb/Table                                │
+│             └──→ Data/Kdb/Q                                     │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+LAYER 3: VIEW
+┌─────────────────────────────────────────────────────────────────┐
+│ Nav ──→ Render ──→ Key                                         │
+│     └──→ View ──→ ViewStack                                    │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+LAYER 4: FEATURES
+┌─────────────────────────────────────────────────────────────────┐
+│ Meta   Freq   Filter   Folder   Theme   Fzf   UI/Info          │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+LAYER 5: TABLE ABSTRACTION (Plugin Architecture)
+┌─────────────────────────────────────────────────────────────────┐
+│ Table/Mem.lean     ──→ MemTable only                           │
+│ Table/DuckDB.lean  ──→ MemTable | AdbcTable                    │
+│ Table/Full.lean    ──→ MemTable | AdbcTable | KdbTable         │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+LAYER 6: STATE & DISPATCH
+┌─────────────────────────────────────────────────────────────────┐
+│ Dispatch (AppState, update) ──→ Runner (runEffect)             │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+LAYER 7: ENTRY POINTS
+┌─────────────────────────────────────────────────────────────────┐
+│ App/Core.lean   ──→ imports Table/Mem     (tc-core)            │
+│ App/DuckDB.lean ──→ imports Table/DuckDB  (tc-duckdb)          │
+│ App.lean        ──→ imports Table/Full    (tc)                 │
+└─────────────────────────────────────────────────────────────────┘
+
+TESTS
+┌─────────────────────────────────────────────────────────────────┐
+│ TestLib ──→ CoreTest ──→ CoreTestMain (core-test exe)          │
+│         └──→ Test (test exe, imports CoreTest + ADBC)          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Plugin Architecture
+
+Each `Table/*.lean` imports only its needed backends:
+
+| Variant | Table constructors | Backends |
+|---------|-------------------|----------|
+| `Table/Mem.lean` | `.mem` | none |
+| `Table/DuckDB.lean` | `.mem \| .adbc` | ADBC/DuckDB |
+| `Table/Full.lean` | `.mem \| .adbc \| .kdb` | ADBC + Kdb |
+
+Generic code (View, Meta, Freq, etc.) uses typeclasses (`ReadTable`, `QueryTable`, etc.) so it works with any Table type.

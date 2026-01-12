@@ -1,122 +1,16 @@
 /-
-  Key tests for Tc - adapted from tvl Test.lean
+  Key tests for Tc - full build (requires ADBC for parquet)
   Run with: lake build tc test && .lake/build/bin/test
 -/
 import Tc.Data.ADBC.Table
+import test.TestLib
+import test.CoreTest
+
+open Test
 
 namespace Test
 
--- | Log to file
-def log (msg : String) : IO Unit := do
-  let h ← IO.FS.Handle.mk "test.log" .append
-  h.putStrLn msg; h.flush
-
--- | Convert key notation to tmux args: "<C-d>" → ["C-d"], "abc" → ["-l", "abc"]
-def keysToTmux (keys : String) : Array (Array String) := Id.run do
-  let mut result : Array (Array String) := #[]
-  let mut buf := ""
-  let chars := keys.toList.toArray
-  let mut i := 0
-  while i < chars.size do
-    let c := chars.getD i ' '
-    if c == '<' then
-      if !buf.isEmpty then result := result.push #["-l", buf]; buf := ""
-      -- find closing >
-      let mut j := i + 1
-      while j < chars.size && chars.getD j ' ' != '>' do j := j + 1
-      let tag := String.ofList (chars.toList.drop (i + 1) |>.take (j - i - 1))
-      let tmuxKey := if tag.startsWith "C-" then tag
-                     else if tag == "ret" then "Enter"
-                     else tag
-      result := result.push #[tmuxKey]
-      i := j + 1
-    else
-      buf := buf.push c; i := i + 1
-  if !buf.isEmpty then result := result.push #["-l", buf]
-  result
-
--- | Run tc with keys, optional file (uses tmux send-keys + capture-pane)
-def run (keys : String) (file : String := "") : IO String := do
-  let f := if file.isEmpty then "" else s!"\"{file}\" "
-  log s!"  spawn: {file} keys={keys}"
-  let sess := "tctest"
-  -- kill stale session
-  let _ ← IO.Process.output { cmd := "tmux", args := #["kill-session", "-t", sess] }
-  -- start tc in tmux with TC_TEST_MODE for fzf auto-select
-  let _ ← IO.Process.output { cmd := "tmux", args := #["new-session", "-d", "-s", sess, "-x", "80", "-y", "24", "-e", "TC_TEST_MODE=1", s!".lake/build/bin/tc {f}"] }
-  let (t1, t2, t3) := if (file.splitOn "1.parquet").length > 1 then (500, 150, 300) else (150, 50, 100)
-  IO.sleep t1
-  -- send keys
-  for ka in keysToTmux keys do
-    let _ ← IO.Process.output { cmd := "tmux", args := #["send-keys", "-t", sess] ++ ka }
-    IO.sleep t2
-  IO.sleep t3
-  -- capture screen
-  let out ← IO.Process.output { cmd := "tmux", args := #["capture-pane", "-t", sess, "-p"] }
-  let _ ← IO.Process.output { cmd := "tmux", args := #["kill-session", "-t", sess] }
-  log "  done"
-  pure out.stdout
-
--- | Aliases for backward compat
-def runKeys (keys file : String) : IO String := run keys file
-def runFolder (keys : String) : IO String := run keys
-
--- | Check if line has content
-def isContent (l : String) : Bool := l.any fun c => c.isAlpha || c.isDigit
-
--- | Check string contains substring
-def contains (s sub : String) : Bool := (s.splitOn sub).length > 1
-
--- | Extract footer: (tab line, status line) - last two content lines
-def footer (output : String) : String × String :=
-  let lines := output.splitOn "\n" |>.filter isContent
-  let n := lines.length
-  (lines.getD (n - 2) "", lines.getD (n - 1) "")
-
--- | Extract header row: last 80 chars of first content line
-def header (output : String) : String :=
-  let lines := output.splitOn "\n" |>.filter isContent
-  let hdr := lines.headD ""
-  if hdr.length > 80 then hdr.drop (hdr.length - 80) else hdr
-
--- | Get data lines (skip header, skip footer 2 lines)
-def dataLines (output : String) : List String :=
-  let lines := output.splitOn "\n" |>.filter isContent
-  let n := lines.length
-  lines.drop 1 |>.take (n - 3)
-
--- | Assert with message (silent on success)
-def assert (cond : Bool) (msg : String) : IO Unit :=
-  unless cond do throw (IO.userError msg)
-
--- | Check string ends with substring
-def endsWith (s sub : String) : Bool := s.endsWith sub
-
--- === Navigation tests ===
-
-def test_navigation_down : IO Unit := do
-  log "nav_down"
-  let output ← runKeys "j" "data/basic.csv"
-  let (_, status) := footer output
-  assert (contains status "r1/") "j moves to row 1"
-
-def test_navigation_right : IO Unit := do
-  log "nav_right"
-  let output ← runKeys "l" "data/basic.csv"
-  let (_, status) := footer output
-  assert (contains status "c1/") "l moves to col 1"
-
-def test_navigation_up : IO Unit := do
-  log "nav_up"
-  let output ← runKeys "jk" "data/basic.csv"
-  let (_, status) := footer output
-  assert (contains status "r0/") "jk returns to row 0"
-
-def test_navigation_left : IO Unit := do
-  log "nav_left"
-  let output ← runKeys "lh" "data/basic.csv"
-  let (_, status) := footer output
-  assert (contains status "c0/") "lh returns to col 0"
+-- === Navigation tests (parquet-specific) ===
 
 def test_page_down : IO Unit := do
   log "page_down"
@@ -146,35 +40,7 @@ def test_last_col_visible : IO Unit := do
   let nonWs := first.toList.filter (!·.isWhitespace) |>.length
   assert (nonWs > 0) "Last col shows data"
 
--- === Key column tests ===
-
-def test_toggle_key_column : IO Unit := do
-  log "key_col"
-  let output ← runKeys "!" "data/xkey.csv"
-  let hdr := header output
-  assert (contains hdr "║") "! adds key separator"
-
-def test_toggle_key_remove : IO Unit := do
-  log "key_remove"
-  let output ← runKeys "!!" "data/xkey.csv"
-  let hdr := header output
-  assert (!contains hdr "║") "!! removes key separator"
-
-def test_key_col_reorder : IO Unit := do
-  log "key_reorder"
-  let output ← runKeys "l!" "data/basic.csv"
-  let hdr := header output
-  -- After l!, column b should be first (key col)
-  assert (hdr.take 5 |>.any (· == 'b')) "Key col moves to front"
-
--- === Delete tests ===
-
-def test_delete_column : IO Unit := do
-  log "del_col"
-  let output ← runKeys "ld" "data/basic.csv"
-  let hdr := header output
-  assert (contains hdr "a") "Has column a"
-  assert (!contains hdr "b") "Column b deleted"
+-- === Delete tests (parquet) ===
 
 def test_delete_twice : IO Unit := do
   log "del_twice"
@@ -191,21 +57,7 @@ def test_delete_then_key_then_freq : IO Unit := do
   assert (contains tab "freq") "D+key+F shows freq"
   assert (!contains status "Error") "No error"
 
--- === Sort tests ===
-
-def test_sort_asc : IO Unit := do
-  log "sort_asc"
-  let output ← runKeys "[" "data/unsorted.csv"
-  let rows := dataLines output
-  let first := rows.headD ""
-  assert (first.startsWith "1 " || contains first " 1 ") "[ sorts asc, first=1"
-
-def test_sort_desc : IO Unit := do
-  log "sort_desc"
-  let output ← runKeys "]" "data/unsorted.csv"
-  let rows := dataLines output
-  let first := rows.headD ""
-  assert (first.startsWith "3 " || contains first " 3 ") "] sorts desc, first=3"
+-- === Sort tests (parquet) ===
 
 def test_parquet_sort_asc : IO Unit := do
   log "parquet_sort_asc"
@@ -221,13 +73,7 @@ def test_parquet_sort_desc : IO Unit := do
   let first := rows.headD ""
   assert (contains first " 80 ") "] on age sorts desc, age=80"
 
--- === Meta tests ===
-
-def test_meta_shows : IO Unit := do
-  log "meta"
-  let output ← runKeys "M" "data/basic.csv"
-  let (tab, _) := footer output
-  assert (contains tab "meta") "M shows meta in tab"
+-- === Meta tests (parquet) ===
 
 def test_parquet_meta : IO Unit := do
   log "parquet_meta"
@@ -235,25 +81,7 @@ def test_parquet_meta : IO Unit := do
   let (tab, _) := footer output
   assert (contains tab "meta") "M on parquet shows meta"
 
-def test_meta_shows_column_info : IO Unit := do
-  log "meta_col_info"
-  let output ← runKeys "M" "data/basic.csv"
-  assert (contains output "column" || contains output "name") "Meta shows column info"
-
-def test_meta_tab_no_garbage : IO Unit := do
-  log "meta_tab_no_garbage"
-  let output ← runKeys "M" "data/basic.csv"
-  let (tab, _) := footer output
-  -- Tab line should be "[meta] │ basic.csv" not "[meta] â basic.c" (garbage char)
-  assert (!contains tab "â") "Meta tab has no garbage chars"
-
--- === Freq tests ===
-
-def test_freq_shows : IO Unit := do
-  log "freq"
-  let output ← runKeys "F" "data/basic.csv"
-  let (tab, _) := footer output
-  assert (contains tab "freq") "F shows freq in tab"
+-- === Freq tests (parquet) ===
 
 def test_freq_parquet : IO Unit := do
   log "freq_parquet"
@@ -261,178 +89,22 @@ def test_freq_parquet : IO Unit := do
   let (tab, _) := footer output
   assert (contains tab "freq") "F on parquet shows freq"
 
-def test_freq_after_meta : IO Unit := do
-  log "freq_after_meta"
-  let output ← runKeys "MqF" "data/basic.csv"
-  let (tab, _) := footer output
-  assert (contains tab "freq") "MqF shows freq"
+-- === Meta selection tests (parquet) ===
 
-def test_freq_by_key_column : IO Unit := do
-  log "freq_by_key"
-  let output ← runKeys "l!F" "data/full.csv"
-  let (tab, _) := footer output
-  assert (contains tab "freq") "l!F shows freq by key"
-
-def test_freq_multi_key : IO Unit := do
-  log "freq_multi_key"
-  let output ← runKeys "!l!F" "data/multi_freq.csv"
-  let (tab, _) := footer output
-  assert (contains tab "freq") "!l!F shows multi-key freq"
-
--- | Freq view should keep the group columns used to create it
-def test_freq_keeps_grp_cols : IO Unit := do
-  log "freq_keeps_grp"
-  let output ← runKeys "!F" "data/basic.csv"  -- set col a as grp, then freq
-  let (_, status) := footer output
-  assert (contains status "grp=1") "Freq view keeps grp columns"
-
--- === Selection tests ===
-
-def test_row_select : IO Unit := do
-  log "row_select"
-  let output ← runKeys "T" "data/basic.csv"
-  let (_, status) := footer output
-  assert (contains status "sel=1") "T selects row"
-
-def test_multi_row_select : IO Unit := do
-  log "multi_row_select"
-  let output ← runKeys "TjT" "data/full.csv"
-  let (_, status) := footer output
-  assert (contains status "sel=2") "TjT selects 2 rows"
-
--- === Stack tests ===
-
-def test_stack_swap : IO Unit := do
-  log "stack_swap"
-  let output ← runKeys "S" "data/basic.csv"
-  let (tab, _) := footer output
-  assert (contains tab "basic.csv") "S swaps/dups view"
-
-def test_meta_then_quit : IO Unit := do
-  log "meta_quit"
-  let output ← runKeys "Mq" "data/basic.csv"
-  let (tab, _) := footer output
-  assert (!contains tab "meta") "Mq returns from meta"
-
-def test_freq_then_quit : IO Unit := do
-  log "freq_quit"
-  let output ← runKeys "Fq" "data/basic.csv"
-  let (tab, _) := footer output
-  assert (!contains tab "freq") "Fq returns from freq"
-
--- === Info overlay ===
-
-def test_info_overlay : IO Unit := do
-  log "info"
-  let output ← runKeys "I" "data/basic.csv"
-  assert (contains output "hjkl" || contains output "quit") "I shows info overlay"
-
--- === Precision/Width adjustment ===
-
-def test_prec_increase : IO Unit := do
-  log "prec_inc"
-  let output ← runKeys "," "data/floats.csv"
-  -- , opens fzf, test mode selects first item (theme), which cycles theme
-  assert (contains output "1.123" || contains output "1.1235") ", prefix works"
-
-def test_prec_decrease : IO Unit := do
-  log "prec_dec"
-  let output ← runKeys "." "data/floats.csv"
-  let rows := dataLines output
-  let first := rows.headD ""
-  assert (contains first "1.1") ". prefix works"
-
--- === Meta selection tests (M0/M1) ===
-
-def test_meta_0_select_null_cols : IO Unit := do
-  log "meta_0"
-  let output ← runKeys "M0" "data/null_col.csv"
-  let (_, status) := footer output
-  assert (contains status "sel=1" || contains status "rows=1") "M0 selects null columns"
-
-def test_meta_1_select_single_val : IO Unit := do
-  log "meta_1"
-  let output ← runKeys "M1" "data/single_val.csv"
-  let (_, status) := footer output
-  assert (contains status "sel=1" || contains status "rows=1") "M1 selects single-value columns"
-
-def test_meta_0_enter_sets_keycols : IO Unit := do
-  log "meta_0_enter"
-  let output ← runKeys "M0<ret>" "data/null_col.csv"
-  let hdr := header output
-  assert (contains hdr "║" || contains hdr "|") "M0<ret> sets key cols"
-
-def test_meta_1_enter_sets_keycols : IO Unit := do
-  log "meta_1_enter"
-  let output ← runKeys "M1<ret>" "data/single_val.csv"
-  let hdr := header output
-  assert (contains hdr "║" || contains hdr "|") "M1<ret> sets key cols"
-
--- | Test M0 on parquet with known null columns (9 cols with 100% null)
 def test_parquet_meta_0_null_cols : IO Unit := do
   log "parquet_meta_0"
   let output ← runKeys "M0" "data/nyse/1.parquet"
   let (_, status) := footer output
   assert (contains status "sel=9") "M0 on parquet selects 9 null columns"
 
--- | Test M0<ret> groups null columns as key columns
 def test_parquet_meta_0_enter_groups : IO Unit := do
   log "parquet_meta_0_enter"
   let output ← runKeys "M0<ret>" "data/nyse/1.parquet"
   let (tab, status) := footer output
-  -- Should pop meta, return to parent with grp=9 (9 null cols as key)
-  -- Tab must be "[1.parquet]" not "[meta] │ 1.parquet"
   assert (tab.startsWith "[1.parquet]") "M0<ret> returns to parent view"
   assert (contains status "grp=9") "M0<ret> groups 9 null columns"
 
--- | Test M0<ret>d deletes the null columns
-def test_meta_0_enter_delete : IO Unit := do
-  log "meta_0_enter_delete"
-  let output ← runKeys "M0<ret>d" "data/null_col.csv"
-  let (_, status) := footer output
-  -- After M0<ret>d, null col b should be deleted, only col a remains
-  assert (contains status "c0/1") "M0<ret>d deletes null column"
-
--- === Stdin parsing tests ===
-
--- | Headers with spaces like "UNIT FILE" should be parsed correctly
-def test_spaced_header : IO Unit := do
-  log "spaced_header"
-  let output ← runKeys "" "data/spaced_header.txt"
-  let (_, status) := footer output
-  -- Should have 3 columns (UNIT FILE, STATE, PRESET), not 4
-  assert (contains status "c0/3") "Spaced header: 3 columns"
-
--- === Freq enter tests ===
-
--- | F<ret> should pop freq, filter parent to matching rows
-def test_freq_enter_filters : IO Unit := do
-  log "freq_enter"
-  let output ← runKeys "F<ret>" "data/multi_freq.csv"
-  let (tab, status) := footer output
-  -- Should pop back to parent (not "filter" view)
-  assert (contains tab "multi_freq") "F<ret> pops to parent"
-  -- Parent filtered to a=1 (3 rows out of 6)
-  assert (contains status "r0/3") "F<ret> filters to 3 rows"
-
--- === Cursor tracking ===
-
-def test_key_cursor_tracks : IO Unit := do
-  log "key_cursor"
-  let output ← runKeys "l!" "data/basic.csv"
-  let (_, status) := footer output
-  -- After l!, cursor should be on col 0 (b is now first as key)
-  assert (contains status "c0/") "Cursor tracks after key toggle"
-
--- === No stderr ===
-
-def test_no_stderr : IO Unit := do
-  log "no_stderr"
-  -- Exclude App.lean (error handling uses eprintln)
-  let out ← IO.Process.output { cmd := "grep", args := #["-r", "eprintln", "Tc/", "--exclude=App.lean"] }
-  assert (out.stdout.trim.isEmpty) "No eprintln in Tc/ (except App.lean)"
-
--- === Misc ===
+-- === Misc (parquet) ===
 
 def test_numeric_right_align : IO Unit := do
   log "numeric_align"
@@ -441,145 +113,13 @@ def test_numeric_right_align : IO Unit := do
   let first := rows.headD ""
   assert (contains first "  ") "Numeric columns right-aligned"
 
--- === Search tests (CSV only, testMode returns first distinct value) ===
+-- === Enter key tests (parquet) ===
 
--- | Test / search jumps to match (testMode picks first distinct val "x")
-def test_search_jump : IO Unit := do
-  log "search_jump"
-  -- On col b, distinct vals are [x,y,z], testMode picks "x"
-  -- After l, at r0. Search starts from r0+1=r1, finds x at r2
-  let output ← runKeys "l/" "data/basic.csv"
-  let (_, status) := footer output
-  assert (contains status "r2/") "/ search finds x at row 2"
-
--- | Test n (search next) finds next match
-def test_search_next : IO Unit := do
-  log "search_next"
-  -- After /, cursor at r2 (x). Press n to find next x (r4)
-  let output ← runKeys "l/n" "data/basic.csv"
-  let (_, status) := footer output
-  assert (contains status "r4/") "n finds next x at row 4"
-
--- | Test N (search prev) wraps to find previous match
-def test_search_prev : IO Unit := do
-  log "search_prev"
-  -- After /, at r2. Press N to search backward from r2, wraps to r0
-  let output ← runKeys "l/N" "data/basic.csv"
-  let (_, status) := footer output
-  assert (contains status "r0/") "N finds prev x (wraps to row 0)"
-
--- | Test column search s jumps to column
-def test_col_search : IO Unit := do
-  log "col_search"
-  -- s on columns [a,b], testMode picks first (a), cursor stays at c0
-  let output ← runKeys "s" "data/basic.csv"
-  let (_, status) := footer output
-  assert (contains status "c0/") "s col search jumps to column"
-
--- === Enter key tests ===
-
--- | Test Enter on parquet table view should NOT quit (bug: was quitting)
 def test_enter_no_quit_parquet : IO Unit := do
   log "enter_no_quit_parquet"
-  -- Press Enter then j - if app quit on Enter, j won't move cursor
   let output ← runKeys "<ret>j" "data/nyse/1.parquet"
   let (_, status) := footer output
-  -- If app survived Enter, j moved to row 1
   assert (contains status "r1/") "Enter on parquet should not quit (j moves to r1)"
-
--- | Test q quits on empty stack (single view)
-def test_q_quit_empty_stack : IO Unit := do
-  log "q_quit_empty_stack"
-  let sess := "tctest"
-  let _ ← IO.Process.output { cmd := "tmux", args := #["kill-session", "-t", sess] }
-  let _ ← IO.Process.output { cmd := "tmux", args := #["new-session", "-d", "-s", sess, "-x", "80", "-y", "24", "-e", "TC_TEST_MODE=1", ".lake/build/bin/tc data/basic.csv"] }
-  IO.sleep 200
-  let _ ← IO.Process.output { cmd := "tmux", args := #["send-keys", "-t", sess, "-l", "q"] }
-  IO.sleep 200
-  -- session should be gone after q quits
-  let check ← IO.Process.output { cmd := "tmux", args := #["has-session", "-t", sess] }
-  assert (check.exitCode != 0) "q on empty stack quits (session closed)"
-
--- === Folder tests ===
-
--- | Test folder view shows on no-arg invocation
-def test_folder_no_args : IO Unit := do
-  log "folder_no_args"
-  let output ← runFolder ""
-  -- Tab should show absolute path [/home/...] starting with /
-  assert (contains output "[/") "No-args shows folder view with absolute path"
-  -- Has path column (first column in folder view)
-  assert (contains output "path") "Folder view has path column"
-
--- | Test D key pushes folder view from CSV
-def test_folder_D_key : IO Unit := do
-  log "folder_D_key"
-  let output ← runKeys "D" "data/basic.csv"
-  -- Tab should show absolute path folder view pushed on top
-  assert (contains output "[/") "D pushes folder view with absolute path"
-
--- | Test folder tab shows absolute path after entering subdir
-def test_folder_tab_path : IO Unit := do
-  log "folder_tab_path"
-  -- Start in folder view, navigate past ".." to first directory entry
-  -- Find and enter 'data' directory (use G to go to end, then find data)
-  let output ← runFolder ""
-  let (tab, _) := footer output
-  -- Tab should show absolute path starting with /
-  assert (contains tab "[/") "Folder tab shows absolute path (starts with /)"
-  -- Should be in Tc directory
-  assert (contains tab "/Tc]") "Folder tab shows absolute path (ends with /Tc])"
-
--- | Test Enter on directory enters it
-def test_folder_enter_dir : IO Unit := do
-  log "folder_enter_dir"
-  -- Enter parent dir (..) from folder view - first entry is always ".."
-  let output ← runFolder "<ret>"
-  let (tab, status) := footer output
-  -- Tab should show parent directory path
-  assert (contains tab "[/") "Enter on dir pushes new folder view"
-  assert (contains status "r0/") "Entered directory has rows"
-
--- | Test path column shows relative names
-def test_folder_path_relative : IO Unit := do
-  log "folder_path_relative"
-  -- Folder view should show relative names (not full paths)
-  let output ← runFolder ""
-  -- Should contain ".." entry (always first)
-  assert (contains output "..") "Path shows entry name"
-  -- Path should NOT contain the full absolute path prefix
-  assert (not (contains output "/home/dh/repo/Tc/..")) "Path column is relative"
-
--- | Test q pops folder view back to parent
-def test_folder_pop : IO Unit := do
-  log "folder_pop"
-  -- Navigate to a real directory (not ..), enter it, then pop back with q
-  -- j moves down past "..", then find a 'd' (directory) entry and Enter
-  let output ← runFolder "jjj<ret>q"  -- skip .., enter 'tmp' dir (row 3), then q pops back
-  -- After q, should be back to original folder
-  assert (contains output "[/") "q pops back to parent folder"
-
--- | Test , prefix (fzf menu) - in test mode selects first item
-def test_folder_prefix : IO Unit := do
-  log "folder_prefix"
-  let before ← runFolder ""
-  let after ← runFolder ","
-  -- , opens fzf menu, test mode selects first item (theme)
-  let (_, status1) := footer before
-  let (_, status2) := footer after
-  let r1 := status1.splitOn "r0/" |>.getD 1 "" |>.takeWhile (·.isDigit)
-  let r2 := status2.splitOn "r0/" |>.getD 1 "" |>.takeWhile (·.isDigit)
-  assert (r2.toNat?.getD 0 >= r1.toNat?.getD 0) ", prefix works in folder"
-
--- | Test d in folder view (auto-declines in test mode, view unchanged)
-def test_folder_del : IO Unit := do
-  log "folder_del"
-  let before ← runFolder ""
-  let after ← runFolder "d"  -- d triggers delete prompt, auto-declined
-  let (_, s1) := footer before
-  let (_, s2) := footer after
-  -- Row count should be same (nothing deleted)
-  assert (s1 == s2) "d in folder view (test mode) keeps view unchanged"
 
 -- === Run all tests ===
 
@@ -589,105 +129,40 @@ def main : IO Unit := do
   let ok ← Tc.AdbcTable.init
   if !ok then throw (IO.userError "Backend init failed")
 
-  -- Navigation
-  test_navigation_down
-  test_navigation_right
-  test_navigation_up
-  test_navigation_left
+  -- Run core tests with tc binary
+  IO.println "--- Core tests (CSV) ---"
+  _root_.CoreTest.runTests ".lake/build/bin/tc"
+
+  -- Parquet-specific tests
+  IO.println "\n--- Parquet tests ---"
   test_page_down
   test_page_up
   test_page_down_scrolls
   test_last_col_visible
 
-  -- Key column
-  test_toggle_key_column
-  test_toggle_key_remove
-  test_key_col_reorder
-
-  -- Delete
-  test_delete_column
+  -- Parquet delete
   test_delete_twice
   test_delete_then_key_then_freq
 
-  -- Sort
-  test_sort_asc
-  test_sort_desc
+  -- Parquet sort
   test_parquet_sort_asc
   test_parquet_sort_desc
 
-  -- Meta
-  test_meta_shows
+  -- Parquet meta
   test_parquet_meta
-  test_meta_shows_column_info
-  test_meta_tab_no_garbage
 
-  -- Freq
-  test_freq_shows
+  -- Parquet freq
   test_freq_parquet
-  test_freq_after_meta
-  test_freq_by_key_column
-  test_freq_multi_key
-  test_freq_keeps_grp_cols
 
-  -- Selection
-  test_row_select
-  test_multi_row_select
-
-  -- Stack
-  test_stack_swap
-  test_meta_then_quit
-  test_freq_then_quit
-
-  -- Info
-  test_info_overlay
-
-  -- Precision/Width
-  test_prec_increase
-  test_prec_decrease
-
-  -- Meta M0/M1
-  test_meta_0_select_null_cols
-  test_meta_1_select_single_val
-  test_meta_0_enter_sets_keycols
-  test_meta_1_enter_sets_keycols
+  -- Parquet meta M0
   test_parquet_meta_0_null_cols
   test_parquet_meta_0_enter_groups
-  test_meta_0_enter_delete
 
-  -- Freq enter
-  test_freq_enter_filters
-
-  -- Stdin parsing
-  test_spaced_header
-
-  -- Cursor tracking
-  test_key_cursor_tracks
-
-  -- No stderr
-  test_no_stderr
-
-  -- Misc
+  -- Parquet misc
   test_numeric_right_align
 
-  -- Search
-  test_search_jump
-  test_search_next
-  test_search_prev
-  test_col_search
-
-  -- Enter key
+  -- Parquet enter
   test_enter_no_quit_parquet
-  test_q_quit_empty_stack
-
-  -- Folder
-  test_folder_no_args
-  test_folder_D_key
-  test_folder_tab_path
-  test_folder_enter_dir
-  test_folder_path_relative
-  test_folder_pop
-  test_folder_prefix
-  test_folder_del
 
   Tc.AdbcTable.shutdown
   IO.println "\nAll tests passed!"

@@ -87,6 +87,7 @@ class ReadTable (α : Type) where
   nRows     : α → Nat                         -- row count in current view
   colNames  : α → Array String                -- column names (size = nCols)
   totalRows : α → Nat := nRows                -- total rows (for ADBC: actual count)
+  isAdbc    : α → Bool := fun _ => false      -- true if DB-backed (search disabled)
 
 -- Meta tuple: (names, types, cnts, dists, nullPcts, mins, maxs)
 abbrev MetaTuple := Array String × Array String × Array Int64 × Array Int64 × Array Int64 × Array String × Array String
@@ -118,6 +119,14 @@ def ModifyTable.del [ModifyTable α] (tbl : α) (cursor : Nat) (sels : Array Nat
 -- Sort table by group indices (asc) then cursor column
 def ModifyTable.sort [ModifyTable α] (tbl : α) (cursor : Nat) (grpIdxs : Array Nat) (asc : Bool) : IO α :=
   sortBy (grpIdxs.push cursor) asc tbl
+
+-- | Wrap source type M into target type T (e.g., MemTable → Table)
+class WrapMem (M T : Type) where
+  wrapMem : M → T
+
+-- | Load table from file (each variant implements differently)
+class LoadTable (T : Type) where
+  fromFile : String → IO (Option T)
 
 -- | View kind: how to render/interact (used by key mapping for context-sensitive verbs)
 inductive ViewKind where

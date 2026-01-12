@@ -8,6 +8,8 @@ import Tc.Term
 
 namespace Tc.Folder
 
+variable {T : Type} [ReadTable T] [WrapMem MemTable T] [HasAsMem T] [LoadTable T]
+
 -- | Strip base path prefix to get relative entry name
 -- "/home/x/foo/bar" with base "/home/x/foo" → "bar"
 private def stripBase (base path : String) : String :=
@@ -67,30 +69,32 @@ def viewFile (path : String) : IO Unit := do
   let _ ← Term.init  -- reinit terminal after pager
 
 -- | Open data file (csv/parquet) as table view, returns new stack or none
-def openDataFile (s : ViewStack) (path : String) : IO (Option ViewStack) := do
-  match ← View.fromFile path with
-  | some v => pure (some (s.push v))
+def openDataFile (s : ViewStack T) (path : String) : IO (Option (ViewStack T)) := do
+  match ← LoadTable.fromFile path with
+  | some tbl => match View.fromTbl tbl path with
+    | some v => pure (some (s.push v))
+    | none => pure none
   | none => pure none
 
 -- | Get path column value from current row
-def curPath (v : View) : Option String := do
+def curPath (v : View T) : Option String := do
   guard (v.vkind matches .fld _ _)
-  let tbl ← v.nav.tbl.asMem?
+  let tbl ← HasAsMem.asMem? v.nav.tbl
   let pathCol ← tbl.names.idxOf? "path"
   let row := v.nav.row.cur.val
   pure ((tbl.cols.getD pathCol default).get row).toRaw
 
 -- | Get type column value from current row (d=dir, space=file, l=link)
-def curType (v : View) : Option Char := do
+def curType (v : View T) : Option Char := do
   guard (v.vkind matches .fld _ _)
-  let tbl ← v.nav.tbl.asMem?
+  let tbl ← HasAsMem.asMem? v.nav.tbl
   let typeCol ← tbl.names.idxOf? "type"
   let row := v.nav.row.cur.val
   let t := ((tbl.cols.getD typeCol default).get row).toRaw
   t.toList.head?
 
 -- | Create folder view from path with given depth
-def mkView (path : String) (depth : Nat) : IO (Option View) := do
+def mkView (path : String) (depth : Nat) : IO (Option (View T)) := do
   -- resolve to absolute path
   let rp ← IO.Process.output { cmd := "realpath", args := #[path] }
   let absPath := if rp.exitCode == 0 then rp.stdout.trim else path
@@ -99,11 +103,11 @@ def mkView (path : String) (depth : Nat) : IO (Option View) := do
   | .error _ => pure none
   | .ok tbl =>
     let disp := absPath.splitOn "/" |>.getLast? |>.getD absPath
-    pure <| View.fromTbl (.mem tbl) absPath |>.map fun v =>
+    pure <| View.fromTbl (WrapMem.wrapMem tbl : T) absPath |>.map fun v =>
       { v with vkind := .fld absPath depth, disp := disp }
 
 -- | Push new folder view onto stack (use current path or ".")
-def push (s : ViewStack) : IO (Option ViewStack) := do
+def push (s : ViewStack T) : IO (Option (ViewStack T)) := do
   let path := match curPath s.cur with
     | some p => p
     | none => match s.cur.vkind with
@@ -120,7 +124,7 @@ private def joinPath (parent entry : String) : String :=
   else s!"{parent}/{entry}"
 
 -- | Enter directory or view file based on current row
-def enter (s : ViewStack) : IO (Option ViewStack) := do
+def enter (s : ViewStack T) : IO (Option (ViewStack T)) := do
   match curType s.cur, curPath s.cur with
   | some 'd', some p =>  -- directory: push new folder view
     -- ".." navigates to parent (pop if possible, else go to parent path)
@@ -128,7 +132,7 @@ def enter (s : ViewStack) : IO (Option ViewStack) := do
       if let some s' := s.pop then pure (some s')
       else  -- at root, go to actual parent
         let depth := match s.cur.vkind with | .fld _ d => d | _ => 1
-        match ← mkView ".." depth with
+        match ← mkView (T := T) ".." depth with
         | some v => pure (some (s.setCur v))
         | none => pure (some s)
     else
@@ -174,10 +178,10 @@ def trashCmd : IO (Option (String × Array String)) := do
   return none
 
 -- | Get full paths of selected rows, or current row if none selected
-def selPaths (v : View) : Array String :=
+def selPaths (v : View T) : Array String :=
   match v.vkind with
   | .fld curDir _ =>
-    match v.nav.tbl.asMem?, v.nav.tbl.asMem?.bind (·.names.idxOf? "path") with
+    match HasAsMem.asMem? v.nav.tbl, (HasAsMem.asMem? v.nav.tbl).bind (·.names.idxOf? "path") with
     | some tbl, some pathCol =>
       let rows := if v.nav.row.sels.isEmpty then #[v.nav.row.cur.val] else v.nav.row.sels
       rows.map fun r => joinPath curDir ((tbl.cols.getD pathCol default).get r).toRaw
@@ -247,7 +251,7 @@ def trashFiles (paths : Array String) : IO Bool := do
   pure ok
 
 -- | Delete selected files and refresh view
-def del (s : ViewStack) : IO (Option ViewStack) := do
+def del (s : ViewStack T) : IO (Option (ViewStack T)) := do
   if !(s.cur.vkind matches .fld _ _) then return none
   let paths := selPaths s.cur
   if paths.isEmpty then return none
@@ -256,7 +260,7 @@ def del (s : ViewStack) : IO (Option ViewStack) := do
   -- refresh view, preserve cursor (clamped to new row count)
   match s.cur.vkind with
   | .fld path depth =>
-    match ← mkView path depth with
+    match ← mkView (T := T) path depth with
     | some v =>
       let row := min s.cur.nav.row.cur.val (if v.nRows > 0 then v.nRows - 1 else 0)
       let v' := View.fromTbl v.nav.tbl path (row := row) |>.map fun x =>
@@ -266,12 +270,12 @@ def del (s : ViewStack) : IO (Option ViewStack) := do
   | _ => pure (some s)
 
 -- | Adjust find depth (+1 or -1, min 1)
-def setDepth (s : ViewStack) (delta : Int) : IO (Option ViewStack) := do
+def setDepth (s : ViewStack T) (delta : Int) : IO (Option (ViewStack T)) := do
   match s.cur.vkind with
   | .fld path depth =>
     let newDepth := max 1 ((depth : Int) + delta).toNat
     if newDepth == depth then pure (some s)  -- no change
-    else match ← mkView path newDepth with
+    else match ← mkView (T := T) path newDepth with
       | some v =>
         -- preserve row position if possible
         let row := min s.cur.nav.row.cur.val (v.nRows - 1)
@@ -282,7 +286,7 @@ def setDepth (s : ViewStack) (delta : Int) : IO (Option ViewStack) := do
   | _ => pure none
 
 -- | Pure update: returns Effect for IO operations
-def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
+def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   match cmd with
   | .fld .dup => some (s, .folderPush)                          -- D: push folder view
   | .fld .inc => some (s, .folderDepth 1)                       -- +d: increase depth
@@ -294,7 +298,7 @@ def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
   | _ => none
 
 -- | Execute folder commands (IO version for backward compat)
-def exec (s : ViewStack) (cmd : Cmd) : IO (Option ViewStack) :=
+def exec (s : ViewStack T) (cmd : Cmd) : IO (Option (ViewStack T)) :=
   match cmd with
   | .fld .dup => push s               -- D: push folder view
   | .fld .inc => setDepth s 1         -- +d: increase depth

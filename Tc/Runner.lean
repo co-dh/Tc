@@ -10,14 +10,16 @@ import Tc.Theme
 
 namespace Tc.Runner
 
+variable {T : Type} [ReadTable T] [QueryTable T] [ModifyTable T] [WrapMem MemTable T] [HasAsMem T] [LoadTable T]
+
 -- | Helper: run IO (Option ViewStack), default to original on none
-def runOpt (s : ViewStack) (io : IO (Option ViewStack)) : IO ViewStack := do
+def runOpt (s : ViewStack T) (io : IO (Option (ViewStack T))) : IO (ViewStack T) := do
   match ← io with
   | some s' => pure s'
   | none => pure s
 
 -- | Run effect on ViewStack, return updated stack
-def runStackEffect (s : ViewStack) (eff : Effect) : IO ViewStack := do
+def runStackEffect (s : ViewStack T) (eff : Effect) : IO (ViewStack T) := do
   match eff with
   | .none => pure s
   -- fzf effects
@@ -33,11 +35,11 @@ def runStackEffect (s : ViewStack) (eff : Effect) : IO ViewStack := do
     let n := s.cur.nav
     let freq ← QueryTable.queryFreq n.tbl cols
     let tbl := Freq.toMemTable freq
-    match View.fromTbl (.mem tbl) s.cur.path 0 colNames with
+    match View.fromTbl (WrapMem.wrapMem tbl : T) s.cur.path 0 colNames with
     | some v => pure (s.push { v with vkind := .freqV colNames, disp := s!"freq {colNames.join ","}" })
     | none => pure s
   | .freqFilter cols row =>
-    match s.cur.vkind, s.cur.nav.tbl.asMem?, s.pop with
+    match s.cur.vkind, HasAsMem.asMem? s.cur.nav.tbl, s.pop with
     | .freqV _, some tbl, some s' =>
       let expr := Freq.filterExpr tbl cols row
       match ← QueryTable.filter s'.cur.nav.tbl expr with

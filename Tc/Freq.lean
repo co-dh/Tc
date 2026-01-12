@@ -8,6 +8,8 @@ import Tc.Data.Mem.Freq
 
 namespace Tc.Freq
 
+variable {T : Type} [ReadTable T] [QueryTable T] [WrapMem MemTable T] [HasAsMem T]
+
 -- | Convert queryFreq tuple result to MemTable (sorted by Cnt desc)
 def toMemTable (f : FreqTuple) : MemTable :=
   let (keyNames, keyCols, cntData, pctData, barData) := f
@@ -27,7 +29,7 @@ def filterExpr (tbl : MemTable) (cols : Array String) (row : Nat) : String :=
   " && ".intercalate exprs.toList
 
 -- | Push frequency view (group by grp + cursor column)
-def push (s : ViewStack) : IO (Option ViewStack) := do
+def push (s : ViewStack T) : IO (Option (ViewStack T)) := do
   let n := s.cur.nav; let names := ReadTable.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   let curName := names.getD curCol ""
@@ -35,14 +37,14 @@ def push (s : ViewStack) : IO (Option ViewStack) := do
   let colIdxs := colNames.filterMap names.idxOf?
   let freq ← QueryTable.queryFreq n.tbl colIdxs
   let tbl := toMemTable freq
-  let some v := View.fromTbl (.mem tbl) s.cur.path 0 colNames | return none
+  let some v := View.fromTbl (WrapMem.wrapMem tbl) s.cur.path 0 colNames | return none
   return some (s.push { v with vkind := .freqV colNames, disp := s!"freq {colNames.join ","}" })
 
 -- | Filter parent by selected freq row, pop freq and push filtered view
-def filter (s : ViewStack) : IO (Option ViewStack) := do
+def filter (s : ViewStack T) : IO (Option (ViewStack T)) := do
   let .freqV cols := s.cur.vkind | return some s
   if !s.hasParent then return some s
-  let some tbl := s.cur.nav.tbl.asMem? | return some s
+  let some tbl := HasAsMem.asMem? s.cur.nav.tbl | return some s
   let some s' := s.pop | return some s
   let expr := filterExpr tbl cols s.cur.nav.row.cur.val
   let some tbl' ← QueryTable.filter s'.cur.nav.tbl expr | return some s'
@@ -50,7 +52,7 @@ def filter (s : ViewStack) : IO (Option ViewStack) := do
   return some (s'.push v)
 
 -- | Pure update: returns Effect for IO operations
-def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
+def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   let n := s.cur.nav; let names := ReadTable.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   let curName := names.getD curCol ""
@@ -64,7 +66,7 @@ def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
   | _ => none
 
 -- | Execute freq command (IO version for backward compat)
-def exec (s : ViewStack) (cmd : Cmd) : IO (Option ViewStack) := do
+def exec (s : ViewStack T) (cmd : Cmd) : IO (Option (ViewStack T)) := do
   match cmd with
   | .freq .dup => (← push s).orElse (fun _ => some s) |> pure
   | .freq .ent => match s.cur.vkind with

@@ -21,11 +21,18 @@ def asMem? : Table → Option MemTable
 def isAdbc : Table → Bool
   | .mem _ => false
 
+-- | WrapMem instance (MemTable → Table)
+instance : WrapMem MemTable Table where wrapMem := Table.mem
+
+-- | HasAsMem instance (Table → MemTable)
+instance : HasAsMem Table where asMem? := Table.asMem?
+
 -- | ReadTable instance
 instance : ReadTable Table where
   nRows     | .mem t => MemTable.nRows t
   colNames  | .mem t => t.names
   totalRows | .mem t => MemTable.nRows t
+  isAdbc    := Table.isAdbc
 
 -- | ModifyTable instance
 instance : ModifyTable Table where
@@ -70,5 +77,27 @@ instance : ExecOp Table where
 def toText : Table → IO String
   | .mem t => pure (MemTable.toText t)
 
+-- | Load from file (CSV only in core build)
+def fromFile (path : String) : IO (Option Table) := do
+  if path.endsWith ".csv" then
+    match ← MemTable.load path with
+    | .ok t => pure (some (.mem t))
+    | .error e => Log.error s!"CSV parse error: {e}"; pure none
+  else Log.error s!"tc-core: only CSV supported, not {path}"; pure none
+
+-- | Load from URL (not supported in core)
+def fromUrl (url : String) : IO (Option Table) := do
+  Log.error s!"tc-core: URL loading not supported: {url}"; pure none
+
+-- | LoadTable instance (file loading)
+instance : LoadTable Table where fromFile := Table.fromFile
+
 end Table
+
+-- | Backend lifecycle for core build (no-op)
+namespace Backend
+def init : IO Bool := pure true
+def shutdown : IO Unit := pure ()
+end Backend
+
 end Tc

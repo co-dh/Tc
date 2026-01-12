@@ -9,31 +9,33 @@ import Tc.View
 
 namespace Tc.ViewStack
 
+variable {T : Type} [ReadTable T] [QueryTable T]
+
 -- | Move row cursor to target index (pure helper)
-private def moveRowTo (s : ViewStack) (rowIdx : Nat) (search : Option (Nat × String) := none) : ViewStack :=
+private def moveRowTo (s : ViewStack T) (rowIdx : Nat) (search : Option (Nat × String) := none) : ViewStack T :=
   let v := s.cur
   let delta : Int := rowIdx - v.nav.row.cur.val
   let nav' := { v.nav with row := { v.nav.row with cur := v.nav.row.cur.clamp delta } }
   s.setCur { v with nav := nav', search := search.orElse (fun _ => v.search) }
 
 -- | Move col cursor to target index (pure helper)
-private def moveColTo (s : ViewStack) (colIdx : Nat) : ViewStack :=
+private def moveColTo (s : ViewStack T) (colIdx : Nat) : ViewStack T :=
   let v := s.cur
   let delta : Int := colIdx - v.nav.col.cur.val
   let nav' := { v.nav with col := { v.nav.col with cur := v.nav.col.cur.clamp delta } }
   s.setCur { v with nav := nav' }
 
 -- | col search: fzf jump to column by name (IO version for backward compat)
-def colSearch (s : ViewStack) : IO ViewStack := do
+def colSearch (s : ViewStack T) : IO (ViewStack T) := do
   let v := s.cur; let names := ReadTable.colNames v.nav.tbl
   let dispNames := v.nav.grp ++ names.filter (!v.nav.grp.contains ·)
   let some idx ← Fzf.fzfIdx #["--prompt=Column: "] dispNames | return s
   return moveColTo s idx
 
 -- | row search (/): find value in current column, jump to matching row (IO)
-def rowSearch (s : ViewStack) : IO ViewStack := do
+def rowSearch (s : ViewStack T) : IO (ViewStack T) := do
   let v := s.cur
-  if v.nav.tbl.isAdbc then errorPopup "search disabled for DB; use \\ filter"; return s
+  if ReadTable.isAdbc v.nav.tbl then errorPopup "search disabled for DB; use \\ filter"; return s
   let names := ReadTable.colNames v.nav.tbl
   let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
   let curName := names.getD curCol ""
@@ -44,25 +46,25 @@ def rowSearch (s : ViewStack) : IO ViewStack := do
   return moveRowTo s rowIdx (some (curCol, result))
 
 -- | search next (n): repeat last search forward (IO)
-def searchNext (s : ViewStack) : IO ViewStack := do
+def searchNext (s : ViewStack T) : IO (ViewStack T) := do
   let v := s.cur
-  if v.nav.tbl.isAdbc then errorPopup "search disabled for DB"; return s
+  if ReadTable.isAdbc v.nav.tbl then errorPopup "search disabled for DB"; return s
   let some (col, val) := v.search | return s
   let start := v.nav.row.cur.val + 1
   let some rowIdx ← QueryTable.findRow v.nav.tbl col val start true | return s
   return moveRowTo s rowIdx
 
 -- | search prev (N): repeat last search backward (IO)
-def searchPrev (s : ViewStack) : IO ViewStack := do
+def searchPrev (s : ViewStack T) : IO (ViewStack T) := do
   let v := s.cur
-  if v.nav.tbl.isAdbc then errorPopup "search disabled for DB"; return s
+  if ReadTable.isAdbc v.nav.tbl then errorPopup "search disabled for DB"; return s
   let some (col, val) := v.search | return s
   let start := v.nav.row.cur.val
   let some rowIdx ← QueryTable.findRow v.nav.tbl col val start false | return s
   return moveRowTo s rowIdx
 
 -- | row filter (\): filter rows by PRQL expression, push filtered view (IO)
-def rowFilter (s : ViewStack) : IO ViewStack := do
+def rowFilter (s : ViewStack T) : IO (ViewStack T) := do
   let v := s.cur; let names := ReadTable.colNames v.nav.tbl
   let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
   let curName := names.getD curCol ""
@@ -79,8 +81,10 @@ end Tc.ViewStack
 
 namespace Tc.Filter
 
+variable {T : Type} [ReadTable T] [QueryTable T]
+
 -- | Pure update: returns Effect describing fzf/search operation
-def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
+def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   let v := s.cur; let names := ReadTable.colNames v.nav.tbl
   let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
   let curName := names.getD curCol ""
@@ -93,7 +97,7 @@ def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
   | _ => none
 
 -- | Execute search/filter command (IO version for backward compat)
-def exec (s : ViewStack) (cmd : Cmd) : IO (Option ViewStack) := do
+def exec (s : ViewStack T) (cmd : Cmd) : IO (Option (ViewStack T)) := do
   match cmd with
   | .col .ent    => some <$> s.colSearch   -- s: fzf jump to column
   | .rowSel .inc => some <$> s.rowSearch   -- /: fzf search in column

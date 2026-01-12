@@ -8,6 +8,8 @@ import Tc.Data.Mem.Meta
 
 namespace Tc.Meta
 
+variable {T : Type} [ReadTable T] [QueryTable T] [WrapMem MemTable T] [HasAsMem T]
+
 -- Meta column headers
 def headers : Array String := #["column", "type", "cnt", "dist", "null%", "min", "max"]
 
@@ -44,15 +46,15 @@ def selNames (t : MemTable) (selRows : Array Nat) : Array String :=
     | _ => none
 
 -- | Push column metadata view onto stack
-def push (s : ViewStack) : IO (Option ViewStack) := do
+def push (s : ViewStack T) : IO (Option (ViewStack T)) := do
   let tbl ← QueryTable.queryMeta s.cur.nav.tbl <&> toMemTable
-  let some v := View.fromTbl (.mem tbl) s.cur.path | return none
+  let some v := View.fromTbl (WrapMem.wrapMem tbl) s.cur.path | return none
   return some (s.push { v with vkind := .colMeta, disp := "meta" })
 
 -- | Select rows in meta view by predicate on MemTable
-def sel (s : ViewStack) (f : MemTable → Array Nat) : ViewStack :=
+def sel (s : ViewStack T) (f : MemTable → Array Nat) : ViewStack T :=
   if s.cur.vkind != .colMeta then s else
-  match s.cur.nav.tbl.asMem? with
+  match HasAsMem.asMem? s.cur.nav.tbl with
   | some tbl =>
     let rows := f tbl
     let nav' := { s.cur.nav with row := { s.cur.nav.row with sels := rows } }
@@ -60,10 +62,10 @@ def sel (s : ViewStack) (f : MemTable → Array Nat) : ViewStack :=
   | none => s
 
 -- | Set key cols from meta view selections, pop to parent, select cols
-def setKey (s : ViewStack) : Option ViewStack :=
+def setKey (s : ViewStack T) : Option (ViewStack T) :=
   if s.cur.vkind != .colMeta then some s else
   if !s.hasParent then some s else
-  match s.cur.nav.tbl.asMem? with
+  match HasAsMem.asMem? s.cur.nav.tbl with
   | some tbl =>
     let colNames := selNames tbl s.cur.nav.row.sels
     match s.pop with
@@ -74,7 +76,7 @@ def setKey (s : ViewStack) : Option ViewStack :=
   | none => some s
 
 -- | Pure update: returns Effect for IO operations, pure for selections
-def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
+def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   match cmd with
   | .metaV .dup => some (s, .queryMeta)              -- push meta view (IO)
   | .metaV .dec => some (sel s selNull, .none)       -- select null cols (pure)
@@ -83,7 +85,7 @@ def update (s : ViewStack) (cmd : Cmd) : Option (ViewStack × Effect) :=
   | _ => none
 
 -- | Execute meta command (IO version for backward compat)
-def exec (s : ViewStack) (cmd : Cmd) : IO (Option ViewStack) := do
+def exec (s : ViewStack T) (cmd : Cmd) : IO (Option (ViewStack T)) := do
   match cmd with
   | .metaV .dup => (← push s).orElse (fun _ => some s) |> pure
   | .metaV .dec => pure (some (sel s selNull))

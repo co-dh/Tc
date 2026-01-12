@@ -237,4 +237,11 @@ instance : ExecOp MemTable where
     | .take n => pure (some (MemTable.take t n))
     | .derive _ | .group _ _ => pure none  -- unsupported
 
+-- | Typeclass for extracting MemTable from T (for meta/freq views)
+class HasAsMem (T : Type) where
+  asMem? : T → Option MemTable
+
+-- | MemTable trivially extracts to itself
+instance : HasAsMem MemTable where asMem? := some
+
 end Tc
