@@ -2,8 +2,15 @@
   ViewStack: stack command execution
 -/
 import Tc.View
+import Tc.Data.Mem.Meta
 
 namespace Tc.ViewStack
+
+-- | Push column metadata view onto stack (Table-specific: wraps MemTable as .mem)
+def pushMeta (s : ViewStack) : IO (Option ViewStack) := do
+  let tbl ← QueryTable.queryMeta s.cur.nav.tbl <&> Meta.toMemTable
+  let some v := View.fromTbl (.mem tbl) s.cur.path | return none
+  return some (s.push { v with vkind := .colMeta, disp := "meta" })
 
 -- | Pure update: returns (new stack, effect)
 -- q on empty stack → quit

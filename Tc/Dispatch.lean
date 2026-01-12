@@ -40,7 +40,7 @@ def exec (a : AppState) (cmd : Cmd) : IO (Option AppState) := do
   if let some i' ← UI.Info.State.exec ⟨a.info.vis⟩ cmd then return some { a with info := ⟨i'.vis⟩ }
   if let some s' ← Tc.ViewStack.exec a.stk cmd then return some (a.withStk cmd s')
   if let some s' ← Folder.exec a.stk cmd then return some (a.withStk cmd s')
-  if let some s' ← Meta.exec a.stk cmd then return some (a.withStk cmd s')
+  if let some s' ← Meta.exec a.stk ViewStack.pushMeta cmd then return some (a.withStk cmd s')
   if let some s' ← Freq.exec a.stk cmd then return some (a.withStk cmd s')
   if let some s' ← Filter.exec a.stk cmd then return some (a.withStk cmd s')
   match ← GView.exec a.stk.cur cmd with

@@ -24,6 +24,10 @@ def asMem? : Table → Option MemTable
   | .mem t => some t
   | _ => none
 
+-- | AsMem instance for Table
+instance : AsMem Table where
+  asMem? := asMem?
+
 -- | Check if table is DB-backed (search disabled)
 def isAdbc : Table → Bool
   | .adbc _ => true
@@ -55,6 +59,15 @@ instance : ModifyTable Table where
     | .mem t => .mem <$> ModifyTable.sortBy idxs asc t
     | .adbc t => .adbc <$> ModifyTable.sortBy idxs asc t
     | .kdb t => .kdb <$> ModifyTable.sortBy idxs asc t
+
+-- | LoadTable instance: csv → MemTable, else → AdbcTable
+instance : LoadTable Table where
+  fromFile path := do
+    if path.endsWith ".csv" then
+      LoadTable.fromFile (α := MemTable) path <&> (·.map .mem)
+    else
+      try LoadTable.fromFile (α := AdbcTable) path <&> (·.map .adbc)
+      catch _ => pure none
 
 -- | QueryTable instance for MemTable
 instance : QueryTable MemTable where

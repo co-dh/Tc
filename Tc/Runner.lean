@@ -4,9 +4,10 @@
 -/
 import Tc.Filter
 import Tc.Folder
-import Tc.Meta
 import Tc.Freq
+import Tc.Meta
 import Tc.Theme
+import Tc.ViewStack
 
 namespace Tc.Runner
 
@@ -28,7 +29,7 @@ def runStackEffect (s : ViewStack) (eff : Effect) : IO ViewStack := do
   | .findNext => s.searchNext
   | .findPrev => s.searchPrev
   -- query effects
-  | .queryMeta => runOpt s (Meta.push s)
+  | .queryMeta => runOpt s (ViewStack.pushMeta s)
   | .queryFreq cols colNames =>
     let n := s.cur.nav
     let freq ← QueryTable.queryFreq n.tbl cols

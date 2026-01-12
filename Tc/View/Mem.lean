@@ -24,17 +24,16 @@ abbrev ViewStack := GViewStack MemTable
 
 namespace View
 
--- | Load from CSV or TXT file
+-- | Load from CSV or TXT file (uses LoadTable for csv)
 def fromFile (path : String) : IO (Option View) := do
-  if path.endsWith ".csv" then
-    match ← MemTable.load path with
-    | .ok tbl => pure (GView.fromTbl tbl path)
-    | .error _ => pure none
-  else if path.endsWith ".txt" then
+  if path.endsWith ".txt" then
     match MemTable.fromText (← IO.FS.readFile path) with
     | .ok tbl => pure (GView.fromTbl tbl path)
     | .error _ => pure none
-  else pure none
+  else  -- csv and other formats via LoadTable
+    match ← LoadTable.fromFile (α := MemTable) path with
+    | some tbl => pure (GView.fromTbl tbl path)
+    | none => pure none
 
 end View
 

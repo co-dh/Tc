@@ -119,6 +119,10 @@ def ModifyTable.del [ModifyTable α] (tbl : α) (cursor : Nat) (sels : Array Nat
 def ModifyTable.sort [ModifyTable α] (tbl : α) (cursor : Nat) (grpIdxs : Array Nat) (asc : Bool) : IO α :=
   sortBy (grpIdxs.push cursor) asc tbl
 
+-- | Load table from file path
+class LoadTable (α : Type) where
+  fromFile : String → IO (Option α)
+
 -- | View kind: how to render/interact (used by key mapping for context-sensitive verbs)
 inductive ViewKind where
   | tbl                                  -- table view

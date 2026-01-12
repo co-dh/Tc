@@ -3,6 +3,7 @@
 -/
 import Tc.Fzf
 import Tc.Key
+import Tc.Meta
 import Tc.Render
 import Tc.Term
 import Tc.View.Mem
@@ -12,22 +13,7 @@ import Tc.UI.Info
 
 open Tc
 
--- | Select rows in meta view by predicate f (e.g. Meta.selNull, Meta.selSingle)
--- In meta view, rows = columns from parent table, so selecting rows = selecting columns
-private def metaSel (s : ViewStack) (f : MemTable → Array Nat) : ViewStack :=
-  if s.cur.vkind != .colMeta then s else
-  let rows := f s.cur.nav.tbl
-  let nav' := { s.cur.nav with row := { s.cur.nav.row with sels := rows } }
-  s.setCur { s.cur with nav := nav' }
-
--- | Set key cols from meta view selections
-private def metaSetKey (s : ViewStack) : Option ViewStack :=
-  if s.cur.vkind != .colMeta then some s else
-  if !s.hasParent then some s else
-  let colNames := Meta.selNames s.cur.nav.tbl s.cur.nav.row.sels
-  s.pop.map fun s' =>
-    let nav' := { s'.cur.nav with grp := colNames, col := { s'.cur.nav.col with sels := colNames } }
-    s'.setCur { s'.cur with nav := nav' }
+-- Uses Meta.sel and Meta.setKey for meta view operations
 
 -- | AppState for tc-core (MemTable only)
 abbrev AppState := GAppState MemTable
@@ -47,9 +33,9 @@ def update (a : AppState) (cmd : Cmd) : Option (AppState × Effect) :=
     | .stk .ent => some ({ a with stk := a.stk.swap }, .none)
     | .stk .dup => some ({ a with stk := a.stk.dup }, .none)
     | .metaV .dup => some (a, .queryMeta)
-    | .metaV .dec => some ({ a with stk := metaSel a.stk Meta.selNull }, .none)
-    | .metaV .inc => some ({ a with stk := metaSel a.stk Meta.selSingle }, .none)
-    | .metaV .ent => metaSetKey a.stk |>.map fun s' => ({ a with stk := s' }, .none)
+    | .metaV .dec => some ({ a with stk := Meta.sel a.stk Meta.selNull }, .none)
+    | .metaV .inc => some ({ a with stk := Meta.sel a.stk Meta.selSingle }, .none)
+    | .metaV .ent => Meta.setKey a.stk |>.map fun s' => ({ a with stk := s' }, .none)
     | .freq .dup =>
       let curCol := colIdxAt n.grp names n.col.cur.val
       let curName := names.getD curCol ""

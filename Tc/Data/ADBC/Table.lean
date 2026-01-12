@@ -127,6 +127,10 @@ instance : ModifyTable AdbcTable where
   delCols := fun delIdxs t => AdbcTable.delCols t delIdxs
   sortBy  := fun idxs asc t => AdbcTable.sortBy t idxs asc
 
+-- | LoadTable instance for AdbcTable (parquet, etc via DuckDB)
+instance : LoadTable AdbcTable where
+  fromFile := AdbcTable.fromFile
+
 -- | RenderTable instance for AdbcTable
 instance : RenderTable AdbcTable where
   render nav inWidths colOff r0 r1 moveDir st precAdj widthAdj := do

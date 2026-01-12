@@ -96,6 +96,14 @@ def sort (t : MemTable) (idxs : Array Nat) (asc : Bool) : MemTable :=
 
 end MemTable
 
+-- | AsMem: extract MemTable from table type (for meta/freq views)
+class AsMem (T : Type) where
+  asMem? : T → Option MemTable
+
+-- | MemTable is trivially itself
+instance : AsMem MemTable where
+  asMem? := some
+
 -- | ReadTable instance for MemTable
 instance : ReadTable MemTable where
   nRows    := MemTable.nRows
@@ -109,6 +117,13 @@ instance : ModifyTable MemTable where
       cols  := let keepIdxs := (Array.range t.names.size).filter (!delIdxs.contains ·)
                keepIdxs.map fun i => t.cols.getD i default }
   sortBy := fun idxs asc t => pure (MemTable.sort t idxs asc)
+
+-- | LoadTable instance for MemTable (csv files)
+instance : LoadTable MemTable where
+  fromFile path := do
+    match ← MemTable.load path with
+    | .ok t => pure (some t)
+    | .error _ => pure none
 
 -- | RenderTable instance for MemTable
 instance : RenderTable MemTable where
