@@ -99,7 +99,7 @@ def mkView (path : String) (depth : Nat) : IO (Option View) := do
   | .error _ => pure none
   | .ok tbl =>
     let disp := absPath.splitOn "/" |>.getLast? |>.getD absPath
-    pure <| View.fromTbl (.mem tbl) absPath |>.map fun v =>
+    pure <| GView.fromTbl (.mem tbl) absPath |>.map fun v =>
       { v with vkind := .fld absPath depth, disp := disp }
 
 -- | Push new folder view onto stack (use current path or ".")
@@ -259,7 +259,7 @@ def del (s : ViewStack) : IO (Option ViewStack) := do
     match ← mkView path depth with
     | some v =>
       let row := min s.cur.nav.row.cur.val (if v.nRows > 0 then v.nRows - 1 else 0)
-      let v' := View.fromTbl v.nav.tbl path (row := row) |>.map fun x =>
+      let v' := GView.fromTbl v.nav.tbl path (row := row) |>.map fun x =>
         { x with vkind := .fld path depth, disp := s.cur.disp }
       pure (v'.map s.setCur)
     | none => pure (some s)
@@ -275,7 +275,7 @@ def setDepth (s : ViewStack) (delta : Int) : IO (Option ViewStack) := do
       | some v =>
         -- preserve row position if possible
         let row := min s.cur.nav.row.cur.val (v.nRows - 1)
-        let v' := View.fromTbl v.nav.tbl path (row := row) |>.map fun x =>
+        let v' := GView.fromTbl v.nav.tbl path (row := row) |>.map fun x =>
           { x with vkind := .fld path newDepth, disp := s.cur.disp }
         pure (v'.map s.setCur)
       | none => pure (some s)  -- keep current if refresh fails

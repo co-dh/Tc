@@ -3,6 +3,7 @@
   No ADBC imports - works with any T that has required typeclasses.
 -/
 import Tc.Effect
+import Tc.Fzf
 import Tc.Render
 
 namespace Tc
@@ -137,6 +138,59 @@ def moveColTo (s : GViewStack T) (colIdx : Nat) : GViewStack T :=
   let delta : Int := colIdx - v.nav.col.cur.val
   let nav' := { v.nav with col := { v.nav.col with cur := v.nav.col.cur.clamp delta } }
   s.setCur { v with nav := nav' }
+
+section Search
+variable [QueryTable T]
+
+-- | Column search: fzf jump to column by name
+def colSearch (s : GViewStack T) : IO (GViewStack T) := do
+  let names := ReadTable.colNames s.cur.nav.tbl
+  let dispNames := s.cur.nav.grp ++ names.filter (!s.cur.nav.grp.contains ·)
+  let some idx ← Fzf.fzfIdx #["--prompt=Column: "] dispNames | return s
+  pure (s.moveColTo idx)
+
+-- | Row search: find value in current column, jump to matching row
+def rowSearch (s : GViewStack T) : IO (GViewStack T) := do
+  let v := s.cur; let names := ReadTable.colNames v.nav.tbl
+  let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
+  let curName := names.getD curCol ""
+  let vals ← QueryTable.distinct v.nav.tbl curCol
+  let some result ← Fzf.fzf #[s!"--prompt=/{curName}: "] ("\n".intercalate vals.toList) | return s
+  let start := v.nav.row.cur.val + 1
+  let some rowIdx ← QueryTable.findRow v.nav.tbl curCol result start true | return s
+  pure (s.moveRowTo rowIdx (some (curCol, result)))
+
+-- | Search next: repeat last search forward
+def searchNext (s : GViewStack T) : IO (GViewStack T) := do
+  let v := s.cur
+  let some (col, val) := v.search | return s
+  let start := v.nav.row.cur.val + 1
+  let some rowIdx ← QueryTable.findRow v.nav.tbl col val start true | return s
+  pure (s.moveRowTo rowIdx)
+
+-- | Search prev: repeat last search backward
+def searchPrev (s : GViewStack T) : IO (GViewStack T) := do
+  let v := s.cur
+  let some (col, val) := v.search | return s
+  let start := v.nav.row.cur.val
+  let some rowIdx ← QueryTable.findRow v.nav.tbl col val start false | return s
+  pure (s.moveRowTo rowIdx)
+
+-- | Row filter: filter rows by expression, push filtered view
+def rowFilter (s : GViewStack T) : IO (GViewStack T) := do
+  let v := s.cur; let names := ReadTable.colNames v.nav.tbl
+  let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
+  let curName := names.getD curCol ""
+  let vals ← QueryTable.distinct v.nav.tbl curCol
+  let prompt := s!"{curName} == 'x' | > 5 | ~= 'pat' > "
+  let some result ← Fzf.fzf #["--print-query", s!"--prompt={prompt}"] ("\n".intercalate vals.toList) | return s
+  let expr := Fzf.buildFilterExpr curName vals result
+  if expr.isEmpty then return s
+  let some tbl' ← QueryTable.filter v.nav.tbl expr | return s
+  let some v' := GView.fromTbl tbl' v.path v.nav.col.cur.val v.nav.grp 0 | return s
+  pure (s.push { v' with disp := s!"\\{curName}" })
+
+end Search
 
 end GViewStack
 

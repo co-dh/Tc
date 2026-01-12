@@ -10,6 +10,14 @@ import Tc.Data.Mem.Freq
 
 namespace Tc
 
+-- | QueryTable instance for MemTable (needs Meta/Freq imports)
+instance : QueryTable MemTable where
+  queryMeta := MemTable.queryMeta
+  queryFreq := MemTable.queryFreq
+  filter    := MemTable.filter
+  distinct  := MemTable.distinct
+  findRow   := MemTable.findRow
+
 -- | View for MemTable
 abbrev View := GView MemTable
 abbrev ViewStack := GViewStack MemTable

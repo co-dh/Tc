@@ -29,52 +29,6 @@ private def metaSetKey (s : ViewStack) : Option ViewStack :=
     let nav' := { s'.cur.nav with grp := colNames, col := { s'.cur.nav.col with sels := colNames } }
     s'.setCur { s'.cur with nav := nav' }
 
--- | Search helpers
-private def colSearch (s : ViewStack) : IO ViewStack := do
-  let names := ReadTable.colNames s.cur.nav.tbl
-  let dispNames := s.cur.nav.grp ++ names.filter (!s.cur.nav.grp.contains ·)
-  let some idx ← Fzf.fzfIdx #["--prompt=Column: "] dispNames | return s
-  pure (s.moveColTo idx)
-
-private def rowSearch (s : ViewStack) : IO ViewStack := do
-  let v := s.cur; let names := ReadTable.colNames v.nav.tbl
-  let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
-  let curName := names.getD curCol ""
-  let vals ← MemTable.distinct v.nav.tbl curCol
-  let some result ← Fzf.fzf #[s!"--prompt=/{curName}: "] ("\n".intercalate vals.toList) | return s
-  let start := v.nav.row.cur.val + 1
-  let some rowIdx ← MemTable.findRow v.nav.tbl curCol result start true | return s
-  pure (s.moveRowTo rowIdx (some (curCol, result)))
-
-private def searchNext (s : ViewStack) : IO ViewStack := do
-  let v := s.cur
-  let some (col, val) := v.search | return s
-  let start := v.nav.row.cur.val + 1
-  let some rowIdx ← MemTable.findRow v.nav.tbl col val start true | return s
-  pure (s.moveRowTo rowIdx)
-
-private def searchPrev (s : ViewStack) : IO ViewStack := do
-  let v := s.cur
-  let some (col, val) := v.search | return s
-  let start := v.nav.row.cur.val
-  let some rowIdx ← MemTable.findRow v.nav.tbl col val start false | return s
-  pure (s.moveRowTo rowIdx)
-
-private def rowFilter (s : ViewStack) : IO ViewStack := do
-  let v := s.cur; let names := ReadTable.colNames v.nav.tbl
-  let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
-  let curName := names.getD curCol ""
-  let vals ← MemTable.distinct v.nav.tbl curCol
-  let prompt := s!"{curName} == 'x' | > 5 | ~= 'pat' > "
-  let some result ← Fzf.fzf #["--print-query", s!"--prompt={prompt}"] ("\n".intercalate vals.toList) | return s
-  let expr := Fzf.buildFilterExpr curName vals result
-  if expr.isEmpty then return s
-  match ← MemTable.filter v.nav.tbl expr with
-  | some tbl' => match GView.fromTbl tbl' v.path v.nav.col.cur.val v.nav.grp 0 with
-    | some v' => pure (s.push { v' with disp := s!"\\{curName}" })
-    | none => pure s
-  | none => pure s
-
 -- | Info state
 structure InfoState where
   vis : Bool := false
@@ -166,11 +120,11 @@ partial def runEffect (a : AppState) (eff : Effect) : IO AppState := do
         | none => pure a
       | none => pure a
     | _, _ => pure a
-  | .fzfCol => pure { a with stk := ← colSearch a.stk }
-  | .fzfRow _ _ => pure { a with stk := ← rowSearch a.stk }
-  | .fzfFilter _ _ => pure { a with stk := ← rowFilter a.stk }
-  | .findNext => pure { a with stk := ← searchNext a.stk }
-  | .findPrev => pure { a with stk := ← searchPrev a.stk }
+  | .fzfCol => pure { a with stk := ← a.stk.colSearch }
+  | .fzfRow _ _ => pure { a with stk := ← a.stk.rowSearch }
+  | .fzfFilter _ _ => pure { a with stk := ← a.stk.rowFilter }
+  | .findNext => pure { a with stk := ← a.stk.searchNext }
+  | .findPrev => pure { a with stk := ← a.stk.searchPrev }
   | _ => pure a
 
 partial def mainLoop (a : AppState) (testMode : Bool) (keys : Array Char) : IO AppState := do
