@@ -8,10 +8,10 @@
 │    nRows, colNames          delCols, sortBy             │
 │    queryMeta, queryFreq                                 │
 │    filter, distinct, findRow                            │
-│    render, fromFile                                     │
+│    render, fromFile, fromUrl                            │
 ├─────────────────────────────────────────────────────────┤
-│  MemConvert M α                                         │
-│    wrap : M → α, unwrap : α → Option M                  │
+│  MemConvert M α             ExecOp α                    │
+│    wrap, unwrap               exec : Op → IO α          │
 └───────────────────────────┬─────────────────────────────┘
                             │ instance
                             ▼
@@ -21,11 +21,9 @@
                             │ wrapped by
                             ▼
 ┌─────────────────────────────────────────────────────────┐
-│  View (existential wrapper)                             │
-│    hides table type, exposes update/doRender            │
-├─────────────────────────────────────────────────────────┤
-│  ViewStack                                              │
-│    cur : View, parents : Array View                     │
+│  View + ViewStack (View.lean)                           │
+│    View: wraps NavState, exposes update/doRender        │
+│    ViewStack: cur + parents, push/pop/swap/dup          │
 └───────────────────────────┬─────────────────────────────┘
                             │ composed by
                             ▼
@@ -38,7 +36,7 @@
                             │ returns Effect
                             ▼
 ┌─────────────────────────────────────────────────────────┐
-│  Effect (Effect.lean)                                   │
+│  Effect (Cmd.lean)                                      │
 │    none | quit | fzf* | query* | folder* | theme* | ...│
 └───────────────────────────┬─────────────────────────────┘
                             │ interpreted by
@@ -50,7 +48,7 @@
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────┐
-│  App.mainLoop                                           │
+│  appMain (App/Common.lean)                              │
 │    evToCmd → AppState.update → runEffect → render       │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -172,7 +170,7 @@ Char │ Obj       │  ,  │  .  │     │     │     │ Description
 
 **Command mode**: Press `space` to open fzf object picker, then fzf verb picker.
 
-## Effect DSL (Effect.lean)
+## Effect DSL (Cmd.lean)
 
 Effect describes IO operations without executing them:
 
@@ -211,23 +209,22 @@ class Update (α : Type) where
   update : α → Cmd → Option (α × Effect)
 ```
 
-## Op Interface
+## Op Interface (Types.lean)
 
 Common table operations across backends (ADBC, Mem, Kdb):
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Tc/Op.lean (common operations)                         │
+│  Types.lean (Agg, Op, ExecOp)                           │
 │    inductive Agg = count | sum | avg | min | max | ...  │
-│    inductive Op = filter | sort | select | derive | ... │
-│    structure Query = ops : Array Op                     │
+│    inductive Op = filter | sort | sel | derive | ...    │
 │    class ExecOp α = exec : α → Op → IO α                │
 └───────────────────────────┬─────────────────────────────┘
                             │ interpreted by
           ┌─────────────────┼─────────────────┐
           ▼                 ▼                 ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│ ADBC/Prql.lean  │ │ Mem/Exec.lean   │ │ Kdb/Q.lean      │
+│ ADBC/Prql.lean  │ │ Mem/Table.lean  │ │ Kdb/Q.lean      │
 │ Op → PRQL → SQL │ │ Op → native     │ │ Op → q expr     │
 └─────────────────┘ └─────────────────┘ └─────────────────┘
 ```
@@ -286,26 +283,27 @@ This prevents CPU burn on large tables (e.g., 300M row parquet).
 ## Module Dependency Graph
 
 ```
-LAYER 1: FOUNDATION
+LAYER 1: FOUNDATION (37 files total)
 ┌─────────────────────────────────────────────────────────────────┐
-│ Types   Offset   Error   Cmd   Effect   Term   Op              │
+│ Types (Cell,Column,TblOps,ModifyTable,MemConvert,Agg,Op,ExecOp) │
+│ Cmd (Verb,Cmd,Exec,Effect,Update)   Error   Term               │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 LAYER 2: DATA
 ┌─────────────────────────────────────────────────────────────────┐
-│ Data/CSV ──→ Data/Mem/Table ──→ Data/Mem/{Meta,Freq,Text}      │
+│ Data/CSV ──→ Data/Mem/Table ──→ Data/Mem/{Meta,Freq,Text,Ops}  │
 │                                                                 │
-│ Data/ADBC/FFI ──→ Data/ADBC/Table ──→ Data/ADBC/Meta           │
+│ Data/ADBC/FFI ──→ Data/ADBC/Table ──→ Data/ADBC/{Meta,Ops}     │
 │              └──→ Data/ADBC/Prql                                │
 │                                                                 │
-│ Data/Kdb/FFI ──→ Data/Kdb/Table                                │
+│ Data/Kdb/FFI ──→ Data/Kdb/Table ──→ Data/Kdb/Ops               │
 │             └──→ Data/Kdb/Q                                     │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 LAYER 3: VIEW
 ┌─────────────────────────────────────────────────────────────────┐
-│ Nav ──→ Render ──→ Key                                         │
-│     └──→ View ──→ ViewStack                                    │
+│ Nav (clamp,adjOff) ──→ Render ──→ Key                          │
+│                    └──→ View (View + ViewStack)                │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 LAYER 4: FEATURES
@@ -313,11 +311,10 @@ LAYER 4: FEATURES
 │ Meta   Freq   Filter   Folder   Theme   Fzf   UI/Info          │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
-LAYER 5: TABLE ABSTRACTION (Plugin Architecture)
+LAYER 5: TABLE ABSTRACTION
 ┌─────────────────────────────────────────────────────────────────┐
-│ Table/Mem.lean     ──→ MemTable only                           │
-│ Table/DuckDB.lean  ──→ MemTable | AdbcTable                    │
-│ Table.lean         ──→ MemTable | AdbcTable | KdbTable         │
+│ Table/Mem.lean  ──→ MemTable only (tc-core)                    │
+│ Table.lean      ──→ MemTable | AdbcTable | KdbTable (tc)       │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 LAYER 6: STATE & DISPATCH
@@ -327,26 +324,24 @@ LAYER 6: STATE & DISPATCH
                               ↓
 LAYER 7: ENTRY POINTS
 ┌─────────────────────────────────────────────────────────────────┐
-│ App/Core.lean   ──→ imports Table/Mem     (tc-core)            │
-│ App/DuckDB.lean ──→ imports Table/DuckDB  (tc-duckdb)          │
-│ App.lean        ──→ imports Table         (tc)                 │
+│ App/Common.lean ──→ appMain (generic entry point)              │
+│ App/Core.lean   ──→ imports Table/Mem (tc-core)                │
+│ App.lean        ──→ imports Table     (tc)                     │
 └─────────────────────────────────────────────────────────────────┘
 
 TESTS
 ┌─────────────────────────────────────────────────────────────────┐
 │ TestLib ──→ CoreTest ──→ CoreTestMain (core-test exe)          │
 │         └──→ Test (test exe, imports CoreTest + ADBC)          │
+│ PureTest (compile-time #guard tests)                           │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Plugin Architecture
+### Build Variants
 
-Each `Table/*.lean` imports only its needed backends:
-
-| Variant | Table constructors | Backends |
-|---------|-------------------|----------|
-| `Table/Mem.lean` | `.mem` | none |
-| `Table/DuckDB.lean` | `.mem \| .adbc` | ADBC/DuckDB |
-| `Table.lean` | `.mem \| .adbc \| .kdb` | ADBC + Kdb |
+| Executable | Table variant | Backends | Use case |
+|------------|---------------|----------|----------|
+| `tc-core`  | `Table/Mem.lean` | none | CSV only, minimal |
+| `tc`       | `Table.lean` | ADBC + Kdb | Full (CSV, parquet, kdb) |
 
 Generic code (View, Meta, Freq, etc.) uses typeclasses (`TblOps`, `ModifyTable`, `MemConvert`) so it works with any Table type.
