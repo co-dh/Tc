@@ -27,8 +27,7 @@ lean_lib Tc where
              `Tc.Data.ADBC.Table, `Tc.Data.ADBC.Meta, `Tc.Data.ADBC.Ops,
              `Tc.Data.Kdb.FFI, `Tc.Data.Kdb.Q, `Tc.Data.Kdb.Table, `Tc.Data.Kdb.Ops,
              `Tc.Backend, `Tc.Backend.Full, `Tc.Backend.Core,
-             `Tc.Table.Mem, `Tc.Table.DuckDB,
-             `Tc.App.Core, `Tc.App.DuckDB]
+             `Tc.Table.Mem, `Tc.App.Core]
 
 -- | Full build: all backends (MemTable + ADBC + Kdb)
 @[default_target]
@@ -38,10 +37,6 @@ lean_exe tc where
 -- | Core build: MemTable only (CSV, no parquet/kdb)
 lean_exe «tc-core» where
   root := `Tc.App.Core
-
--- | DuckDB build: MemTable + ADBC (CSV + parquet, no kdb)
-lean_exe «tc-duckdb» where
-  root := `Tc.App.DuckDB
 
 -- | Test library (shared utilities and core tests)
 lean_lib TestLib where
