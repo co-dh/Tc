@@ -2,7 +2,6 @@
   Q: Render Op to q expressions
   Uses common Op types from Tc/Op.lean
 -/
-import Tc.Op
 import Tc.Types
 import Tc.Error
 

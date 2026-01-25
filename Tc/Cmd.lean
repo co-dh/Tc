@@ -118,3 +118,29 @@ end Cmd
 -- | Exec typeclass: handle Cmd, return updated state or none (IO version)
 class Exec (α : Type) where
   exec : α → Cmd → IO (Option α)
+
+-- | Effect: describes an IO operation to perform (Runner interprets)
+inductive Effect where
+  | none | quit
+  | fzfCmd | fzfCol
+  | fzfRow (colIdx : Nat) (colName : String)
+  | fzfFilter (colIdx : Nat) (colName : String)
+  | queryMeta
+  | queryFreq (cols : Array Nat) (colNames : Array String)
+  | freqFilter (cols : Array String) (row : Nat)
+  | queryFilter (expr : String)
+  | querySort (colIdx : Nat) (grp : Array Nat) (asc : Bool)
+  | queryDel (colIdx : Nat) (sels : Array Nat) (grp : Array String)
+  | folderPush | folderEnter | folderDel
+  | folderDepth (delta : Int)
+  | findNext | findPrev
+  | themeLoad (delta : Int)
+  deriving Repr, BEq
+
+namespace Effect
+def isNone : Effect → Bool | .none => true | _ => false
+end Effect
+
+-- | Update typeclass: pure state transition returning Effect
+class Update (α : Type) where
+  update : α → Cmd → Option (α × Effect)

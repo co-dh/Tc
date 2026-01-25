@@ -6,7 +6,6 @@ import Std.Data.HashSet
 import Tc.Data.CSV
 import Tc.Error
 import Tc.Nav
-import Tc.Op
 import Tc.Render
 import Tc.Term
 import Tc.Types

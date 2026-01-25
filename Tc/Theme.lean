@@ -2,7 +2,7 @@
   Theme: CSV-based color themes
   Format: theme,variant,name,fg,bg
 -/
-import Tc.Effect
+import Tc.Cmd
 import Tc.Term
 
 namespace Tc.Theme

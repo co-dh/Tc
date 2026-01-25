@@ -2,7 +2,7 @@
   Info overlay: key hints display
   Shows view-specific commands first, then common navigation.
 -/
-import Tc.Effect
+import Tc.Cmd
 import Tc.Term
 import Tc.View
 

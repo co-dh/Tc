@@ -150,6 +150,35 @@ def colsToText (names : Array String) (cols : Array Column) (nr : Nat) : String 
     lines := lines.push ("\t".intercalate row.toList)
   "\n".intercalate lines.toList
 
+namespace Tc
+
+-- | Aggregate function
+inductive Agg where
+  | count | sum | avg | min | max | stddev | dist
+  deriving Repr, Inhabited, BEq
+
+namespace Agg
+def short : Agg → String
+  | .count => "count" | .sum => "sum" | .avg => "avg"
+  | .min => "min" | .max => "max" | .stddev => "stddev" | .dist => "dist"
+end Agg
+
+-- | Table operation (single pipeline stage)
+inductive Op where
+  | filter (expr : String)
+  | sort (cols : Array (String × Bool))
+  | sel (cols : Array String)
+  | derive (bindings : Array (String × String))
+  | group (keys : Array String) (aggs : Array (Agg × String × String))
+  | take (n : Nat)
+  deriving Inhabited
+
+-- | Execute operation on table (backend-specific)
+class ExecOp (α : Type) where
+  exec : α → Op → IO (Option α)
+
+end Tc
+
 -- | View kind: how to render/interact (used by key mapping for context-sensitive verbs)
 inductive ViewKind where
   | tbl                                  -- table view

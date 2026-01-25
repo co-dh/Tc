@@ -2,7 +2,6 @@
   PRQL rendering and compilation
   Uses common Op types from Tc/Op.lean
 -/
-import Tc.Op
 import Tc.Types
 import Tc.Error
 
