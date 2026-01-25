@@ -8,7 +8,6 @@ import Tc.Meta
 import Tc.Freq
 import Tc.Theme
 import Tc.UI.Info
-import Tc.ViewStack
 
 namespace Tc
 

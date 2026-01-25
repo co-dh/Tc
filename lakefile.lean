@@ -18,15 +18,14 @@ extern_lib adbcshim pkg := mkCLib pkg "adbcshim" "adbc_core.c"
 extern_lib kdbshim pkg := mkCLib pkg "kdbshim" "kdb_shim.c"
 
 lean_lib Tc where
-  roots := #[`Tc.Offset, `Tc.Cmd, `Tc.Effect, `Tc.Nav, `Tc.Render, `Tc.Key, `Tc.App,
-             `Tc.Term, `Tc.Types, `Tc.Error, `Tc.Op, `Tc.View, `Tc.ViewStack, `Tc.Dispatch,
+  roots := #[`Tc.Cmd, `Tc.Effect, `Tc.Nav, `Tc.Render, `Tc.Key, `Tc.App,
+             `Tc.Term, `Tc.Types, `Tc.Error, `Tc.Op, `Tc.View, `Tc.Dispatch,
              `Tc.Meta, `Tc.Freq, `Tc.Fzf, `Tc.Table, `Tc.Search, `Tc.Filter, `Tc.Folder,
              `Tc.Theme, `Tc.UI.Info, `Tc.Runner, `Tc.Data.CSV,
              `Tc.Data.Mem.Table, `Tc.Data.Mem.Text, `Tc.Data.Mem.Meta, `Tc.Data.Mem.Freq, `Tc.Data.Mem.Ops,
              `Tc.Data.ADBC.FFI, `Tc.Data.ADBC.Prql,
              `Tc.Data.ADBC.Table, `Tc.Data.ADBC.Meta, `Tc.Data.ADBC.Ops,
              `Tc.Data.Kdb.FFI, `Tc.Data.Kdb.Q, `Tc.Data.Kdb.Table, `Tc.Data.Kdb.Ops,
-             `Tc.Backend, `Tc.Backend.Full, `Tc.Backend.Core,
              `Tc.Table.Mem, `Tc.App.Core]
 
 -- | Full build: all backends (MemTable + ADBC + Kdb)

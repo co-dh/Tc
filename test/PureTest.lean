@@ -3,7 +3,7 @@
   No IO - all tests are compile-time checks via #guard.
 -/
 import Tc.Nav
-import Tc.ViewStack
+import Tc.View
 import Tc.UI.Info
 import Tc.Types
 
