@@ -1,72 +1,10 @@
 /-
   Table variant: MemTable + AdbcTable (DuckDB build, no Kdb)
 -/
-import Tc.Data.Mem.Table
-import Tc.Data.Mem.Meta
-import Tc.Data.Mem.Freq
-import Tc.Data.ADBC.Table
-import Tc.Data.ADBC.Meta
+import Tc.Data.Mem.Ops   -- TblOps/ModifyTable for MemTable
+import Tc.Data.ADBC.Ops  -- TblOps/ModifyTable for AdbcTable
 
 namespace Tc
-
--- | TblOps instance for MemTable (read + query + render)
-instance : TblOps MemTable where
-  nRows     := MemTable.nRows
-  colNames  := (·.names)
-  queryMeta := MemTable.queryMeta
-  queryFreq := MemTable.queryFreq
-  filter    := MemTable.filter
-  distinct  := MemTable.distinct
-  findRow   := MemTable.findRow
-  render t cols names _ inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj :=
-    let c := if cols.isEmpty then t.cols else cols
-    let n := if names.isEmpty then t.names else names
-    Term.renderTable c n #[] inWidths dispIdxs
-      (MemTable.nRows t).toUInt64 nGrp.toUInt64 colOff.toUInt64
-      r0.toUInt64 r1.toUInt64 curRow.toUInt64 curCol.toUInt64
-      moveDir.toInt64 selColIdxs rowSels st precAdj.toInt64 widthAdj.toInt64
-
--- | ModifyTable instance for MemTable
-instance : ModifyTable MemTable where
-  delCols := fun delIdxs t => pure
-    { names := let keepIdxs := (Array.range t.names.size).filter (!delIdxs.contains ·)
-               keepIdxs.map fun i => t.names.getD i ""
-      cols  := let keepIdxs := (Array.range t.names.size).filter (!delIdxs.contains ·)
-               keepIdxs.map fun i => t.cols.getD i default }
-  sortBy := fun idxs asc t => pure (MemTable.sort t idxs asc)
-
--- | TblOps instance for AdbcTable
-instance : TblOps AdbcTable where
-  nRows     := (·.nRows)
-  colNames  := (·.colNames)
-  totalRows := (·.totalRows)
-  isAdbc    := fun _ => true
-  queryMeta := AdbcTable.queryMeta
-  queryFreq := AdbcTable.queryFreq
-  filter    := AdbcTable.filter
-  distinct  := AdbcTable.distinct
-  findRow   := AdbcTable.findRow
-  render t _ _ _ inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj := do
-    if inWidths.isEmpty then
-      let cols ← (Array.range t.nCols).mapM fun c => t.getCol c 0 t.nRows
-      Term.renderTable cols t.colNames t.colFmts inWidths dispIdxs
-        t.nRows.toUInt64 nGrp.toUInt64 colOff.toUInt64
-        0 t.nRows.toUInt64 curRow.toUInt64 curCol.toUInt64
-        moveDir.toInt64 selColIdxs rowSels st precAdj.toInt64 widthAdj.toInt64
-    else
-      let cols ← (Array.range t.nCols).mapM fun c => t.getCol c r0 r1
-      let adjCur := curRow - r0
-      let adjSel := rowSels.filterMap fun r =>
-        if r >= r0 && r < r1 then some (r - r0) else none
-      Term.renderTable cols t.colNames t.colFmts inWidths dispIdxs
-        t.nRows.toUInt64 nGrp.toUInt64 colOff.toUInt64
-        0 (r1 - r0).toUInt64 adjCur.toUInt64 curCol.toUInt64
-        moveDir.toInt64 selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
-
--- | ModifyTable instance for AdbcTable
-instance : ModifyTable AdbcTable where
-  delCols := fun delIdxs t => AdbcTable.delCols t delIdxs
-  sortBy  := fun idxs asc t => AdbcTable.sortBy t idxs asc
 
 -- | Table type: mem or adbc (no kdb)
 inductive Table where
@@ -175,14 +113,7 @@ instance : ExecOp Table where
 -- | Format table as plain text
 def toText : Table → IO String
   | .mem t => pure (MemTable.toText t)
-  | .adbc t => do
-    let nr := t.nRows; let nc := t.nCols
-    let cols ← (Array.range nc).mapM fun c => t.getCol c 0 nr
-    let mut lines : Array String := #["\t".intercalate t.colNames.toList]
-    for r in [:nr] do
-      let row := cols.map fun col => (col.get r).toRaw
-      lines := lines.push ("\t".intercalate row.toList)
-    pure ("\n".intercalate lines.toList)
+  | .adbc t => do pure (colsToText t.colNames (← (Array.range t.nCols).mapM (t.getCol · 0 t.nRows)) t.nRows)
 
 end Table
 

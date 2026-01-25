@@ -88,6 +88,13 @@ abbrev MetaTuple := Array String × Array String × Array Int64 × Array Int64 �
 -- Freq tuple: (keyNames, keyCols, cntData, pctData, barData)
 abbrev FreqTuple := Array String × Array Column × Array Int64 × Array Float × Array String
 
+-- | Compute pct and bar from count data (shared by Mem/ADBC/Kdb freq)
+def freqStats (cntData : Array Int64) : Array Float × Array String :=
+  let total := cntData.foldl (init := 0) (· + ·)
+  let pct := cntData.map fun c => if total > 0 then c.toFloat * 100 / total.toFloat else 0
+  let bar := pct.map fun p => String.ofList (List.replicate (p / 5).toUInt32.toNat '#')
+  (pct, bar)
+
 -- | TblOps: read access + query ops + render (unified table interface)
 -- Render params expanded to avoid NavState dependency (NavState defined after Types)
 class TblOps (α : Type) where
@@ -129,6 +136,14 @@ def ModifyTable.sort [ModifyTable α] (tbl : α) (cursor : Nat) (grpIdxs : Array
 class MemConvert (M T : Type) where
   wrap   : M → T              -- M → T (e.g., MemTable → Table)
   unwrap : T → Option M       -- T → M? (e.g., Table → MemTable?)
+
+-- | Convert columns to tab-separated text (shared by Table toText impls)
+def colsToText (names : Array String) (cols : Array Column) (nr : Nat) : String := Id.run do
+  let mut lines : Array String := #["\t".intercalate names.toList]
+  for r in [:nr] do
+    let row := cols.map fun col => (col.get r).toRaw
+    lines := lines.push ("\t".intercalate row.toList)
+  "\n".intercalate lines.toList
 
 -- | View kind: how to render/interact (used by key mapping for context-sensitive verbs)
 inductive ViewKind where

@@ -45,9 +45,7 @@ def queryFreq (t : MemTable) (colIdxs : Array Nat) : IO FreqTuple := pure $
   let keyNames := colIdxs.map fun i => t.names.getD i ""
   -- compute cnt, pct, bar
   let cntData := keys.map fun k => (counts.getD k 0).toInt64
-  let total := cntData.foldl (init := 0) (· + ·)
-  let pctData := cntData.map fun c => if total > 0 then c.toFloat * 100 / total.toFloat else 0
-  let barData := pctData.map fun p => String.ofList (List.replicate (p / 5).toUInt32.toNat '#')
+  let (pctData, barData) := freqStats cntData
   (keyNames, keyCols, cntData, pctData, barData)
 
 end MemTable

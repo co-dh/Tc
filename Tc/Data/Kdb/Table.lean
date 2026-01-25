@@ -204,9 +204,7 @@ def queryFreq (t : KdbTable) (colIdxs : Array Nat) : IO FreqTuple := do
   for r in [:nr.toNat] do
     let v ← Kdb.cellStr qr r.toUInt64 keyNames.size.toUInt64
     cntData := cntData.push (v.toInt?.getD 0).toInt64
-  let total := cntData.foldl (init := 0) (· + ·)
-  let pctData := cntData.map fun c => if total > 0 then c.toFloat * 100 / total.toFloat else 0
-  let barData := pctData.map fun p => String.ofList (List.replicate (p / 5).toUInt32.toNat '#')
+  let (pctData, barData) := freqStats cntData
   pure (keyNames, keyCols, cntData, pctData, barData)
 
 -- | Filter: requery with filter expr
