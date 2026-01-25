@@ -11,64 +11,37 @@ inductive Table where
 
 namespace Table
 
--- | Extract MemTable
-def asMem? : Table → Option MemTable
-  | .mem t => some t
+-- unwrap/wrap helpers
+@[inline] def un : Table → MemTable | .mem t => t
+@[inline] def wr : MemTable → Table := .mem
 
--- | Not DB-backed
-def isAdbc : Table → Bool
-  | .mem _ => false
+def asMem? : Table → Option MemTable | .mem t => some t
+def isAdbc : Table → Bool | .mem _ => false
 
--- | MemConvert instance (MemTable ↔ Table)
-instance : MemConvert MemTable Table where
-  wrap   := Table.mem
-  unwrap := Table.asMem?
+instance : MemConvert MemTable Table where wrap := wr; unwrap := asMem?
 
--- | Load from file (CSV only in core build)
-def fromFile (path : String) : IO (Option Table) := do
-  if path.endsWith ".csv" then
-    match ← MemTable.load path with
-    | .ok t => pure (some (.mem t))
-    | .error e => Log.error s!"CSV parse error: {e}"; pure none
-  else Log.error s!"tc-core: only CSV supported, not {path}"; pure none
+def fromFile (p : String) : IO (Option Table) := do
+  if p.endsWith ".csv" then (← MemTable.load p).toOption.map wr |> pure
+  else Log.error s!"tc-core: only CSV supported, not {p}"; pure none
+def fromUrl (u : String) : IO (Option Table) := do Log.error s!"tc-core: URL not supported: {u}"; pure none
 
--- | Load from URL (not supported in core)
-def fromUrl (url : String) : IO (Option Table) := do
-  Log.error s!"tc-core: URL loading not supported: {url}"; pure none
-
--- | TblOps instance (includes query ops + render)
 instance : TblOps Table where
-  nRows     | .mem t => MemTable.nRows t
-  colNames  | .mem t => t.names
-  totalRows | .mem t => MemTable.nRows t
-  isAdbc    := Table.isAdbc
-  queryMeta | .mem t => MemTable.queryMeta t
-  queryFreq tbl idxs := match tbl with
-    | .mem t => MemTable.queryFreq t idxs
-  filter tbl expr := match tbl with
-    | .mem t => MemTable.filter t expr <&> (·.map .mem)
-  distinct tbl col := match tbl with
-    | .mem t => MemTable.distinct t col
-  findRow tbl col val start fwd := match tbl with
-    | .mem t => MemTable.findRow t col val start fwd
-  render tbl cols names fmts inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj :=
-    match tbl with
-    | .mem t => TblOps.render t cols names fmts inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj
-  fromFile := Table.fromFile
+  nRows t := MemTable.nRows t.un;  colNames t := t.un.names;  totalRows t := MemTable.nRows t.un
+  isAdbc := isAdbc;  queryMeta t := MemTable.queryMeta t.un
+  queryFreq t i := MemTable.queryFreq t.un i
+  filter t e := MemTable.filter t.un e <&> (·.map wr)
+  distinct t c := MemTable.distinct t.un c
+  findRow t c v s f := MemTable.findRow t.un c v s f
+  render t c n f w d g o r0 r1 cr cc md s rs st pa wa := TblOps.render t.un c n f w d g o r0 r1 cr cc md s rs st pa wa
+  fromFile := fromFile
 
--- | ModifyTable instance
 instance : ModifyTable Table where
-  delCols idxs | .mem t => .mem <$> ModifyTable.delCols idxs t
-  sortBy idxs asc | .mem t => .mem <$> ModifyTable.sortBy idxs asc t
+  delCols i t := wr <$> ModifyTable.delCols i t.un
+  sortBy i a t := wr <$> ModifyTable.sortBy i a t.un
 
--- | ExecOp instance for Table
-instance : ExecOp Table where
-  exec tbl op := match tbl with
-    | .mem t => ExecOp.exec t op <&> (·.map .mem)
+instance : ExecOp Table where exec t o := ExecOp.exec t.un o <&> (·.map wr)
 
--- | Format table as plain text
-def toText : Table → IO String
-  | .mem t => pure (MemTable.toText t)
+def toText (t : Table) : IO String := pure (MemTable.toText t.un)
 
 end Table
 

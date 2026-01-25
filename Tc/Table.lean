@@ -16,102 +16,52 @@ inductive Table where
 
 namespace Table
 
--- | Extract MemTable (for meta/freq views which produce MemTable)
-def asMem? : Table → Option MemTable
-  | .mem t => some t
-  | _ => none
+-- lift pure/IO/filter ops over sum type (Arthur Whitney style)
+@[inline] def lift (m : MemTable → α) (a : AdbcTable → α) (k : KdbTable → α) : Table → α
+  | .mem t => m t | .adbc t => a t | .kdb t => k t
+@[inline] def liftM (m : MemTable → IO α) (a : AdbcTable → IO α) (k : KdbTable → IO α) : Table → IO α
+  | .mem t => m t | .adbc t => a t | .kdb t => k t
+@[inline] def liftW (m : MemTable → IO (Option MemTable)) (a : AdbcTable → IO (Option AdbcTable))
+    (k : KdbTable → IO (Option KdbTable)) : Table → IO (Option Table)
+  | .mem t => m t <&> (·.map .mem) | .adbc t => a t <&> (·.map .adbc) | .kdb t => k t <&> (·.map .kdb)
+@[inline] def liftIO (m : MemTable → IO MemTable) (a : AdbcTable → IO AdbcTable)
+    (k : KdbTable → IO KdbTable) : Table → IO Table
+  | .mem t => .mem <$> m t | .adbc t => .adbc <$> a t | .kdb t => .kdb <$> k t
 
--- | Check if table is DB-backed (search disabled)
-def isAdbc : Table → Bool
-  | .adbc _ => true
-  | .kdb _ => true
-  | .mem _ => false
+def asMem? : Table → Option MemTable | .mem t => some t | _ => none
+def isAdbc : Table → Bool | .mem _ => false | _ => true
 
--- | MemConvert instance (MemTable ↔ Table)
-instance : MemConvert MemTable Table where
-  wrap   := Table.mem
-  unwrap := Table.asMem?
+instance : MemConvert MemTable Table where wrap := .mem; unwrap := asMem?
 
--- | Load from file (CSV via Mem, parquet via ADBC)
-def fromFile (path : String) : IO (Option Table) := do
-  if path.endsWith ".csv" then
-    match ← MemTable.load path with
-    | .ok t => pure (some (.mem t))
-    | .error _ => pure none
-  else
-    match ← AdbcTable.fromFile path with
-    | some t => pure (some (.adbc t))
-    | none => pure none
+def fromFile (p : String) : IO (Option Table) := do
+  if p.endsWith ".csv" then (← MemTable.load p).toOption.map .mem |> pure
+  else (← AdbcTable.fromFile p).map .adbc |> pure
+def fromUrl (u : String) : IO (Option Table) := do
+  if u.startsWith "kdb://" then (← KdbTable.fromUrl u).map .kdb |> pure else pure none
 
--- | Load from kdb URL
-def fromUrl (url : String) : IO (Option Table) := do
-  if url.startsWith "kdb://" then
-    match ← KdbTable.fromUrl url with
-    | some t => pure (some (.kdb t))
-    | none => pure none
-  else pure none
-
--- | TblOps instance (includes query ops + render)
 instance : TblOps Table where
-  nRows
-    | .mem t => MemTable.nRows t
-    | .adbc t => AdbcTable.nRows t
-    | .kdb t => KdbTable.nRows t
-  colNames
-    | .mem t => t.names
-    | .adbc t => AdbcTable.colNames t
-    | .kdb t => KdbTable.colNames t
-  totalRows
-    | .mem t => MemTable.nRows t
-    | .adbc t => AdbcTable.totalRows t
-    | .kdb t => KdbTable.totalRows t
-  isAdbc := Table.isAdbc
-  queryMeta
-    | .mem t => MemTable.queryMeta t
-    | .adbc t => AdbcTable.queryMeta t
-    | .kdb t => KdbTable.queryMeta t
-  queryFreq tbl idxs := match tbl with
-    | .mem t => MemTable.queryFreq t idxs
-    | .adbc t => AdbcTable.queryFreq t idxs
-    | .kdb t => KdbTable.queryFreq t idxs
-  filter tbl expr := match tbl with
-    | .mem t => MemTable.filter t expr <&> (·.map .mem)
-    | .adbc t => AdbcTable.filter t expr <&> (·.map .adbc)
-    | .kdb t => KdbTable.filter t expr <&> (·.map .kdb)
-  distinct tbl col := match tbl with
-    | .mem t => MemTable.distinct t col
-    | .adbc t => AdbcTable.distinct t col
-    | .kdb t => KdbTable.distinct t col
-  findRow tbl col val start fwd := match tbl with
-    | .mem t => MemTable.findRow t col val start fwd
-    | .adbc t => AdbcTable.findRow t col val start fwd
-    | .kdb t => KdbTable.findRow t col val start fwd
-  render tbl cols names fmts inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj :=
-    match tbl with
-    | .mem t => TblOps.render t cols names fmts inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj
-    | .adbc t => TblOps.render t cols names fmts inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj
-    | .kdb t => TblOps.render t cols names fmts inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj
-  fromFile := Table.fromFile
+  nRows    := lift MemTable.nRows (·.nRows) (·.nRows)
+  colNames := lift (·.names) (·.colNames) (·.colNames)
+  totalRows := lift MemTable.nRows (·.totalRows) (·.totalRows)
+  isAdbc   := isAdbc
+  queryMeta := liftM MemTable.queryMeta AdbcTable.queryMeta KdbTable.queryMeta
+  queryFreq t i := liftM (MemTable.queryFreq · i) (AdbcTable.queryFreq · i) (KdbTable.queryFreq · i) t
+  filter t e := liftW (MemTable.filter · e) (AdbcTable.filter · e) (KdbTable.filter · e) t
+  distinct t c := liftM (MemTable.distinct · c) (AdbcTable.distinct · c) (KdbTable.distinct · c) t
+  findRow t c v s f := liftM (MemTable.findRow · c v s f) (AdbcTable.findRow · c v s f) (KdbTable.findRow · c v s f) t
+  render t c n f w d g o r0 r1 cr cc m s rs st pa wa := liftM
+    (TblOps.render · c n f w d g o r0 r1 cr cc m s rs st pa wa)
+    (TblOps.render · c n f w d g o r0 r1 cr cc m s rs st pa wa)
+    (TblOps.render · c n f w d g o r0 r1 cr cc m s rs st pa wa) t
+  fromFile := fromFile
 
--- | ModifyTable instance
 instance : ModifyTable Table where
-  delCols idxs
-    | .mem t => .mem <$> ModifyTable.delCols idxs t
-    | .adbc t => .adbc <$> ModifyTable.delCols idxs t
-    | .kdb t => .kdb <$> ModifyTable.delCols idxs t
-  sortBy idxs asc
-    | .mem t => .mem <$> ModifyTable.sortBy idxs asc t
-    | .adbc t => .adbc <$> ModifyTable.sortBy idxs asc t
-    | .kdb t => .kdb <$> ModifyTable.sortBy idxs asc t
+  delCols i := liftIO (ModifyTable.delCols i) (ModifyTable.delCols i) (ModifyTable.delCols i)
+  sortBy i a := liftIO (ModifyTable.sortBy i a) (ModifyTable.sortBy i a) (ModifyTable.sortBy i a)
 
--- | ExecOp instance for Table
 instance : ExecOp Table where
-  exec tbl op := match tbl with
-    | .mem t => ExecOp.exec t op <&> (·.map .mem)
-    | .adbc t => ExecOp.exec t op <&> (·.map .adbc)
-    | .kdb t => ExecOp.exec t op <&> (·.map .kdb)
+  exec t o := liftW (ExecOp.exec · o) (ExecOp.exec · o) (ExecOp.exec · o) t
 
--- | Format table as plain text (tab-separated)
 def toText : Table → IO String
   | .mem t => pure (MemTable.toText t)
   | .adbc t => do pure (colsToText t.colNames (← (Array.range t.nCols).mapM (t.getCol · 0 t.nRows)) t.nRows)

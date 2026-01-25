@@ -1,6 +1,4 @@
-/-
-  App/Common.lean: Common code for App entry points
--/
+-- App/Common: shared app loop, effect runner, arg parsing
 import Tc.Fzf
 import Tc.Key
 import Tc.Render
@@ -14,88 +12,57 @@ import Tc.Folder
 import Tc.View
 
 open Tc
-
 variable {T : Type} [TblOps T] [ModifyTable T] [MemConvert MemTable T]
 
--- | Run effect on AppState, returns updated state
-partial def runEffect (a : AppState T) (eff : Effect) : IO (AppState T) := do
-  match eff with
-  | .none => pure a
-  | .quit => pure a  -- handled by caller
-  | .fzfCmd =>
-    -- command mode: fzf object → fzf verb → execute resulting cmd
-    match ← Fzf.cmdMode a.stk.cur.vkind with
-    | some cmd =>
-      match a.update cmd with
-      | some (a', eff') => if eff'.isNone then pure a' else runEffect a' eff'
+-- run effect, recurse on fzfCmd
+partial def runEffect (a : AppState T) (e : Effect) : IO (AppState T) := match e with
+  | .none | .quit => pure a
+  | .fzfCmd => do match ← Fzf.cmdMode a.stk.cur.vkind with
+    | some c => match a.update c with
+      | some (a', e') => if e'.isNone then pure a' else runEffect a' e'
       | none => pure a
     | none => pure a
-  | .themeLoad delta =>
-    let t' ← a.theme.runEffect delta
-    pure { a with theme := t' }
-  | _ =>
-    -- delegate stack effects to Runner
-    let stk' ← Runner.runStackEffect a.stk eff
-    pure { a with stk := stk', vs := if eff.isNone then a.vs else .default }
+  | .themeLoad d => do let th ← a.theme.runEffect d; pure { a with theme := th }
+  | _ => pure { a with stk := ← Runner.runStackEffect a.stk e, vs := if e.isNone then a.vs else .default }
 
--- | Main loop. Returns final AppState for pipe mode output
--- Uses pure update + effect runner pattern
-partial def mainLoop (a : AppState T) (testMode : Bool) (keys : Array Char) : IO (AppState T) := do
-  -- 1. Render (IO)
+-- main loop: render → input → update → effect → loop
+partial def mainLoop (a : AppState T) (test : Bool) (ks : Array Char) : IO (AppState T) := do
   let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles
   let a := { a with stk := a.stk.setCur v', vs := vs' }
   renderTabLine a.stk.tabNames 0
   if a.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat a.stk.cur.vkind
   Term.present
-
-  -- 2. Exit in test mode when keys exhausted
-  if testMode && keys.isEmpty then IO.print (← Term.bufferStr); return a
-
-  -- 3. Get input (IO)
-  let (ev, keys') ← nextEvent keys
+  if test && ks.isEmpty then IO.print (← Term.bufferStr); return a
+  let (ev, ks') ← nextEvent ks
   if isKey ev 'Q' then return a
+  if isKey ev ' ' then mainLoop (← runEffect a .fzfCmd) test ks'
+  else match evToCmd ev a.stk.cur.vkind with
+    | none => mainLoop a test ks'
+    | some c => match a.update c with
+      | none => mainLoop a test ks'
+      | some (a', e) => if e == .quit then pure a' else mainLoop (← if e.isNone then pure a' else runEffect a' e) test ks'
 
-  -- 4. Handle space → fzfCmd effect, else map event to cmd
-  if isKey ev ' ' then
-    let a' ← runEffect a .fzfCmd
-    mainLoop a' testMode keys'
-  else
-    let some cmd := evToCmd ev a.stk.cur.vkind | mainLoop a testMode keys'
-    -- 5. Pure update: returns (state', effect)
-    let some (a', eff) := a.update cmd | mainLoop a testMode keys'
-    -- 6. Check for quit effect
-    if eff == .quit then return a'
-    -- 7. Run effect (IO)
-    let a'' ← if eff.isNone then pure a' else runEffect a' eff
-    -- 8. Loop
-    mainLoop a'' testMode keys'
-
--- | Parse args: path, optional -c for key replay (test mode)
+-- parse args: path?, -c keys?, test mode
 def parseArgs (args : List String) : Option String × Array Char × Bool :=
-  let toKeys s := (parseKeys s).toList.toArray
-  let (path, rest) := match args with
-    | "-c" :: t => (none, t)  -- no path, -c first
-    | p :: "-c" :: t => (some p, t)  -- path then -c
-    | p :: _ => (some p, [])
-    | [] => (none, [])
-  match rest with
-  | k :: _ => (path, toKeys k, true)  -- test mode with keys
-  | [] => (path, #[], false)
+  let toK s := (parseKeys s).toList.toArray
+  match args with
+  | "-c" :: k :: _ => (none, toK k, true)
+  | p :: "-c" :: k :: _ => (some p, toK k, true)
+  | p :: _ => (some p, #[], false)
+  | [] => (none, #[], false)
 
--- | Run app with view, returns final AppState
-def runApp (v : View T) (pipeMode testMode : Bool) (theme : Theme.State) (keys : Array Char) : IO (AppState T) := do
-  if pipeMode then let _ ← Term.reopenTty
+-- run app with view
+def runApp (v : View T) (pipe test : Bool) (th : Theme.State) (ks : Array Char) : IO (AppState T) := do
+  if pipe then let _ ← Term.reopenTty
   let _ ← Term.init
-  let a : AppState T := ⟨⟨#[v], by simp⟩, .default, theme, {}⟩
-  let a' ← mainLoop a testMode keys
-  Term.shutdown
-  pure a'
+  let a' ← mainLoop ⟨⟨#[v], by simp⟩, .default, th, {}⟩ test ks
+  Term.shutdown; pure a'
 
--- | Run with MemTable result, returns AppState if successful
-def runMem (res : Except String MemTable) (name : String) (pipeMode testMode : Bool)
-    (theme : Theme.State) (keys : Array Char) : IO (Option (AppState T)) := do
-  let tbl ← match res with
-    | .error e => IO.eprintln s!"Parse error: {e}"; return none
-    | .ok t => pure t
-  let some v := View.fromTbl (MemConvert.wrap tbl) name | IO.eprintln "Empty table"; return none
-  some <$> runApp v pipeMode testMode theme keys
+-- run from MemTable result
+def runMem (r : Except String MemTable) (nm : String) (pipe test : Bool)
+    (th : Theme.State) (ks : Array Char) : IO (Option (AppState T)) := do
+  match r with
+  | .error e => IO.eprintln s!"Parse error: {e}"; return none
+  | .ok t => match View.fromTbl (MemConvert.wrap t) nm with
+    | none => IO.eprintln "Empty table"; return none
+    | some v => some <$> runApp v pipe test th ks
