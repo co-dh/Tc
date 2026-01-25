@@ -80,7 +80,6 @@ def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
   | _ => (NavState.exec cmd n rowPg colPageSize).map fun nav' => ({ v with nav := nav' }, .none)
 
 instance : Update (View T) where update v cmd := update v cmd defaultRowPg
-  where defaultRowPg := 20  -- will be overridden by Runner with actual height
 
 -- | width update: .inc adds 1, .dec subtracts 1
 theorem width_inc_adds (v : View T) (rowPg : Nat) :
@@ -89,11 +88,11 @@ theorem width_dec_subs (v : View T) (rowPg : Nat) :
     (update v (.width .dec) rowPg).map (fun p => p.1.widthAdj) = some (v.widthAdj - 1) := rfl
 
 -- | Execute Cmd, returns IO (Option View) (for backward compat)
+-- Delegates to pure update for non-IO cases; only .colSel .del/.inc/.dec need IO
 def exec [ModifyTable T] (v : View T) (cmd : Cmd) : IO (Option (View T)) := do
   let n := v.nav; let names := TblOps.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   let mk tbl col grp row := preserve v (fromTbl tbl v.path col grp row)
-  let rowPg := ((← Term.height).toNat - reservedLines) / 2
   match cmd with
   | .colSel .del =>
     let (tbl', grp') ← ModifyTable.del n.tbl curCol (n.col.sels.filterMap names.idxOf?) n.grp
@@ -101,11 +100,9 @@ def exec [ModifyTable T] (v : View T) (cmd : Cmd) : IO (Option (View T)) := do
   | .colSel .inc | .colSel .dec =>
     let tbl' ← ModifyTable.sort n.tbl curCol (n.grp.filterMap names.idxOf?) (cmd == .colSel .inc)
     pure (mk tbl' curCol n.grp n.row.cur.val)
-  | .prec verb  => pure (some { v with precAdj := v.precAdj + verbDelta verb })
-  | .width verb => pure (some { v with widthAdj := v.widthAdj + verbDelta verb })
-  | _ => pure <| match NavState.exec cmd n rowPg colPageSize with
-    | some nav' => some { v with nav := nav' }
-    | none => none
+  | _ => -- delegate to pure update
+    let rowPg := ((← Term.height).toNat - reservedLines) / 2
+    pure <| (update v cmd rowPg).map Prod.fst
 
 instance [ModifyTable T] : Exec (View T) where exec := exec
 

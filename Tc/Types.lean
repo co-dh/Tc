@@ -82,21 +82,29 @@ def toPrql : Cell → String
 
 end Cell
 
+namespace Tc
+
 -- Meta tuple: (names, types, cnts, dists, nullPcts, mins, maxs)
 abbrev MetaTuple := Array String × Array String × Array Int64 × Array Int64 × Array Int64 × Array String × Array String
 
 -- Freq tuple: (keyNames, keyCols, cntData, pctData, barData)
 abbrev FreqTuple := Array String × Array Column × Array Int64 × Array Float × Array String
 
+-- Bar chart: each '#' represents this many percent
+def barPctPerChar : Float := 5.0
+
 -- | Compute pct and bar from count data (shared by Mem/ADBC/Kdb freq)
 def freqStats (cntData : Array Int64) : Array Float × Array String :=
   let total := cntData.foldl (init := 0) (· + ·)
   let pct := cntData.map fun c => if total > 0 then c.toFloat * 100 / total.toFloat else 0
-  let bar := pct.map fun p => String.ofList (List.replicate (p / 5).toUInt32.toNat '#')
+  let bar := pct.map fun p => String.ofList (List.replicate (p / barPctPerChar).toUInt32.toNat '#')
   (pct, bar)
 
--- | TblOps: read access + query ops + render (unified table interface)
--- Render params expanded to avoid NavState dependency (NavState defined after Types)
+/-! ## Core Typeclasses -/
+
+/-- TblOps: unified read-only table interface.
+    Provides row/column access, metadata queries, filtering, and rendering.
+    Render params are expanded to avoid NavState dependency (NavState defined after Types). -/
 class TblOps (α : Type) where
   nRows     : α → Nat                                            -- row count in view
   colNames  : α → Array String                                   -- column names
@@ -116,7 +124,8 @@ class TblOps (α : Type) where
   fromFile  : String → IO (Option α) := fun _ => pure none
   fromUrl   : String → IO (Option α) := fun _ => pure none
 
--- Mutable table ops (column-only; row deletion via filter)
+/-- ModifyTable: mutable table operations (extends TblOps).
+    Column deletion and sorting; row deletion is done via filter. -/
 class ModifyTable (α : Type) extends TblOps α where
   delCols : Array Nat → α → IO α           -- delete columns
   sortBy  : Array Nat → Bool → α → IO α    -- sort by columns
@@ -133,7 +142,8 @@ def ModifyTable.del [ModifyTable α] (tbl : α) (cursor : Nat) (sels : Array Nat
 def ModifyTable.sort [ModifyTable α] (tbl : α) (cursor : Nat) (grpIdxs : Array Nat) (asc : Bool) : IO α :=
   sortBy (grpIdxs.push cursor) asc tbl
 
--- | Bidirectional conversion between MemTable and T
+/-- MemConvert: bidirectional conversion between MemTable and unified Table type.
+    Enables generic code to work with in-memory representation when available. -/
 class MemConvert (M T : Type) where
   wrap   : M → T              -- M → T (e.g., MemTable → Table)
   unwrap : T → Option M       -- T → M? (e.g., Table → MemTable?)
@@ -149,8 +159,6 @@ def colsToText (names : Array String) (cols : Array Column) (nr : Nat) : String 
     let row := cols.map fun col => (col.get r).toRaw
     lines := lines.push ("\t".intercalate row.toList)
   "\n".intercalate lines.toList
-
-namespace Tc
 
 -- | Aggregate function
 inductive Agg where
@@ -177,8 +185,6 @@ inductive Op where
 class ExecOp (α : Type) where
   exec : α → Op → IO (Option α)
 
-end Tc
-
 -- | View kind: how to render/interact (used by key mapping for context-sensitive verbs)
 inductive ViewKind where
   | tbl                                  -- table view
@@ -186,3 +192,5 @@ inductive ViewKind where
   | colMeta                              -- column metadata
   | fld (path : String) (depth : Nat)    -- folder browser: path + find depth
   deriving Inhabited, Repr, BEq
+
+end Tc

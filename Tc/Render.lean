@@ -60,6 +60,9 @@ theorem renderRowCount_le_visRows (nRows r0 visRows : Nat) :
 -- Column page size (fixed, since widths vary)
 def colPageSize : Nat := 5
 
+-- Default row page size (fallback when terminal height unknown)
+def defaultRowPg : Nat := 20
+
 -- Styles: loaded from Theme, or use default
 -- 9 states: cursor, selRow, selColCurRow, selCol, curRow, curCol, default, header, group
 
