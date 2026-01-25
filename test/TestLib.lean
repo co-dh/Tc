@@ -83,7 +83,7 @@ def footer (output : String) : String × String :=
 def header (output : String) : String :=
   let lines := output.splitOn "\n" |>.filter isContent
   let hdr := lines.headD ""
-  if hdr.length > 80 then hdr.drop (hdr.length - 80) else hdr
+  if hdr.length > 80 then (hdr.drop (hdr.length - 80)).toString else hdr
 
 -- | Get data lines (skip header, skip footer 2 lines)
 def dataLines (output : String) : List String :=

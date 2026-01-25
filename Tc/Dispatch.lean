@@ -12,10 +12,10 @@ import Tc.ViewStack
 
 namespace Tc
 
-variable {T : Type} [ReadTable T] [QueryTable T] [ModifyTable T] [RenderTable T] [WrapMem MemTable T] [HasAsMem T] [LoadTable T]
+variable {T : Type} [TblOps T] [ModifyTable T] [MemConvert MemTable T]
 
 -- | App state: view stack + render state + theme + info
-structure AppState (T : Type) [ReadTable T] where
+structure AppState (T : Type) [TblOps T] where
   stk   : ViewStack T
   vs    : ViewState
   theme : Theme.State

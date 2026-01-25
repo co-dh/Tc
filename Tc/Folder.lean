@@ -8,22 +8,22 @@ import Tc.Term
 
 namespace Tc.Folder
 
-variable {T : Type} [ReadTable T] [WrapMem MemTable T] [HasAsMem T] [LoadTable T]
+variable {T : Type} [TblOps T] [MemConvert MemTable T]
 
 -- | Strip base path prefix to get relative entry name
 -- "/home/x/foo/bar" with base "/home/x/foo" → "bar"
 private def stripBase (base path : String) : String :=
   if path.startsWith base then
     let rest := path.drop base.length
-    if rest.startsWith "/" then rest.drop 1 else rest
-  else if path.startsWith "./" then path.drop 2
+    if rest.toString.startsWith "/" then (rest.drop 1).toString else rest.toString
+  else if path.startsWith "./" then (path.drop 2).toString
   else path
 
 -- | Format date: "2024-01-05+12:34:56.123" → "2024-01-05 12:34:56"
 private def fmtDate (s : String) : String :=
   let s := s.replace "+" " "  -- replace + with space
   let parts := s.splitOn "."  -- drop fractional seconds
-  parts.head!.take 19         -- YYYY-MM-DD HH:MM:SS
+  (parts.head!.take 19).toString  -- YYYY-MM-DD HH:MM:SS
 
 -- | Format type: f→space, d→d, l→l
 private def fmtType (s : String) : String :=
@@ -70,7 +70,7 @@ def viewFile (path : String) : IO Unit := do
 
 -- | Open data file (csv/parquet) as table view, returns new stack or none
 def openDataFile (s : ViewStack T) (path : String) : IO (Option (ViewStack T)) := do
-  match ← LoadTable.fromFile path with
+  match ← TblOps.fromFile path with
   | some tbl => match View.fromTbl tbl path with
     | some v => pure (some (s.push v))
     | none => pure none
@@ -79,7 +79,7 @@ def openDataFile (s : ViewStack T) (path : String) : IO (Option (ViewStack T)) :
 -- | Get path column value from current row
 def curPath (v : View T) : Option String := do
   guard (v.vkind matches .fld _ _)
-  let tbl ← HasAsMem.asMem? v.nav.tbl
+  let tbl : MemTable ← MemConvert.unwrap v.nav.tbl
   let pathCol ← tbl.names.idxOf? "path"
   let row := v.nav.row.cur.val
   pure ((tbl.cols.getD pathCol default).get row).toRaw
@@ -87,7 +87,7 @@ def curPath (v : View T) : Option String := do
 -- | Get type column value from current row (d=dir, space=file, l=link)
 def curType (v : View T) : Option Char := do
   guard (v.vkind matches .fld _ _)
-  let tbl ← HasAsMem.asMem? v.nav.tbl
+  let tbl : MemTable ← MemConvert.unwrap v.nav.tbl
   let typeCol ← tbl.names.idxOf? "type"
   let row := v.nav.row.cur.val
   let t := ((tbl.cols.getD typeCol default).get row).toRaw
@@ -97,13 +97,13 @@ def curType (v : View T) : Option Char := do
 def mkView (path : String) (depth : Nat) : IO (Option (View T)) := do
   -- resolve to absolute path
   let rp ← IO.Process.output { cmd := "realpath", args := #[path] }
-  let absPath := if rp.exitCode == 0 then rp.stdout.trim else path
+  let absPath := if rp.exitCode == 0 then rp.stdout.trimAscii.toString else path
   let output ← listDir path depth
   match toMemTable output with
   | .error _ => pure none
   | .ok tbl =>
     let disp := absPath.splitOn "/" |>.getLast? |>.getD absPath
-    pure <| View.fromTbl (WrapMem.wrapMem tbl : T) absPath |>.map fun v =>
+    pure <| View.fromTbl (MemConvert.wrap tbl : T) absPath |>.map fun v =>
       { v with vkind := .fld absPath depth, disp := disp }
 
 -- | Push new folder view onto stack (use current path or ".")
@@ -181,7 +181,8 @@ def trashCmd : IO (Option (String × Array String)) := do
 def selPaths (v : View T) : Array String :=
   match v.vkind with
   | .fld curDir _ =>
-    match HasAsMem.asMem? v.nav.tbl, (HasAsMem.asMem? v.nav.tbl).bind (·.names.idxOf? "path") with
+    let tbl? : Option MemTable := MemConvert.unwrap v.nav.tbl
+    match tbl?, tbl?.bind (fun t => t.names.idxOf? "path") with
     | some tbl, some pathCol =>
       let rows := if v.nav.row.sels.isEmpty then #[v.nav.row.cur.val] else v.nav.row.sels
       rows.map fun r => joinPath curDir ((tbl.cols.getD pathCol default).get r).toRaw
@@ -206,7 +207,7 @@ def drawDialog (title : String) (lines : Array String) (footer : String) : IO Un
   Term.print x0.toUInt32 (y0 + 2).toUInt32 fg bg ("│" ++ "".pushn ' ' (boxW - 2) ++ "│")
   -- content lines
   for i in [:lines.size] do
-    let ln := lines[i]!.take (boxW - 4)
+    let ln := (lines[i]!.take (boxW - 4)).toString
     Term.print x0.toUInt32 (y0 + 3 + i).toUInt32 fg bg ("│ " ++ ln ++ "".pushn ' ' (boxW - 3 - ln.length) ++ "│")
   -- footer
   let fpad := (boxW - 2 - footer.length) / 2

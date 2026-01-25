@@ -8,7 +8,7 @@ import Tc.Data.Mem.Freq
 
 namespace Tc.Freq
 
-variable {T : Type} [ReadTable T] [QueryTable T] [WrapMem MemTable T] [HasAsMem T]
+variable {T : Type} [TblOps T] [MemConvert MemTable T]
 
 -- | Convert queryFreq tuple result to MemTable (sorted by Cnt desc)
 def toMemTable (f : FreqTuple) : MemTable :=
@@ -30,30 +30,30 @@ def filterExpr (tbl : MemTable) (cols : Array String) (row : Nat) : String :=
 
 -- | Push frequency view (group by grp + cursor column)
 def push (s : ViewStack T) : IO (Option (ViewStack T)) := do
-  let n := s.cur.nav; let names := ReadTable.colNames n.tbl
+  let n := s.cur.nav; let names := TblOps.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   let curName := names.getD curCol ""
   let colNames := if n.grp.contains curName then n.grp else n.grp.push curName
   let colIdxs := colNames.filterMap names.idxOf?
-  let freq ← QueryTable.queryFreq n.tbl colIdxs
+  let freq ← TblOps.queryFreq n.tbl colIdxs
   let tbl := toMemTable freq
-  let some v := View.fromTbl (WrapMem.wrapMem tbl) s.cur.path 0 colNames | return none
+  let some v := View.fromTbl (MemConvert.wrap tbl) s.cur.path 0 colNames | return none
   return some (s.push { v with vkind := .freqV colNames, disp := s!"freq {colNames.join ","}" })
 
 -- | Filter parent by selected freq row, pop freq and push filtered view
 def filter (s : ViewStack T) : IO (Option (ViewStack T)) := do
   let .freqV cols := s.cur.vkind | return some s
   if !s.hasParent then return some s
-  let some tbl := HasAsMem.asMem? s.cur.nav.tbl | return some s
+  let some tbl := MemConvert.unwrap s.cur.nav.tbl | return some s
   let some s' := s.pop | return some s
   let expr := filterExpr tbl cols s.cur.nav.row.cur.val
-  let some tbl' ← QueryTable.filter s'.cur.nav.tbl expr | return some s'
+  let some tbl' ← TblOps.filter s'.cur.nav.tbl expr | return some s'
   let some v := View.fromTbl tbl' s'.cur.path 0 s'.cur.nav.grp 0 | return some s'
   return some (s'.push v)
 
 -- | Pure update: returns Effect for IO operations
 def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
-  let n := s.cur.nav; let names := ReadTable.colNames n.tbl
+  let n := s.cur.nav; let names := TblOps.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   let curName := names.getD curCol ""
   let colNames := if n.grp.contains curName then n.grp else n.grp.push curName

@@ -63,15 +63,7 @@ def colPageSize : Nat := 5
 -- Styles: loaded from Theme, or use default
 -- 9 states: cursor, selRow, selColCurRow, selCol, curRow, curCol, default, header, group
 
--- RenderTable: tables that can render themselves
--- Takes input widths (empty = compute), returns computed widths
--- moveDir: -1 = moved left, 0 = none, 1 = moved right (for tooltip direction)
--- precAdj/widthAdj: precision and width adjustments from View
-class RenderTable (α : Type) [ReadTable α] where
-  render : {nRows nCols : Nat} → NavState nRows nCols α
-         → (inWidths : Array Nat) → (colOff rowStart rowEnd : Nat)
-         → (moveDir : Int) → (styles : Array UInt32)
-         → (precAdj widthAdj : Int) → IO (Array Nat)
+-- RenderTable removed: render method now in Table class (Types.lean)
 
 -- Cumulative width in display order (dispIdxs maps display->original)
 -- Returns x position where column i starts (sum of widths 0..i-1)
@@ -94,7 +86,8 @@ def adjColOff (cur colOff : Nat) (widths : Array Nat) (dispIdxs : Array Nat) (sc
   else colOff
 
 -- | Render table to terminal, returns (ViewState, widths)
-def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
+-- Calls TblOps.render with NavState fields unpacked
+def render {nRows nCols : Nat} {t : Type} [TblOps t]
     (nav : NavState nRows nCols t) (view : ViewState) (inWidths : Array Nat)
     (styles : Array UInt32) (precAdj widthAdj : Int) : IO (ViewState × Array Nat) := do
   Term.clear
@@ -104,12 +97,15 @@ def render {nRows nCols : Nat} {t : Type} [ReadTable t] [RenderTable t]
   let colOff := if inWidths.isEmpty then 0
                 else adjColOff nav.col.cur.val view.colOff inWidths nav.dispColIdxs w.toNat
   let moveDir := if nav.curColIdx > view.lastCol then 1 else if nav.curColIdx < view.lastCol then -1 else 0
-  let outWidths ← RenderTable.render nav inWidths colOff rowOff (min nRows (rowOff + visRows)) moveDir styles precAdj widthAdj
+  -- call TblOps.render with unpacked nav fields
+  let outWidths ← TblOps.render nav.tbl #[] nav.colNames #[] inWidths nav.dispColIdxs
+    nav.grp.size colOff rowOff (min nRows (rowOff + visRows))
+    nav.row.cur.val nav.curColIdx moveDir nav.selColIdxs nav.row.sels styles precAdj widthAdj
   let widths := outWidths.map fun x => min maxColWidth (storedWidth x widthAdj)
   -- status line: colName left, stats right
   let colName := nav.colNames.getD nav.curColIdx ""
   let adj := (if precAdj != 0 then s!" p{precAdj}" else "") ++ (if widthAdj != 0 then s!" w{widthAdj}" else "")
-  let right := s!"c{nav.curColIdx}/{nCols} grp={nav.grp.size} sel={nav.row.sels.size}{adj} r{nav.row.cur.val}/{ReadTable.totalRows nav.tbl}"
+  let right := s!"c{nav.curColIdx}/{nCols} grp={nav.grp.size} sel={nav.row.sels.size}{adj} r{nav.row.cur.val}/{TblOps.totalRows nav.tbl}"
   let pad := w.toNat - colName.length - right.length
   Term.print 0 (h - 1) Term.cyan Term.default (colName ++ "".pushn ' ' (max 1 pad) ++ right)
   pure (⟨rowOff, colOff, nav.curColIdx⟩, widths)

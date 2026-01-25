@@ -15,10 +15,10 @@ def kdbLimit : Nat := 1000
 
 -- | Parse float string "3.14", "-1.5", "1e10", etc. (no stdlib support)
 def parseFloat (s : String) : Option Float := do
-  let s := s.trim
+  let s := s.trimAscii.toString
   guard (!s.isEmpty)
   let (neg, s) := if s.startsWith "-" then (true, s.drop 1) else (false, s)
-  let parts := s.splitOn "e"  -- handle scientific notation
+  let parts := s.toString.splitOn "e"  -- handle scientific notation
   let (mant, exp) := (parts[0]!, (parts.getD 1 "0").toInt?.getD 0)
   let dp := mant.splitOn "."  -- decimal point
   let whole := (dp[0]!).toNat?.getD 0
@@ -49,7 +49,7 @@ namespace KdbTable
 -- | Parse kdb://host:port/table URL → (host, port, table)
 def parseUrl (s : String) : Option (String × UInt16 × String) := do
   guard (s.startsWith "kdb://")
-  let p := (s.drop 6).splitOn "/"  -- drop "kdb://", split on /
+  let p := (s.drop 6).toString.splitOn "/"  -- drop "kdb://", split on /
   let hp := p[0]!.splitOn ":"      -- host:port
   let tbl := p[1]?                 -- table name
   guard (hp.length > 0 && tbl.isSome)
@@ -255,36 +255,10 @@ def queryMeta (t : KdbTable) : IO MetaTuple := do
 
 end KdbTable
 
--- | ReadTable instance
-instance : ReadTable KdbTable where
-  nRows     := (·.nRows)
-  colNames  := (·.colNames)
-  totalRows := (·.totalRows)
-
--- | ModifyTable instance
-instance : ModifyTable KdbTable where
-  delCols := fun delIdxs t => KdbTable.delCols t delIdxs
-  sortBy  := fun idxs asc t => KdbTable.sortBy t idxs asc
+-- NOTE: Table/ModifyTable/ExecOp instances for KdbTable
+-- are defined in Table.lean which imports all query methods
 
 -- | Max rows to render (safety bound)
 def maxRenderRows : Nat := 200
-
--- | RenderTable instance (always use visible range r0..r1, capped to maxRenderRows)
-instance : RenderTable KdbTable where
-  render nav inWidths colOff r0 r1 moveDir st precAdj widthAdj := do
-    -- clamp row range to prevent runaway fetching
-    let r1' := min r1 (r0 + maxRenderRows)
-    let cols ← (Array.range nav.tbl.nCols).mapM fun c => nav.tbl.getCol c r0 r1'
-    let adjCur := nav.row.cur.val - r0
-    let adjSel := nav.row.sels.filterMap fun r =>
-      if r >= r0 && r < r1' then some (r - r0) else none
-    Term.renderTable cols nav.tbl.colNames nav.tbl.colTypes inWidths nav.dispColIdxs
-      nav.tbl.nRows.toUInt64 nav.grp.size.toUInt64 colOff.toUInt64
-      0 (r1' - r0).toUInt64 adjCur.toUInt64 nav.curColIdx.toUInt64
-      moveDir.toInt64 nav.selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
-
--- | ExecOp instance (re-query on op)
-instance : ExecOp KdbTable where
-  exec t op := KdbTable.requery (t.query.pipe op) t.totalRows
 
 end Tc

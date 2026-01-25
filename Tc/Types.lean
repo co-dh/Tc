@@ -82,37 +82,42 @@ def toPrql : Cell → String
 
 end Cell
 
--- Read-only table access
-class ReadTable (α : Type) where
-  nRows     : α → Nat                         -- row count in current view
-  colNames  : α → Array String                -- column names (size = nCols)
-  totalRows : α → Nat := nRows                -- total rows (for ADBC: actual count)
-  isAdbc    : α → Bool := fun _ => false      -- true if DB-backed (search disabled)
-
 -- Meta tuple: (names, types, cnts, dists, nullPcts, mins, maxs)
 abbrev MetaTuple := Array String × Array String × Array Int64 × Array Int64 × Array Int64 × Array String × Array String
 
 -- Freq tuple: (keyNames, keyCols, cntData, pctData, barData)
 abbrev FreqTuple := Array String × Array Column × Array Int64 × Array Float × Array String
 
--- Query operations (meta, freq, filter, distinct, findRow)
-class QueryTable (α : Type) where
-  queryMeta : α → IO MetaTuple
-  queryFreq : α → Array Nat → IO FreqTuple
-  filter    : α → String → IO (Option α)
-  distinct  : α → Nat → IO (Array String)
-  findRow   : α → Nat → String → Nat → Bool → IO (Option Nat)  -- find row from start, fwd/bwd
+-- | TblOps: read access + query ops + render (unified table interface)
+-- Render params expanded to avoid NavState dependency (NavState defined after Types)
+class TblOps (α : Type) where
+  nRows     : α → Nat                                            -- row count in view
+  colNames  : α → Array String                                   -- column names
+  totalRows : α → Nat := nRows                                   -- actual rows (ADBC)
+  isAdbc    : α → Bool := fun _ => false                         -- DB-backed?
+  queryMeta : α → IO MetaTuple                                   -- column metadata
+  queryFreq : α → Array Nat → IO FreqTuple                       -- frequency query
+  filter    : α → String → IO (Option α)                         -- filter by expr
+  distinct  : α → Nat → IO (Array String)                        -- distinct values
+  findRow   : α → Nat → String → Nat → Bool → IO (Option Nat)    -- find row
+  -- render: expanded signature (NavState unpacked at call site)
+  render    : α → (cols : Array Column) → (names fmts : Array String)
+            → (inWidths dispIdxs : Array Nat) → (nGrp colOff r0 r1 curRow curCol : Nat)
+            → (moveDir : Int) → (selColIdxs rowSels : Array Nat)
+            → (styles : Array UInt32) → (precAdj widthAdj : Int) → IO (Array Nat)
+  -- file loading (replaces LoadTable)
+  fromFile  : String → IO (Option α) := fun _ => pure none
 
--- Mutable table operations (column-only; row deletion via SQL filter)
-class ModifyTable (α : Type) extends ReadTable α where
-  delCols : Array Nat → α → IO α           -- delete columns by indices
-  sortBy  : Array Nat → Bool → α → IO α    -- sort by column indices, asc/desc
+-- Mutable table ops (column-only; row deletion via filter)
+class ModifyTable (α : Type) extends TblOps α where
+  delCols : Array Nat → α → IO α           -- delete columns
+  sortBy  : Array Nat → Bool → α → IO α    -- sort by columns
 
 -- Delete columns at cursor + selections, return new table and filtered group
 def ModifyTable.del [ModifyTable α] (tbl : α) (cursor : Nat) (sels : Array Nat) (grp : Array String)
     : IO (α × Array String) := do
   let idxs := if sels.contains cursor then sels else sels.push cursor
-  let names := ReadTable.colNames tbl
+  let names := TblOps.colNames tbl
   let delNames := idxs.map (names.getD · "")
   pure (← delCols idxs tbl, grp.filter (!delNames.contains ·))
 
@@ -120,13 +125,10 @@ def ModifyTable.del [ModifyTable α] (tbl : α) (cursor : Nat) (sels : Array Nat
 def ModifyTable.sort [ModifyTable α] (tbl : α) (cursor : Nat) (grpIdxs : Array Nat) (asc : Bool) : IO α :=
   sortBy (grpIdxs.push cursor) asc tbl
 
--- | Wrap source type M into target type T (e.g., MemTable → Table)
-class WrapMem (M T : Type) where
-  wrapMem : M → T
-
--- | Load table from file (each variant implements differently)
-class LoadTable (T : Type) where
-  fromFile : String → IO (Option T)
+-- | Bidirectional conversion between MemTable and T
+class MemConvert (M T : Type) where
+  wrap   : M → T              -- M → T (e.g., MemTable → Table)
+  unwrap : T → Option M       -- T → M? (e.g., Table → MemTable?)
 
 -- | View kind: how to render/interact (used by key mapping for context-sensitive verbs)
 inductive ViewKind where

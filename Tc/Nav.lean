@@ -70,22 +70,22 @@ def colIdxAt (group : Array String) (names : Array String) (i : Nat) : Nat :=
 
 -- NavState: generic over table type + navigation state
 -- nRows/nCols are type params (not phantom) because Fin needs compile-time bounds.
--- ReadTable.nRows tbl is runtime (depends on tbl field), can't use directly in Fin.
+-- TblOps.nRows tbl is runtime (depends on tbl field), can't use directly in Fin.
 -- So we lift values to type level, then prove they match table via hRows/hCols.
-structure NavState (nRows nCols : Nat) (t : Type) [ReadTable t] where
+structure NavState (nRows nCols : Nat) (t : Type) [TblOps t] where
   tbl   : t                                              -- underlying table
-  hRows : ReadTable.nRows tbl = nRows                    -- row count matches
-  hCols : (ReadTable.colNames tbl).size = nCols          -- col count matches
+  hRows : TblOps.nRows tbl = nRows                    -- row count matches
+  hCols : (TblOps.colNames tbl).size = nCols          -- col count matches
   row   : RowNav nRows
   col   : ColNav nCols
   grp   : Array String := #[]                            -- grouped column names (stable)
 
 namespace NavState
 
-variable {t : Type} [ReadTable t]
+variable {t : Type} [TblOps t]
 
 -- | Column names from table
-def colNames (nav : NavState nRows nCols t) : Array String := ReadTable.colNames nav.tbl
+def colNames (nav : NavState nRows nCols t) : Array String := TblOps.colNames nav.tbl
 
 -- | Column indices in display order (group cols first)
 def dispColIdxs (nav : NavState nRows nCols t) : Array Nat := dispOrder nav.grp nav.colNames
@@ -100,12 +100,12 @@ def curColName (nav : NavState nRows nCols t) : String := nav.colNames.getD nav.
 def selColIdxs (nav : NavState nRows nCols t) : Array Nat := nav.col.sels.filterMap nav.colNames.idxOf?
 
 -- Constructor for external use
-def new (tbl : t) (hRows : ReadTable.nRows tbl = nRows) (hCols : (ReadTable.colNames tbl).size = nCols)
+def new (tbl : t) (hRows : TblOps.nRows tbl = nRows) (hCols : (TblOps.colNames tbl).size = nCols)
     (hr : nRows > 0) (hc : nCols > 0) : NavState nRows nCols t :=
   ⟨tbl, hRows, hCols, NavAxis.default hr, NavAxis.default hc, #[]⟩
 
 -- Constructor with initial row/col cursor and group (clamped to valid range)
-def newAt (tbl : t) (hRows : ReadTable.nRows tbl = nRows) (hCols : (ReadTable.colNames tbl).size = nCols)
+def newAt (tbl : t) (hRows : TblOps.nRows tbl = nRows) (hCols : (TblOps.colNames tbl).size = nCols)
     (hr : nRows > 0) (hc : nCols > 0) (col : Nat) (grp : Array String := #[]) (row : Nat := 0)
     : NavState nRows nCols t :=
   let c := min col (nCols - 1)

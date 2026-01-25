@@ -5,7 +5,7 @@ import Tc.View
 
 namespace Tc.ViewStack
 
-variable {T : Type} [ReadTable T]
+variable {T : Type} [TblOps T]
 
 -- | Pure update: returns (new stack, effect)
 -- q on empty stack → quit

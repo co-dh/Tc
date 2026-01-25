@@ -8,7 +8,7 @@ import Tc.Data.Mem.Meta
 
 namespace Tc.Meta
 
-variable {T : Type} [ReadTable T] [QueryTable T] [WrapMem MemTable T] [HasAsMem T]
+variable {T : Type} [TblOps T] [MemConvert MemTable T]
 
 -- Meta column headers
 def headers : Array String := #["column", "type", "cnt", "dist", "null%", "min", "max"]
@@ -47,14 +47,14 @@ def selNames (t : MemTable) (selRows : Array Nat) : Array String :=
 
 -- | Push column metadata view onto stack
 def push (s : ViewStack T) : IO (Option (ViewStack T)) := do
-  let tbl ← QueryTable.queryMeta s.cur.nav.tbl <&> toMemTable
-  let some v := View.fromTbl (WrapMem.wrapMem tbl) s.cur.path | return none
+  let tbl ← TblOps.queryMeta s.cur.nav.tbl <&> toMemTable
+  let some v := View.fromTbl (MemConvert.wrap tbl) s.cur.path | return none
   return some (s.push { v with vkind := .colMeta, disp := "meta" })
 
 -- | Select rows in meta view by predicate on MemTable
 def sel (s : ViewStack T) (f : MemTable → Array Nat) : ViewStack T :=
   if s.cur.vkind != .colMeta then s else
-  match HasAsMem.asMem? s.cur.nav.tbl with
+  match MemConvert.unwrap s.cur.nav.tbl with
   | some tbl =>
     let rows := f tbl
     let nav' := { s.cur.nav with row := { s.cur.nav.row with sels := rows } }
@@ -65,7 +65,7 @@ def sel (s : ViewStack T) (f : MemTable → Array Nat) : ViewStack T :=
 def setKey (s : ViewStack T) : Option (ViewStack T) :=
   if s.cur.vkind != .colMeta then some s else
   if !s.hasParent then some s else
-  match HasAsMem.asMem? s.cur.nav.tbl with
+  match MemConvert.unwrap s.cur.nav.tbl with
   | some tbl =>
     let colNames := selNames tbl s.cur.nav.row.sels
     match s.pop with

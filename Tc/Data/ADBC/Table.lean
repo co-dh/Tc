@@ -116,35 +116,8 @@ def delCols (t : AdbcTable) (delIdxs : Array Nat) : IO AdbcTable := do
 
 end AdbcTable
 
--- | ReadTable instance for AdbcTable
-instance : ReadTable AdbcTable where
-  nRows     := (·.nRows)
-  colNames  := (·.colNames)
-  totalRows := (·.totalRows)
-
--- | ModifyTable instance for AdbcTable
-instance : ModifyTable AdbcTable where
-  delCols := fun delIdxs t => AdbcTable.delCols t delIdxs
-  sortBy  := fun idxs asc t => AdbcTable.sortBy t idxs asc
-
--- | RenderTable instance for AdbcTable
-instance : RenderTable AdbcTable where
-  render nav inWidths colOff r0 r1 moveDir st precAdj widthAdj := do
-    if inWidths.isEmpty then
-      let cols ← (Array.range nav.tbl.nCols).mapM fun c => nav.tbl.getCol c 0 nav.tbl.nRows
-      Term.renderTable cols nav.tbl.colNames nav.tbl.colFmts inWidths nav.dispColIdxs
-        nav.tbl.nRows.toUInt64 nav.grp.size.toUInt64 colOff.toUInt64
-        0 nav.tbl.nRows.toUInt64 nav.row.cur.val.toUInt64 nav.curColIdx.toUInt64
-        moveDir.toInt64 nav.selColIdxs nav.row.sels st precAdj.toInt64 widthAdj.toInt64
-    else
-      let cols ← (Array.range nav.tbl.nCols).mapM fun c => nav.tbl.getCol c r0 r1
-      let adjCur := nav.row.cur.val - r0
-      let adjSel := nav.row.sels.filterMap fun r =>
-        if r >= r0 && r < r1 then some (r - r0) else none
-      Term.renderTable cols nav.tbl.colNames nav.tbl.colFmts inWidths nav.dispColIdxs
-        nav.tbl.nRows.toUInt64 nav.grp.size.toUInt64 colOff.toUInt64
-        0 (r1 - r0).toUInt64 adjCur.toUInt64 nav.curColIdx.toUInt64
-        moveDir.toInt64 nav.selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
+-- NOTE: ReadTable/ModifyTable/RenderTable instances for AdbcTable are defined in Table variants
+-- (Table.lean, Table/DuckDB.lean) which import queryMeta from ADBC/Meta.lean
 
 namespace AdbcTable
 

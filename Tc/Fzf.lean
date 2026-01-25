@@ -37,7 +37,7 @@ def fzfCore (opts : Array String) (input : String) : IO String := do
     let out ← child'.stdout.readToEnd
     let _ ← child'.wait
     if !inTmux then let _ ← Term.init; pure ()
-    pure out.trim
+    pure out.trimAscii.toString
 
 -- | Single select: returns none if empty/cancelled
 def fzf (opts : Array String) (input : String) : IO (Option String) := do
@@ -60,7 +60,7 @@ def isNumeric (s : String) : Bool :=
   if s.isEmpty then false
   else
     let s' := if s.startsWith "-" then s.drop 1 else s
-    let parts := s'.splitOn "."
+    let parts := s'.toString.splitOn "."
     match parts with
     | [int] => int.all Char.isDigit && !int.isEmpty
     | [int, dec] => int.all Char.isDigit && dec.all Char.isDigit && !int.isEmpty

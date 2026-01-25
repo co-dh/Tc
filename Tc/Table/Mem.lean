@@ -7,6 +7,32 @@ import Tc.Data.Mem.Freq
 
 namespace Tc
 
+-- | TblOps instance for MemTable (read + query + render)
+instance : TblOps MemTable where
+  nRows     := MemTable.nRows
+  colNames  := (·.names)
+  queryMeta := MemTable.queryMeta
+  queryFreq := MemTable.queryFreq
+  filter    := MemTable.filter
+  distinct  := MemTable.distinct
+  findRow   := MemTable.findRow
+  render t cols names _ inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj :=
+    let c := if cols.isEmpty then t.cols else cols
+    let n := if names.isEmpty then t.names else names
+    Term.renderTable c n #[] inWidths dispIdxs
+      (MemTable.nRows t).toUInt64 nGrp.toUInt64 colOff.toUInt64
+      r0.toUInt64 r1.toUInt64 curRow.toUInt64 curCol.toUInt64
+      moveDir.toInt64 selColIdxs rowSels st precAdj.toInt64 widthAdj.toInt64
+
+-- | ModifyTable instance for MemTable
+instance : ModifyTable MemTable where
+  delCols := fun delIdxs t => pure
+    { names := let keepIdxs := (Array.range t.names.size).filter (!delIdxs.contains ·)
+               keepIdxs.map fun i => t.names.getD i ""
+      cols  := let keepIdxs := (Array.range t.names.size).filter (!delIdxs.contains ·)
+               keepIdxs.map fun i => t.cols.getD i default }
+  sortBy := fun idxs asc t => pure (MemTable.sort t idxs asc)
+
 -- | Table type: MemTable only (no ADBC/Kdb)
 inductive Table where
   | mem : MemTable → Table
@@ -21,61 +47,10 @@ def asMem? : Table → Option MemTable
 def isAdbc : Table → Bool
   | .mem _ => false
 
--- | WrapMem instance (MemTable → Table)
-instance : WrapMem MemTable Table where wrapMem := Table.mem
-
--- | HasAsMem instance (Table → MemTable)
-instance : HasAsMem Table where asMem? := Table.asMem?
-
--- | ReadTable instance
-instance : ReadTable Table where
-  nRows     | .mem t => MemTable.nRows t
-  colNames  | .mem t => t.names
-  totalRows | .mem t => MemTable.nRows t
-  isAdbc    := Table.isAdbc
-
--- | ModifyTable instance
-instance : ModifyTable Table where
-  delCols idxs | .mem t => .mem <$> ModifyTable.delCols idxs t
-  sortBy idxs asc | .mem t => .mem <$> ModifyTable.sortBy idxs asc t
-
--- | QueryTable instance for MemTable
-instance : QueryTable MemTable where
-  queryMeta := MemTable.queryMeta
-  queryFreq := MemTable.queryFreq
-  filter    := MemTable.filter
-  distinct  := MemTable.distinct
-  findRow   := MemTable.findRow
-
--- | QueryTable instance for Table
-instance : QueryTable Table where
-  queryMeta | .mem t => MemTable.queryMeta t
-  queryFreq tbl idxs := match tbl with
-    | .mem t => MemTable.queryFreq t idxs
-  filter tbl expr := match tbl with
-    | .mem t => MemTable.filter t expr <&> (·.map .mem)
-  distinct tbl col := match tbl with
-    | .mem t => MemTable.distinct t col
-  findRow tbl col val start fwd := match tbl with
-    | .mem t => MemTable.findRow t col val start fwd
-
--- | RenderTable instance
-instance : RenderTable Table where
-  render nav inWidths colOff r0 r1 moveDir st precAdj widthAdj := match nav.tbl with
-    | .mem t =>
-      Term.renderTable t.cols t.names #[] inWidths nav.dispColIdxs
-        (MemTable.nRows t).toUInt64 nav.grp.size.toUInt64 colOff.toUInt64
-        r0.toUInt64 r1.toUInt64 nav.row.cur.val.toUInt64 nav.curColIdx.toUInt64
-        moveDir.toInt64 nav.selColIdxs nav.row.sels st precAdj.toInt64 widthAdj.toInt64
-
--- | ExecOp instance for Table
-instance : ExecOp Table where
-  exec tbl op := match tbl with
-    | .mem t => ExecOp.exec t op <&> (·.map .mem)
-
--- | Format table as plain text
-def toText : Table → IO String
-  | .mem t => pure (MemTable.toText t)
+-- | MemConvert instance (MemTable ↔ Table)
+instance : MemConvert MemTable Table where
+  wrap   := Table.mem
+  unwrap := Table.asMem?
 
 -- | Load from file (CSV only in core build)
 def fromFile (path : String) : IO (Option Table) := do
@@ -89,8 +64,43 @@ def fromFile (path : String) : IO (Option Table) := do
 def fromUrl (url : String) : IO (Option Table) := do
   Log.error s!"tc-core: URL loading not supported: {url}"; pure none
 
--- | LoadTable instance (file loading)
-instance : LoadTable Table where fromFile := Table.fromFile
+-- | TblOps instance (includes query ops + render)
+instance : TblOps Table where
+  nRows     | .mem t => MemTable.nRows t
+  colNames  | .mem t => t.names
+  totalRows | .mem t => MemTable.nRows t
+  isAdbc    := Table.isAdbc
+  queryMeta | .mem t => MemTable.queryMeta t
+  queryFreq tbl idxs := match tbl with
+    | .mem t => MemTable.queryFreq t idxs
+  filter tbl expr := match tbl with
+    | .mem t => MemTable.filter t expr <&> (·.map .mem)
+  distinct tbl col := match tbl with
+    | .mem t => MemTable.distinct t col
+  findRow tbl col val start fwd := match tbl with
+    | .mem t => MemTable.findRow t col val start fwd
+  render tbl _ _ _ inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj :=
+    match tbl with
+    | .mem t =>
+      Term.renderTable t.cols t.names #[] inWidths dispIdxs
+        (MemTable.nRows t).toUInt64 nGrp.toUInt64 colOff.toUInt64
+        r0.toUInt64 r1.toUInt64 curRow.toUInt64 curCol.toUInt64
+        moveDir.toInt64 selColIdxs rowSels st precAdj.toInt64 widthAdj.toInt64
+  fromFile := Table.fromFile
+
+-- | ModifyTable instance
+instance : ModifyTable Table where
+  delCols idxs | .mem t => .mem <$> ModifyTable.delCols idxs t
+  sortBy idxs asc | .mem t => .mem <$> ModifyTable.sortBy idxs asc t
+
+-- | ExecOp instance for Table
+instance : ExecOp Table where
+  exec tbl op := match tbl with
+    | .mem t => ExecOp.exec t op <&> (·.map .mem)
+
+-- | Format table as plain text
+def toText : Table → IO String
+  | .mem t => pure (MemTable.toText t)
 
 end Table
 

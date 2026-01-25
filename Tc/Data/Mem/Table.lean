@@ -96,27 +96,8 @@ def sort (t : MemTable) (idxs : Array Nat) (asc : Bool) : MemTable :=
 
 end MemTable
 
--- | ReadTable instance for MemTable
-instance : ReadTable MemTable where
-  nRows    := MemTable.nRows
-  colNames := (·.names)
-
--- | ModifyTable instance for MemTable
-instance : ModifyTable MemTable where
-  delCols := fun delIdxs t => pure
-    { names := let keepIdxs := (Array.range t.names.size).filter (!delIdxs.contains ·)
-               keepIdxs.map fun i => t.names.getD i ""
-      cols  := let keepIdxs := (Array.range t.names.size).filter (!delIdxs.contains ·)
-               keepIdxs.map fun i => t.cols.getD i default }
-  sortBy := fun idxs asc t => pure (MemTable.sort t idxs asc)
-
--- | RenderTable instance for MemTable
-instance : RenderTable MemTable where
-  render nav inWidths colOff r0 r1 moveDir st precAdj widthAdj :=
-    Term.renderTable nav.tbl.cols nav.tbl.names #[] inWidths nav.dispColIdxs
-      (MemTable.nRows nav.tbl).toUInt64 nav.grp.size.toUInt64 colOff.toUInt64
-      r0.toUInt64 r1.toUInt64 nav.row.cur.val.toUInt64 nav.curColIdx.toUInt64
-      moveDir.toInt64 nav.selColIdxs nav.row.sels st precAdj.toInt64 widthAdj.toInt64
+-- NOTE: ReadTable/ModifyTable/RenderTable instances for MemTable are defined in Table variants
+-- (Table.lean, Table/Mem.lean, etc.) which import queryMeta/queryFreq from Mem/Meta.lean, Mem/Freq.lean
 
 namespace MemTable
 
@@ -124,8 +105,8 @@ namespace MemTable
 private def parseEq (s : String) : Option (String × String) :=
   match s.splitOn " == " with
   | [col, val] =>
-    let v := if val.startsWith "'" && val.endsWith "'" then val.drop 1 |>.dropRight 1 else val
-    some (col.trim, v)
+    let v := if val.startsWith "'" && val.endsWith "'" then val.drop 1 |>.dropEnd 1 else val
+    some (col.trimAscii.toString, v.toString)
   | _ => none
 
 -- | Filter MemTable by expr like "a == 1 && b == 'x'"
@@ -237,11 +218,9 @@ instance : ExecOp MemTable where
     | .take n => pure (some (MemTable.take t n))
     | .derive _ | .group _ _ => pure none  -- unsupported
 
--- | Typeclass for extracting MemTable from T (for meta/freq views)
-class HasAsMem (T : Type) where
-  asMem? : T → Option MemTable
-
--- | MemTable trivially extracts to itself
-instance : HasAsMem MemTable where asMem? := some
+-- | MemConvert instance for MemTable (identity)
+instance : MemConvert MemTable MemTable where
+  wrap   := id
+  unwrap := some
 
 end Tc

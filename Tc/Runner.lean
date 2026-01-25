@@ -10,7 +10,7 @@ import Tc.Theme
 
 namespace Tc.Runner
 
-variable {T : Type} [ReadTable T] [QueryTable T] [ModifyTable T] [WrapMem MemTable T] [HasAsMem T] [LoadTable T]
+variable {T : Type} [TblOps T] [ModifyTable T] [MemConvert MemTable T]
 
 -- | Helper: run IO (Option ViewStack), default to original on none
 def runOpt (s : ViewStack T) (io : IO (Option (ViewStack T))) : IO (ViewStack T) := do
@@ -33,23 +33,23 @@ def runStackEffect (s : ViewStack T) (eff : Effect) : IO (ViewStack T) := do
   | .queryMeta => runOpt s (Meta.push s)
   | .queryFreq cols colNames =>
     let n := s.cur.nav
-    let freq ← QueryTable.queryFreq n.tbl cols
+    let freq ← TblOps.queryFreq n.tbl cols
     let tbl := Freq.toMemTable freq
-    match View.fromTbl (WrapMem.wrapMem tbl : T) s.cur.path 0 colNames with
+    match View.fromTbl (MemConvert.wrap tbl : T) s.cur.path 0 colNames with
     | some v => pure (s.push { v with vkind := .freqV colNames, disp := s!"freq {colNames.join ","}" })
     | none => pure s
   | .freqFilter cols row =>
-    match s.cur.vkind, HasAsMem.asMem? s.cur.nav.tbl, s.pop with
+    match s.cur.vkind, MemConvert.unwrap s.cur.nav.tbl, s.pop with
     | .freqV _, some tbl, some s' =>
       let expr := Freq.filterExpr tbl cols row
-      match ← QueryTable.filter s'.cur.nav.tbl expr with
+      match ← TblOps.filter s'.cur.nav.tbl expr with
       | some tbl' => match View.fromTbl tbl' s'.cur.path 0 s'.cur.nav.grp 0 with
         | some v => pure (s'.push v)
         | none => pure s
       | none => pure s
     | _, _, _ => pure s
   | .queryFilter expr =>
-    match ← QueryTable.filter s.cur.nav.tbl expr with
+    match ← TblOps.filter s.cur.nav.tbl expr with
     | some tbl' => match View.fromTbl tbl' s.cur.path s.cur.nav.col.cur.val s.cur.nav.grp 0 with
       | some v => pure (s.push { v with disp := s!"\\filter" })
       | none => pure s

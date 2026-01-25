@@ -11,6 +11,96 @@ import Tc.Data.Kdb.Table
 
 namespace Tc
 
+-- | TblOps instance for MemTable (read + query + render)
+instance : TblOps MemTable where
+  nRows     := MemTable.nRows
+  colNames  := (·.names)
+  queryMeta := MemTable.queryMeta
+  queryFreq := MemTable.queryFreq
+  filter    := MemTable.filter
+  distinct  := MemTable.distinct
+  findRow   := MemTable.findRow
+  render t cols names _ inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj :=
+    let c := if cols.isEmpty then t.cols else cols
+    let n := if names.isEmpty then t.names else names
+    Term.renderTable c n #[] inWidths dispIdxs
+      (MemTable.nRows t).toUInt64 nGrp.toUInt64 colOff.toUInt64
+      r0.toUInt64 r1.toUInt64 curRow.toUInt64 curCol.toUInt64
+      moveDir.toInt64 selColIdxs rowSels st precAdj.toInt64 widthAdj.toInt64
+
+-- | ModifyTable instance for MemTable
+instance : ModifyTable MemTable where
+  delCols := fun delIdxs t => pure
+    { names := let keepIdxs := (Array.range t.names.size).filter (!delIdxs.contains ·)
+               keepIdxs.map fun i => t.names.getD i ""
+      cols  := let keepIdxs := (Array.range t.names.size).filter (!delIdxs.contains ·)
+               keepIdxs.map fun i => t.cols.getD i default }
+  sortBy := fun idxs asc t => pure (MemTable.sort t idxs asc)
+
+-- | TblOps instance for AdbcTable
+instance : TblOps AdbcTable where
+  nRows     := (·.nRows)
+  colNames  := (·.colNames)
+  totalRows := (·.totalRows)
+  isAdbc    := fun _ => true
+  queryMeta := AdbcTable.queryMeta
+  queryFreq := AdbcTable.queryFreq
+  filter    := AdbcTable.filter
+  distinct  := AdbcTable.distinct
+  findRow   := AdbcTable.findRow
+  render t _ _ _ inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj := do
+    if inWidths.isEmpty then
+      let cols ← (Array.range t.nCols).mapM fun c => t.getCol c 0 t.nRows
+      Term.renderTable cols t.colNames t.colFmts inWidths dispIdxs
+        t.nRows.toUInt64 nGrp.toUInt64 colOff.toUInt64
+        0 t.nRows.toUInt64 curRow.toUInt64 curCol.toUInt64
+        moveDir.toInt64 selColIdxs rowSels st precAdj.toInt64 widthAdj.toInt64
+    else
+      let cols ← (Array.range t.nCols).mapM fun c => t.getCol c r0 r1
+      let adjCur := curRow - r0
+      let adjSel := rowSels.filterMap fun r =>
+        if r >= r0 && r < r1 then some (r - r0) else none
+      Term.renderTable cols t.colNames t.colFmts inWidths dispIdxs
+        t.nRows.toUInt64 nGrp.toUInt64 colOff.toUInt64
+        0 (r1 - r0).toUInt64 adjCur.toUInt64 curCol.toUInt64
+        moveDir.toInt64 selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
+
+-- | ModifyTable instance for AdbcTable
+instance : ModifyTable AdbcTable where
+  delCols := fun delIdxs t => AdbcTable.delCols t delIdxs
+  sortBy  := fun idxs asc t => AdbcTable.sortBy t idxs asc
+
+-- | TblOps instance for KdbTable
+instance : TblOps KdbTable where
+  nRows     := (·.nRows)
+  colNames  := (·.colNames)
+  totalRows := (·.totalRows)
+  isAdbc    := fun _ => true
+  queryMeta := KdbTable.queryMeta
+  queryFreq := KdbTable.queryFreq
+  filter    := KdbTable.filter
+  distinct  := KdbTable.distinct
+  findRow   := KdbTable.findRow
+  render t _ _ _ inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj := do
+    let r1' := min r1 (r0 + maxRenderRows)
+    let cols ← (Array.range t.nCols).mapM fun c => t.getCol c r0 r1'
+    let adjCur := curRow - r0
+    let adjSel := rowSels.filterMap fun r =>
+      if r >= r0 && r < r1' then some (r - r0) else none
+    Term.renderTable cols t.colNames t.colTypes inWidths dispIdxs
+      t.nRows.toUInt64 nGrp.toUInt64 colOff.toUInt64
+      0 (r1' - r0).toUInt64 adjCur.toUInt64 curCol.toUInt64
+      moveDir.toInt64 selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
+
+-- | ModifyTable instance for KdbTable
+instance : ModifyTable KdbTable where
+  delCols := fun delIdxs t => KdbTable.delCols t delIdxs
+  sortBy  := fun idxs asc t => KdbTable.sortBy t idxs asc
+
+-- | ExecOp instance for KdbTable
+instance : ExecOp KdbTable where
+  exec t op := KdbTable.requery (t.query.pipe op) t.totalRows
+
 -- | Unified table: mem, adbc, or kdb
 inductive Table where
   | mem  : MemTable → Table
@@ -30,14 +120,32 @@ def isAdbc : Table → Bool
   | .kdb _ => true
   | .mem _ => false
 
--- | WrapMem instance (MemTable → Table)
-instance : WrapMem MemTable Table where wrapMem := Table.mem
+-- | MemConvert instance (MemTable ↔ Table)
+instance : MemConvert MemTable Table where
+  wrap   := Table.mem
+  unwrap := Table.asMem?
 
--- | HasAsMem instance (Table → MemTable)
-instance : HasAsMem Table where asMem? := Table.asMem?
+-- | Load from file (CSV via Mem, parquet via ADBC)
+def fromFile (path : String) : IO (Option Table) := do
+  if path.endsWith ".csv" then
+    match ← MemTable.load path with
+    | .ok t => pure (some (.mem t))
+    | .error _ => pure none
+  else
+    match ← AdbcTable.fromFile path with
+    | some t => pure (some (.adbc t))
+    | none => pure none
 
--- | ReadTable instance
-instance : ReadTable Table where
+-- | Load from kdb URL
+def fromUrl (url : String) : IO (Option Table) := do
+  if url.startsWith "kdb://" then
+    match ← KdbTable.fromUrl url with
+    | some t => pure (some (.kdb t))
+    | none => pure none
+  else pure none
+
+-- | TblOps instance (includes query ops + render)
+instance : TblOps Table where
   nRows
     | .mem t => MemTable.nRows t
     | .adbc t => AdbcTable.nRows t
@@ -51,44 +159,6 @@ instance : ReadTable Table where
     | .adbc t => AdbcTable.totalRows t
     | .kdb t => KdbTable.totalRows t
   isAdbc := Table.isAdbc
-
--- | ModifyTable instance
-instance : ModifyTable Table where
-  delCols idxs
-    | .mem t => .mem <$> ModifyTable.delCols idxs t
-    | .adbc t => .adbc <$> ModifyTable.delCols idxs t
-    | .kdb t => .kdb <$> ModifyTable.delCols idxs t
-  sortBy idxs asc
-    | .mem t => .mem <$> ModifyTable.sortBy idxs asc t
-    | .adbc t => .adbc <$> ModifyTable.sortBy idxs asc t
-    | .kdb t => .kdb <$> ModifyTable.sortBy idxs asc t
-
--- | QueryTable instance for MemTable
-instance : QueryTable MemTable where
-  queryMeta := MemTable.queryMeta
-  queryFreq := MemTable.queryFreq
-  filter    := MemTable.filter
-  distinct  := MemTable.distinct
-  findRow   := MemTable.findRow
-
--- | QueryTable instance for AdbcTable
-instance : QueryTable AdbcTable where
-  queryMeta := AdbcTable.queryMeta
-  queryFreq := AdbcTable.queryFreq
-  filter    := AdbcTable.filter
-  distinct  := AdbcTable.distinct
-  findRow   := AdbcTable.findRow
-
--- | QueryTable instance for KdbTable
-instance : QueryTable KdbTable where
-  queryMeta := KdbTable.queryMeta
-  queryFreq := KdbTable.queryFreq
-  filter    := KdbTable.filter
-  distinct  := KdbTable.distinct
-  findRow   := KdbTable.findRow
-
--- | QueryTable instance for Table
-instance : QueryTable Table where
   queryMeta
     | .mem t => MemTable.queryMeta t
     | .adbc t => AdbcTable.queryMeta t
@@ -109,47 +179,51 @@ instance : QueryTable Table where
     | .mem t => MemTable.findRow t col val start fwd
     | .adbc t => AdbcTable.findRow t col val start fwd
     | .kdb t => KdbTable.findRow t col val start fwd
-
--- | RenderTable instance (direct dispatch to Term.renderTable)
-instance : RenderTable Table where
-  render nav inWidths colOff r0 r1 moveDir st precAdj widthAdj := match nav.tbl with
+  render tbl _ _ _ inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj :=
+    match tbl with
     | .mem t =>
-      Term.renderTable t.cols t.names #[] inWidths nav.dispColIdxs
-        (MemTable.nRows t).toUInt64 nav.grp.size.toUInt64 colOff.toUInt64
-        r0.toUInt64 r1.toUInt64 nav.row.cur.val.toUInt64 nav.curColIdx.toUInt64
-        moveDir.toInt64 nav.selColIdxs nav.row.sels st precAdj.toInt64 widthAdj.toInt64
+      Term.renderTable t.cols t.names #[] inWidths dispIdxs
+        (MemTable.nRows t).toUInt64 nGrp.toUInt64 colOff.toUInt64
+        r0.toUInt64 r1.toUInt64 curRow.toUInt64 curCol.toUInt64
+        moveDir.toInt64 selColIdxs rowSels st precAdj.toInt64 widthAdj.toInt64
     | .adbc t => do
       if inWidths.isEmpty then
         let cols ← (Array.range t.nCols).mapM fun c => t.getCol c 0 t.nRows
-        Term.renderTable cols t.colNames t.colFmts inWidths nav.dispColIdxs
-          t.nRows.toUInt64 nav.grp.size.toUInt64 colOff.toUInt64
-          0 t.nRows.toUInt64 nav.row.cur.val.toUInt64 nav.curColIdx.toUInt64
-          moveDir.toInt64 nav.selColIdxs nav.row.sels st precAdj.toInt64 widthAdj.toInt64
+        Term.renderTable cols t.colNames t.colFmts inWidths dispIdxs
+          t.nRows.toUInt64 nGrp.toUInt64 colOff.toUInt64
+          0 t.nRows.toUInt64 curRow.toUInt64 curCol.toUInt64
+          moveDir.toInt64 selColIdxs rowSels st precAdj.toInt64 widthAdj.toInt64
       else
         let cols ← (Array.range t.nCols).mapM fun c => t.getCol c r0 r1
-        let adjCur := nav.row.cur.val - r0
-        let adjSel := nav.row.sels.filterMap fun r =>
+        let adjCur := curRow - r0
+        let adjSel := rowSels.filterMap fun r =>
           if r >= r0 && r < r1 then some (r - r0) else none
-        Term.renderTable cols t.colNames t.colFmts inWidths nav.dispColIdxs
-          t.nRows.toUInt64 nav.grp.size.toUInt64 colOff.toUInt64
-          0 (r1 - r0).toUInt64 adjCur.toUInt64 nav.curColIdx.toUInt64
-          moveDir.toInt64 nav.selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
+        Term.renderTable cols t.colNames t.colFmts inWidths dispIdxs
+          t.nRows.toUInt64 nGrp.toUInt64 colOff.toUInt64
+          0 (r1 - r0).toUInt64 adjCur.toUInt64 curCol.toUInt64
+          moveDir.toInt64 selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
     | .kdb t => do
-      if inWidths.isEmpty then
-        let cols ← (Array.range t.nCols).mapM fun c => t.getCol c 0 t.nRows
-        Term.renderTable cols t.colNames t.colTypes inWidths nav.dispColIdxs
-          t.nRows.toUInt64 nav.grp.size.toUInt64 colOff.toUInt64
-          0 t.nRows.toUInt64 nav.row.cur.val.toUInt64 nav.curColIdx.toUInt64
-          moveDir.toInt64 nav.selColIdxs nav.row.sels st precAdj.toInt64 widthAdj.toInt64
-      else
-        let cols ← (Array.range t.nCols).mapM fun c => t.getCol c r0 r1
-        let adjCur := nav.row.cur.val - r0
-        let adjSel := nav.row.sels.filterMap fun r =>
-          if r >= r0 && r < r1 then some (r - r0) else none
-        Term.renderTable cols t.colNames t.colTypes inWidths nav.dispColIdxs
-          t.nRows.toUInt64 nav.grp.size.toUInt64 colOff.toUInt64
-          0 (r1 - r0).toUInt64 adjCur.toUInt64 nav.curColIdx.toUInt64
-          moveDir.toInt64 nav.selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
+      let r1' := min r1 (r0 + maxRenderRows)
+      let cols ← (Array.range t.nCols).mapM fun c => t.getCol c r0 r1'
+      let adjCur := curRow - r0
+      let adjSel := rowSels.filterMap fun r =>
+        if r >= r0 && r < r1' then some (r - r0) else none
+      Term.renderTable cols t.colNames t.colTypes inWidths dispIdxs
+        t.nRows.toUInt64 nGrp.toUInt64 colOff.toUInt64
+        0 (r1' - r0).toUInt64 adjCur.toUInt64 curCol.toUInt64
+        moveDir.toInt64 selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
+  fromFile := Table.fromFile
+
+-- | ModifyTable instance
+instance : ModifyTable Table where
+  delCols idxs
+    | .mem t => .mem <$> ModifyTable.delCols idxs t
+    | .adbc t => .adbc <$> ModifyTable.delCols idxs t
+    | .kdb t => .kdb <$> ModifyTable.delCols idxs t
+  sortBy idxs asc
+    | .mem t => .mem <$> ModifyTable.sortBy idxs asc t
+    | .adbc t => .adbc <$> ModifyTable.sortBy idxs asc t
+    | .kdb t => .kdb <$> ModifyTable.sortBy idxs asc t
 
 -- | ExecOp instance for Table
 instance : ExecOp Table where
@@ -177,28 +251,6 @@ def toText : Table → IO String
       let row := cols.map fun col => (col.get r).toRaw
       lines := lines.push ("\t".intercalate row.toList)
     pure ("\n".intercalate lines.toList)
-
--- | Load from file (CSV via Mem, parquet via ADBC)
-def fromFile (path : String) : IO (Option Table) := do
-  if path.endsWith ".csv" then
-    match ← MemTable.load path with
-    | .ok t => pure (some (.mem t))
-    | .error _ => pure none
-  else
-    match ← AdbcTable.fromFile path with
-    | some t => pure (some (.adbc t))
-    | none => pure none
-
--- | Load from kdb URL
-def fromUrl (url : String) : IO (Option Table) := do
-  if url.startsWith "kdb://" then
-    match ← KdbTable.fromUrl url with
-    | some t => pure (some (.kdb t))
-    | none => pure none
-  else pure none
-
--- | LoadTable instance (file loading)
-instance : LoadTable Table where fromFile := Table.fromFile
 
 end Table
 

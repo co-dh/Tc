@@ -17,10 +17,16 @@ open Tc
 structure MockTable (nRows nCols : Nat) where
   names : Array String
 
--- | ReadTable instance for MockTable
-instance : ReadTable (MockTable nRows nCols) where
+-- | TblOps instance for MockTable (minimal: just nRows/colNames + dummy render)
+instance : TblOps (MockTable nRows nCols) where
   nRows _ := nRows
   colNames t := t.names
+  queryMeta _ := pure (#[], #[], #[], #[], #[], #[], #[])
+  queryFreq _ _ := pure (#[], #[], #[], #[], #[])
+  filter _ _ := pure none
+  distinct _ _ := pure #[]
+  findRow _ _ _ _ _ := pure none
+  render _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ := pure #[]
 
 -- | Create mock 5x3 table for testing
 def mock53 : MockTable 5 3 := ⟨#["c0", "c1", "c2"]⟩

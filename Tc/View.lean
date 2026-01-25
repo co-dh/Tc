@@ -9,7 +9,7 @@ import Tc.Data.Mem.Text
 namespace Tc
 
 -- | View: wraps NavState for table type T
-structure View (T : Type) [ReadTable T] where
+structure View (T : Type) [TblOps T] where
   nRows : Nat
   nCols : Nat
   nav : NavState nRows nCols T
@@ -23,7 +23,7 @@ structure View (T : Type) [ReadTable T] where
 
 namespace View
 
-variable {T : Type} [ReadTable T]
+variable {T : Type} [TblOps T]
 
 -- | Create from NavState + path
 def new {nr nc : Nat} (nav : NavState nr nc T) (path : String) : View T :=
@@ -36,15 +36,15 @@ def new {nr nc : Nat} (nav : NavState nr nc T) (path : String) : View T :=
   | _ => if v.disp.isEmpty then v.path.splitOn "/" |>.getLast? |>.getD v.path else v.disp
 
 -- | Render the view, returns (ViewState, updated View with new widths)
-@[inline] def doRender [RenderTable T] (v : View T) (vs : ViewState) (styles : Array UInt32) : IO (ViewState × View T) := do
+@[inline] def doRender (v : View T) (vs : ViewState) (styles : Array UInt32) : IO (ViewState × View T) := do
   let (vs', widths) ← render v.nav vs v.widths styles v.precAdj v.widthAdj
   pure (vs', { v with widths })
 
 -- | Create View from table + path (returns none if empty)
 def fromTbl (tbl : T) (path : String)
     (col : Nat := 0) (grp : Array String := #[]) (row : Nat := 0) : Option (View T) := do
-  let nCols := (ReadTable.colNames tbl).size
-  let nRows := ReadTable.nRows tbl
+  let nCols := (TblOps.colNames tbl).size
+  let nRows := TblOps.nRows tbl
   if hc : nCols > 0 then
     if hr : nRows > 0 then some (View.new (NavState.newAt tbl rfl rfl hr hc col grp row) path)
     else none
@@ -63,7 +63,7 @@ private def preserve (v : View T) (v' : Option (View T)) : Option (View T) :=
 
 -- | Pure update: returns (new view, effect). IO ops return Effect to defer.
 def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
-  let n := v.nav; let names := ReadTable.colNames n.tbl
+  let n := v.nav; let names := TblOps.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   match cmd with
   -- pure: precision/width adjustment
@@ -90,7 +90,7 @@ theorem width_dec_subs (v : View T) (rowPg : Nat) :
 
 -- | Execute Cmd, returns IO (Option View) (for backward compat)
 def exec [ModifyTable T] (v : View T) (cmd : Cmd) : IO (Option (View T)) := do
-  let n := v.nav; let names := ReadTable.colNames n.tbl
+  let n := v.nav; let names := TblOps.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   let mk tbl col grp row := preserve v (fromTbl tbl v.path col grp row)
   let rowPg := ((← Term.height).toNat - reservedLines) / 2
@@ -114,11 +114,11 @@ end View
 /-! ## ViewStack: non-empty view stack -/
 
 -- | Non-empty view stack: a[0] = current, a[1:] = parents
-abbrev ViewStack (T : Type) [ReadTable T] := { a : Array (View T) // a.size > 0 }
+abbrev ViewStack (T : Type) [TblOps T] := { a : Array (View T) // a.size > 0 }
 
 namespace ViewStack
 
-variable {T : Type} [ReadTable T]
+variable {T : Type} [TblOps T]
 
 -- | Current view
 @[inline] def cur (s : ViewStack T) : View T := s.val[0]'s.property

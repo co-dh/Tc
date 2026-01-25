@@ -27,14 +27,14 @@ private def countWordStarts (s : String) : Nat := Id.run do
 private def splitN (s : String) (n : Nat) : Array String := Id.run do
   if n == 0 then return #[]
   let mut result : Array String := #[]
-  let mut rest := s.trimLeft
+  let mut rest := s.trimAsciiStart.toString
   for _ in [:n-1] do
     match rest.splitOn " " |>.filter (·.length > 0) with
     | [] => result := result.push ""  -- pad with empty
     | fld :: tl =>
       result := result.push fld
-      rest := (" ".intercalate tl).trimLeft
-  result := result.push rest.trim  -- last field gets remainder
+      rest := (" ".intercalate tl).trimAsciiStart.toString
+  result := result.push rest.trimAscii.toString  -- last field gets remainder
   result
 
 -- | Find column start positions from header (2+ consecutive spaces = separator)
@@ -56,7 +56,7 @@ private def splitByStarts (s : String) (starts : Array Nat) : Array String := Id
   for i in [:starts.size] do
     let st := starts[i]!
     let en := if i + 1 < starts.size then starts[i + 1]! else s.length
-    result := result.push (s.drop st |>.take (en - st) |>.trim)
+    result := result.push ((s.drop st).take (en - st)).trimAscii.toString
   return result
 
 -- | Parse space-separated text (like ps aux, ls -l, systemctl output)

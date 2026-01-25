@@ -4,12 +4,14 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  ReadTable α              ModifyTable α [ReadTable α]   │
-│    nRows, colNames          delRows, delCols            │
-│    colWidths, cell                                      │
+│  TblOps α                 ModifyTable α [TblOps α]      │
+│    nRows, colNames          delCols, sortBy             │
+│    queryMeta, queryFreq                                 │
+│    filter, distinct, findRow                            │
+│    render, fromFile                                     │
 ├─────────────────────────────────────────────────────────┤
-│  RenderTable α [ReadTable α]                            │
-│    render : NavState → ViewState → IO ViewState         │
+│  MemConvert M α                                         │
+│    wrap : M → α, unwrap : α → Option M                  │
 └───────────────────────────┬─────────────────────────────┘
                             │ instance
                             ▼
@@ -84,15 +86,16 @@ The architecture separates pure state logic from IO effects:
 
 ## Classes
 
-| Class       | Methods            | Purpose                    |
-|-------------|--------------------|----------------------------|
-| ReadTable   | nRows, colNames    | Read-only table access     |
-|             | colWidths, cell    |                            |
-| ModifyTable | delRows, delCols   | Table mutations            |
-| RenderTable | render             | Render to terminal         |
-| Update      | update             | Pure: Cmd → (State, Effect)|
-| Exec        | exec               | IO: Cmd → IO State (compat)|
-| ExecOp      | exec               | IO: Op → IO Table          |
+| Class       | Methods                              | Purpose                    |
+|-------------|--------------------------------------|----------------------------|
+| TblOps      | nRows, colNames, totalRows, isAdbc   | Unified table interface    |
+|             | queryMeta, queryFreq, filter         | Query operations           |
+|             | distinct, findRow, render, fromFile  | Search + render + load     |
+| ModifyTable | delCols, sortBy                      | Table mutations            |
+| MemConvert  | wrap, unwrap                         | MemTable ↔ T conversion    |
+| Update      | update                               | Pure: Cmd → (State, Effect)|
+| Exec        | exec                                 | IO: Cmd → IO State (compat)|
+| ExecOp      | exec                                 | IO: Op → IO Table          |
 
 ## Cmd System (Cmd.lean)
 
@@ -314,7 +317,7 @@ LAYER 5: TABLE ABSTRACTION (Plugin Architecture)
 ┌─────────────────────────────────────────────────────────────────┐
 │ Table/Mem.lean     ──→ MemTable only                           │
 │ Table/DuckDB.lean  ──→ MemTable | AdbcTable                    │
-│ Table/Full.lean    ──→ MemTable | AdbcTable | KdbTable         │
+│ Table.lean         ──→ MemTable | AdbcTable | KdbTable         │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 LAYER 6: STATE & DISPATCH
@@ -326,7 +329,7 @@ LAYER 7: ENTRY POINTS
 ┌─────────────────────────────────────────────────────────────────┐
 │ App/Core.lean   ──→ imports Table/Mem     (tc-core)            │
 │ App/DuckDB.lean ──→ imports Table/DuckDB  (tc-duckdb)          │
-│ App.lean        ──→ imports Table/Full    (tc)                 │
+│ App.lean        ──→ imports Table         (tc)                 │
 └─────────────────────────────────────────────────────────────────┘
 
 TESTS
@@ -344,6 +347,6 @@ Each `Table/*.lean` imports only its needed backends:
 |---------|-------------------|----------|
 | `Table/Mem.lean` | `.mem` | none |
 | `Table/DuckDB.lean` | `.mem \| .adbc` | ADBC/DuckDB |
-| `Table/Full.lean` | `.mem \| .adbc \| .kdb` | ADBC + Kdb |
+| `Table.lean` | `.mem \| .adbc \| .kdb` | ADBC + Kdb |
 
-Generic code (View, Meta, Freq, etc.) uses typeclasses (`ReadTable`, `QueryTable`, etc.) so it works with any Table type.
+Generic code (View, Meta, Freq, etc.) uses typeclasses (`TblOps`, `ModifyTable`, `MemConvert`) so it works with any Table type.
