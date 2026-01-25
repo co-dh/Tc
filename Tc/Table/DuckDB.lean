@@ -70,29 +70,10 @@ instance : TblOps Table where
   findRow tbl col val start fwd := match tbl with
     | .mem t => MemTable.findRow t col val start fwd
     | .adbc t => AdbcTable.findRow t col val start fwd
-  render tbl _ _ _ inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj :=
+  render tbl cols names fmts inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj :=
     match tbl with
-    | .mem t =>
-      Term.renderTable t.cols t.names #[] inWidths dispIdxs
-        (MemTable.nRows t).toUInt64 nGrp.toUInt64 colOff.toUInt64
-        r0.toUInt64 r1.toUInt64 curRow.toUInt64 curCol.toUInt64
-        moveDir.toInt64 selColIdxs rowSels st precAdj.toInt64 widthAdj.toInt64
-    | .adbc t => do
-      if inWidths.isEmpty then
-        let cols ← (Array.range t.nCols).mapM fun c => t.getCol c 0 t.nRows
-        Term.renderTable cols t.colNames t.colFmts inWidths dispIdxs
-          t.nRows.toUInt64 nGrp.toUInt64 colOff.toUInt64
-          0 t.nRows.toUInt64 curRow.toUInt64 curCol.toUInt64
-          moveDir.toInt64 selColIdxs rowSels st precAdj.toInt64 widthAdj.toInt64
-      else
-        let cols ← (Array.range t.nCols).mapM fun c => t.getCol c r0 r1
-        let adjCur := curRow - r0
-        let adjSel := rowSels.filterMap fun r =>
-          if r >= r0 && r < r1 then some (r - r0) else none
-        Term.renderTable cols t.colNames t.colFmts inWidths dispIdxs
-          t.nRows.toUInt64 nGrp.toUInt64 colOff.toUInt64
-          0 (r1 - r0).toUInt64 adjCur.toUInt64 curCol.toUInt64
-          moveDir.toInt64 selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
+    | .mem t => TblOps.render t cols names fmts inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj
+    | .adbc t => TblOps.render t cols names fmts inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj
   fromFile := Table.fromFile
 
 -- | ModifyTable instance

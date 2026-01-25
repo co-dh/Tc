@@ -51,13 +51,9 @@ instance : TblOps Table where
     | .mem t => MemTable.distinct t col
   findRow tbl col val start fwd := match tbl with
     | .mem t => MemTable.findRow t col val start fwd
-  render tbl _ _ _ inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj :=
+  render tbl cols names fmts inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj :=
     match tbl with
-    | .mem t =>
-      Term.renderTable t.cols t.names #[] inWidths dispIdxs
-        (MemTable.nRows t).toUInt64 nGrp.toUInt64 colOff.toUInt64
-        r0.toUInt64 r1.toUInt64 curRow.toUInt64 curCol.toUInt64
-        moveDir.toInt64 selColIdxs rowSels st precAdj.toInt64 widthAdj.toInt64
+    | .mem t => TblOps.render t cols names fmts inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj
   fromFile := Table.fromFile
 
 -- | ModifyTable instance
