@@ -149,12 +149,8 @@ def sortBy (t : KdbTable) (idxs : Array Nat) (asc : Bool) : IO KdbTable := do
 
 -- | Delete columns (select remaining)
 def delCols (t : KdbTable) (delIdxs : Array Nat) : IO KdbTable := do
-  let keepCols := (Array.range t.nCols).filter (!delIdxs.contains ·)
-    |>.map fun i => t.colNames.getD i ""
-  let newQuery := t.query.pipe (.sel keepCols)
-  match ← requery newQuery t.totalRows with
-  | some t' => pure t'
-  | none => pure t
+  match ← requery (t.query.pipe (.sel (keepCols t.nCols delIdxs t.colNames))) t.totalRows with
+  | some t' => pure t' | none => pure t
 
 -- | Wrap select expr in parens for use in from clause
 def wrapTbl (tbl : String) : String :=

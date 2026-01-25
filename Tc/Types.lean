@@ -112,8 +112,9 @@ class TblOps (α : Type) where
             → (inWidths dispIdxs : Array Nat) → (nGrp colOff r0 r1 curRow curCol : Nat)
             → (moveDir : Int) → (selColIdxs rowSels : Array Nat)
             → (styles : Array UInt32) → (precAdj widthAdj : Int) → IO (Array Nat)
-  -- file loading (replaces LoadTable)
+  -- loading (file or URL)
   fromFile  : String → IO (Option α) := fun _ => pure none
+  fromUrl   : String → IO (Option α) := fun _ => pure none
 
 -- Mutable table ops (column-only; row deletion via filter)
 class ModifyTable (α : Type) extends TblOps α where
@@ -136,6 +137,10 @@ def ModifyTable.sort [ModifyTable α] (tbl : α) (cursor : Nat) (grpIdxs : Array
 class MemConvert (M T : Type) where
   wrap   : M → T              -- M → T (e.g., MemTable → Table)
   unwrap : T → Option M       -- T → M? (e.g., Table → MemTable?)
+
+-- | Keep columns not in delete set (shared by delCols impls)
+def keepCols (nCols : Nat) (delIdxs : Array Nat) (names : Array String) : Array String :=
+  (Array.range nCols).filter (!delIdxs.contains ·) |>.map (names.getD · "")
 
 -- | Convert columns to tab-separated text (shared by Table toText impls)
 def colsToText (names : Array String) (cols : Array Column) (nr : Nat) : String := Id.run do

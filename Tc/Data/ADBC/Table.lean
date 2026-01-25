@@ -107,12 +107,8 @@ def sortBy (t : AdbcTable) (idxs : Array Nat) (asc : Bool) : IO AdbcTable := do
 
 -- | Delete columns: append select op and re-query
 def delCols (t : AdbcTable) (delIdxs : Array Nat) : IO AdbcTable := do
-  let keepCols := (Array.range t.nCols).filter (!delIdxs.contains ·)
-    |>.map fun i => t.colNames.getD i ""
-  let newQuery := t.query.pipe (.sel keepCols)
-  match ← requery newQuery t.totalRows with
-  | some t' => pure t'
-  | none => pure t
+  match ← requery (t.query.pipe (.sel (keepCols t.nCols delIdxs t.colNames))) t.totalRows with
+  | some t' => pure t' | none => pure t
 
 end AdbcTable
 

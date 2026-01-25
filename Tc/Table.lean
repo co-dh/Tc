@@ -16,7 +16,7 @@ inductive Table where
 
 namespace Table
 
--- lift pure/IO/filter ops over sum type (Arthur Whitney style)
+-- lift ops over sum type (Arthur Whitney style)
 @[inline] def lift (m : MemTable → α) (a : AdbcTable → α) (k : KdbTable → α) : Table → α
   | .mem t => m t | .adbc t => a t | .kdb t => k t
 @[inline] def liftM (m : MemTable → IO α) (a : AdbcTable → IO α) (k : KdbTable → IO α) : Table → IO α
@@ -27,6 +27,9 @@ namespace Table
 @[inline] def liftIO (m : MemTable → IO MemTable) (a : AdbcTable → IO AdbcTable)
     (k : KdbTable → IO KdbTable) : Table → IO Table
   | .mem t => .mem <$> m t | .adbc t => .adbc <$> a t | .kdb t => .kdb <$> k t
+-- lift uniform: same function for all 3 types
+@[inline] def liftU [TblOps MemTable] [TblOps AdbcTable] [TblOps KdbTable]
+    (f : {α : Type} → [TblOps α] → α → IO β) : Table → IO β := liftM f f f
 
 def asMem? : Table → Option MemTable | .mem t => some t | _ => none
 def isAdbc : Table → Bool | .mem _ => false | _ => true
@@ -54,6 +57,7 @@ instance : TblOps Table where
     (TblOps.render · c n f w d g o r0 r1 cr cc m s rs st pa wa)
     (TblOps.render · c n f w d g o r0 r1 cr cc m s rs st pa wa) t
   fromFile := fromFile
+  fromUrl  := fromUrl
 
 instance : ModifyTable Table where
   delCols i := liftIO (ModifyTable.delCols i) (ModifyTable.delCols i) (ModifyTable.delCols i)
@@ -62,10 +66,13 @@ instance : ModifyTable Table where
 instance : ExecOp Table where
   exec t o := liftW (ExecOp.exec · o) (ExecOp.exec · o) (ExecOp.exec · o) t
 
+-- toText: mem is pure, adbc/kdb fetch cols then format
+private def dbText (names : Array String) (nc nr : Nat) (getCol : Nat → Nat → Nat → IO Column) : IO String := do
+  pure (colsToText names (← (Array.range nc).mapM (getCol · 0 nr)) nr)
 def toText : Table → IO String
   | .mem t => pure (MemTable.toText t)
-  | .adbc t => do pure (colsToText t.colNames (← (Array.range t.nCols).mapM (t.getCol · 0 t.nRows)) t.nRows)
-  | .kdb t => do pure (colsToText t.colNames (← (Array.range t.nCols).mapM (t.getCol · 0 t.nRows)) t.nRows)
+  | .adbc t => dbText t.colNames t.nCols t.nRows t.getCol
+  | .kdb t => dbText t.colNames t.nCols t.nRows t.getCol
 
 end Table
 

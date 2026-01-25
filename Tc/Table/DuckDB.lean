@@ -47,6 +47,7 @@ instance : TblOps Table where
     (TblOps.render · c n f w d g o r0 r1 cr cc md s rs st pa wa)
     (TblOps.render · c n f w d g o r0 r1 cr cc md s rs st pa wa) t
   fromFile := fromFile
+  fromUrl  := fromUrl
 
 instance : ModifyTable Table where
   delCols i := liftIO (ModifyTable.delCols i) (ModifyTable.delCols i)
@@ -54,9 +55,10 @@ instance : ModifyTable Table where
 
 instance : ExecOp Table where exec t o := liftW (ExecOp.exec · o) (ExecOp.exec · o) t
 
+-- toText: mem is pure, adbc fetches cols then formats
 def toText : Table → IO String
   | .mem t => pure (MemTable.toText t)
-  | .adbc t => do pure (colsToText t.colNames (← (Array.range t.nCols).mapM (t.getCol · 0 t.nRows)) t.nRows)
+  | .adbc t => do colsToText t.colNames (← (Array.range t.nCols).mapM (t.getCol · 0 t.nRows)) t.nRows |> pure
 
 end Table
 
