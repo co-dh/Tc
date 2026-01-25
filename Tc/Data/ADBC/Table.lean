@@ -117,16 +117,24 @@ end AdbcTable
 
 namespace AdbcTable
 
--- | Freq: use SQL GROUP BY
+-- | Freq: use SQL GROUP BY, query total distinct count
 def queryFreq (t : AdbcTable) (colIdxs : Array Nat) : IO FreqTuple := do
   let names := t.colNames
   let keyNames := colIdxs.map fun i => names.getD i ""
-  if keyNames.isEmpty then return (#[], #[], #[], #[], #[])
+  if keyNames.isEmpty then return (#[], #[], #[], #[], #[], 0)
   let cols := keyNames.map Prql.quote |> (", ".intercalate ·.toList)
-  -- limit to top 1000 by count (many distinct values = slow cell-by-cell fetch)
+  -- query total distinct groups using cntdist function
+  let cntPrql := s!"{t.query.render} | cntdist \{{cols}}"
+  Log.write "prql-cntdist" cntPrql
+  let totalGroups ← do
+    let some sql ← Prql.compile cntPrql | pure 0
+    let qr ← Adbc.query sql
+    let v ← Adbc.cellStr qr 0 0
+    pure (v.toNat?.getD 0)
+  -- limit to top 1000 by count (cell-by-cell fetch is O(rows × cols))
   let prql := s!"{t.query.render} | group \{{cols}} (aggregate \{Cnt = std.count this}) | sort \{-Cnt} | take 1000"
   Log.write "prql-freq" prql
-  let some sql ← Prql.compile prql | return (#[], #[], #[], #[], #[])
+  let some sql ← Prql.compile prql | return (#[], #[], #[], #[], #[], 0)
   let qr ← Adbc.query sql
   let nr ← Adbc.nrows qr
   let mut keyCols : Array Column := #[]
@@ -140,7 +148,7 @@ def queryFreq (t : AdbcTable) (colIdxs : Array Nat) : IO FreqTuple := do
     let v ← Adbc.cellStr qr r.toUInt64 keyNames.size.toUInt64
     cntData := cntData.push (v.toInt?.getD 0).toInt64
   let (pctData, barData) := freqStats cntData
-  pure (keyNames, keyCols, cntData, pctData, barData)
+  pure (keyNames, keyCols, cntData, pctData, barData, totalGroups)
 
 -- | Filter: requery with filter (queries new filtered count)
 def filter (t : AdbcTable) (expr : String) : IO (Option AdbcTable) := do

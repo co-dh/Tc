@@ -22,7 +22,7 @@ instance : TblOps (MockTable nRows nCols) where
   nRows _ := nRows
   colNames t := t.names
   queryMeta _ := pure (#[], #[], #[], #[], #[], #[], #[])
-  queryFreq _ _ := pure (#[], #[], #[], #[], #[])
+  queryFreq _ _ := pure (#[], #[], #[], #[], #[], 0)
   filter _ _ := pure none
   distinct _ _ := pure #[]
   findRow _ _ _ _ _ := pure none

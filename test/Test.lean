@@ -89,6 +89,17 @@ def test_freq_parquet : IO Unit := do
   let (tab, _) := footer output
   assert (contains tab "freq") "F on parquet shows freq"
 
+-- | Freq view shows total distinct groups (not just displayed rows)
+-- 1.parquet has 128974 distinct Exchange+Symbol, but freq shows top 1000
+def test_freq_total_count : IO Unit := do
+  log "freq_total_count"
+  -- l=Exchange, !=group, l=Symbol, !=group, h=back, F=freq
+  -- cntdist query on 300M rows takes ~5s, add 8s extra wait
+  let output ← runKeys "l!l!hF" "data/nyse/1.parquet" 8000
+  let (_, status) := footer output
+  -- status should show total groups (128974), not just displayed rows (1000)
+  assert (contains status "/128974") "Freq shows total group count (128974)"
+
 -- === Meta selection tests (parquet) ===
 
 def test_parquet_meta_0_null_cols : IO Unit := do
@@ -153,6 +164,7 @@ def main : IO Unit := do
 
   -- Parquet freq
   test_freq_parquet
+  test_freq_total_count
 
   -- Parquet meta M0
   test_parquet_meta_0_null_cols

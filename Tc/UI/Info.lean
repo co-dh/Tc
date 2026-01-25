@@ -37,7 +37,7 @@ end State
 -- | View-specific key hints (shown first)
 def viewHints : ViewKind → Array (String × String)
   | .colMeta => #[("0", "sel null"), ("1", "sel single"), ("⏎", "set key"), ("q", "back")]
-  | .freqV _ => #[("⏎", "filter"), ("q", "back")]
+  | .freqV _ _ => #[("⏎", "filter"), ("q", "back")]
   | .fld _ _ => #[("⏎", "enter"), ("d", "trash"), (",d", "depth-"), (".d", "depth+")]
   | .tbl => #[("M", "meta"), ("F", "freq"), ("D", "folder")]
 

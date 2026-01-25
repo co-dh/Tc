@@ -33,7 +33,8 @@ def keysToTmux (keys : String) : Array (Array String) := Id.run do
   result
 
 -- | Run tc variant with keys, optional file (uses tmux send-keys + capture-pane)
-def runWith (bin keys file : String) (slow : Bool := false) : IO String := do
+-- finalWait: extra ms to wait after all keys (for slow queries like freq on large files)
+def runWith (bin keys file : String) (slow : Bool := false) (finalWait : UInt32 := 0) : IO String := do
   let f := if file.isEmpty then "" else s!"\"{file}\" "
   log s!"  spawn: {file} keys={keys}"
   let sess := "tctest"
@@ -47,7 +48,7 @@ def runWith (bin keys file : String) (slow : Bool := false) : IO String := do
   for ka in keysToTmux keys do
     let _ ← IO.Process.output { cmd := "tmux", args := #["send-keys", "-t", sess] ++ ka }
     IO.sleep t2
-  IO.sleep t3
+  IO.sleep (t3 + finalWait)
   -- capture screen
   let out ← IO.Process.output { cmd := "tmux", args := #["capture-pane", "-t", sess, "-p"] }
   let _ ← IO.Process.output { cmd := "tmux", args := #["kill-session", "-t", sess] }
@@ -55,16 +56,16 @@ def runWith (bin keys file : String) (slow : Bool := false) : IO String := do
   pure out.stdout
 
 -- | Run with specified binary
-def runBin (bin keys : String) (file : String := "") : IO String :=
+def runBin (bin keys : String) (file : String := "") (finalWait : UInt32 := 0) : IO String :=
   let slow := (file.splitOn "1.parquet").length > 1
-  runWith bin keys file slow
+  runWith bin keys file slow finalWait
 
 -- | Run tc (full) with keys
-def run (keys : String) (file : String := "") : IO String :=
-  runBin ".lake/build/bin/tc" keys file
+def run (keys : String) (file : String := "") (finalWait : UInt32 := 0) : IO String :=
+  runBin ".lake/build/bin/tc" keys file finalWait
 
 -- | Aliases for backward compat
-def runKeys (keys file : String) : IO String := run keys file
+def runKeys (keys file : String) (finalWait : UInt32 := 0) : IO String := run keys file finalWait
 def runFolder (keys : String) : IO String := run keys
 
 -- | Check if line has content

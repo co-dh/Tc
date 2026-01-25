@@ -12,7 +12,7 @@ variable {T : Type} [TblOps T] [MemConvert MemTable T]
 
 -- | Convert queryFreq tuple result to MemTable (sorted by Cnt desc)
 def toMemTable (f : FreqTuple) : MemTable :=
-  let (keyNames, keyCols, cntData, pctData, barData) := f
+  let (keyNames, keyCols, cntData, pctData, barData, _) := f
   let names := keyNames ++ #["Cnt", "Pct", "Bar"]
   let cols := keyCols ++ #[.ints cntData, .floats pctData, .strs barData]
   -- sort by Cnt (first column after keys) descending
@@ -36,13 +36,14 @@ def push (s : ViewStack T) : IO (Option (ViewStack T)) := do
   let colNames := if n.grp.contains curName then n.grp else n.grp.push curName
   let colIdxs := colNames.filterMap names.idxOf?
   let freq ← TblOps.queryFreq n.tbl colIdxs
+  let (_, _, _, _, _, total) := freq
   let tbl := toMemTable freq
   let some v := View.fromTbl (MemConvert.wrap tbl) s.cur.path 0 colNames | return none
-  return some (s.push { v with vkind := .freqV colNames, disp := s!"freq {colNames.join ","}" })
+  return some (s.push { v with vkind := .freqV colNames total, disp := s!"freq {colNames.join ","}" })
 
 -- | Filter parent by selected freq row, pop freq and push filtered view
 def filter (s : ViewStack T) : IO (Option (ViewStack T)) := do
-  let .freqV cols := s.cur.vkind | return some s
+  let .freqV cols _ := s.cur.vkind | return some s
   if !s.hasParent then return some s
   let some tbl := MemConvert.unwrap s.cur.nav.tbl | return some s
   let some s' := s.pop | return some s
@@ -61,7 +62,7 @@ def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   match cmd with
   | .freq .dup => some (s, .queryFreq colIdxs colNames)  -- push freq view (IO)
   | .freq .ent => match s.cur.vkind with  -- Enter and space F ~ both map to .freq .ent
-    | .freqV cols => some (s, .freqFilter cols s.cur.nav.row.cur.val)  -- filter (IO)
+    | .freqV cols _ => some (s, .freqFilter cols s.cur.nav.row.cur.val)  -- filter (IO)
     | _ => none
   | _ => none
 
@@ -70,7 +71,7 @@ def exec (s : ViewStack T) (cmd : Cmd) : IO (Option (ViewStack T)) := do
   match cmd with
   | .freq .dup => (← push s).orElse (fun _ => some s) |> pure
   | .freq .ent => match s.cur.vkind with
-    | .freqV _ => filter s
+    | .freqV _ _ => filter s
     | _ => pure none
   | _ => pure none
 

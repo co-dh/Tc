@@ -113,7 +113,7 @@ def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
   -- views
   | 'M' => #[(',', "sel nulls", .dec), ('.', "sel singles", .inc), ('~', "enter", .ent), ('c', "push meta", .dup)]
   | 'F' => match vk with
-    | .freqV _ => #[('~', "filter by row", .ent), ('c', "push freq", .dup)]
+    | .freqV _ _ => #[('~', "filter by row", .ent), ('c', "push freq", .dup)]
     | _ => #[('c', "push freq", .dup)]
   | 'D' => #[(',', "depth--", .dec), ('.', "depth++", .inc), ('~', "enter", .ent), ('d', "trash", .del), ('c', "push folder", .dup)]
   | _   => #[]
@@ -141,12 +141,12 @@ theorem cmdMode_w_narrower : (objMenu.find? (·.2.1 == "width  : column width"))
 
 -- | freq F: "filter by row" only in freqV, not in tbl
 theorem verbsFor_F_tbl_no_filter : (verbsFor 'F' .tbl).find? (·.2.1 == "filter by row") = none := by native_decide
-theorem verbsFor_F_freqV_has_filter : (verbsFor 'F' (.freqV #["x"])).find? (·.2.1 == "filter by row") = some ('~', "filter by row", .ent) := by native_decide
+theorem verbsFor_F_freqV_has_filter : (verbsFor 'F' (.freqV #["x"] 0)).find? (·.2.1 == "filter by row") = some ('~', "filter by row", .ent) := by native_decide
 
 -- | Enter key → context-specific command based on view kind
 def enterCmd (vk : ViewKind) : Option Cmd :=
   match vk with
-  | .freqV _  => some (.freq .ent)   -- filter by row
+  | .freqV _ _ => some (.freq .ent)  -- filter by row
   | .colMeta  => some (.metaV .ent)  -- set group key
   | .fld _ _  => some (.fld .ent)    -- enter dir/file
   | .tbl      => none                -- no action in table view

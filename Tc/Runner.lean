@@ -34,13 +34,14 @@ def runStackEffect (s : ViewStack T) (eff : Effect) : IO (ViewStack T) := do
   | .queryFreq cols colNames =>
     let n := s.cur.nav
     let freq ← TblOps.queryFreq n.tbl cols
+    let (_, _, _, _, _, total) := freq
     let tbl := Freq.toMemTable freq
     match View.fromTbl (MemConvert.wrap tbl : T) s.cur.path 0 colNames with
-    | some v => pure (s.push { v with vkind := .freqV colNames, disp := s!"freq {colNames.join ","}" })
+    | some v => pure (s.push { v with vkind := .freqV colNames total, disp := s!"freq {colNames.join ","}" })
     | none => pure s
   | .freqFilter cols row =>
     match s.cur.vkind, MemConvert.unwrap s.cur.nav.tbl, s.pop with
-    | .freqV _, some tbl, some s' =>
+    | .freqV _ _, some tbl, some s' =>
       let expr := Freq.filterExpr tbl cols row
       match ← TblOps.filter s'.cur.nav.tbl expr with
       | some tbl' => match View.fromTbl tbl' s'.cur.path 0 s'.cur.nav.grp 0 with

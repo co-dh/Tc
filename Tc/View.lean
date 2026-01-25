@@ -37,7 +37,7 @@ def new {nr nc : Nat} (nav : NavState nr nc T) (path : String) : View T :=
 
 -- | Render the view, returns (ViewState, updated View with new widths)
 @[inline] def doRender (v : View T) (vs : ViewState) (styles : Array UInt32) : IO (ViewState × View T) := do
-  let (vs', widths) ← render v.nav vs v.widths styles v.precAdj v.widthAdj
+  let (vs', widths) ← render v.nav vs v.widths styles v.precAdj v.widthAdj v.vkind
   pure (vs', { v with widths })
 
 -- | Create View from table + path (returns none if empty)

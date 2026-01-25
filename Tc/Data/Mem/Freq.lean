@@ -46,7 +46,7 @@ def queryFreq (t : MemTable) (colIdxs : Array Nat) : IO FreqTuple := pure $
   -- compute cnt, pct, bar
   let cntData := keys.map fun k => (counts.getD k 0).toInt64
   let (pctData, barData) := freqStats cntData
-  (keyNames, keyCols, cntData, pctData, barData)
+  (keyNames, keyCols, cntData, pctData, barData, keys.size)
 
 end MemTable
 end Tc

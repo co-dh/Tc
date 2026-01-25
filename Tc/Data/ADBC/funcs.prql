@@ -10,6 +10,9 @@ let freq = func c tbl <relation> -> (
 
 let cnt = func tbl <relation> -> (from tbl | aggregate {n = std.count this})
 
+# Count distinct groups for given columns
+let cntdist = func cols tbl <relation> -> (from tbl | group cols (take 1) | aggregate {n = std.count this})
+
 let uniq = func c tbl <relation> -> (from tbl | group {c} (take 1) | select {c})
 
 let stats = func c tbl <relation> -> (

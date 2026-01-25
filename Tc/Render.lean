@@ -92,7 +92,7 @@ def adjColOff (cur colOff : Nat) (widths : Array Nat) (dispIdxs : Array Nat) (sc
 -- Calls TblOps.render with NavState fields unpacked
 def render {nRows nCols : Nat} {t : Type} [TblOps t]
     (nav : NavState nRows nCols t) (view : ViewState) (inWidths : Array Nat)
-    (styles : Array UInt32) (precAdj widthAdj : Int) : IO (ViewState × Array Nat) := do
+    (styles : Array UInt32) (precAdj widthAdj : Int) (vkind : ViewKind := .tbl) : IO (ViewState × Array Nat) := do
   Term.clear
   let h ← Term.height; let w ← Term.width
   let visRows := min maxVisRows (h.toNat - reservedLines)
@@ -106,9 +106,13 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
     nav.row.cur.val nav.curColIdx moveDir nav.selColIdxs nav.row.sels styles precAdj widthAdj
   let widths := outWidths.map fun x => min maxColWidth (storedWidth x widthAdj)
   -- status line: colName left, stats right
+  -- freqV shows total distinct groups, others show table totalRows
+  let total := match vkind with
+    | .freqV _ t => t
+    | _ => TblOps.totalRows nav.tbl
   let colName := nav.colNames.getD nav.curColIdx ""
   let adj := (if precAdj != 0 then s!" p{precAdj}" else "") ++ (if widthAdj != 0 then s!" w{widthAdj}" else "")
-  let right := s!"c{nav.curColIdx}/{nCols} grp={nav.grp.size} sel={nav.row.sels.size}{adj} r{nav.row.cur.val}/{TblOps.totalRows nav.tbl}"
+  let right := s!"c{nav.curColIdx}/{nCols} grp={nav.grp.size} sel={nav.row.sels.size}{adj} r{nav.row.cur.val}/{total}"
   let pad := w.toNat - colName.length - right.length
   Term.print 0 (h - 1) Term.cyan Term.default (colName ++ "".pushn ' ' (max 1 pad) ++ right)
   pure (⟨rowOff, colOff, nav.curColIdx⟩, widths)

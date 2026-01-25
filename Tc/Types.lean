@@ -87,8 +87,8 @@ namespace Tc
 -- Meta tuple: (names, types, cnts, dists, nullPcts, mins, maxs)
 abbrev MetaTuple := Array String × Array String × Array Int64 × Array Int64 × Array Int64 × Array String × Array String
 
--- Freq tuple: (keyNames, keyCols, cntData, pctData, barData)
-abbrev FreqTuple := Array String × Array Column × Array Int64 × Array Float × Array String
+-- Freq tuple: (keyNames, keyCols, cntData, pctData, barData, totalGroups)
+abbrev FreqTuple := Array String × Array Column × Array Int64 × Array Float × Array String × Nat
 
 -- Bar chart: each '#' represents this many percent
 def barPctPerChar : Float := 5.0
@@ -187,10 +187,10 @@ class ExecOp (α : Type) where
 
 -- | View kind: how to render/interact (used by key mapping for context-sensitive verbs)
 inductive ViewKind where
-  | tbl                                  -- table view
-  | freqV (cols : Array String)          -- frequency view
-  | colMeta                              -- column metadata
-  | fld (path : String) (depth : Nat)    -- folder browser: path + find depth
+  | tbl                                           -- table view
+  | freqV (cols : Array String) (total : Nat)     -- frequency view with total distinct groups
+  | colMeta                                       -- column metadata
+  | fld (path : String) (depth : Nat)             -- folder browser: path + find depth
   deriving Inhabited, Repr, BEq
 
 end Tc

@@ -180,7 +180,7 @@ def extractTblName (tbl : String) : String :=
 def queryFreq (t : KdbTable) (colIdxs : Array Nat) : IO FreqTuple := do
   let names := t.colNames
   let keyNames := colIdxs.map fun i => names.getD i ""
-  if keyNames.isEmpty then return (#[], #[], #[], #[], #[])
+  if keyNames.isEmpty then return (#[], #[], #[], #[], #[], 0)
   let cols := keyNames.toList |> String.intercalate ","
   let tblName := extractTblName t.query.tbl
   let partFilt := extractPartFilter t.query.tbl
@@ -201,7 +201,7 @@ def queryFreq (t : KdbTable) (colIdxs : Array Nat) : IO FreqTuple := do
     let v ← Kdb.cellStr qr r.toUInt64 keyNames.size.toUInt64
     cntData := cntData.push (v.toInt?.getD 0).toInt64
   let (pctData, barData) := freqStats cntData
-  pure (keyNames, keyCols, cntData, pctData, barData)
+  pure (keyNames, keyCols, cntData, pctData, barData, nr.toNat)
 
 -- | Filter: requery with filter expr
 def filter (t : KdbTable) (expr : String) : IO (Option KdbTable) := do
