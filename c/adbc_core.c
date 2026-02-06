@@ -303,11 +303,12 @@ lean_obj_res lean_adbc_query(b_lean_obj_arg sql_obj, lean_obj_arg world) {
     return lean_io_result_mk_ok(lean_alloc_external(get_qr_class(), qr));
 
 fail:
+    ;lean_object* err_str = lean_mk_string(fail_msg ? fail_msg : "unknown error");
     if (qr) { free(qr->batches); free(qr->prefix); free(qr); }
     if (stream.release) stream.release(&stream);
     if (stmt.private_data) pAdbcStatementRelease(&stmt, &err);
     free_error(&err);
-    return lean_io_result_mk_error(lean_mk_io_user_error(lean_mk_string(fail_msg)));
+    return lean_io_result_mk_error(lean_mk_io_user_error(err_str));
     #undef QUERY_CHECK
     #undef STREAM_CHECK
 }

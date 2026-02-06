@@ -37,12 +37,16 @@ lean_obj_res lean_tb_shutdown(lean_obj_arg world) {
 
 // tb_width() -> UInt32
 lean_obj_res lean_tb_width(lean_obj_arg world) {
-    return lean_io_result_mk_ok(lean_box_uint32((uint32_t)tb_width()));
+    int w = tb_width();
+    if (w < 0) w = 80;  // fallback if not initialized
+    return lean_io_result_mk_ok(lean_box_uint32((uint32_t)w));
 }
 
 // tb_height() -> UInt32
 lean_obj_res lean_tb_height(lean_obj_arg world) {
-    return lean_io_result_mk_ok(lean_box_uint32((uint32_t)tb_height()));
+    int h = tb_height();
+    if (h < 0) h = 24;  // fallback if not initialized
+    return lean_io_result_mk_ok(lean_box_uint32((uint32_t)h));
 }
 
 // tb_clear() -> Unit
@@ -67,7 +71,10 @@ lean_obj_res lean_tb_set_cell(uint32_t x, uint32_t y, uint32_t ch,
 // tb_poll_event() -> Event
 lean_obj_res lean_tb_poll_event(lean_obj_arg world) {
     struct tb_event ev;
-    tb_poll_event(&ev);
+    memset(&ev, 0, sizeof(ev));
+    int rc = tb_poll_event(&ev);
+    // If poll returns error or empty event, sleep briefly to avoid spin loop
+    if (rc < 0 || ev.type == 0) usleep(16000);  // ~60fps cap
 
     // Create Event structure
     // Lean 4 sorts scalars by SIZE DESC, then declaration order
@@ -337,6 +344,9 @@ lean_obj_res lean_render_table(
     lean_obj_arg world)
 {
     int screenW = tb_width();
+    int screenH = tb_height();
+    if (screenW < 1) screenW = 80;
+    if (screenH < 1) screenH = 24;
     size_t nCols = lean_array_size(allCols);
     size_t nRows = r1 - r0;  // visible row count
     size_t nFmts = lean_array_size(fmts);  // format chars available?
@@ -409,7 +419,6 @@ lean_obj_res lean_render_table(
     }
 
     // header/footer (+ separators and type chars)
-    int screenH = tb_height();
     int yFoot = screenH - 3;  // fixed: above status (h-2) and tab (h-1)
     for (size_t c = 0; c < nVisCols; c++) {
         size_t dispIdx = dispIdxs[c];  // index into colIdxs (pinned keys first)

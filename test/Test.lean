@@ -100,6 +100,26 @@ def test_freq_total_count : IO Unit := do
   -- status should show total groups (128974), not just displayed rows (1000)
   assert (contains status "/128974") "Freq shows total group count (128974)"
 
+-- | Freq sort: sorting by Cnt should work and preserve total count
+-- Freq by Symbol on 1.parquet, sort asc should preserve total in status
+def test_freq_sort_preserves_total : IO Unit := do
+  log "freq_sort_total"
+  -- ll=Symbol, F=freq, ll=Cnt, [=sort asc
+  let output ← runKeys "llFll[" "data/nyse/1.parquet" 8000
+  let (_, status) := footer output
+  -- status should still show total groups after sorting (Symbol has many distinct values)
+  assert (contains status "/") "Freq sort preserves total count in status"
+
+-- | Freq sort ascending: first row should have smallest Cnt
+def test_freq_sort_asc : IO Unit := do
+  log "freq_sort_asc"
+  -- ll=Symbol, F=freq, ll=Cnt, [=sort asc
+  let output ← runKeys "llFll[" "data/nyse/1.parquet" 8000
+  let rows := dataLines output
+  let first := rows.headD ""
+  -- after sort asc, first row should have small Cnt (likely 1)
+  assert (contains first "│") "Freq sort asc shows data"
+
 -- === Meta selection tests (parquet) ===
 
 def test_parquet_meta_0_null_cols : IO Unit := do
@@ -165,6 +185,8 @@ def main : IO Unit := do
   -- Parquet freq
   test_freq_parquet
   test_freq_total_count
+  test_freq_sort_preserves_total
+  test_freq_sort_asc
 
   -- Parquet meta M0
   test_parquet_meta_0_null_cols

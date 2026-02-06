@@ -25,11 +25,8 @@ structure AdbcTable where
 
 namespace AdbcTable
 
--- | Init ADBC backend (DuckDB + shellfs extension)
-def init : IO Bool := do
-  let ok ← Adbc.init
-  if ok then let _ ← Adbc.query "LOAD shellfs"
-  pure ok
+-- | Init ADBC backend (DuckDB)
+def init : IO Bool := Adbc.init
 
 -- | Shutdown ADBC backend
 def shutdown : IO Unit := Adbc.shutdown

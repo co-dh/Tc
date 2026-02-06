@@ -8,6 +8,16 @@ import Tc.Term
 
 namespace Tc.Folder
 
+-- | Global flag: use --no-sign-request for S3 (set via +n arg)
+initialize s3NoSign : IO.Ref Bool ← IO.mkRef false
+
+def setS3NoSign (b : Bool) : IO Unit := s3NoSign.set b
+def getS3NoSign : IO Bool := s3NoSign.get
+
+-- | Extra args for S3 commands when --no-sign-request is enabled
+def s3Extra : IO (Array String) := do
+  if ← getS3NoSign then pure #["--no-sign-request"] else pure #[]
+
 variable {T : Type} [TblOps T] [MemConvert MemTable T]
 
 -- | Strip base path prefix to get relative entry name
@@ -28,6 +38,61 @@ private def fmtDate (s : String) : String :=
 -- | Format type: f→space, d→d, l→l
 private def fmtType (s : String) : String :=
   if s == "f" then " " else s
+
+-- | Check if path is an S3 URI
+def isS3 (path : String) : Bool := path.startsWith "s3://"
+
+-- | Get parent S3 prefix: "s3://bucket/a/b/" → "s3://bucket/a/"
+-- Returns none at bucket root ("s3://bucket/")
+def s3Parent (path : String) : Option String :=
+  -- strip trailing slash, split on "/", drop last segment
+  let p := if path.endsWith "/" then (path.take (path.length - 1)).toString else path
+  let parts := p.splitOn "/"
+  -- s3://bucket → ["s3:", "", "bucket"] (3 parts), that's root
+  if parts.length ≤ 3 then none
+  else some ("/".intercalate (parts.dropLast) ++ "/")
+
+-- | Join S3 prefix with child name
+def s3Join (pfx name : String) : String :=
+  if pfx.endsWith "/" then s!"{pfx}{name}" else s!"{pfx}/{name}"
+
+-- | List S3 prefix via `aws s3 ls`, returns TSV matching listDir schema
+def listS3 (path : String) : IO String := do
+  statusMsg s!"Loading {path} ..."
+  let p := if path.endsWith "/" then path else s!"{path}/"
+  let extra ← s3Extra
+  let out ← IO.Process.output { cmd := "aws", args := #["s3", "ls"] ++ extra ++ #[p] }
+  let lines := out.stdout.splitOn "\n" |>.filter (·.length > 0)
+  let hdr := "path\tsize\tdate\ttype"
+  -- ".." entry if not at bucket root
+  let parent := if s3Parent path |>.isSome then "..\t0\t\td" else ""
+  let body := lines.map fun line =>
+    if line.trimAsciiStart.toString.startsWith "PRE " then
+      -- directory: "                           PRE prefix/"
+      let name := (line.trimAscii.toString.drop 4).toString  -- strip "PRE "
+      let name := if name.endsWith "/" then (name.take (name.length - 1)).toString else name
+      s!"{name}\t0\t\td"
+    else
+      -- file: "2024-01-05 12:34:56   12345 filename"
+      let parts := line.trimAscii.toString.splitOn " " |>.filter (·.length > 0)
+      if parts.length >= 4 then
+        let dt := s!"{parts.getD 0 ""} {parts.getD 1 ""}"
+        let sz := parts.getD 2 ""
+        let name := parts.drop 3 |> " ".intercalate  -- filename may have spaces
+        s!"{name}\t{sz}\t{dt}\t "
+      else line
+  let entries := if parent.isEmpty then body else [parent] ++ body
+  pure (hdr ++ (if entries.isEmpty then "" else "\n" ++ "\n".intercalate entries))
+
+-- | Download S3 file to local temp path, returns local path
+def s3Download (s3Path : String) : IO String := do
+  statusMsg s!"Downloading {s3Path} ..."
+  let _ ← IO.Process.output { cmd := "mkdir", args := #["-p", "/tmp/tc-s3"] }
+  let name := s3Path.splitOn "/" |>.getLast? |>.getD "file"
+  let local_ := s!"/tmp/tc-s3/{name}"
+  let extra ← s3Extra
+  let _ ← IO.Process.output { cmd := "aws", args := #["s3", "cp"] ++ extra ++ #[s3Path, local_] }
+  pure local_
 
 -- | List directory with find command, returns tab-separated output
 -- Cols: path, size, date, type (path first for visibility)
@@ -95,16 +160,25 @@ def curType (v : View T) : Option Char := do
 
 -- | Create folder view from path with given depth
 def mkView (path : String) (depth : Nat) : IO (Option (View T)) := do
-  -- resolve to absolute path
-  let rp ← IO.Process.output { cmd := "realpath", args := #[path] }
-  let absPath := if rp.exitCode == 0 then rp.stdout.trimAscii.toString else path
-  let output ← listDir path depth
-  match toMemTable output with
-  | .error _ => pure none
-  | .ok tbl =>
-    let disp := absPath.splitOn "/" |>.getLast? |>.getD absPath
-    pure <| View.fromTbl (MemConvert.wrap tbl : T) absPath |>.map fun v =>
-      { v with vkind := .fld absPath depth, disp := disp }
+  if isS3 path then
+    let output ← listS3 path
+    match toMemTable output with
+    | .error _ => pure none
+    | .ok tbl =>
+      let disp := (path.drop 5).toString |>.splitOn "/" |>.filter (·.length > 0) |>.getLast? |>.getD path
+      pure <| View.fromTbl (MemConvert.wrap tbl : T) path |>.map fun v =>
+        { v with vkind := .fld path depth, disp := disp }
+  else
+    -- resolve to absolute path
+    let rp ← IO.Process.output { cmd := "realpath", args := #[path] }
+    let absPath := if rp.exitCode == 0 then rp.stdout.trimAscii.toString else path
+    let output ← listDir path depth
+    match toMemTable output with
+    | .error _ => pure none
+    | .ok tbl =>
+      let disp := absPath.splitOn "/" |>.getLast? |>.getD absPath
+      pure <| View.fromTbl (MemConvert.wrap tbl : T) absPath |>.map fun v =>
+        { v with vkind := .fld absPath depth, disp := disp }
 
 -- | Push new folder view onto stack (use current path or ".")
 def push (s : ViewStack T) : IO (Option (ViewStack T)) := do
@@ -125,11 +199,20 @@ private def joinPath (parent entry : String) : String :=
 
 -- | Enter directory or view file based on current row
 def enter (s : ViewStack T) : IO (Option (ViewStack T)) := do
+  let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
+  let s3 := isS3 curDir
   match curType s.cur, curPath s.cur with
   | some 'd', some p =>  -- directory: push new folder view
     -- ".." navigates to parent (pop if possible, else go to parent path)
     if p == ".." || p.endsWith "/.." then
-      if let some s' := s.pop then pure (some s')
+      if s3 then
+        match s3Parent curDir with
+        | some parent =>
+          match ← mkView (T := T) parent 1 with
+          | some v => pure (some (s.setCur v))
+          | none => pure (some s)
+        | none => pure (some s)  -- at bucket root, no-op
+      else if let some s' := s.pop then pure (some s')
       else  -- at root, go to actual parent
         let depth := match s.cur.vkind with | .fld _ d => d | _ => 1
         match ← mkView (T := T) ".." depth with
@@ -137,36 +220,43 @@ def enter (s : ViewStack T) : IO (Option (ViewStack T)) := do
         | none => pure (some s)
     else
       let depth := match s.cur.vkind with | .fld _ d => d | _ => 1
-      -- join current folder path with entry to get full path
-      let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
-      let fullPath := joinPath curDir p
+      let fullPath := if s3 then s3Join curDir (p ++ "/") else joinPath curDir p
       match ← mkView fullPath depth with
       | some v => pure (some (s.push v))
       | none => pure (some s)
   | some ' ', some p =>  -- regular file: open data or view
-    let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
-    let fullPath := joinPath curDir p
-    if p.endsWith ".csv" || p.endsWith ".parquet" then
-      match ← openDataFile s fullPath with
-      | some s' => pure (some s')
-      | none => viewFile fullPath; pure (some s)  -- fallback to viewer
+    if s3 then
+      let s3Path := s3Join curDir p
+      if p.endsWith ".csv" || p.endsWith ".parquet" then
+        let local_ ← s3Download s3Path
+        match ← openDataFile s local_ with
+        | some s' => pure (some s')
+        | none => pure (some s)
+      else pure (some s)  -- non-data S3 files: no-op
     else
-      viewFile fullPath; pure (some s)
-  | some 'l', some p =>  -- symlink: check if dir or file
-    let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
-    let fullPath := joinPath curDir p
-    let stat ← IO.Process.output { cmd := "test", args := #["-d", fullPath] }
-    if stat.exitCode == 0 then  -- is directory
-      let depth := match s.cur.vkind with | .fld _ d => d | _ => 1
-      match ← mkView fullPath depth with
-      | some v => pure (some (s.push v))
-      | none => pure (some s)
-    else if fullPath.endsWith ".csv" || fullPath.endsWith ".parquet" then
-      match ← openDataFile s fullPath with
-      | some s' => pure (some s')
-      | none => viewFile fullPath; pure (some s)
+      let fullPath := joinPath curDir p
+      if p.endsWith ".csv" || p.endsWith ".parquet" then
+        match ← openDataFile s fullPath with
+        | some s' => pure (some s')
+        | none => viewFile fullPath; pure (some s)  -- fallback to viewer
+      else
+        viewFile fullPath; pure (some s)
+  | some 'l', some p =>  -- symlink: check if dir or file (local only)
+    if s3 then pure (some s)
     else
-      viewFile fullPath; pure (some s)
+      let fullPath := joinPath curDir p
+      let stat ← IO.Process.output { cmd := "test", args := #["-d", fullPath] }
+      if stat.exitCode == 0 then  -- is directory
+        let depth := match s.cur.vkind with | .fld _ d => d | _ => 1
+        match ← mkView fullPath depth with
+        | some v => pure (some (s.push v))
+        | none => pure (some s)
+      else if fullPath.endsWith ".csv" || fullPath.endsWith ".parquet" then
+        match ← openDataFile s fullPath with
+        | some s' => pure (some s')
+        | none => viewFile fullPath; pure (some s)
+      else
+        viewFile fullPath; pure (some s)
   | _, _ => pure none
 
 -- | Get trash command (trash-put or gio trash)
@@ -185,7 +275,8 @@ def selPaths (v : View T) : Array String :=
     match tbl?, tbl?.bind (fun t => t.names.idxOf? "path") with
     | some tbl, some pathCol =>
       let rows := if v.nav.row.sels.isEmpty then #[v.nav.row.cur.val] else v.nav.row.sels
-      rows.map fun r => joinPath curDir ((tbl.cols.getD pathCol default).get r).toRaw
+      let join := if isS3 curDir then s3Join else joinPath
+      rows.map fun r => join curDir ((tbl.cols.getD pathCol default).get r).toRaw
     | _, _ => #[]
   | _ => #[]
 
@@ -251,9 +342,11 @@ def trashFiles (paths : Array String) : IO Bool := do
     if r.exitCode != 0 then ok := false
   pure ok
 
--- | Delete selected files and refresh view
+-- | Delete selected files and refresh view (no-op for S3)
 def del (s : ViewStack T) : IO (Option (ViewStack T)) := do
   if !(s.cur.vkind matches .fld _ _) then return none
+  let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => ""
+  if isS3 curDir then return some s
   let paths := selPaths s.cur
   if paths.isEmpty then return none
   if !(← confirmDel paths) then return some s  -- cancelled
@@ -270,10 +363,11 @@ def del (s : ViewStack T) : IO (Option (ViewStack T)) := do
     | none => pure (some s)
   | _ => pure (some s)
 
--- | Adjust find depth (+1 or -1, min 1)
+-- | Adjust find depth (+1 or -1, min 1). No-op for S3.
 def setDepth (s : ViewStack T) (delta : Int) : IO (Option (ViewStack T)) := do
   match s.cur.vkind with
   | .fld path depth =>
+    if isS3 path then return some s
     let newDepth := max 1 ((depth : Int) + delta).toNat
     if newDepth == depth then pure (some s)  -- no change
     else match ← mkView (T := T) path newDepth with

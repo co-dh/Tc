@@ -42,14 +42,16 @@ partial def mainLoop (a : AppState T) (test : Bool) (ks : Array Char) : IO (AppS
       | none => mainLoop a test ks'
       | some (a', e) => if e == .quit then pure a' else mainLoop (← if e.isNone then pure a' else runEffect a' e) test ks'
 
--- parse args: path?, -c keys?, test mode
-def parseArgs (args : List String) : Option String × Array Char × Bool :=
+-- parse args: path?, -c keys?, test mode, +n (S3 no-sign-request)
+def parseArgs (args : List String) : Option String × Array Char × Bool × Bool :=
+  let noSign := args.any (· == "+n")
+  let args := args.filter (· != "+n")
   let toK s := (parseKeys s).toList.toArray
   match args with
-  | "-c" :: k :: _ => (none, toK k, true)
-  | p :: "-c" :: k :: _ => (some p, toK k, true)
-  | p :: _ => (some p, #[], false)
-  | [] => (none, #[], false)
+  | "-c" :: k :: _ => (none, toK k, true, noSign)
+  | p :: "-c" :: k :: _ => (some p, toK k, true, noSign)
+  | p :: _ => (some p, #[], false, noSign)
+  | [] => (none, #[], false, noSign)
 
 -- run app with view
 def runApp (v : View T) (pipe test : Bool) (th : Theme.State) (ks : Array Char) : IO (AppState T) := do
@@ -75,12 +77,13 @@ def outputTable [TblOps T] (toText : T → IO String) (a : AppState T) : IO Unit
 -- init/shutdown passed as params since Backend is defined per-variant
 def appMain [TblOps T] [ModifyTable T] [MemConvert MemTable T]
     (toText : T → IO String) (init : IO Bool) (shutdown : IO Unit) (args : List String) : IO Unit := do
-  let (path?, keys, testMode) := parseArgs args
+  let (path?, keys, testMode, noSign) := parseArgs args
   let envTest := (← IO.getEnv "TC_TEST_MODE").isSome
   Fzf.setTestMode (testMode || envTest)
+  Folder.setS3NoSign noSign
   let pipeMode ← if testMode then pure false else (! ·) <$> Term.isattyStdin
   let theme ← Theme.State.init
-  let ok ← init
+  let ok ← try init catch e => IO.eprintln s!"Backend init error: {e}"; return
   if !ok then IO.eprintln "Backend init failed"; return
   if pipeMode && path?.isNone then
     if let some a ← runMem (T := T) (← MemTable.fromStdin) "stdin" true testMode theme keys then
@@ -92,6 +95,10 @@ def appMain [TblOps T] [ModifyTable T] [MemConvert MemTable T]
       match ← Folder.mkView (T := T) "." 1 with
       | some v => let _ ← runApp (T := T) v pipeMode testMode theme keys
       | none => IO.eprintln "Cannot list directory"
+    else if path.startsWith "s3://" then
+      match ← Folder.mkView (T := T) path 1 with
+      | some v => let _ ← runApp (T := T) v pipeMode testMode theme keys
+      | none => IO.eprintln s!"Cannot browse S3 path: {path}"
     else if path.startsWith "kdb://" then
       match ← TblOps.fromUrl (α := T) path with
       | some tbl => match View.fromTbl tbl path with

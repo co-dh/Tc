@@ -148,5 +148,15 @@ def errorPopup (msg : String) : IO Unit := do
   Term.present
   waitForQ
 
+-- | Show a brief status message on the bottom line (non-blocking)
+-- No-op if terminal not initialized (height=0)
+def statusMsg (msg : String) : IO Unit := do
+  let h ← Term.height
+  if h == 0 then return
+  let w ← Term.width
+  let padLen := if w.toNat > msg.length then w.toNat - msg.length else 0
+  Term.print 0 (h - 1) Term.cyan Term.default (msg ++ "".pushn ' ' padLen)
+  Term.present
+
 -- | Compile-time check: errorPopup has correct signature
 #check (errorPopup : String → IO Unit)

@@ -58,8 +58,9 @@ theorem verbDelta_inc : verbDelta .inc = 1 := rfl
 theorem verbDelta_dec : verbDelta .dec = -1 := rfl
 
 -- | Preserve precAdj/widthAdj when recreating View
+-- | Preserve view properties (vkind, disp, precAdj, widthAdj) when recreating
 private def preserve (v : View T) (v' : Option (View T)) : Option (View T) :=
-  v'.map fun x => { x with precAdj := v.precAdj, widthAdj := v.widthAdj }
+  v'.map fun x => { x with vkind := v.vkind, disp := v.disp, precAdj := v.precAdj, widthAdj := v.widthAdj }
 
 -- | Pure update: returns (new view, effect). IO ops return Effect to defer.
 def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
