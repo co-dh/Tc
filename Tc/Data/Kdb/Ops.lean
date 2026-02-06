@@ -18,7 +18,7 @@ instance : TblOps KdbTable where
   distinct  := KdbTable.distinct
   findRow   := KdbTable.findRow
   render t _ _ _ inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj := do
-    let r1' := min r1 (r0 + maxRenderRows)
+    let r1' := min r1 (r0 + maxVisRows)
     let cols ← (Array.range t.nCols).mapM fun c => t.getCol c r0 r1'
     let adjCur := curRow - r0
     let adjSel := rowSels.filterMap fun r =>

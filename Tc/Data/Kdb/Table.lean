@@ -179,11 +179,6 @@ def extractTblName (tbl : String) : String :=
   | some i => parts.getD (i + 1) "t"
   | none => parts.getLastD "t"
 
--- | Empty FreqResult (shared by early returns)
-private def emptyFreq : FreqResult :=
-  { keyNames := #[], keyCols := #[], cntData := #[], pctData := #[], barData := #[],
-    totalGroups := 0, hKeys := rfl, hData := ⟨rfl, rfl⟩ }
-
 -- | Freq: group by + count (partition-aware)
 def queryFreq (t : KdbTable) (colIdxs : Array Nat) : IO FreqResult := do
   let names := t.colNames
@@ -265,8 +260,5 @@ end KdbTable
 
 -- NOTE: Table/ModifyTable/ExecOp instances for KdbTable
 -- are defined in Table.lean which imports all query methods
-
--- | Max rows to render (safety bound)
-def maxRenderRows : Nat := 200
 
 end Tc

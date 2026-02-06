@@ -114,11 +114,6 @@ end AdbcTable
 
 namespace AdbcTable
 
--- | Empty FreqResult (shared by early returns)
-private def emptyFreq : FreqResult :=
-  { keyNames := #[], keyCols := #[], cntData := #[], pctData := #[], barData := #[],
-    totalGroups := 0, hKeys := rfl, hData := ⟨rfl, rfl⟩ }
-
 -- | Freq: use SQL GROUP BY, query total distinct count
 def queryFreq (t : AdbcTable) (colIdxs : Array Nat) : IO FreqResult := do
   let names := t.colNames

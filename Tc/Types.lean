@@ -2,8 +2,6 @@
   Core types: Cell, Column, Table, PureKey
   Table stores columns by name (HashMap) for direct name-based access
 -/
-import Std.Data.HashMap
-
 -- | Join array of strings with separator (no intermediate List)
 def Array.join (arr : Array String) (sep : String) : String :=
   if arr.isEmpty then "" else
@@ -130,6 +128,11 @@ structure FreqResult where
   totalGroups : Nat
   hKeys : keyNames.size = keyCols.size
   hData : cntData.size = pctData.size ∧ pctData.size = barData.size
+
+-- | Empty FreqResult (shared by ADBC/Kdb/Mem early returns)
+def emptyFreq : FreqResult :=
+  { keyNames := #[], keyCols := #[], cntData := #[], pctData := #[], barData := #[],
+    totalGroups := 0, hKeys := rfl, hData := ⟨rfl, rfl⟩ }
 
 -- Bar chart: each '#' represents this many percent
 def barPctPerChar : Float := 5.0

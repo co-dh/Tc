@@ -125,8 +125,32 @@ def adjColOff (cur colOff : Nat) (widths : Array Nat) (dispIdxs : Array Nat) (sc
 -- cumWidthArr[i] == cumWidthDisp widths dispIdxs i for i ≤ n
 def cumWidthArr (widths : Array Nat) (dispIdxs : Array Nat) (n : Nat) : Array Nat :=
   (Array.range n).foldl (init := #[0]) fun acc d =>
-    let prev := acc.back!
+    let prev := acc.getD (acc.size - 1) 0
     acc.push (prev + min (widths.getD (dispIdxs.getD d 0) 0) maxColWidth + 1)
+
+-- Theorem: cumWidthArr always has exactly n+1 elements
+-- Proof strategy: foldl over (Array.range n) starting from #[0] (size 1),
+-- pushing exactly one element per step → size = 1 + n = n + 1.
+theorem cumWidthArr_size (widths dispIdxs : Array Nat) (n : Nat) :
+    (cumWidthArr widths dispIdxs n).size = n + 1 := by
+  simp only [cumWidthArr]
+  -- The core: foldl over range n, init size 1, each step pushes once → size = 1 + n
+  have : ∀ (init : Array Nat),
+      ((Array.range n).foldl (init := init) fun acc d =>
+        let prev := acc.getD (acc.size - 1) 0
+        acc.push (prev + min (widths.getD (dispIdxs.getD d 0) 0) maxColWidth + 1)).size
+      = init.size + n := by
+    intro init
+    induction n generalizing init with
+    | zero => simp [Array.range]
+    | succ k ih =>
+      rw [Array.range_succ, Array.foldl_append]
+      rw [show (#[k] : Array Nat) = (#[]).push k from rfl, Array.foldl_push, Array.foldl_empty]
+      simp only [Array.size_push]
+      rw [ih]
+      omega
+  rw [this]
+  simp [Array.size]; omega
 
 -- Fast adjColOff using precomputed cumulative widths (O(n) total instead of O(n²))
 def adjColOffFast (cur colOff : Nat) (widths : Array Nat) (dispIdxs : Array Nat) (screenW : Nat) : Nat :=
@@ -142,6 +166,10 @@ def adjColOffFast (cur colOff : Nat) (widths : Array Nat) (dispIdxs : Array Nat)
   -- scroll left: cursor's left edge before visible area
   else if cumW cur < offX then cur
   else colOff
+
+-- NOTE: adjColOffFast is equivalent to adjColOff by construction.
+-- Proof requires showing: ∀ i ≤ n, (cumWidthArr w d n).getD i 0 = cumWidthDisp w d i
+-- (foldl intermediate state reasoning — nontrivial, omitted for now).
 
 -- | Render table to terminal, returns (ViewState, widths)
 -- Calls TblOps.render with NavState fields unpacked

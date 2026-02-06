@@ -11,53 +11,56 @@ open Tc
 private def lookup [BEq α] (tbl : Array (α × β)) (k : α) : Option β :=
   tbl.findSome? fun (k', v) => if k == k' then some v else none
 
--- Arrow key → hjkl char
-private def arrowToChar : Array (UInt16 × Char) := #[
-  (Term.keyArrowDown, 'j'), (Term.keyArrowUp, 'k'),
-  (Term.keyArrowRight, 'l'), (Term.keyArrowLeft, 'h')
-]
+-- | Key mapping tables grouped by category
+namespace KeyMap
+  -- Arrow/special keys → navigation char (hjkl)
+  private def arrow : Array (UInt16 × Char) := #[
+    (Term.keyArrowDown, 'j'), (Term.keyArrowUp, 'k'),
+    (Term.keyArrowRight, 'l'), (Term.keyArrowLeft, 'h')
+  ]
 
--- Navigation chars: (char, isRow, isFwd)
-private def navDirs : Array (Char × Bool × Bool) := #[
-  ('j', true, true), ('k', true, false), ('l', false, true), ('h', false, false)
-]
+  -- Navigation chars → (isRow, isFwd) for directional dispatch
+  private def nav : Array (Char × Bool × Bool) := #[
+    ('j', true, true), ('k', true, false), ('l', false, true), ('h', false, false)
+  ]
 
--- Special key → Cmd (PageUp/Down, Home/End)
-private def keyCmds : Array (UInt16 × Cmd) := #[
-  (Term.keyPageDown, .vPage .inc), (Term.keyPageUp, .vPage .dec),  -- vPage +=down, -=up
-  (Term.keyHome, .ver .dec), (Term.keyEnd, .ver .inc)  -- ver -=top, +=bottom
-]
+  -- Special keys → Cmd (PageUp/Down, Home/End)
+  private def special : Array (UInt16 × Cmd) := #[
+    (Term.keyPageDown, .vPage .inc), (Term.keyPageUp, .vPage .dec),  -- vPage +=down, -=up
+    (Term.keyHome, .ver .dec), (Term.keyEnd, .ver .inc)  -- ver -=top, +=bottom
+  ]
 
--- Ctrl key → Cmd (Ctrl-D=pgdn, Ctrl-U=pgup) - termbox reports in ev.key, not ev.ch
-private def ctrlCmds : Array (UInt16 × Cmd) := #[
-  (Term.ctrlD.toUInt16, .vPage .inc), (Term.ctrlU.toUInt16, .vPage .dec)
-]
+  -- Ctrl keys → Cmd (Ctrl-D=pgdn, Ctrl-U=pgup) - termbox reports in ev.key, not ev.ch
+  private def ctrl : Array (UInt16 × Cmd) := #[
+    (Term.ctrlD.toUInt16, .vPage .inc), (Term.ctrlU.toUInt16, .vPage .dec)
+  ]
 
--- Other char → Cmd (selection, group, colSel ops, stack, info, folder)
-private def charCmds : Array (Char × Cmd) := #[
-  ('t', .colSel .ent), ('T', .rowSel .ent),
-  ('!', .grp .ent), ('d', .colSel .del),
-  ('[', .colSel .inc), (']', .colSel .dec),
-  ('M', .metaV .dup), ('F', .freq .dup),   -- M=meta, F=freq view (dup=constructor)
-  ('D', .fld .dup),                        -- D=folder view (dup=constructor)
-  ('0', .metaV .dec), ('1', .metaV .inc),  -- meta: 0=selNull, 1=selSingle
-  ('s', .col .ent),        -- col search: fzf jump to column
-  ('/', .rowSel .inc),     -- row search: fzf jump to row (vim-style)
-  ('n', .grp .inc),        -- search next: repeat last search forward
-  ('N', .grp .dec),        -- search prev: repeat last search backward
-  ('\\', .rowSel .dec),    -- row filter: fzf PRQL filter (backslash)
-  ('q', .stk .dec), ('S', .stk .ent),  -- stack: q=pop, S=swap
-  ('I', .info .ent)  -- info: toggle overlay
-]
+  -- Regular chars → Cmd (selection, group, colSel ops, stack, info, folder)
+  private def char : Array (Char × Cmd) := #[
+    ('t', .colSel .ent), ('T', .rowSel .ent),
+    ('!', .grp .ent), ('d', .colSel .del),
+    ('[', .colSel .inc), (']', .colSel .dec),
+    ('M', .metaV .dup), ('F', .freq .dup),   -- M=meta, F=freq view (dup=constructor)
+    ('D', .fld .dup),                        -- D=folder view (dup=constructor)
+    ('0', .metaV .dec), ('1', .metaV .inc),  -- meta: 0=selNull, 1=selSingle
+    ('s', .col .ent),        -- col search: fzf jump to column
+    ('/', .rowSel .inc),     -- row search: fzf jump to row (vim-style)
+    ('n', .grp .inc),        -- search next: repeat last search forward
+    ('N', .grp .dec),        -- search prev: repeat last search backward
+    ('\\', .rowSel .dec),    -- row filter: fzf PRQL filter (backslash)
+    ('q', .stk .dec), ('S', .stk .ent),  -- stack: q=pop, S=swap
+    ('I', .info .ent)  -- info: toggle overlay
+  ]
+end KeyMap
 
 -- Normalize event to char (arrow→hjkl, Enter→\r, or raw char)
 private def evToChar (ev : Term.Event) : Char :=
   if ev.key == Term.keyEnter then '\r'
-  else (lookup arrowToChar ev.key).getD (Char.ofNat ev.ch.toNat)
+  else (lookup KeyMap.arrow ev.key).getD (Char.ofNat ev.ch.toNat)
 
 -- Navigation cmd from char + shift state
 private def navCmd (c : Char) (shift : Bool) : Option Cmd :=
-  navDirs.findSome? fun (ch, isRow, fwd) =>
+  KeyMap.nav.findSome? fun (ch, isRow, fwd) =>
     if c.toLower == ch then
       let pg := shift || c.isUpper  -- shift or uppercase = page
       let v := if fwd then Verb.inc else .dec
@@ -157,7 +160,7 @@ def evToCmd (ev : Term.Event) (vk : ViewKind) : Option Cmd :=
   if ev.key == Term.keyEnter then enterCmd vk else  -- context-sensitive Enter
   let c := evToChar ev
   let shift := ev.mod &&& Term.modShift != 0
-  navCmd c shift <|> lookup charCmds c <|> lookup keyCmds ev.key <|> lookup ctrlCmds ev.key
+  navCmd c shift <|> lookup KeyMap.char c <|> lookup KeyMap.special ev.key <|> lookup KeyMap.ctrl ev.key
 
 -- | Parse key notation: <ret> → \r, <C-d> → Ctrl-D, etc.
 def parseKeys (s : String) : String :=

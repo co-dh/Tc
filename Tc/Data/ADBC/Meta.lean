@@ -18,7 +18,7 @@ def cacheValid (path : String) : IO Bool := do
     let srcMeta ← System.FilePath.metadata path
     let cacheMeta ← System.FilePath.metadata cp
     return decide (cacheMeta.modified.sec.toNat >= srcMeta.modified.sec.toNat)
-  catch _ => return false
+  catch e => Log.write "adbc-meta" (toString e); return false
 
 -- | Read string column from query result
 private def colStr (qr : Adbc.QueryResult) (nr : Nat) (c : UInt64) : IO (Array String) :=
@@ -42,7 +42,7 @@ def loadCache (path : String) : IO (Option MetaTuple) := do
     let qr ← Adbc.query s!"SELECT * FROM read_parquet('{cp}')"
     Log.write "meta" s!"[cache] loaded {cp}"
     some <$> metaFromQuery qr
-  catch _ => return none
+  catch e => Log.write "adbc-meta" (toString e); return none
 
 -- | Save meta to parquet cache
 def saveCache (path : String) (metaSql : String) : IO Unit := do
@@ -93,7 +93,7 @@ def queryMeta (t : AdbcTable) : IO MetaTuple := do
   let some sql ← Prql.compile prql | return (#[], #[], #[], #[], #[], #[], #[])
   -- Save to cache for base parquet queries
   if let some p := cachePath then
-    try saveCache p sql catch _ => pure ()
+    try saveCache p sql catch e => Log.write "adbc-meta" (toString e)
   let qr ← Adbc.query sql
   metaFromQuery qr
 

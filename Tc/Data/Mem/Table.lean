@@ -94,6 +94,20 @@ def sort (t : MemTable) (idxs : Array Nat) (asc : Bool) : MemTable :=
   let cols' := t.cols.map (·.gather perm)
   { t with cols := cols', h_eq := by simp [cols', Array.size_map, t.h_eq] }
 
+-- | sort preserves names.size = cols.size
+theorem sort_preserves_h_eq (t : MemTable) (idxs : Array Nat) (asc : Bool) :
+    (MemTable.sort t idxs asc).names.size = (MemTable.sort t idxs asc).cols.size :=
+  (MemTable.sort t idxs asc).h_eq
+
+-- | nRows equals the size of the first column (when cols is non-empty)
+theorem nRows_eq_col_size (t : MemTable) (h : t.cols.size > 0) :
+    MemTable.nRows t = (t.cols[0]).size := by
+  unfold nRows
+  simp [Array.getD]
+  split
+  · rfl
+  · omega
+
 end MemTable
 
 -- NOTE: ReadTable/ModifyTable/RenderTable instances for MemTable are defined in Table variants
@@ -133,6 +147,10 @@ def filter (t : MemTable) (expr : String) : IO (Option MemTable) := do
   -- build filtered table
   let cols' := t.cols.map (·.gather rows)
   return some ⟨t.names, cols', by simp [cols', Array.size_map, t.h_eq]⟩
+
+-- | filter preserves names.size = cols.size (for the returned MemTable)
+-- Note: filter returns IO (Option MemTable) — each MemTable it constructs
+-- satisfies the invariant by construction (the h_eq proof is embedded in the mk).
 
 -- | Distinct values for a column
 def distinct (t : MemTable) (col : Nat) : IO (Array String) := pure <| Id.run do
@@ -188,16 +206,31 @@ def selCols (t : MemTable) (names : Array String) : MemTable :=
   let names' := idxs.map fun i => t.names.getD i ""
   ⟨names', cols', by simp [names', cols', Array.size_map]⟩
 
+-- | selCols preserves names.size = cols.size
+theorem selCols_preserves_h_eq (t : MemTable) (keep : Array String) :
+    (MemTable.selCols t keep).names.size = (MemTable.selCols t keep).cols.size :=
+  (MemTable.selCols t keep).h_eq
+
 -- | Take first n rows
 def take (t : MemTable) (n : Nat) : MemTable :=
   let cols' := t.cols.map (·.take n)
   { t with cols := cols', h_eq := by simp [cols', Array.size_map, t.h_eq] }
+
+-- | take preserves names.size = cols.size
+theorem take_preserves_h_eq (t : MemTable) (n : Nat) :
+    (MemTable.take t n).names.size = (MemTable.take t n).cols.size :=
+  (MemTable.take t n).h_eq
 
 -- | Sort by column names (converts to indices)
 def sortByNames (t : MemTable) (cols : Array (String × Bool)) : MemTable :=
   let idxs := cols.filterMap fun (n, _) => t.names.idxOf? n
   let asc := if h : cols.size > 0 then cols[cols.size - 1].2 else true
   sort t idxs asc
+
+-- | sortByNames preserves names.size = cols.size
+theorem sortByNames_preserves_h_eq (t : MemTable) (cols : Array (String × Bool)) :
+    (MemTable.sortByNames t cols).names.size = (MemTable.sortByNames t cols).cols.size :=
+  (MemTable.sortByNames t cols).h_eq
 
 end MemTable
 
