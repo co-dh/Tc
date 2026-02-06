@@ -11,16 +11,18 @@ def scanCol (col : Column) : String × Int64 × Int64 × Int64 × String × Stri
   match col with
   | .ints data =>
     let sorted := data.qsort (· < ·)
-    let minV := sorted.getD 0 0
-    let maxV := sorted.getD (sorted.size - 1) 0
+    let (minV, maxV) := if h : sorted.size > 0
+      then (sorted[0], sorted[sorted.size - 1])
+      else (0, 0)
     let dist := (sorted.foldl (init := (#[] : Array Int64)) fun acc v =>
       if acc.isEmpty || acc.back! != v then acc.push v else acc).size
     ("i64", data.size.toInt64, dist.toInt64, 0, s!"{minV}", s!"{maxV}")
   | .floats data =>
     let vals := data.filter (!·.isNaN)
     let sorted := vals.qsort (· < ·)
-    let minV := sorted.getD 0 0
-    let maxV := sorted.getD (sorted.size - 1) 0
+    let (minV, maxV) := if h : sorted.size > 0
+      then (sorted[0], sorted[sorted.size - 1])
+      else (0.0, 0.0)
     let nullCnt := data.size - vals.size
     let nullPct := if data.size > 0 then nullCnt * 100 / data.size else 0
     let dist := (sorted.foldl (init := (#[] : Array Float)) fun acc v =>
@@ -29,8 +31,9 @@ def scanCol (col : Column) : String × Int64 × Int64 × Int64 × String × Stri
   | .strs data =>
     let vals := data.filter (!·.isEmpty)
     let sorted := vals.qsort (· < ·)
-    let minV := sorted.getD 0 ""
-    let maxV := sorted.getD (sorted.size - 1) ""
+    let (minV, maxV) := if h : sorted.size > 0
+      then (sorted[0], sorted[sorted.size - 1])
+      else ("", "")
     let nullCnt := data.size - vals.size
     let nullPct := if data.size > 0 then nullCnt * 100 / data.size else 0
     let dist := (sorted.foldl (init := (#[] : Array String)) fun acc v =>

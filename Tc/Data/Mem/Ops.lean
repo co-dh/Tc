@@ -27,11 +27,11 @@ instance : TblOps MemTable where
 
 -- | ModifyTable instance for MemTable
 instance : ModifyTable MemTable where
-  delCols := fun delIdxs t => pure
-    { names := let keepIdxs := (Array.range t.names.size).filter (!delIdxs.contains ·)
-               keepIdxs.map fun i => t.names.getD i ""
-      cols  := let keepIdxs := (Array.range t.names.size).filter (!delIdxs.contains ·)
-               keepIdxs.map fun i => t.cols.getD i default }
+  delCols := fun delIdxs t => pure <|
+    let keepIdxs := (Array.range t.names.size).filter (!delIdxs.contains ·)
+    { names := keepIdxs.map fun i => t.names.getD i ""
+      cols  := keepIdxs.map fun i => t.cols.getD i default
+      h_eq  := by simp [Array.size_map] }
   sortBy := fun idxs asc t => pure (MemTable.sort t idxs asc)
 
 end Tc

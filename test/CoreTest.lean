@@ -201,7 +201,7 @@ def test_key_cursor (bin : String) : IO Unit := do
 def test_no_stderr : IO Unit := do
   log "no_stderr"
   let out ← IO.Process.output { cmd := "grep", args := #["-r", "eprintln", "Tc/", "--exclude=App.lean", "--exclude-dir=App"] }
-  assert (out.stdout.trim.isEmpty) "No eprintln in Tc/ (except App entry points)"
+  assert (out.stdout.trimAscii.toString.isEmpty) "No eprintln in Tc/ (except App entry points)"
 
 -- === Search tests ===
 

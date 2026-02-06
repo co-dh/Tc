@@ -64,7 +64,7 @@ private def splitByStarts (s : String) (starts : Array Nat) : Array String := Id
 def fromText (content : String) : Except String MemTable :=
   let lines := content.splitOn "\n" |>.filter (·.length > 0)
   match lines with
-  | [] => .ok ⟨#[], #[]⟩
+  | [] => .ok ⟨#[], #[], rfl⟩
   | hdr :: rest =>
     let starts := findColStarts hdr
     let allLines := (hdr :: rest).toArray
@@ -78,11 +78,13 @@ def fromText (content : String) : Except String MemTable :=
           let fields := splitByStarts line starts
           for i in [:starts.size] do cols := cols.modify i (·.push (fields.getD i ""))
         return cols
-      .ok ⟨names, strCols.map buildColumn⟩
+      let cols := strCols.map buildColumn
+      if h : names.size = cols.size then .ok ⟨names, cols, h⟩
+      else .error "column count mismatch"
     else
       -- else use mode of word counts (handles "total 836" outliers)
       let nc := modeNc
-      if nc == 0 then .ok ⟨#[], #[]⟩ else
+      if nc == 0 then .ok ⟨#[], #[], rfl⟩ else
       let names := splitN hdr nc
       let strCols : Array (Array String) := Id.run do
         let mut cols := (List.replicate nc #[]).toArray
@@ -90,24 +92,28 @@ def fromText (content : String) : Except String MemTable :=
           let fields := splitN line nc
           for i in [:nc] do cols := cols.modify i (·.push (fields.getD i ""))
         return cols
-      .ok ⟨names, strCols.map buildColumn⟩
+      let cols := strCols.map buildColumn
+      if h : names.size = cols.size then .ok ⟨names, cols, h⟩
+      else .error "column count mismatch"
 
 -- | Parse tab-separated text (TSV format)
 def fromTsv (content : String) : Except String MemTable :=
   let lines := content.splitOn "\n" |>.filter (·.length > 0)
   match lines with
-  | [] => .ok ⟨#[], #[]⟩
+  | [] => .ok ⟨#[], #[], rfl⟩
   | hdr :: rest =>
     let names := (hdr.splitOn "\t").toArray
     let nc := names.size
-    if nc == 0 then .ok ⟨#[], #[]⟩ else
+    if nc == 0 then .ok ⟨#[], #[], rfl⟩ else
     let strCols : Array (Array String) := Id.run do
       let mut cols := (List.replicate nc #[]).toArray
       for line in rest do
         let fields := (line.splitOn "\t").toArray
         for i in [:nc] do cols := cols.modify i (·.push (fields.getD i ""))
       return cols
-    .ok ⟨names, strCols.map buildColumn⟩
+    let cols := strCols.map buildColumn
+      if h : names.size = cols.size then .ok ⟨names, cols, h⟩
+      else .error "column count mismatch"
 
 -- | Load from stdin (reads all input)
 def fromStdin : IO (Except String MemTable) := do

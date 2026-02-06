@@ -11,12 +11,10 @@ namespace Tc.Freq
 variable {T : Type} [TblOps T] [MemConvert MemTable T]
 
 -- | Convert queryFreq tuple result to MemTable (sorted by Cnt desc)
-def toMemTable (f : FreqTuple) : MemTable :=
-  let (keyNames, keyCols, cntData, pctData, barData, _) := f
-  let names := keyNames ++ #["Cnt", "Pct", "Bar"]
-  let cols := keyCols ++ #[.ints cntData, .floats pctData, .strs barData]
-  -- sort by Cnt (first column after keys) descending
-  MemTable.sort ⟨names, cols⟩ #[keyCols.size] false
+def toMemTable (f : FreqResult) : MemTable :=
+  let names := f.keyNames ++ #["Cnt", "Pct", "Bar"]
+  let cols := f.keyCols ++ #[.ints f.cntData, .floats f.pctData, .strs f.barData]
+  MemTable.sort { names, cols, h_eq := by simp [names, cols, Array.size_append, f.hKeys] } #[f.keyCols.size] false
 
 -- | Build filter expression from freq row (col1 == val1 && col2 == val2 ...)
 def filterExpr (tbl : MemTable) (cols : Array String) (row : Nat) : String :=
@@ -36,10 +34,9 @@ def push (s : ViewStack T) : IO (Option (ViewStack T)) := do
   let colNames := if n.grp.contains curName then n.grp else n.grp.push curName
   let colIdxs := colNames.filterMap names.idxOf?
   let freq ← TblOps.queryFreq n.tbl colIdxs
-  let (_, _, _, _, _, total) := freq
   let tbl := toMemTable freq
   let some v := View.fromTbl (MemConvert.wrap tbl) s.cur.path 0 colNames | return none
-  return some (s.push { v with vkind := .freqV colNames total, disp := s!"freq {colNames.join ","}" })
+  return some (s.push { v with vkind := .freqV colNames freq.totalGroups, disp := s!"freq {colNames.join ","}" })
 
 -- | Filter parent by selected freq row, pop freq and push filtered view
 def filter (s : ViewStack T) : IO (Option (ViewStack T)) := do

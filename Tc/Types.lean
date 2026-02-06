@@ -23,7 +23,7 @@ theorem Array.toggle_toggle_not_mem [BEq α] [LawfulBEq α] (arr : Array α) (x 
   unfold Array.toggle
   have h' : ¬(arr.contains x = true) := by simp_all
   rw [if_neg h']
-  have hc : (arr.push x).contains x = true := by simp [Array.contains_push]
+  have hc : (arr.push x).contains x = true := by simp
   rw [if_pos hc]
   -- goal: (arr.push x).filter (fun y => !(y == x)) = arr
   have hx : x ∉ arr := fun hm => h' (Array.contains_iff_mem.mpr hm)
@@ -78,6 +78,20 @@ def size : Column → Nat
   | .floats data => data.size
   | .strs data => data.size
 
+-- | Gather rows by index array (reindex with type-appropriate defaults)
+def gather (col : Column) (idxs : Array Nat) : Column :=
+  match col with
+  | .ints data   => .ints   (idxs.map fun i => data.getD i 0)
+  | .floats data => .floats (idxs.map fun i => data.getD i 0)
+  | .strs data   => .strs   (idxs.map fun i => data.getD i "")
+
+-- | Take first n rows
+def take (col : Column) (n : Nat) : Column :=
+  match col with
+  | .ints data   => .ints   (data.extract 0 n)
+  | .floats data => .floats (data.extract 0 n)
+  | .strs data   => .strs   (data.extract 0 n)
+
 end Column
 
 namespace Cell
@@ -105,18 +119,29 @@ namespace Tc
 -- Meta tuple: (names, types, cnts, dists, nullPcts, mins, maxs)
 abbrev MetaTuple := Array String × Array String × Array Int64 × Array Int64 × Array Int64 × Array String × Array String
 
--- Freq tuple: (keyNames, keyCols, cntData, pctData, barData, totalGroups)
-abbrev FreqTuple := Array String × Array Column × Array Int64 × Array Float × Array String × Nat
+-- | Frequency result with length invariants:
+--   keyNames.size = keyCols.size, cntData.size = pctData.size = barData.size
+structure FreqResult where
+  keyNames    : Array String
+  keyCols     : Array Column
+  cntData     : Array Int64
+  pctData     : Array Float
+  barData     : Array String
+  totalGroups : Nat
+  hKeys : keyNames.size = keyCols.size
+  hData : cntData.size = pctData.size ∧ pctData.size = barData.size
 
 -- Bar chart: each '#' represents this many percent
 def barPctPerChar : Float := 5.0
 
--- | Compute pct and bar from count data (shared by Mem/ADBC/Kdb freq)
-def freqStats (cntData : Array Int64) : Array Float × Array String :=
+-- | Compute pct and bar from count data (shared by Mem/ADBC/Kdb freq).
+--   Returns arrays with proof that sizes equal input size.
+def freqStats (cntData : Array Int64)
+    : { pb : Array Float × Array String // pb.1.size = cntData.size ∧ pb.2.size = cntData.size } :=
   let total := cntData.foldl (init := 0) (· + ·)
   let pct := cntData.map fun c => if total > 0 then c.toFloat * 100 / total.toFloat else 0
   let bar := pct.map fun p => String.ofList (List.replicate (p / barPctPerChar).toUInt32.toNat '#')
-  (pct, bar)
+  ⟨(pct, bar), Array.size_map .., by simp [bar, pct, Array.size_map]⟩
 
 /-! ## Core Typeclasses -/
 
@@ -129,7 +154,7 @@ class TblOps (α : Type) where
   totalRows : α → Nat := nRows                                   -- actual rows (ADBC)
   isAdbc    : α → Bool := fun _ => false                         -- DB-backed?
   queryMeta : α → IO MetaTuple                                   -- column metadata
-  queryFreq : α → Array Nat → IO FreqTuple                       -- frequency query
+  queryFreq : α → Array Nat → IO FreqResult                       -- frequency query
   filter    : α → String → IO (Option α)                         -- filter by expr
   distinct  : α → Nat → IO (Array String)                        -- distinct values
   findRow   : α → Nat → String → Nat → Bool → IO (Option Nat)    -- find row

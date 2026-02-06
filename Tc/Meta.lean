@@ -20,7 +20,7 @@ def colNull : Nat := 4  -- null%
 -- Convert queryMeta tuple result to MemTable
 def toMemTable (m : Array String × Array String × Array Int64 × Array Int64 × Array Int64 × Array String × Array String) : MemTable :=
   let (names, types, cnts, dists, nulls, mins, maxs) := m
-  ⟨headers, #[.strs names, .strs types, .ints cnts, .ints dists, .ints nulls, .strs mins, .strs maxs]⟩
+  ⟨headers, #[.strs names, .strs types, .ints cnts, .ints dists, .ints nulls, .strs mins, .strs maxs], rfl⟩
 
 -- Get int value from column at row
 def getInt (t : MemTable) (col row : Nat) : Int64 :=

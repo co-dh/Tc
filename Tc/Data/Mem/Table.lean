@@ -12,10 +12,11 @@ import Tc.Types
 
 namespace Tc
 
--- | In-memory table: typed column storage
+-- | In-memory table: typed column storage (names.size = cols.size invariant)
 structure MemTable where
   names : Array String
   cols  : Array Column
+  h_eq  : names.size = cols.size := by omega
 
 namespace MemTable
 
@@ -43,7 +44,7 @@ def load (path : String) : IO (Except String MemTable) := do
   let content ← IO.FS.readFile path
   let recs := CSV.parse content
   match recs.toList with
-  | [] => pure (.ok ⟨#[], #[]⟩)
+  | [] => pure (.ok ⟨#[], #[], rfl⟩)
   | hdr :: rest =>
     let names := hdr
     let nc := names.size
@@ -54,7 +55,8 @@ def load (path : String) : IO (Except String MemTable) := do
           cols := cols.modify i (·.push (row.getD i ""))
       cols
     let cols := strCols.map buildColumn
-    pure (.ok ⟨names, cols⟩)
+    if h : names.size = cols.size then pure (.ok ⟨names, cols, h⟩)
+    else pure (.error "column count mismatch")
 
 -- | Row count
 def nRows (t : MemTable) : Nat := (t.cols.getD 0 default).size
@@ -86,12 +88,8 @@ def sort (t : MemTable) (idxs : Array Nat) (asc : Bool) : MemTable :=
   let perm := (Array.range n).qsort fun i j =>
     let ord := cmpRows t.cols idxs i j
     if asc then ord == .lt else ord == .gt
-  let cols' := t.cols.map fun col =>
-    match col with
-    | .ints data => .ints (perm.map fun i => data.getD i 0)
-    | .floats data => .floats (perm.map fun i => data.getD i 0)
-    | .strs data => .strs (perm.map fun i => data.getD i "")
-  { t with cols := cols' }
+  let cols' := t.cols.map (·.gather perm)
+  { t with cols := cols', h_eq := by simp [cols', Array.size_map, t.h_eq] }
 
 end MemTable
 
@@ -130,12 +128,8 @@ def filter (t : MemTable) (expr : String) : IO (Option MemTable) := do
       if act != exp then ok := false; break
     if ok then rows := rows.push r
   -- build filtered table
-  let cols' := t.cols.map fun col =>
-    match col with
-    | .ints data => .ints (rows.map fun r => data.getD r 0)
-    | .floats data => .floats (rows.map fun r => data.getD r 0)
-    | .strs data => .strs (rows.map fun r => data.getD r "")
-  return some ⟨t.names, cols'⟩
+  let cols' := t.cols.map (·.gather rows)
+  return some ⟨t.names, cols', by simp [cols', Array.size_map, t.h_eq]⟩
 
 -- | Distinct values for a column
 def distinct (t : MemTable) (col : Nat) : IO (Array String) := pure <| Id.run do
@@ -189,16 +183,12 @@ def selCols (t : MemTable) (names : Array String) : MemTable :=
   let idxs := names.filterMap t.names.idxOf?
   let cols' := idxs.map fun i => t.cols.getD i default
   let names' := idxs.map fun i => t.names.getD i ""
-  ⟨names', cols'⟩
+  ⟨names', cols', by simp [names', cols', Array.size_map]⟩
 
 -- | Take first n rows
 def take (t : MemTable) (n : Nat) : MemTable :=
-  let cols' := t.cols.map fun col =>
-    match col with
-    | .ints data => .ints (data.extract 0 n)
-    | .floats data => .floats (data.extract 0 n)
-    | .strs data => .strs (data.extract 0 n)
-  { t with cols := cols' }
+  let cols' := t.cols.map (·.take n)
+  { t with cols := cols', h_eq := by simp [cols', Array.size_map, t.h_eq] }
 
 -- | Sort by column names (converts to indices)
 def sortByNames (t : MemTable) (cols : Array (String × Bool)) : MemTable :=

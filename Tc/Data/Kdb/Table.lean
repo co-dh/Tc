@@ -176,12 +176,17 @@ def extractTblName (tbl : String) : String :=
   | some i => parts.getD (i + 1) "t"
   | none => parts.getLast!
 
+-- | Empty FreqResult (shared by early returns)
+private def emptyFreq : FreqResult :=
+  { keyNames := #[], keyCols := #[], cntData := #[], pctData := #[], barData := #[],
+    totalGroups := 0, hKeys := rfl, hData := ⟨rfl, rfl⟩ }
+
 -- | Freq: group by + count (partition-aware)
-def queryFreq (t : KdbTable) (colIdxs : Array Nat) : IO FreqTuple := do
+def queryFreq (t : KdbTable) (colIdxs : Array Nat) : IO FreqResult := do
   let names := t.colNames
-  let keyNames := colIdxs.map fun i => names.getD i ""
-  if keyNames.isEmpty then return (#[], #[], #[], #[], #[], 0)
-  let cols := keyNames.toList |> String.intercalate ","
+  if colIdxs.isEmpty then return emptyFreq
+  let keyNamesForQuery := colIdxs.map fun i => names.getD i ""
+  let cols := keyNamesForQuery.toList |> String.intercalate ","
   let tblName := extractTblName t.query.tbl
   let partFilt := extractPartFilter t.query.tbl
   let whr := if partFilt.isEmpty then "" else s!" where {partFilt}"
@@ -189,19 +194,25 @@ def queryFreq (t : KdbTable) (colIdxs : Array Nat) : IO FreqTuple := do
   Log.write "q-freq" q
   let qr ← Kdb.query q
   let nr ← Kdb.nrows qr
-  -- key columns + Cnt column
-  let mut keyCols : Array Column := #[]
-  for i in [:keyNames.size] do
+  -- build key (name, column) pairs from colIdxs, then split for hKeys proof
+  let keyPairs ← colIdxs.mapM fun i => do
     let mut vals : Array String := #[]
     for r in [:nr.toNat] do
       vals := vals.push (← Kdb.cellStr qr r.toUInt64 i.toUInt64)
-    keyCols := keyCols.push (.strs vals)
+    pure (names.getD i "", Column.strs vals)
+  let keyNames := keyPairs.map Prod.fst
+  let keyCols  := keyPairs.map Prod.snd
   let mut cntData : Array Int64 := #[]
   for r in [:nr.toNat] do
-    let v ← Kdb.cellStr qr r.toUInt64 keyNames.size.toUInt64
+    let v ← Kdb.cellStr qr r.toUInt64 colIdxs.size.toUInt64
     cntData := cntData.push (v.toInt?.getD 0).toInt64
-  let (pctData, barData) := freqStats cntData
-  pure (keyNames, keyCols, cntData, pctData, barData, nr.toNat)
+  let fs := freqStats cntData
+  let pctData := fs.val.1
+  let barData := fs.val.2
+  let hKeys : keyNames.size = keyCols.size := by simp [keyNames, keyCols, Array.size_map]
+  let hData : cntData.size = pctData.size ∧ pctData.size = barData.size :=
+    ⟨fs.property.1.symm, by rw [fs.property.1]; exact fs.property.2.symm⟩
+  pure ⟨keyNames, keyCols, cntData, pctData, barData, nr.toNat, hKeys, hData⟩
 
 -- | Filter: requery with filter expr
 def filter (t : KdbTable) (expr : String) : IO (Option KdbTable) := do

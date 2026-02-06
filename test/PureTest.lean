@@ -6,6 +6,7 @@ import Tc.Nav
 import Tc.View
 import Tc.UI.Info
 import Tc.Types
+import Tc.Validity
 
 namespace PureTest
 
@@ -22,7 +23,7 @@ instance : TblOps (MockTable nRows nCols) where
   nRows _ := nRows
   colNames t := t.names
   queryMeta _ := pure (#[], #[], #[], #[], #[], #[], #[])
-  queryFreq _ _ := pure (#[], #[], #[], #[], #[], 0)
+  queryFreq _ _ := pure ⟨#[], #[], #[], #[], #[], 0, rfl, ⟨rfl, rfl⟩⟩
   filter _ _ := pure none
   distinct _ _ := pure #[]
   findRow _ _ _ _ _ := pure none
@@ -166,12 +167,51 @@ section DispOrderTests
 -- | Group first col: moves to front
 #guard dispOrder #["b"] #["a", "b", "c"] == #[1, 0, 2]
 
--- | Group multiple: maintains group order
-#guard dispOrder #["c", "a"] #["a", "b", "c"] == #[2, 0, 1]
+-- | Group multiple: group columns come first (in column order)
+#guard dispOrder #["c", "a"] #["a", "b", "c"] == #[0, 2, 1]
 
 -- | Group non-existent: ignored
 #guard dispOrder #["x"] #["a", "b", "c"] == #[0, 1, 2]
 
 end DispOrderTests
+
+/-! ## Validity Tests -/
+
+section ValidityTests
+
+-- | Navigation always valid
+#guard validFor (.row .inc) .tbl == true
+#guard validFor (.row .dec) .colMeta == true
+#guard validFor (.vPage .inc) (.freqV #["a"] 10) == true
+#guard validFor (.stk .dec) (.fld "/tmp" 1) == true
+
+-- | freq.ent requires freqV
+#guard validFor (.freq .ent) (.freqV #["col1"] 42) == true
+#guard validFor (.freq .ent) .tbl == false
+#guard validFor (.freq .ent) .colMeta == false
+#guard validFor (.freq .ent) (.fld "/" 1) == false
+
+-- | metaV.ent requires colMeta
+#guard validFor (.metaV .ent) .colMeta == true
+#guard validFor (.metaV .ent) .tbl == false
+#guard validFor (.metaV .ent) (.freqV #[] 0) == false
+
+-- | fld.ent requires fld
+#guard validFor (.fld .ent) (.fld "/home" 2) == true
+#guard validFor (.fld .ent) .tbl == false
+#guard validFor (.fld .ent) .colMeta == false
+
+-- | Push commands valid everywhere
+#guard validFor (.metaV .dup) .tbl == true
+#guard validFor (.metaV .dup) .colMeta == true
+#guard validFor (.freq .dup) .tbl == true
+#guard validFor (.freq .dup) (.fld "." 1) == true
+#guard validFor (.fld .dup) .tbl == true
+
+-- | col.ent (fzf col search) is universal
+#guard validFor (.col .ent) .tbl == true
+#guard validFor (.col .ent) .colMeta == true
+
+end ValidityTests
 
 end PureTest

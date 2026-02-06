@@ -26,7 +26,7 @@ lean_lib Tc where
              `Tc.Data.ADBC.FFI, `Tc.Data.ADBC.Prql,
              `Tc.Data.ADBC.Table, `Tc.Data.ADBC.Meta, `Tc.Data.ADBC.Ops,
              `Tc.Data.Kdb.FFI, `Tc.Data.Kdb.Q, `Tc.Data.Kdb.Table, `Tc.Data.Kdb.Ops,
-             `Tc.Table.Mem, `Tc.App.Core]
+             `Tc.Table.Mem, `Tc.App.Core, `Tc.Validity]
 
 -- | Full build: all backends (MemTable + ADBC + Kdb)
 @[default_target]
