@@ -80,7 +80,7 @@ def appMain [TblOps T] [ModifyTable T] [MemConvert MemTable T]
   let (path?, keys, testMode, noSign) := parseArgs args
   let envTest := (← IO.getEnv "TC_TEST_MODE").isSome
   Fzf.setTestMode (testMode || envTest)
-  Folder.setS3NoSign noSign
+  S3.setNoSign noSign
   let pipeMode ← if testMode then pure false else (! ·) <$> Term.isattyStdin
   let theme ← Theme.State.init
   let ok ← try init catch e => IO.eprintln s!"Backend init error: {e}"; return

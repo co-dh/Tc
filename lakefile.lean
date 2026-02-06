@@ -21,7 +21,7 @@ lean_lib Tc where
   roots := #[`Tc.Cmd, `Tc.Nav, `Tc.Render, `Tc.Key, `Tc.App,
              `Tc.Term, `Tc.Types, `Tc.Error, `Tc.View, `Tc.Dispatch,
              `Tc.Meta, `Tc.Freq, `Tc.Fzf, `Tc.Table, `Tc.Search, `Tc.Filter, `Tc.Folder,
-             `Tc.Theme, `Tc.UI.Info, `Tc.Runner, `Tc.Data.CSV,
+             `Tc.Theme, `Tc.UI.Info, `Tc.Runner, `Tc.S3, `Tc.Data.CSV,
              `Tc.Data.Mem.Table, `Tc.Data.Mem.Text, `Tc.Data.Mem.Meta, `Tc.Data.Mem.Freq, `Tc.Data.Mem.Ops,
              `Tc.Data.ADBC.FFI, `Tc.Data.ADBC.Prql,
              `Tc.Data.ADBC.Table, `Tc.Data.ADBC.Meta, `Tc.Data.ADBC.Ops,
