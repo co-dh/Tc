@@ -32,7 +32,10 @@ def detectType (vals : Array String) : Char :=
   else if nonEmpty.all (fun s => !(stringToFloat s).isNaN) then 'f'
   else 's'
 
--- | Build typed column from string values
+-- | Build typed column from string values.
+-- Note: for int columns, unparseable values silently default to 0 via .toInt?.getD 0.
+-- This is intentional: detectType already verified ALL non-empty values parse,
+-- so only empty strings (nulls) hit the default path.
 def buildColumn (vals : Array String) : Column :=
   match detectType vals with
   | 'i' => .ints (vals.map fun s => s.toInt?.getD 0 |>.toInt64)

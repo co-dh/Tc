@@ -28,7 +28,7 @@ def ofChar? : Char → Option Verb
   | 'd' => some .del | 'c' => some .dup | _ => none
 
 instance : ToString Verb where toString v := v.toChar.toString
-instance : Parse Verb where parse? s := if s.length == 1 then ofChar? s.toList[0]! else none
+instance : Parse Verb where parse? s := s.toList.head?.bind ofChar?
 
 -- | Isomorphism: ofChar? ∘ toChar = some
 theorem ofChar_toChar (v : Verb) : ofChar? (toChar v) = some v := by
@@ -87,9 +87,9 @@ instance : ToString Cmd where toString c := s!"{c.objChar}{c.verb.toChar}"
 
 instance : Parse Cmd where
   parse? s := do
-    guard (s.length == 2)
-    let v ← Verb.ofChar? s.toList[1]!
-    let (_, mk) ← objs.find? (·.1 == s.toList[0]!)
+    let [o, vc] := s.toList | none
+    let v ← Verb.ofChar? vc
+    let (_, mk) ← objs.find? (·.1 == o)
     pure (mk v)
 
 -- | Isomorphism: parse? ∘ toString = some

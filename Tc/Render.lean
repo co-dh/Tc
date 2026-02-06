@@ -121,6 +121,28 @@ def adjColOff (cur colOff : Nat) (widths : Array Nat) (dispIdxs : Array Nat) (sc
   else if cumW cur < offX then cur
   else colOff
 
+-- Precomputed cumulative width array (O(n) build, O(1) lookup)
+-- cumWidthArr[i] == cumWidthDisp widths dispIdxs i for i ≤ n
+def cumWidthArr (widths : Array Nat) (dispIdxs : Array Nat) (n : Nat) : Array Nat :=
+  (Array.range n).foldl (init := #[0]) fun acc d =>
+    let prev := acc.back!
+    acc.push (prev + min (widths.getD (dispIdxs.getD d 0) 0) maxColWidth + 1)
+
+-- Fast adjColOff using precomputed cumulative widths (O(n) total instead of O(n²))
+def adjColOffFast (cur colOff : Nat) (widths : Array Nat) (dispIdxs : Array Nat) (screenW : Nat) : Nat :=
+  let n := max (cur + 1) colOff  -- cover both cur+1 and colOff
+  let arr := cumWidthArr widths dispIdxs n
+  let cumW := fun i => arr.getD i 0
+  let curEnd := cumW (cur + 1)  -- right edge of cursor column
+  let offX := cumW colOff       -- left edge of visible area
+  -- scroll right: cursor's right edge past screen
+  if curEnd > offX + screenW then
+    -- find smallest offset where cursor fits: cumW(off) + screenW >= curEnd
+    (List.range (cur + 1)).find? (fun i => cumW i + screenW >= curEnd) |>.getD cur
+  -- scroll left: cursor's left edge before visible area
+  else if cumW cur < offX then cur
+  else colOff
+
 -- | Render table to terminal, returns (ViewState, widths)
 -- Calls TblOps.render with NavState fields unpacked
 def render {nRows nCols : Nat} {t : Type} [TblOps t]
@@ -131,7 +153,7 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
   let visRows := min maxVisRows (h.toNat - reservedLines)
   let rowOff := adjOff nav.row.cur.val view.rowOff visRows
   let colOff := if inWidths.isEmpty then 0
-                else adjColOff nav.col.cur.val view.colOff inWidths nav.dispColIdxs w.toNat
+                else adjColOffFast nav.col.cur.val view.colOff inWidths nav.dispColIdxs w.toNat
   let moveDir := if nav.curColIdx > view.lastCol then 1 else if nav.curColIdx < view.lastCol then -1 else 0
   -- call TblOps.render with unpacked nav fields
   let outWidths ← TblOps.render nav.tbl #[] nav.colNames #[] inWidths nav.dispColIdxs

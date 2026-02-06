@@ -19,11 +19,11 @@ def parseFloat (s : String) : Option Float := do
   guard (!s.isEmpty)
   let (neg, s) := if s.startsWith "-" then (true, s.drop 1) else (false, s)
   let parts := s.toString.splitOn "e"  -- handle scientific notation
-  let (mant, exp) := (parts[0]!, (parts.getD 1 "0").toInt?.getD 0)
+  let (mant, exp) := (parts.head?.getD "", (parts.getD 1 "0").toInt?.getD 0)
   let dp := mant.splitOn "."  -- decimal point
-  let whole := (dp[0]!).toNat?.getD 0
+  let whole := (dp.getD 0 "").toNat?.getD 0
   let (frac, fracLen) := if dp.length > 1 then
-    let f := dp[1]!; (f.toNat?.getD 0, f.length)
+    let f := dp.getD 1 ""; (f.toNat?.getD 0, f.length)
   else (0, 0)
   let m := whole.toFloat + frac.toFloat / (10 ^ fracLen).toFloat
   let v := m * (10 : Float) ^ (Float.ofInt exp)
@@ -50,10 +50,13 @@ namespace KdbTable
 def parseUrl (s : String) : Option (String × UInt16 × String) := do
   guard (s.startsWith "kdb://")
   let p := (s.drop 6).toString.splitOn "/"  -- drop "kdb://", split on /
-  let hp := p[0]!.splitOn ":"      -- host:port
-  let tbl := p[1]?                 -- table name
-  guard (hp.length > 0 && tbl.isSome)
-  some (hp[0]!, (hp.getD 1 "5001").toNat!.toUInt16, tbl.get!)
+  guard (p.length > 1)
+  let hostPort := p.getD 0 ""
+  let tbl := p.getD 1 ""
+  let hp := hostPort.splitOn ":"    -- host:port
+  let host := hp.getD 0 ""
+  guard (!host.isEmpty && !tbl.isEmpty)
+  some (host, ((hp.getD 1 "5001").toNat?.getD 5001).toUInt16, tbl)
 
 #guard parseUrl "kdb://localhost:8888/nbbo" == some ("localhost", 8888, "nbbo")
 #guard parseUrl "kdb://host/tbl" == some ("host", 5001, "tbl")  -- default port
@@ -110,7 +113,7 @@ def queryCount (tblName : String) (part : Bool) : IO Nat := do
   let nr ← Kdb.nrows qr
   if nr.toNat > 0 then
     let s ← Kdb.cellStr qr 0 0
-    return s.toNat!
+    return s.toNat?.getD 0
   return 0
 
 -- | Execute q query and return new KdbTable
@@ -174,7 +177,7 @@ def extractTblName (tbl : String) : String :=
   let parts := tbl.splitOn " "
   match parts.findIdx? (· == "from") with
   | some i => parts.getD (i + 1) "t"
-  | none => parts.getLast!
+  | none => parts.getLastD "t"
 
 -- | Empty FreqResult (shared by early returns)
 private def emptyFreq : FreqResult :=
@@ -223,7 +226,7 @@ def filter (t : KdbTable) (expr : String) : IO (Option KdbTable) := do
     let nr ← Kdb.nrows cntQr
     if nr.toNat > 0 then
       let s ← Kdb.cellStr cntQr 0 0
-      pure s.toNat!
+      pure (s.toNat?.getD 0)
     else pure 0
   requery q total
 

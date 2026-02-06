@@ -6,6 +6,12 @@ import Tc.Data.Mem.Table
 namespace Tc
 namespace MemTable
 
+private def countDistinct [BEq α] (sorted : Array α) : Nat :=
+  (sorted.foldl (init := #[]) fun acc v =>
+    if h : acc.size > 0 then
+      if acc[acc.size - 1] != v then acc.push v else acc
+    else acc.push v).size
+
 -- | Scan column for stats: (type, cnt, dist, nullPct, min, max)
 def scanCol (col : Column) : String × Int64 × Int64 × Int64 × String × String :=
   match col with
@@ -14,8 +20,7 @@ def scanCol (col : Column) : String × Int64 × Int64 × Int64 × String × Stri
     let (minV, maxV) := if h : sorted.size > 0
       then (sorted[0], sorted[sorted.size - 1])
       else (0, 0)
-    let dist := (sorted.foldl (init := (#[] : Array Int64)) fun acc v =>
-      if acc.isEmpty || acc.back! != v then acc.push v else acc).size
+    let dist := countDistinct sorted
     ("i64", data.size.toInt64, dist.toInt64, 0, s!"{minV}", s!"{maxV}")
   | .floats data =>
     let vals := data.filter (!·.isNaN)
@@ -25,8 +30,7 @@ def scanCol (col : Column) : String × Int64 × Int64 × Int64 × String × Stri
       else (0.0, 0.0)
     let nullCnt := data.size - vals.size
     let nullPct := if data.size > 0 then nullCnt * 100 / data.size else 0
-    let dist := (sorted.foldl (init := (#[] : Array Float)) fun acc v =>
-      if acc.isEmpty || acc.back! != v then acc.push v else acc).size
+    let dist := countDistinct sorted
     ("f64", vals.size.toInt64, dist.toInt64, nullPct.toInt64, s!"{minV}", s!"{maxV}")
   | .strs data =>
     let vals := data.filter (!·.isEmpty)
@@ -36,8 +40,7 @@ def scanCol (col : Column) : String × Int64 × Int64 × Int64 × String × Stri
       else ("", "")
     let nullCnt := data.size - vals.size
     let nullPct := if data.size > 0 then nullCnt * 100 / data.size else 0
-    let dist := (sorted.foldl (init := (#[] : Array String)) fun acc v =>
-      if acc.isEmpty || acc.back! != v then acc.push v else acc).size
+    let dist := countDistinct sorted
     ("str", vals.size.toInt64, dist.toInt64, nullPct.toInt64, minV, maxV)
 
 -- | Query meta for MemTable

@@ -18,9 +18,9 @@ private def countWordStarts (s : String) : Nat := Id.run do
   let chars := s.toList.toArray
   let n := chars.size
   if n == 0 then return 0
-  let mut cnt := if chars[0]! != ' ' then 1 else 0
+  let mut cnt := if chars.getD 0 ' ' != ' ' then 1 else 0
   for i in [1:n] do
-    if chars[i]! != ' ' && chars[i-1]! == ' ' then cnt := cnt + 1
+    if chars.getD i ' ' != ' ' && chars.getD (i-1) ' ' == ' ' then cnt := cnt + 1
   return cnt
 
 -- | Split line into n fields (last field gets remainder with spaces)
@@ -44,7 +44,7 @@ private def findColStarts (hdr : String) : Array Nat := Id.run do
   let mut starts : Array Nat := #[0]
   let mut spaceCount := 0
   for i in [:n] do
-    if chars[i]! == ' ' then spaceCount := spaceCount + 1
+    if chars.getD i ' ' == ' ' then spaceCount := spaceCount + 1
     else
       if spaceCount >= 2 then starts := starts.push i
       spaceCount := 0
@@ -54,8 +54,8 @@ private def findColStarts (hdr : String) : Array Nat := Id.run do
 private def splitByStarts (s : String) (starts : Array Nat) : Array String := Id.run do
   let mut result : Array String := #[]
   for i in [:starts.size] do
-    let st := starts[i]!
-    let en := if i + 1 < starts.size then starts[i + 1]! else s.length
+    let st := starts.getD i 0
+    let en := if i + 1 < starts.size then starts.getD (i + 1) s.length else s.length
     result := result.push ((s.drop st).take (en - st)).trimAscii.toString
   return result
 

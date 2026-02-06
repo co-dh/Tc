@@ -24,7 +24,7 @@ private def stripBase (base path : String) : String :=
 private def fmtDate (s : String) : String :=
   let s := s.replace "+" " "  -- replace + with space
   let parts := s.splitOn "."  -- drop fractional seconds
-  (parts.head!.take 19).toString  -- YYYY-MM-DD HH:MM:SS
+  ((parts.head?.getD "").take 19).toString  -- YYYY-MM-DD HH:MM:SS
 
 -- | Format type: f→space, d→d, l→l
 private def fmtType (s : String) : String :=
@@ -50,7 +50,7 @@ def listDir (path : String) (depth : Nat) : IO String := do
       let typ := fmtType (parts.getD 0 "")
       let sz := parts.getD 1 ""
       let dt := fmtDate (parts.getD 2 "")
-      let path := stripBase p (parts.getLast!)
+      let path := stripBase p (parts.getLastD "")
       [path, sz, dt, typ] |> "\t".intercalate
     else line
   pure (hdr ++ "\n" ++ parentEntry ++ (if body.isEmpty then "" else "\n" ++ "\n".intercalate body))
@@ -234,7 +234,7 @@ def drawDialog (title : String) (lines : Array String) (footer : String) : IO Un
   Term.print x0.toUInt32 (y0 + 2).toUInt32 fg bg ("│" ++ "".pushn ' ' (boxW - 2) ++ "│")
   -- content lines
   for i in [:lines.size] do
-    let ln := (lines[i]!.take (boxW - 4)).toString
+    let ln := ((lines.getD i "").take (boxW - 4)).toString
     Term.print x0.toUInt32 (y0 + 3 + i).toUInt32 fg bg ("│ " ++ ln ++ "".pushn ' ' (boxW - 3 - ln.length) ++ "│")
   -- footer
   let fpad := (boxW - 2 - footer.length) / 2
