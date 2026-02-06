@@ -191,7 +191,7 @@ theorem exec_ver_inc_idempotent (nav : NavState nRows nCols t) (rowPg colPg : Na
   injection h1 with h1; injection h2 with h2
   subst h1 h2
   simp only [Fin.clamp, Fin.ext_iff, Fin.val_mk]
-  sorry  -- requires Int/Nat arithmetic lemmas for min/clamp
+  omega
 
 -- | Go to home (ver.dec) is idempotent: cursor = 0
 theorem exec_ver_dec_idempotent (nav : NavState nRows nCols t) (rowPg colPg : Nat)
@@ -203,7 +203,7 @@ theorem exec_ver_dec_idempotent (nav : NavState nRows nCols t) (rowPg colPg : Na
   injection h1 with h1; injection h2 with h2
   subst h1 h2
   simp only [Fin.clamp, Fin.ext_iff, Fin.val_mk]
-  sorry  -- requires Int/Nat arithmetic lemmas for min/clamp
+  omega
 
 end NavState
 
