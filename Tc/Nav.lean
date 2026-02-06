@@ -21,6 +21,10 @@ def clamp (f : Fin n) (d : Int) : Fin n :=
   let v := ((f.val : Int) + d).toNat
   let v' := min v (n - 1)
   ⟨v', Nat.lt_of_le_of_lt (Nat.min_le_right _ _) (Nat.sub_lt f.pos Nat.one_pos)⟩
+-- | Clamping with delta 0 is identity
+theorem clamp_zero_id (f : Fin n) : f.clamp 0 = f := by
+  simp only [Fin.clamp, Fin.ext_iff]; omega
+
 end Fin
 
 namespace Tc
@@ -188,6 +192,20 @@ theorem exec_col_inc_preserves (nav : NavState nRows nCols t) (rowPg colPg : Nat
     exec (.col .inc) nav rowPg colPg = some nav' →
     nav'.tbl = nav.tbl ∧ nav'.row = nav.row ∧ nav'.grp = nav.grp := by
   intro h; simp only [exec] at h; injection h with h; subst h; simp
+
+-- | Go to end (ver.inc) sets cursor to last row
+theorem exec_ver_inc_lands_end (nav : NavState nRows nCols t) (rowPg colPg : Nat)
+    (nav' : NavState nRows nCols t) :
+    exec (.ver .inc) nav rowPg colPg = some nav' → nav'.row.cur.val = nRows - 1 := by
+  intro h; simp only [exec] at h; injection h with h; subst h
+  simp only [Fin.clamp]; omega
+
+-- | Go to home (ver.dec) sets cursor to 0
+theorem exec_ver_dec_lands_zero (nav : NavState nRows nCols t) (rowPg colPg : Nat)
+    (nav' : NavState nRows nCols t) :
+    exec (.ver .dec) nav rowPg colPg = some nav' → nav'.row.cur.val = 0 := by
+  intro h; simp only [exec] at h; injection h with h; subst h
+  simp only [Fin.clamp]; omega
 
 -- | Go to end (ver.inc) is idempotent: cursor = nRows - 1
 theorem exec_ver_inc_idempotent (nav : NavState nRows nCols t) (rowPg colPg : Nat)

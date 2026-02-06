@@ -56,6 +56,12 @@ def s3Parent (path : String) : Option String :=
 def s3Join (pfx name : String) : String :=
   if pfx.endsWith "/" then s!"{pfx}{name}" else s!"{pfx}/{name}"
 
+-- | s3Parent returns none at bucket root
+theorem s3Parent_none_at_root : s3Parent "s3://bucket/" = none := by native_decide
+
+-- | s3Join with trailing slash doesn't double-slash
+theorem s3Join_trailing_slash : s3Join "s3://b/a/" "x" = "s3://b/a/x" := by native_decide
+
 -- | List S3 prefix via `aws s3 ls`, returns TSV matching listDir schema
 def listS3 (path : String) : IO String := do
   statusMsg s!"Loading {path} ..."

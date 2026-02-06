@@ -63,6 +63,11 @@ theorem renderRowCount_le_visRows (nRows r0 visRows : Nat) :
   simp only [renderRowCount]
   omega
 
+-- Theorem: render row count is 0 when offset past end
+theorem renderRowCount_zero_past_end (nRows r0 visRows : Nat) (h : r0 ≥ nRows) :
+    renderRowCount nRows r0 visRows = 0 := by
+  simp only [renderRowCount]; omega
+
 -- Column page size (fixed, since widths vary)
 def colPageSize : Nat := 5
 
@@ -79,6 +84,28 @@ def defaultRowPg : Nat := 20
 def cumWidthDisp (widths : Array Nat) (dispIdxs : Array Nat) (i : Nat) : Nat :=
   (Array.range i).foldl (init := 0) fun acc d =>
     acc + min (widths.getD (dispIdxs.getD d 0) 0) maxColWidth + 1
+
+-- Helper: cumWidthDisp increases by at least 1 per column
+private theorem cumWidthDisp_step (widths dispIdxs : Array Nat) (i : Nat) :
+    cumWidthDisp widths dispIdxs i ≤ cumWidthDisp widths dispIdxs (i + 1) := by
+  simp only [cumWidthDisp]
+  rw [Array.range_succ, Array.foldl_append]
+  rw [show (#[i] : Array Nat) = (#[]).push i from rfl, Array.foldl_push, Array.foldl_empty]
+  omega
+
+-- Theorem: cumulative width is monotonically increasing
+theorem cumWidthDisp_monotone (widths dispIdxs : Array Nat) (i j : Nat) (h : i ≤ j) :
+    cumWidthDisp widths dispIdxs i ≤ cumWidthDisp widths dispIdxs j := by
+  induction j with
+  | zero =>
+    have hi : i = 0 := by omega
+    subst hi; exact Nat.le_refl _
+  | succ k ih =>
+    if hik : i ≤ k then
+      exact Nat.le_trans (ih hik) (cumWidthDisp_step widths dispIdxs k)
+    else
+      have hi : i = k + 1 := by omega
+      subst hi; exact Nat.le_refl _
 
 -- Adjust column offset so cursor is visible
 -- cur = cursor display index, colOff = first visible display index
