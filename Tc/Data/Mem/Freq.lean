@@ -13,8 +13,9 @@ private def rowKey (cols : Array Column) (idxs : Array Nat) (row : Nat) : String
     let c := (cols.getD i default).get row
     acc ++ (if acc.isEmpty then "" else "\x00") ++ c.toRaw
 
--- | Query freq for MemTable: group by colIdxs, count, pct, bar
-def queryFreq (t : MemTable) (colIdxs : Array Nat) : IO FreqResult := pure $
+-- | Query freq for MemTable: group by column names, count, pct, bar
+def queryFreq (t : MemTable) (colNames : Array String) : IO FreqResult := pure $
+  let colIdxs := colNames.filterMap t.names.idxOf?
   let n := MemTable.nRows t
   -- count occurrences per key
   let counts := Id.run do

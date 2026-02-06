@@ -140,23 +140,26 @@ def test_distinct (t : KdbTable) : IO Unit := do
 -- === 6. Freq Tests ===
 
 def test_freq_single (t : KdbTable) : IO Unit := do
-  let (keys, cols, cnts, _, _) ← t.queryFreq #[0]
-  assert (keys.size > 0) "freq has keys"
-  assert (cols.size > 0) "freq has cols"
-  assert (cnts.size > 0) s!"freq has {cnts.size} groups"
+  let freq ← t.queryFreq #[t.colNames.getD 0 ""]
+  assert (freq.keyNames.size > 0) "freq has keys"
+  assert (freq.keyCols.size > 0) "freq has cols"
+  assert (freq.cntData.size > 0) s!"freq has {freq.cntData.size} groups"
 
 def test_freq_counts (t : KdbTable) : IO Unit := do
-  let (_, _, cnts, _, _) ← t.queryFreq #[0]
+  let freq ← t.queryFreq #[t.colNames.getD 0 ""]
+  let cnts := freq.cntData
   let total := cnts.foldl (· + ·) 0
   assert (total > 0) s!"freq counts sum = {total}"
 
 def test_freq_pcts (t : KdbTable) : IO Unit := do
-  let (_, _, _, pcts, _) ← t.queryFreq #[0]
+  let freq ← t.queryFreq #[t.colNames.getD 0 ""]
+  let pcts := freq.pctData
   let sum := pcts.foldl (· + ·) 0
   assert (sum > 99 && sum < 101) s!"freq pcts sum = {sum}"
 
 def test_freq_bars (t : KdbTable) : IO Unit := do
-  let (_, _, _, _, bars) ← t.queryFreq #[0]
+  let freq ← t.queryFreq #[t.colNames.getD 0 ""]
+  let bars := freq.barData
   assert (bars.size > 0) "freq has bars"
 
 -- === 7. Column Extraction Tests ===

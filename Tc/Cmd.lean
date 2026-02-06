@@ -126,7 +126,7 @@ inductive Effect where
   | fzfRow (colIdx : Nat) (colName : String)
   | fzfFilter (colIdx : Nat) (colName : String)
   | queryMeta
-  | queryFreq (cols : Array Nat) (colNames : Array String)
+  | queryFreq (colNames : Array String)
   | freqFilter (cols : Array String) (row : Nat)
   | queryFilter (expr : String)
   | querySort (colIdx : Nat) (grp : Array Nat) (asc : Bool)

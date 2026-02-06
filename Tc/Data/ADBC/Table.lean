@@ -115,11 +115,9 @@ end AdbcTable
 namespace AdbcTable
 
 -- | Freq: use SQL GROUP BY, query total distinct count
-def queryFreq (t : AdbcTable) (colIdxs : Array Nat) : IO FreqResult := do
-  let names := t.colNames
-  let keyNames := colIdxs.map fun i => names.getD i ""
-  if keyNames.isEmpty then return emptyFreq
-  let cols := keyNames.map Prql.quote |> (", ".intercalate ·.toList)
+def queryFreq (t : AdbcTable) (colNames : Array String) : IO FreqResult := do
+  if colNames.isEmpty then return emptyFreq
+  let cols := colNames.map Prql.quote |> (", ".intercalate ·.toList)
   -- query total distinct groups using cntdist function
   let cntPrql := s!"{t.query.render} | cntdist \{{cols}}"
   Log.write "prql-cntdist" cntPrql
@@ -134,25 +132,26 @@ def queryFreq (t : AdbcTable) (colIdxs : Array Nat) : IO FreqResult := do
   let some sql ← Prql.compile prql | return emptyFreq
   let qr ← Adbc.query sql
   let nr ← Adbc.nrows qr
-  -- build key (name, column) pairs from colIdxs, then split for hKeys proof
-  let keyPairs ← colIdxs.mapM fun i => do
+  -- build key columns using sequential indices (freq result: key cols 0..n-1, then Cnt)
+  let mut keyCols : Array Column := #[]
+  for idx in [:colNames.size] do
     let mut vals : Array String := #[]
     for r in [:nr.toNat] do
-      vals := vals.push (← Adbc.cellStr qr r.toUInt64 i.toUInt64)
-    pure (names.getD i "", Column.strs vals)
-  let keyNames := keyPairs.map Prod.fst
-  let keyCols  := keyPairs.map Prod.snd
+      vals := vals.push (← Adbc.cellStr qr r.toUInt64 idx.toUInt64)
+    keyCols := keyCols.push (Column.strs vals)
+  let cntColIdx := colNames.size  -- Cnt is the column after all key columns
   let mut cntData : Array Int64 := #[]
   for r in [:nr.toNat] do
-    let v ← Adbc.cellStr qr r.toUInt64 colIdxs.size.toUInt64
+    let v ← Adbc.cellStr qr r.toUInt64 cntColIdx.toUInt64
     cntData := cntData.push (v.toInt?.getD 0).toInt64
   let fs := freqStats cntData
   let pctData := fs.val.1
   let barData := fs.val.2
-  let hKeys : keyNames.size = keyCols.size := by simp [keyNames, keyCols, Array.size_map]
   let hData : cntData.size = pctData.size ∧ pctData.size = barData.size :=
     ⟨fs.property.1.symm, by rw [fs.property.1]; exact fs.property.2.symm⟩
-  pure ⟨keyNames, keyCols, cntData, pctData, barData, totalGroups, hKeys, hData⟩
+  if hKeys : colNames.size = keyCols.size then
+    pure ⟨colNames, keyCols, cntData, pctData, barData, totalGroups, hKeys, hData⟩
+  else return emptyFreq
 
 -- | Filter: requery with filter (queries new filtered count)
 def filter (t : AdbcTable) (expr : String) : IO (Option AdbcTable) := do

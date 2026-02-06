@@ -32,8 +32,7 @@ def push (s : ViewStack T) : IO (Option (ViewStack T)) := do
   let curCol := colIdxAt n.grp names n.col.cur.val
   let curName := names.getD curCol ""
   let colNames := if n.grp.contains curName then n.grp else n.grp.push curName
-  let colIdxs := colNames.filterMap names.idxOf?
-  let freq ← TblOps.queryFreq n.tbl colIdxs
+  let freq ← TblOps.queryFreq n.tbl colNames
   let tbl := toMemTable freq
   let some v := View.fromTbl (MemConvert.wrap tbl) s.cur.path 0 colNames | return none
   return some (s.push { v with vkind := .freqV colNames freq.totalGroups, disp := s!"freq {colNames.join ","}" })
@@ -55,9 +54,8 @@ def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   let curCol := colIdxAt n.grp names n.col.cur.val
   let curName := names.getD curCol ""
   let colNames := if n.grp.contains curName then n.grp else n.grp.push curName
-  let colIdxs := colNames.filterMap names.idxOf?
   match cmd with
-  | .freq .dup => some (s, .queryFreq colIdxs colNames)  -- push freq view (IO)
+  | .freq .dup => some (s, .queryFreq colNames)  -- push freq view (IO)
   | .freq .ent => match s.cur.vkind with  -- Enter and space F ~ both map to .freq .ent
     | .freqV cols _ => some (s, .freqFilter cols s.cur.nav.row.cur.val)  -- filter (IO)
     | _ => none

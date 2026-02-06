@@ -157,7 +157,7 @@ class TblOps (α : Type) where
   totalRows : α → Nat := nRows                                   -- actual rows (ADBC)
   isAdbc    : α → Bool := fun _ => false                         -- DB-backed?
   queryMeta : α → IO MetaTuple                                   -- column metadata
-  queryFreq : α → Array Nat → IO FreqResult                       -- frequency query
+  queryFreq : α → Array String → IO FreqResult                     -- frequency query
   filter    : α → String → IO (Option α)                         -- filter by expr
   distinct  : α → Nat → IO (Array String)                        -- distinct values
   findRow   : α → Nat → String → Nat → Bool → IO (Option Nat)    -- find row

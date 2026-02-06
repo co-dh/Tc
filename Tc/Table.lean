@@ -48,7 +48,7 @@ instance : TblOps Table where
   totalRows := lift MemTable.nRows (·.totalRows) (·.totalRows)
   isAdbc   := isAdbc
   queryMeta := liftM MemTable.queryMeta AdbcTable.queryMeta KdbTable.queryMeta
-  queryFreq t i := liftM (MemTable.queryFreq · i) (AdbcTable.queryFreq · i) (KdbTable.queryFreq · i) t
+  queryFreq t n := liftM (MemTable.queryFreq · n) (AdbcTable.queryFreq · n) (KdbTable.queryFreq · n) t
   filter t e := liftW (MemTable.filter · e) (AdbcTable.filter · e) (KdbTable.filter · e) t
   distinct t c := liftM (MemTable.distinct · c) (AdbcTable.distinct · c) (KdbTable.distinct · c) t
   findRow t c v s f := liftM (MemTable.findRow · c v s f) (AdbcTable.findRow · c v s f) (KdbTable.findRow · c v s f) t

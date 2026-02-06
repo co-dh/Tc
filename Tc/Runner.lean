@@ -31,9 +31,9 @@ def runStackEffect (s : ViewStack T) (eff : Effect) : IO (ViewStack T) := do
   | .findPrev => s.searchPrev
   -- query effects
   | .queryMeta => runOpt s (Meta.push s)
-  | .queryFreq cols colNames =>
+  | .queryFreq colNames =>
     let n := s.cur.nav
-    let freq ← TblOps.queryFreq n.tbl cols
+    let freq ← TblOps.queryFreq n.tbl colNames
     let tbl := Freq.toMemTable freq
     match View.fromTbl (MemConvert.wrap tbl : T) s.cur.path 0 colNames with
     | some v => pure (s.push { v with vkind := .freqV colNames freq.totalGroups, disp := s!"freq {colNames.join ","}" })

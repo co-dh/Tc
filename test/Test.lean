@@ -89,6 +89,23 @@ def test_freq_parquet : IO Unit := do
   let (tab, _) := footer output
   assert (contains tab "freq") "F on parquet shows freq"
 
+-- | Freq enter on parquet: pop to parent with filter applied
+def test_freq_enter_parquet : IO Unit := do
+  log "freq_enter_parquet"
+  let (tab, status) := footer (← runKeys "F<ret>" "data/sample.parquet")
+  assert (contains tab "sample.parquet") "F<ret> on parquet pops to parent"
+  assert (!contains tab "freq") "F<ret> on parquet exits freq view"
+  assert (contains status "r0/") "F<ret> on parquet shows filtered rows"
+
+-- | Freq on parquet shows correct key column values (not counts)
+def test_freq_parquet_key_values : IO Unit := do
+  log "freq_parquet_key_values"
+  let output ← runKeys "lF" "data/nyse10k.parquet"
+  let rows := dataLines output
+  let first := rows.headD ""
+  -- Exchange column should show exchange names (e.g. "NYS"), not numeric counts
+  assert (!first.startsWith " 5180" && !first.startsWith " 2592") "Freq key column shows names, not counts"
+
 -- | Freq view shows total distinct groups (not just displayed rows)
 -- 1.parquet has 128974 distinct Exchange+Symbol, but freq shows top 1000
 def test_freq_total_count : IO Unit := do
@@ -184,6 +201,8 @@ def main : IO Unit := do
 
   -- Parquet freq
   test_freq_parquet
+  test_freq_enter_parquet
+  test_freq_parquet_key_values
   test_freq_total_count
   test_freq_sort_preserves_total
   test_freq_sort_asc

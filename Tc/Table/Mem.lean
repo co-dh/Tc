@@ -28,7 +28,7 @@ def fromUrl (u : String) : IO (Option Table) := do Log.error s!"tc-core: URL not
 instance : TblOps Table where
   nRows t := MemTable.nRows t.un;  colNames t := t.un.names;  totalRows t := MemTable.nRows t.un
   isAdbc := isAdbc;  queryMeta t := MemTable.queryMeta t.un
-  queryFreq t i := MemTable.queryFreq t.un i
+  queryFreq t n := MemTable.queryFreq t.un n
   filter t e := MemTable.filter t.un e <&> (·.map wr)
   distinct t c := MemTable.distinct t.un c
   findRow t c v s f := MemTable.findRow t.un c v s f
