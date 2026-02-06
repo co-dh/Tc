@@ -167,6 +167,14 @@ theorem update_effect_none (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg col
   intro h; simp only [update, Option.map] at h
   split at h <;> simp_all
 
+-- | Row inc from 0 moves to row 1 (proves test_nav_down)
+theorem exec_row_inc_from_zero (nav : NavState nRows nCols t) (rowPg colPg : Nat)
+    (nav' : NavState nRows nCols t)
+    (h0 : nav.row.cur.val = 0) (hr : nRows > 1) :
+    exec (.row .inc) nav rowPg colPg = some nav' → nav'.row.cur.val = 1 := by
+  intro h; simp only [exec] at h; injection h with h; subst h
+  simp only [Fin.clamp, h0]; omega
+
 -- | Row navigation preserves table and columns
 theorem exec_row_inc_preserves (nav : NavState nRows nCols t) (rowPg colPg : Nat)
     (nav' : NavState nRows nCols t) :
