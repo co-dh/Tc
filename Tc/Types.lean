@@ -20,7 +20,25 @@ def Array.toggle [BEq α] (arr : Array α) (x : α) : Array α :=
 --   2. (arr.push x).filter (· != x) = arr when x ∉ arr
 theorem Array.toggle_toggle_not_mem [BEq α] [LawfulBEq α] (arr : Array α) (x : α)
     (h : !arr.contains x) : (arr.toggle x).toggle x = arr := by
-  sorry  -- deferred: requires Array.filter_push lemmas
+  unfold Array.toggle
+  have h' : ¬(arr.contains x = true) := by simp_all
+  rw [if_neg h']
+  have hc : (arr.push x).contains x = true := by simp [Array.contains_push]
+  rw [if_pos hc]
+  -- goal: (arr.push x).filter (fun y => !(y == x)) = arr
+  have hx : x ∉ arr := fun hm => h' (Array.contains_iff_mem.mpr hm)
+  -- go through List for easier reasoning
+  suffices hl : ((arr.push x).filter (fun y => !(y == x))).toList = arr.toList by
+    have := congrArg List.toArray hl
+    simp only [Array.toArray_toList] at this
+    exact this
+  rw [Array.toList_filter, Array.toList_push, List.filter_append, List.filter_cons]
+  simp only [beq_self_eq_true, Bool.not_true, Bool.false_eq_true, ite_false, List.filter_nil,
+    List.append_nil]
+  rw [List.filter_eq_self]
+  intro a ha
+  have ha' : a ∈ arr := Array.mem_def.mpr ha
+  exact bne_iff_ne.mpr (fun heq => hx (heq ▸ ha'))
 
 -- | Cell value (sum type)
 -- Uses Int64 to guarantee scalar representation (no MPZ boxing)

@@ -25,6 +25,12 @@ def storedWidth (rendered : Nat) (adj : Int) : Nat := Int.toNat (rendered - adj)
 theorem widthAdj_no_accumulate_example :
     applyWidthAdj (storedWidth (applyWidthAdj 10 1) 1) 1 = applyWidthAdj 10 1 := rfl
 
+-- | General roundtrip: store(apply(w, adj), adj) then re-apply gives same result
+theorem widthAdj_roundtrip (w : Nat) (adj : Int) :
+    applyWidthAdj (storedWidth (applyWidthAdj w adj) adj) adj = applyWidthAdj w adj := by
+  simp only [applyWidthAdj, storedWidth]
+  omega
+
 -- ViewState: scroll offsets (widths moved to View for type safety)
 structure ViewState where
   rowOff   : Nat := 0           -- first visible row

@@ -59,16 +59,33 @@ def Array.idxOf? [BEq α] (a : Array α) (x : α) : Option Nat :=
   a.findIdx? (· == x)
 
 -- Compute display order: group names first, then rest (by name lookup)
+-- Uses range partition: filter + complement = full range
 def dispOrder (group : Array String) (names : Array String) : Array Nat :=
-  let gIdxs := group.filterMap names.idxOf?
-  gIdxs ++ (Array.range names.size).filter (!gIdxs.contains ·)
+  let n := names.size
+  let isGrp := fun i => group.any fun g => names.idxOf? g == some i
+  (Array.range n).filter isGrp ++ (Array.range n).filter (!isGrp ·)
 
--- dispOrder preserves size: gIdxs ⊆ range n, filter keeps n - gIdxs.size elements
--- Proof: gIdxs indices from group ∪ complement from range = full range
--- Requires: Array.filterMap_subset, Array.filter_complement_partition
+-- Helper: list filter partition
+private theorem list_filter_partition (p : α → Bool) (l : List α) :
+    (l.filter p).length + (l.filter (!p ·)).length = l.length := by
+  induction l with
+  | nil => simp
+  | cons h t ih => simp only [List.filter_cons]; split <;> simp_all <;> omega
+
+-- dispOrder preserves size (partition of range n)
 theorem dispOrder_size (group : Array String) (names : Array String) :
     (dispOrder group names).size = names.size := by
-  sorry  -- deferred: requires Array partition lemmas
+  simp only [dispOrder]
+  rw [Array.size_append]
+  let isGrp := fun i => group.any fun g => names.idxOf? g == some i
+  have s1 : (Array.filter isGrp (Array.range names.size)).size =
+      (List.filter isGrp (List.range names.size)).length := by
+    rw [Array.size_eq_length_toList, Array.toList_filter, Array.toList_range]
+  have s2 : (Array.filter (!isGrp ·) (Array.range names.size)).size =
+      (List.filter (!isGrp ·) (List.range names.size)).length := by
+    rw [Array.size_eq_length_toList, Array.toList_filter, Array.toList_range]
+  rw [s1, s2]
+  exact list_filter_partition isGrp (List.range names.size) |>.symm ▸ by simp [List.length_range]
 
 -- Get column index at display position
 def colIdxAt (group : Array String) (names : Array String) (i : Nat) : Nat :=
