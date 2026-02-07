@@ -1,8 +1,8 @@
 /-
   S3: helpers for browsing S3 buckets via `aws s3` CLI
-  Separated for easy merge into other branches.
 -/
 import Tc.Render
+import Tc.Remote
 
 namespace Tc.S3
 
@@ -19,23 +19,10 @@ def extra : IO (Array String) := do
 -- | Check if path is an S3 URI
 def isS3 (path : String) : Bool := path.startsWith "s3://"
 
--- | Get parent S3 prefix: "s3://bucket/a/b/" → "s3://bucket/a/"
--- Returns none at bucket root ("s3://bucket/")
-def parent (path : String) : Option String :=
-  let p := if path.endsWith "/" then (path.take (path.length - 1)).toString else path
-  let parts := p.splitOn "/"
-  if parts.length ≤ 3 then none
-  else some ("/".intercalate (parts.dropLast) ++ "/")
+-- | S3 parent: none at bucket root ("s3://bucket/" = 3 parts)
+def parent (path : String) : Option String := Remote.parent path 3
 
--- | Join S3 prefix with child name
-def join (pfx name : String) : String :=
-  if pfx.endsWith "/" then s!"{pfx}{name}" else s!"{pfx}/{name}"
-
--- | s3Parent returns none at bucket root
 theorem parent_none_at_root : parent "s3://bucket/" = none := by native_decide
-
--- | s3Join with trailing slash doesn't double-slash
-theorem join_trailing_slash : join "s3://b/a/" "x" = "s3://b/a/x" := by native_decide
 
 -- | List S3 prefix via `aws s3 ls`, returns TSV matching listDir schema
 def list (path : String) : IO String := do
