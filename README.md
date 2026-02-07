@@ -1,23 +1,43 @@
-# tc - Tabular Viewer in Lean
+# tc - Terminal Table Viewer
 
-VisiData-style terminal CSV viewer with typeclass-based navigation.
+VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 
 ## Features
 
-- CSV and Parquet support (via ADBC/DuckDB)
-- Typed column storage (int64, float, string, bool, date)
-- Zero-copy rendering via C FFI
-- Column separators (│ between cols, ║ after keys)
-- Type indicators: `#` int, `%` float, `?` bool, `@` date
-- Complex types: lists `[n] v1; v2`, structs `{n} name=val`
-- Column grouping (key columns)
-- Row/column selection
-- Column deletion
+- CSV, Parquet, JSON support (via DuckDB)
+- S3 bucket browsing (`s3://bucket/path`)
+- Kdb+ table access (`kdb://host:port/table`)
+- Folder browser with recursive depth control
+- Frequency view (group by + count/pct/bar)
+- Column metadata view (type, count, distinct, null%, min, max)
+- Filter expressions (`col == val && col2 > 10`)
+- Fuzzy search via fzf (columns, rows, filter, commands)
 - Multi-column sorting (asc/desc)
+- Column grouping (key columns pinned left)
+- Row/column selection
+- Line/bar plot export (via gnuplot)
+- Theme support
+- Stdin pipe mode (`cat data.csv | tc`)
+- Zero-copy rendering via C FFI (termbox2)
 
-## Known Limitations
+## Build
 
-- Duration columns display as raw int64 (DuckDB ADBC limitation)
+```bash
+lake build tc
+```
+
+## Run
+
+```bash
+tc data.csv                   # CSV file
+tc data.parquet               # Parquet file
+tc .                          # Browse current directory
+tc s3://bucket/prefix         # Browse S3 bucket
+tc s3://bucket/path/file.csv  # Open S3 file directly
+tc s3://bucket/prefix +n      # S3 public bucket (no credentials)
+tc kdb://localhost:5001/trade  # Kdb+ table
+cat data.csv | tc             # Pipe mode (stdin)
+```
 
 ## Keybindings
 
@@ -29,77 +49,77 @@ VisiData-style terminal CSV viewer with typeclass-based navigation.
 | `k` / `↑`     | Up     |
 | `h` / `←`     | Left   |
 | `l` / `→`     | Right  |
-| `J` / `PgDn`  | Page ↓ |
-| `K` / `PgUp`  | Page ↑ |
-| `H`           | Page ← |
-| `L`           | Page → |
-| `gj` / `g↓`   | Bottom |
-| `gk` / `g↑`   | Top    |
-| `gh` / `g←`   | First  |
-| `gl` / `g→`   | Last   |
+| `J` / `PgDn`  | Page down |
+| `K` / `PgUp`  | Page up |
+| `H`           | Page left |
+| `L`           | Page right |
+| `gj`          | Bottom |
+| `gk`          | Top    |
+| `gh`          | First column |
+| `gl`          | Last column |
 
-### Selection
+### Views
 
-| Key | Action        |
-|-----|---------------|
-| `t` | Toggle column |
-| `T` | Toggle row    |
+| Key | Action |
+|-----|--------|
+| `F` | Frequency view (group by key + cursor column) |
+| `M` | Column metadata view |
+| `Enter` | Enter (open file in folder, filter from freq, set key from meta) |
+| `q` / `Esc` | Pop view (quit if last) |
+| `S` | Swap top two views |
+| `Q` | Quit |
 
-### Grouping
+### Selection and Grouping
 
-| Key | Action            |
-|-----|-------------------|
-| `!` | Toggle key column |
+| Key | Action |
+|-----|--------|
+| `t` | Toggle column selection |
+| `T` | Toggle row selection |
+| `!` | Toggle key column (group) |
 
-### Sorting
+### Sorting and Editing
 
-| Key | Action                     |
-|-----|----------------------------|
-| `[` | Sort ascending by column   |
-| `]` | Sort descending by column  |
-
-Sorts by key (group) columns if any, otherwise by current column.
-
-### Editing
-
-| Key | Action                          |
-|-----|---------------------------------|
+| Key | Action |
+|-----|--------|
+| `[` | Sort ascending |
+| `]` | Sort descending |
 | `d` | Delete column (+ selected cols) |
 
-### ViewStack
+### Search
 
-| Key         | Action              |
-|-------------|---------------------|
-| `q` / `Esc` | Pop view (quit if last) |
-| `S`         | Swap top two views  |
+| Key | Action |
+|-----|--------|
+| `/` | Search (fzf) |
+| `n` | Next match |
+| `N` | Previous match |
+| `\` | Filter expression |
+| `s` | Column jump (fzf) |
+| `Space` | Command palette (fzf) |
 
-## Build
+### Meta View (M)
 
-```bash
-lake build tc
-```
+| Key | Action |
+|-----|--------|
+| `0` | Select all-null columns |
+| `1` | Select single-value columns |
+| `Enter` | Set selected as key columns, pop to parent |
 
-## Run
+### Display
 
-```bash
-.lake/build/bin/tc data.csv                    # CSV file
-.lake/build/bin/tc data.parquet                # Parquet file (via DuckDB)
-.lake/build/bin/tc data.csv -c "r+ r+ c+ g~"   # play commands then interactive
-```
+| Key | Action |
+|-----|--------|
+| `.` / `,` | Increase/decrease decimal precision |
+| `>` / `<` | Widen/narrow columns |
+| `I` | Toggle info overlay |
 
-## Command String
+### Plot
 
-Commands follow Obj+Verb pattern (2 chars each, space-separated):
+| Key | Action |
+|-----|--------|
+| `p` | Line plot (cursor col vs first col) |
+| `P` | Bar plot |
 
-| Obj | Verb | Meaning |
-|-----|------|---------|
-| `r` | `+/-/>/<` | row next/prev/pgNext/pgPrev |
-| `r` | `0/$` | row home/end |
-| `c` | `+/-/>/<` | col next/prev/pgNext/pgPrev |
-| `c` | `0/$/d` | col home/end/del |
-| `R` | `~` | rowSel toggle |
-| `C` | `~/[/]` | colSel toggle/sortAsc/sortDesc |
-| `g` | `~` | grp toggle |
-| `s` | `+/-/~/c` | stk push/pop/swap/dup |
+## Known Limitations
 
-Example: `r+ r+ c+ C~ C[` = down, down, right, toggle col selection, sort ascending
+- Duration columns display as raw int64 (DuckDB ADBC limitation)
+- Kdb+ requires `c.so` (kdb C library) at link time

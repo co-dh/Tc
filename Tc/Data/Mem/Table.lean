@@ -110,8 +110,7 @@ theorem nRows_eq_col_size (t : MemTable) (h : t.cols.size > 0) :
 
 end MemTable
 
--- NOTE: ReadTable/ModifyTable/RenderTable instances for MemTable are defined in Table variants
--- (Table.lean, Table/Mem.lean, etc.) which import queryMeta/queryFreq from Mem/Meta.lean, Mem/Freq.lean
+-- NOTE: TblOps/ModifyTable instances for MemTable are in Mem/Ops.lean
 
 namespace MemTable
 

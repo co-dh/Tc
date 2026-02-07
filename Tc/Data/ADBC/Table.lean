@@ -152,8 +152,7 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
 
 end AdbcTable
 
--- NOTE: ReadTable/ModifyTable/RenderTable instances for AdbcTable are defined in Table variants
--- (Table.lean, Table/DuckDB.lean) which import queryMeta from ADBC/Meta.lean
+-- NOTE: TblOps/ModifyTable instances for AdbcTable are in ADBC/Ops.lean
 
 -- | Counter for unique temp table names
 initialize memTblCounter : IO.Ref Nat ← IO.mkRef 0
