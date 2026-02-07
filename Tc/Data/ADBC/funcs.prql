@@ -25,6 +25,44 @@ let meta = func c tbl <relation> -> (
   aggregate {cnt = s"COUNT({c})", dist = std.count_distinct c, total = std.count this, min = std.min c, max = std.max c}
 )
 
+# Downsample time series: last value per second, filter zeros/nulls
+let ds_time = func x y tbl <relation> -> (
+  from tbl
+  filter s"{y} IS NOT NULL AND CAST({y} AS VARCHAR) NOT IN ('0','0.0','0.000000')"
+  derive {_sec = s"SUBSTRING(CAST({x} AS VARCHAR), 1, 8)"}
+  group {_sec} (sort {s"{x} DESC"} | take 1)
+  sort {_sec}
+  select {_sec, y}
+)
+
+# Downsample time series with category
+let ds_time_cat = func x y c tbl <relation> -> (
+  from tbl
+  filter s"{y} IS NOT NULL AND CAST({y} AS VARCHAR) NOT IN ('0','0.0','0.000000')"
+  derive {_sec = s"SUBSTRING(CAST({x} AS VARCHAR), 1, 8)"}
+  group {_sec, c} (sort {s"{x} DESC"} | take 1)
+  sort {_sec}
+  select {_sec, y, c}
+)
+
+# Downsample by sampling every Nth row, filter zeros/nulls
+let ds_nth = func x y step tbl <relation> -> (
+  from tbl
+  filter s"{y} IS NOT NULL AND CAST({y} AS VARCHAR) NOT IN ('0','0.0','0.000000')"
+  derive {_rn = s"ROW_NUMBER() OVER ()"}
+  filter s"(_rn - 1) % {step} = 0"
+  select {x, y}
+)
+
+# Downsample by sampling with category
+let ds_nth_cat = func x y c step tbl <relation> -> (
+  from tbl
+  filter s"{y} IS NOT NULL AND CAST({y} AS VARCHAR) NOT IN ('0','0.0','0.000000')"
+  derive {_rn = s"ROW_NUMBER() OVER ()"}
+  filter s"(_rn - 1) % {step} = 0"
+  select {x, y, c}
+)
+
 let colstat = func c nm tp tbl <relation> -> (
   from tbl
   aggregate {

@@ -166,6 +166,26 @@ private def displayPng (png : String) : IO Unit := do
 private def err (s : ViewStack T) (msg : String) : IO (Option (ViewStack T)) := do
   Log.write "plot" msg; pure (some s)
 
+-- | Check if column type name is numeric
+private def isNumericType (typ : String) : Bool :=
+  typ == "int" || typ == "float" || typ == "decimal"
+
+-- | Run gnuplot and display result
+private def plotAndShow (s : ViewStack T) (dataPath xName yName : String)
+    (catVals : Option (Array String)) (bar xIsStr xIsTime : Bool)
+    : IO (Option (ViewStack T)) := do
+  let script := gnuplotScript dataPath xName yName catVals bar xIsStr xIsTime
+  IO.FS.writeFile "/tmp/tc-plot.gp" script
+  Log.write "plot" "running gnuplot..."
+  let gp ← IO.Process.output { cmd := "gnuplot", args := #["/tmp/tc-plot.gp"] }
+  Log.write "plot" s!"gnuplot exit={gp.exitCode}"
+  if gp.exitCode != 0 then return ← err s s!"gnuplot failed: {gp.stderr.trimAscii.toString}"
+  Log.write "plot" "displaying..."
+  Term.shutdown
+  displayPng "/tmp/tc-plot.png"
+  let _ ← Term.init
+  pure (some s)
+
 -- | Run plot: export data, generate gnuplot script, render, display
 def run (s : ViewStack T) (bar : Bool) : IO (Option (ViewStack T)) := do
   Log.write "plot" "run entered"
@@ -184,11 +204,20 @@ def run (s : ViewStack T) (bar : Bool) : IO (Option (ViewStack T)) := do
   let yName := names.getD yIdx ""
   -- skip if y is a group column (nothing to plot)
   if n.grp.contains yName then return ← err s "move cursor to a non-group column"
-  -- fetch columns via TblOps.getCols
+  let nr := TblOps.nRows n.tbl
+  let xIsTime := isTimeType (TblOps.colType n.tbl xIdx)
+  -- try DB-side export (downsample in SQL, COPY to file)
+  let step := if nr > maxPoints then nr / maxPoints else 1
+  let catName? := if catIdx.isSome then some catName else none
+  if let some cats := ← TblOps.plotExport n.tbl xName yName catName? xIsTime step then
+    Log.write "plot" s!"DB export done, cats={cats.size}"
+    let xIsStr := !isNumericType (TblOps.colType n.tbl xIdx)
+    let catVals := if cats.isEmpty then none else some cats
+    return ← plotAndShow s "/tmp/tc-plot.dat" xName yName catVals bar xIsStr xIsTime
+  -- fallback: fetch columns and export in Lean
   let colIdxs := match catIdx with
     | some ci => #[xIdx, yIdx, ci]
     | none    => #[xIdx, yIdx]
-  let nr := TblOps.nRows n.tbl
   Log.write "plot" s!"getCols idxs={colIdxs} nr={nr} xIdx={xIdx} yIdx={yIdx}"
   let cols ← TblOps.getCols n.tbl colIdxs 0 nr
   Log.write "plot" s!"getCols returned {cols.size} columns"
@@ -196,24 +225,10 @@ def run (s : ViewStack T) (bar : Bool) : IO (Option (ViewStack T)) := do
   -- y-axis must be numeric
   if !isNumericCol (cols.getD 1 default) then return ← err s s!"y-axis '{yName}' is not numeric"
   let xIsStr := !isNumericCol (cols.getD 0 default)
-  let xIsTime := isTimeType (TblOps.colType n.tbl xIdx)
-  -- export and plot
   Log.write "plot" "exporting data..."
   let (dataPath, catVals) ← exportData cols catIdx.isSome xIsTime
   Log.write "plot" s!"exported to {dataPath} xIsTime={xIsTime}"
-  let script := gnuplotScript dataPath xName yName catVals bar xIsStr xIsTime
-  let scriptPath := "/tmp/tc-plot.gp"
-  IO.FS.writeFile scriptPath script
-  Log.write "plot" "running gnuplot..."
-  let gp ← IO.Process.output { cmd := "gnuplot", args := #[scriptPath] }
-  Log.write "plot" s!"gnuplot exit={gp.exitCode}"
-  if gp.exitCode != 0 then return ← err s s!"gnuplot failed: {gp.stderr.trimAscii.toString}"
-  -- display
-  Log.write "plot" "displaying..."
-  Term.shutdown
-  displayPng "/tmp/tc-plot.png"
-  let _ ← Term.init
-  pure (some s)
+  plotAndShow s dataPath xName yName catVals bar xIsStr xIsTime
 
 -- | Pure update: map Cmd to Effect
 def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=

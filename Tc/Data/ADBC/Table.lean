@@ -111,6 +111,39 @@ def delCols (t : AdbcTable) (delIdxs : Array Nat) : IO AdbcTable := do
   match ← requery (t.query.pipe (.sel (keepCols t.nCols delIdxs t.colNames))) t.totalRows with
   | some t' => pure t' | none => pure t
 
+-- | Export plot data to /tmp/tc-plot.dat via DuckDB COPY (downsample in SQL)
+def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String) (xIsTime : Bool) (step : Nat)
+    : IO (Option (Array String)) := do
+  let q := Prql.quote
+  let prql := match xIsTime, catName? with
+    | true,  some cn => s!"{t.query.render} | ds_time_cat {q xName} {q yName} {q cn}"
+    | true,  none    => s!"{t.query.render} | ds_time {q xName} {q yName}"
+    | false, some cn => s!"{t.query.render} | ds_nth_cat {q xName} {q yName} {q cn} {step}"
+    | false, none    => s!"{t.query.render} | ds_nth {q xName} {q yName} {step}"
+  Log.write "plot-prql" prql
+  let some sql ← Prql.compile prql | return none
+  let sql' := sql.trimAscii.toString
+  let sql' := if sql'.endsWith ";" then (sql'.take (sql'.length - 1)).toString else sql'
+  let copySql := s!"COPY ({sql'}) TO '/tmp/tc-plot.dat' (FORMAT CSV, DELIMITER '\\t', HEADER false)"
+  Log.write "plot-sql" copySql
+  try
+    let _ ← Adbc.query copySql
+  catch e =>
+    Log.write "plot" s!"COPY failed: {e.toString}"
+    return none
+  -- get distinct categories if needed
+  match catName? with
+  | some cn =>
+    let catPrql := s!"{t.query.render} | group \{{q cn}} (take 1) | select \{{q cn}}"
+    let some catSql ← Prql.compile catPrql | return some #[]
+    let catQr ← Adbc.query catSql
+    let nr ← Adbc.nrows catQr
+    let mut cats : Array String := #[]
+    for i in [:nr.toNat] do
+      cats := cats.push (← Adbc.cellStr catQr i.toUInt64 0)
+    return some cats
+  | none => return some #[]
+
 end AdbcTable
 
 -- NOTE: ReadTable/ModifyTable/RenderTable instances for AdbcTable are defined in Table variants
