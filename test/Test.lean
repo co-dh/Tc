@@ -351,6 +351,10 @@ section HFTests
 -- | parsePath rejects too-short paths
 #guard HF.parsePath "hf://datasets/user" == none
 
+-- | parsePath rejects non-datasets paths
+#guard HF.parsePath "hf://finance.yahoo.com/quote/AAPL/profile" == none
+#guard HF.parsePath "hf://models/user/model" == none
+
 -- | parent strips last component
 #guard HF.parent "hf://datasets/user/ds/a/b/" == some "hf://datasets/user/ds/a/"
 #guard HF.parent "hf://datasets/user/ds/a/" == some "hf://datasets/user/ds/"

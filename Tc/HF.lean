@@ -12,12 +12,14 @@ def isHF (path : String) : Bool := path.startsWith "hf://"
 -- | Parse HF path into (user/dataset, subpath)
 -- "hf://datasets/user/dataset/sub/path" → ("user/dataset", "sub/path")
 -- "hf://datasets/user/dataset" → ("user/dataset", "")
+-- First component must be "datasets" (DuckDB convention)
 def parsePath (path : String) : Option (String × String) :=
   let p := if path.endsWith "/" then (path.take (path.length - 1)).toString else path
   let rest := (p.drop 5).toString  -- drop "hf://"
   -- expect "datasets/user/dataset[/subpath]"
   let parts := rest.splitOn "/"
   if parts.length < 3 then none  -- need at least "datasets/user/dataset"
+  else if parts.getD 0 "" != "datasets" then none  -- must start with "datasets"
   else
     let user := parts.getD 1 ""
     let dataset := parts.getD 2 ""
@@ -56,13 +58,20 @@ def apiUrl (path : String) : Option String := do
 -- Uses curl + jq to parse JSON response into TSV format
 def list (path : String) : IO String := do
   statusMsg s!"Loading {path} ..."
-  let some url := apiUrl path | return ""
-  -- curl the API, pipe through jq to extract TSV
-  let jqExpr := ".[] | [.path, (.size // 0 | tostring), \"\", (if .type == \"directory\" then \"d\" else \" \" end)] | @tsv"
-  let out ← IO.Process.output {
-    cmd := "sh"
-    args := #["-c", s!"curl -sf '{url}' | jq -r '{jqExpr}'"]
-  }
+  let some url := apiUrl path | do
+    IO.eprintln "Invalid HF path. Use: hf://datasets/{user}/{dataset}"
+    return ""
+  let curlOut ← IO.Process.output { cmd := "curl", args := #["-sf", url] }
+  if curlOut.exitCode != 0 then
+    IO.eprintln s!"HF API request failed for: {url}"
+    return ""
+  -- write JSON to temp file, then run jq on it (avoids shell quoting issues)
+  let tmp := "/tmp/tc-hf-api.json"
+  IO.FS.writeFile tmp curlOut.stdout
+  -- jq: map type via object lookup to "d" (directory) or " " (file)
+  let jqFilter := ".[] | [.path, (.size|tostring), \"-\", ({\"directory\":\"d\",\"file\":\" \"}[.type] // .type)] | @tsv"
+  let out ← IO.Process.output { cmd := "jq", args := #["-r", jqFilter, tmp] }
+  try IO.FS.removeFile tmp catch _ => pure ()
   if out.exitCode != 0 then return ""
   let lines := out.stdout.splitOn "\n" |>.filter (·.length > 0)
   -- strip common prefix: HF API returns full paths like "data/train.parquet"

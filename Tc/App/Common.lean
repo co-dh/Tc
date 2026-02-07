@@ -102,7 +102,7 @@ def appMain (toText : Table → IO String) (init : IO Bool) (shutdown : IO Unit)
     else if path.startsWith "hf://" then
       match ← Folder.mkView path 1 with
       | some v => let _ ← runApp v pipeMode testMode theme keys
-      | none => IO.eprintln s!"Cannot browse HF dataset: {path}"
+      | none => IO.eprintln s!"Cannot browse HF dataset: {path}\nUsage: tc hf://datasets/<user>/<dataset>"
     else if path.startsWith "kdb://" then
       match ← TblOps.fromUrl (α := Table) path with
       | some tbl => match View.fromTbl tbl path with
