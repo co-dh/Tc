@@ -26,28 +26,16 @@ lean_lib Tc where
              `Tc.Data.ADBC.FFI, `Tc.Data.ADBC.Prql,
              `Tc.Data.ADBC.Table, `Tc.Data.ADBC.Meta, `Tc.Data.ADBC.Ops,
              `Tc.Data.Kdb.FFI, `Tc.Data.Kdb.Q, `Tc.Data.Kdb.Table, `Tc.Data.Kdb.Ops,
-             `Tc.Table.Mem, `Tc.App.Core, `Tc.Validity]
+             `Tc.Validity]
 
 -- | Full build: all backends (MemTable + ADBC + Kdb)
 @[default_target]
 lean_exe tc where
   root := `Tc.App
 
--- | Core build: MemTable only (CSV, no parquet/kdb)
-lean_exe «tc-core» where
-  root := `Tc.App.Core
-
--- | Test library (shared utilities and core tests)
-lean_lib TestLib where
-  roots := #[`test.TestLib, `test.CoreTest, `test.CoreTestMain]
-
--- | Test executable (spawns tc subprocess, parquet tests)
+-- | Test executable (spawns tc subprocess)
 lean_exe test where
   root := `test.Test
-
--- | Core test executable (CSV-only tests, spawns tc-core)
-lean_exe «core-test» where
-  root := `test.CoreTestMain
 
 -- | Kdb backend tests (requires localhost:8888/nbbo)
 lean_exe «kdb-test» where
