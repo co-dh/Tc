@@ -28,6 +28,7 @@ private def maxPoints : Nat := 2000
 private def isTimeType (typ : String) : Bool :=
   typ == "time" || typ == "timestamp" || typ == "date"
 
+
 -- | Check if y-value is zero (filter out no-bid/no-ask conditions)
 private def isZeroY (yv : String) : Bool :=
   yv == "0" || yv == "0.0" || yv == "0.000000"
@@ -148,7 +149,7 @@ private def maxLabels : Nat := 40
 private def thinXtic (nPoints : Nat) : String :=
   let stride := if nPoints > maxLabels then nPoints / maxLabels else 1
   if stride <= 1 then "xtic(1)"
-  else s!"(int($0) % {stride} == 0 ? stringcolumn(1) : \"\")"
+  else s!"xtic(int($0) % {stride} == 0 ? stringcolumn(1) : \"\")"
 
 -- | Generate gnuplot script (ggplot-minimal style)
 -- timefmt/xfmt: gnuplot time format strings (from Interval)
@@ -259,6 +260,7 @@ def run (s : ViewStack T) (bar : Bool) : IO (Option (ViewStack T)) := do
   if n.grp.contains yName then return ← err s "move cursor to a non-group column"
   let nr := TblOps.nRows n.tbl
   let xType := TblOps.colType n.tbl xIdx
+  Log.write "plot" s!"xType={xType} xIdx={xIdx} xName={xName}"
   let xIsTime := isTimeType xType
   let xIsStr := !isNumericType xType
   let baseStep := if nr > maxPoints then nr / maxPoints else 1

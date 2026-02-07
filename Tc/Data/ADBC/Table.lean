@@ -130,15 +130,28 @@ def fetchMore (t : AdbcTable) : IO (Option AdbcTable) := do
 def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String) (xIsTime : Bool) (step : Nat) (truncLen : Nat)
     : IO (Option (Array String)) := do
   let q := Prql.quote
-  let prql := match xIsTime, catName? with
-    | true,  some cn => s!"{t.query.render} | ds_trunc_cat {q xName} {q yName} {q cn} {truncLen}"
-    | true,  none    => s!"{t.query.render} | ds_trunc {q xName} {q yName} {truncLen}"
-    | false, some cn => s!"{t.query.render} | ds_nth_cat {q xName} {q yName} {q cn} {step}"
-    | false, none    => s!"{t.query.render} | ds_nth {q xName} {q yName} {step}"
-  Log.write "plot-prql" prql
-  let some sql ← Prql.compile prql | return none
-  let sql' := sql.trimAscii.toString
-  let sql' := if sql'.endsWith ";" then (sql'.take (sql'.length - 1)).toString else sql'
+  -- time-like: use PRQL ds_trunc; non-time: hand-write SQL (PRQL miscompiles ROW_NUMBER + select)
+  let sql' ← do
+    if xIsTime then
+      let prql := match catName? with
+        | some cn => s!"{t.query.render} | ds_trunc_cat {q xName} {q yName} {q cn} {truncLen}"
+        | none    => s!"{t.query.render} | ds_trunc {q xName} {q yName} {truncLen}"
+      Log.write "plot-prql" prql
+      let some sql ← Prql.compile prql | return none
+      let s := sql.trimAscii.toString
+      pure (if s.endsWith ";" then (s.take (s.length - 1)).toString else s)
+    else
+      -- compile base query to SQL, then wrap with ROW_NUMBER sampling
+      let basePrql := t.query.render
+      Log.write "plot-prql" s!"{basePrql} (non-time, step={step})"
+      let some baseSql ← Prql.compile basePrql | return none
+      let bs := baseSql.trimAscii.toString
+      let bs := if bs.endsWith ";" then (bs.take (bs.length - 1)).toString else bs
+      let cols := match catName? with
+        | some cn => s!"\"{xName}\", \"{yName}\", \"{cn}\""
+        | none    => s!"\"{xName}\", \"{yName}\""
+      let yFilt := s!"\"{yName}\" IS NOT NULL AND CAST(\"{yName}\" AS VARCHAR) NOT IN ('0','0.0','0.000000')"
+      pure s!"SELECT {cols} FROM (SELECT *, ROW_NUMBER() OVER () AS _rn FROM ({bs}) WHERE {yFilt}) WHERE (_rn - 1) % {step} = 0"
   let copySql := s!"COPY ({sql'}) TO '/tmp/tc-plot.dat' (FORMAT CSV, DELIMITER '\\t', HEADER false)"
   Log.write "plot-sql" copySql
   try
