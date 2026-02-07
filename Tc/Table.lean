@@ -56,6 +56,8 @@ instance : TblOps Table where
     (TblOps.render · c n f w d g o r0 r1 cr cc m s rs st pa wa)
     (TblOps.render · c n f w d g o r0 r1 cr cc m s rs st pa wa)
     (TblOps.render · c n f w d g o r0 r1 cr cc m s rs st pa wa) t
+  getCols t idxs r0 r1 := liftM (TblOps.getCols · idxs r0 r1) (TblOps.getCols · idxs r0 r1) (TblOps.getCols · idxs r0 r1) t
+  colType := lift (TblOps.colType ·) (TblOps.colType ·) (TblOps.colType ·)
   fromFile := fromFile
   fromUrl  := fromUrl
 

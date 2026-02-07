@@ -7,6 +7,7 @@ import Tc.Folder
 import Tc.Meta
 import Tc.Freq
 import Tc.Theme
+import Tc.Plot
 
 namespace Tc.Runner
 
@@ -71,6 +72,9 @@ def runStackEffect (s : ViewStack T) (eff : Effect) : IO (ViewStack T) := do
   | .folderEnter => runOpt s (Folder.enter s)
   | .folderDel => runOpt s (Folder.del s)
   | .folderDepth delta => runOpt s (Folder.setDepth s delta)
+  -- plot effects
+  | .plotLine => runOpt s (Plot.run s false)
+  | .plotBar  => runOpt s (Plot.run s true)
   -- other effects handled at AppState level
   | .quit | .fzfCmd | .themeLoad _ => pure s
 

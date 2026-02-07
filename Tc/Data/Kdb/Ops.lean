@@ -17,6 +17,11 @@ instance : TblOps KdbTable where
   filter    := KdbTable.filter
   distinct  := KdbTable.distinct
   findRow   := KdbTable.findRow
+  getCols t idxs r0 r1 := idxs.mapM fun i => t.getCol i r0 r1
+  colType t col := match t.colTypes.getD col '?' with
+    | 'j' | 'i' | 'h' => "int" | 'f' | 'e' => "float"
+    | 't' => "time" | 'p' | 'z' => "timestamp" | 'd' => "date"
+    | _ => "str"
   render t _ _ _ inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj := do
     let r1' := min r1 (r0 + maxVisRows)
     let cols ← (Array.range t.nCols).mapM fun c => t.getCol c r0 r1'

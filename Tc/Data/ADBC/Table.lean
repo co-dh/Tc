@@ -18,6 +18,7 @@ structure AdbcTable where
   qr        : Adbc.QueryResult  -- arrow data (opaque, C memory)
   colNames  : Array String      -- cached column names
   colFmts   : Array Char        -- cached format chars per column
+  colTypes  : Array String      -- cached type names (via nanoarrow)
   nRows     : Nat               -- rows in current result (≤ prqlLimit)
   nCols     : Nat
   query     : Prql.Query        -- PRQL query (base + ops)
@@ -37,23 +38,26 @@ def ofQueryResult (qr : Adbc.QueryResult) (query : Prql.Query := default) (total
   let nr ← Adbc.nrows qr
   let mut names : Array String := #[]
   let mut fmts : Array Char := #[]
+  let mut types : Array String := #[]
   for i in [:nc.toNat] do
     let n ← Adbc.colName qr i.toUInt64
     names := names.push n
     let fmt ← Adbc.colFmt qr i.toUInt64
     fmts := fmts.push (if h : fmt.length > 0 then fmt.toList[0] else '?')
-  pure ⟨qr, names, fmts, nr.toNat, nc.toNat, query, total⟩
+    let typ ← Adbc.colType qr i.toUInt64
+    types := types.push typ
+  pure ⟨qr, names, fmts, types, nr.toNat, nc.toNat, query, total⟩
 
 -- | Extract column slice [r0, r1) as typed Column
 def getCol (t : AdbcTable) (col r0 r1 : Nat) : IO Column := do
-  let fmt := t.colFmts.getD col '?'
-  match fmt with
-  | 'l' | 'i' | 's' | 'c' | 'L' | 'I' | 'S' | 'C' =>
+  let typ := t.colTypes.getD col "?"
+  match typ with
+  | "int" =>
     let mut arr : Array Int64 := #[]
     for r in [r0:r1] do
       arr := arr.push (← Adbc.cellInt t.qr r.toUInt64 col.toUInt64).toInt64
     pure (.ints arr)
-  | 'g' | 'f' | 'd' =>
+  | "float" | "decimal" =>
     let mut arr : Array Float := #[]
     for r in [r0:r1] do
       arr := arr.push (← Adbc.cellFloat t.qr r.toUInt64 col.toUInt64)
@@ -162,7 +166,7 @@ def filter (t : AdbcTable) (expr : String) : IO (Option AdbcTable) := do
 -- | Distinct: use SQL DISTINCT
 def distinct (t : AdbcTable) (col : Nat) : IO (Array String) := do
   let colName := t.colNames.getD col ""
-  let prql := s!"{t.query.render} | group \{{Prql.quote colName}} (take 1) | select \{{Prql.quote colName}} | take 100"
+  let prql := s!"{t.query.render} | group \{{Prql.quote colName}} (take 1) | select \{{Prql.quote colName}}"
   Log.write "prql" prql
   let some sql ← Prql.compile prql | return #[]
   let qr ← Adbc.query sql

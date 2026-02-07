@@ -9,12 +9,15 @@ libtermbox2.a: termbox2.c termbox2.h
 	gcc -std=c11 -g -fPIC -c termbox2.c -o termbox2.o
 	ar rcs $@ termbox2.o
 
-# ADBC: core + DuckDB driver (replaces monolithic adbc_shim.c)
-libadbcshim.a: adbc_core.o duckdb_driver.o
+# ADBC: core + DuckDB driver + nanoarrow
+libadbcshim.a: adbc_core.o duckdb_driver.o nanoarrow.o
 	ar rcs $@ $^
 
-adbc_core.o: adbc_core.c
+adbc_core.o: adbc_core.c nanoarrow.h
 	$(CC) $(CFLAGS) -c $< -o $@
+
+nanoarrow.o: nanoarrow.c nanoarrow.h
+	$(CC) -std=c11 $(CFLAGS) -c $< -o $@
 
 duckdb_driver.o: duckdb_driver.c
 	$(CC) $(CFLAGS) -c $< -o $@

@@ -166,6 +166,10 @@ class TblOps (α : Type) where
             → (inWidths dispIdxs : Array Nat) → (nGrp colOff r0 r1 curRow curCol : Nat)
             → (moveDir : Int) → (selColIdxs rowSels : Array Nat)
             → (styles : Array UInt32) → (precAdj widthAdj : Int) → IO (Array Nat)
+  -- extract columns [r0, r1) by index (for plot/export)
+  getCols   : α → Array Nat → Nat → Nat → IO (Array Column) := fun _ _ _ _ => pure #[]
+  -- column type name (e.g. "time", "int", "float", "str")
+  colType   : α → Nat → String := fun _ _ => "?"
   -- loading (file or URL)
   fromFile  : String → IO (Option α) := fun _ => pure none
   fromUrl   : String → IO (Option α) := fun _ => pure none

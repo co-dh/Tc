@@ -107,7 +107,7 @@ The architecture separates pure state logic from IO effects:
 | del  | d    | delete                        |
 | dup  | c    | copy, push, create            |
 
-### Cmd Objects (17 objects)
+### Cmd Objects (18 objects)
 
 | Obj    | Char | Purpose                          |
 |--------|------|----------------------------------|
@@ -128,6 +128,7 @@ The architecture separates pure state logic from IO effects:
 | metaV  | M    | meta view                        |
 | freq   | F    | frequency view                   |
 | fld    | D    | folder view                      |
+| plot   | P    | gnuplot chart (line/bar)         |
 
 ### Isomorphism
 
@@ -166,6 +167,7 @@ Char │ Obj       │  ,  │  .  │     │     │     │ Description
  M   │ metaV     │  0  │  1  │ ⏎   │     │  M  │ 0=selNull, 1=selSingle, M=push
  F   │ freq      │     │     │ ⏎   │     │  F  │ ⏎=filter by row, F=push
  D   │ fld       │     │     │ ⏎   │  d  │  D  │ ⏎=enter, d=trash, D=push
+ P   │ plot      │     │  .  │     │     │     │ .=line chart (space P ,=bar)
 ```
 
 **Command mode**: Press `space` to open fzf object picker, then fzf verb picker.
@@ -185,7 +187,7 @@ inductive Effect where
   | fzfFilter (colIdx : Nat) (colName : String)       -- row filter: \
   -- query (database/table ops)
   | queryMeta                                         -- push meta view: M
-  | queryFreq (cols : Array Nat) (colNames : Array String)  -- push freq: F
+  | queryFreq (colNames : Array String)                     -- push freq: F
   | freqFilter (cols : Array String) (row : Nat)      -- filter from freq
   | queryFilter (expr : String)                       -- apply filter expr
   | querySort (colIdx : Nat) (grp : Array Nat) (asc : Bool)  -- sort: [/]
@@ -200,6 +202,9 @@ inductive Effect where
   | findPrev                                          -- search prev: N
   -- theme
   | themeLoad (delta : Int)                           -- cycle theme
+  -- plot
+  | plotLine                                          -- gnuplot line chart: .
+  | plotBar                                           -- gnuplot bar chart: space P ,
 ```
 
 **Functor pattern**: `update` maps `Cmd → Effect`:
@@ -308,7 +313,7 @@ LAYER 3: VIEW
                               ↓
 LAYER 4: FEATURES
 ┌─────────────────────────────────────────────────────────────────┐
-│ Meta   Freq   Filter   Folder   Theme   Fzf   UI/Info          │
+│ Meta   Freq   Filter   Folder   Theme   Fzf   Plot   UI/Info    │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 LAYER 5: TABLE ABSTRACTION

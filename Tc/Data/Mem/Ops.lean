@@ -17,6 +17,11 @@ instance : TblOps MemTable where
   filter    := MemTable.filter
   distinct  := MemTable.distinct
   findRow   := MemTable.findRow
+  getCols t idxs _ _ := pure <| idxs.map fun i => t.cols.getD i default
+  colType t col := match t.cols.getD col default with
+    | .ints _   => "int"
+    | .floats _ => "float"
+    | .strs _   => "str"
   render t cols names _ inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj :=
     let c := if cols.isEmpty then t.cols else cols
     let n := if names.isEmpty then t.names else names

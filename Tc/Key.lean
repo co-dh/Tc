@@ -49,7 +49,8 @@ namespace KeyMap
     ('N', .grp .dec),        -- search prev: repeat last search backward
     ('\\', .rowSel .dec),    -- row filter: fzf PRQL filter (backslash)
     ('q', .stk .dec), ('S', .stk .ent),  -- stack: q=pop, S=swap
-    ('I', .info .ent)  -- info: toggle overlay
+    ('I', .info .ent),  -- info: toggle overlay
+    ('.', .plot .inc)   -- plot: line chart
   ]
 end KeyMap
 
@@ -90,7 +91,8 @@ def objMenu : Array (Char × String × (Verb → Cmd)) := #[
   -- views
   ('M', "metaV  : meta view",            .metaV),
   ('F', "freq   : frequency view",       .freq),
-  ('D', "fld    : folder view",          .fld)
+  ('D', "fld    : folder view",          .fld),
+  ('P', "plot   : gnuplot chart",       .plot)
 ]
 
 -- | Verb menu for command mode, context-sensitive per object and view kind
@@ -119,6 +121,7 @@ def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
     | .freqV _ _ => #[('~', "filter by row", .ent), ('c', "push freq", .dup)]
     | _ => #[('c', "push freq", .dup)]
   | 'D' => #[(',', "depth--", .dec), ('.', "depth++", .inc), ('~', "enter", .ent), ('d', "trash", .del), ('c', "push folder", .dup)]
+  | 'P' => #[('.', "line chart", .inc), (',', "bar chart", .dec)]
   | _   => #[]
 
 -- | row '.' = down (.inc), row ',' = up (.dec)

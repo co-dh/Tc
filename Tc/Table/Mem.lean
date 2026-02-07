@@ -33,6 +33,7 @@ instance : TblOps Table where
   distinct t c := MemTable.distinct t.un c
   findRow t c v s f := MemTable.findRow t.un c v s f
   render t c n f w d g o r0 r1 cr cc md s rs st pa wa := TblOps.render t.un c n f w d g o r0 r1 cr cc md s rs st pa wa
+  colType t col := TblOps.colType t.un col
   fromFile := fromFile
 
 instance : ModifyTable Table where

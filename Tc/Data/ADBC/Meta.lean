@@ -50,7 +50,7 @@ def saveCache (path : String) (metaSql : String) : IO Unit := do
   let _ ← Adbc.query s!"COPY ({metaSql}) TO '{cp}' (FORMAT PARQUET)"
   Log.write "meta" s!"[cache] saved {cp}"
 
--- | Arrow format char → type name
+-- | Arrow format char → type name (fallback for cache compat)
 private def fmtToType : Char → String
   | 'l' => "i64" | 'i' => "i32" | 's' => "i16" | 'c' => "i8"
   | 'L' => "u64" | 'I' => "u32" | 'S' => "u16" | 'C' => "u8"
@@ -82,7 +82,7 @@ def queryMeta (t : AdbcTable) : IO MetaTuple := do
   -- Try cache for base parquet queries
   if let some p := cachePath then
     if let some cached ← loadCache p then return cached
-  let names := t.colNames; let types := t.colFmts.map fmtToType
+  let names := t.colNames; let types := t.colTypes
   let base := t.query.base
   -- Build PRQL: first col | append (second col) | append ...
   let first := colstatPrql base (names.getD 0 "") (types.getD 0 "?")

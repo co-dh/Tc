@@ -7,6 +7,7 @@ import Tc.Folder
 import Tc.Meta
 import Tc.Freq
 import Tc.Theme
+import Tc.Plot
 import Tc.UI.Info
 
 namespace Tc
@@ -45,6 +46,7 @@ def update (a : AppState T) (cmd : Cmd) : Option (AppState T × Effect) :=
   <|> (liftStk a cmd (Folder.update a.stk cmd))
   <|> (liftStk a cmd (Meta.update a.stk cmd))
   <|> (liftStk a cmd (Freq.update a.stk cmd))
+  <|> (liftStk a cmd (Plot.update a.stk cmd))
   <|> (liftStk a cmd (Filter.update a.stk cmd))
   <|> (View.update a.stk.cur cmd 20 |>.map fun (v', eff) => (withStk a cmd (a.stk.setCur v'), eff))
 
@@ -58,6 +60,7 @@ def exec (a : AppState T) (cmd : Cmd) : IO (Option (AppState T)) := do
   if let some s' ← Folder.exec a.stk cmd then return some (withStk a cmd s')
   if let some s' ← Meta.exec a.stk cmd then return some (withStk a cmd s')
   if let some s' ← Freq.exec a.stk cmd then return some (withStk a cmd s')
+  if let some s' ← Plot.exec a.stk cmd then return some (withStk a cmd s')
   if let some s' ← Filter.exec a.stk cmd then return some (withStk a cmd s')
   match ← a.stk.cur.exec cmd with
   | some v' => pure (some (withStk a cmd (a.stk.setCur v')))

@@ -152,6 +152,22 @@ def test_parquet_meta_0_enter_groups : IO Unit := do
   assert (tab.startsWith "[1.parquet]") "M0<ret> returns to parent view"
   assert (contains status "grp=9") "M0<ret> groups 9 null columns"
 
+-- === Filter tests (parquet) ===
+
+-- | \ filter on parquet: distinct values and filter query full DB, not just prqlLimit window
+-- filtered_test.parquet: 100k rows, sym col: first 1000 rows are ALL "A", "B" only after row 1000
+-- If distinct only used the 1000-row window, it would miss "B" entirely.
+-- Filter result count (40000 or 60000) proves full DB was queried, not the 1000-row window.
+def test_filter_parquet_full_db : IO Unit := do
+  log "filter_parquet_full_db"
+  -- \ on sym (col 0), test mode auto-selects first distinct value
+  let (tab, status) := footer (← runKeys "\\" "data/filtered_test.parquet")
+  assert (contains tab "\\sym") "\\ filter shows \\sym in tab"
+  -- extract row count from status "r0/NNNNN"
+  let countStr := (status.splitOn "r0/" |>.getD 1 "").takeWhile (·.isDigit)
+  let count := countStr.toString.toNat?.getD 0
+  assert (count > 1000) s!"filter queries full DB ({count} rows, expected 40000 or 60000)"
+
 -- === Misc (parquet) ===
 
 def test_numeric_right_align : IO Unit := do
@@ -210,6 +226,9 @@ def main : IO Unit := do
   -- Parquet meta M0
   test_parquet_meta_0_null_cols
   test_parquet_meta_0_enter_groups
+
+  -- Parquet filter
+  test_filter_parquet_full_db
 
   -- Parquet misc
   test_numeric_right_align

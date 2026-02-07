@@ -47,4 +47,8 @@ opaque cellInt : @& QueryResult → UInt64 → UInt64 → IO Int
 @[extern "lean_qr_cell_float"]
 opaque cellFloat : @& QueryResult → UInt64 → UInt64 → IO Float
 
+-- | Get column type name (e.g. "time", "timestamp", "int", "float", "str")
+@[extern "lean_qr_col_type"]
+opaque colType : @& QueryResult → UInt64 → IO String
+
 end Adbc

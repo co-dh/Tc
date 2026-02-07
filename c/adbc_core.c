@@ -1,6 +1,7 @@
 /*
  * ADBC Core FFI - Generic ADBC interface for Lean 4
  * Dynamically loads ADBC driver via dlopen
+ * Uses nanoarrow for type-safe Arrow array access
  */
 #include <lean/lean.h>
 #include <stdint.h>
@@ -10,6 +11,7 @@
 #include <stdarg.h>
 #include <dlfcn.h>
 #include <time.h>
+#include "nanoarrow.h"
 
 /* === Constants === */
 #define CELL_BUF_SIZE 64
@@ -57,40 +59,8 @@ struct AdbcStatement {
     void* private_driver;
 };
 
-/* === Arrow C Data Interface === */
-
-struct ArrowSchema {
-    const char* format;
-    const char* name;
-    const char* metadata;
-    int64_t flags;
-    int64_t n_children;
-    struct ArrowSchema** children;
-    struct ArrowSchema* dictionary;
-    void (*release)(struct ArrowSchema*);
-    void* private_data;
-};
-
-struct ArrowArray {
-    int64_t length;
-    int64_t null_count;
-    int64_t offset;
-    int64_t n_buffers;
-    int64_t n_children;
-    const void** buffers;
-    struct ArrowArray** children;
-    struct ArrowArray* dictionary;
-    void (*release)(struct ArrowArray*);
-    void* private_data;
-};
-
-struct ArrowArrayStream {
-    int (*get_schema)(struct ArrowArrayStream*, struct ArrowSchema* out);
-    int (*get_next)(struct ArrowArrayStream*, struct ArrowArray* out);
-    const char* (*get_last_error)(struct ArrowArrayStream*);
-    void (*release)(struct ArrowArrayStream*);
-    void* private_data;
-};
+/* Arrow C Data Interface structs (ArrowSchema, ArrowArray, ArrowArrayStream)
+   are provided by nanoarrow.h */
 
 /* === ADBC Function Pointers (loaded via dlsym) === */
 
@@ -233,11 +203,21 @@ typedef struct {
     int64_t* prefix;      // prefix[i] = sum of rows in batches[0..i-1]
     int64_t n_batches;
     int64_t total_rows;
+    struct ArrowArrayView* views;     // [n_batches * n_children] nanoarrow views
+    struct ArrowSchemaView* col_types; // [n_children] parsed column types
+    int64_t n_children;
 } QueryResult;
 
 // | Finalize QueryResult
 static void qr_finalize(void* p) {
     QueryResult* qr = (QueryResult*)p;
+    int64_t nc = qr->n_children;
+    if (qr->views) {
+        for (int64_t i = 0; i < qr->n_batches * nc; i++)
+            ArrowArrayViewReset(&qr->views[i]);
+        free(qr->views);
+    }
+    free(qr->col_types);
     if (qr->schema.release) qr->schema.release(&qr->schema);
     for (int64_t i = 0; i < qr->n_batches; i++) {
         if (qr->batches[i].release) qr->batches[i].release(&qr->batches[i]);
@@ -300,6 +280,32 @@ lean_obj_res lean_adbc_query(b_lean_obj_arg sql_obj, lean_obj_arg world) {
     if (stream.release) stream.release(&stream);
     pAdbcStatementRelease(&stmt, &err);
     free_error(&err);
+
+    // Build nanoarrow views for typed access
+    {
+        int64_t nc = qr->schema.n_children;
+        qr->n_children = nc;
+
+        qr->col_types = calloc(nc, sizeof(struct ArrowSchemaView));
+        for (int64_t c = 0; c < nc; c++) {
+            if (ArrowSchemaViewInit(&qr->col_types[c], qr->schema.children[c], NULL) != NANOARROW_OK)
+                log_msg("[adbc] ArrowSchemaViewInit failed col=%ld\n", (long)c);
+        }
+
+        qr->views = calloc(qr->n_batches * nc, sizeof(struct ArrowArrayView));
+        for (int64_t b = 0; b < qr->n_batches; b++) {
+            for (int64_t c = 0; c < nc; c++) {
+                int64_t idx = b * nc + c;
+                if (ArrowArrayViewInitFromSchema(&qr->views[idx], qr->schema.children[c], NULL) != NANOARROW_OK) {
+                    log_msg("[adbc] ArrowArrayViewInitFromSchema failed b=%ld c=%ld\n", (long)b, (long)c);
+                    continue;
+                }
+                if (ArrowArrayViewSetArray(&qr->views[idx], qr->batches[b].children[c], NULL) != NANOARROW_OK)
+                    log_msg("[adbc] ArrowArrayViewSetArray failed b=%ld c=%ld\n", (long)b, (long)c);
+            }
+        }
+    }
+
     return lean_io_result_mk_ok(lean_alloc_external(get_qr_class(), qr));
 
 fail:
@@ -316,7 +322,7 @@ fail:
 // | Get column count
 lean_obj_res lean_qr_ncols(b_lean_obj_arg qr_obj, lean_obj_arg world) {
     QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
-    return lean_io_result_mk_ok(lean_box_uint64((uint64_t)qr->schema.n_children));
+    return lean_io_result_mk_ok(lean_box_uint64((uint64_t)qr->n_children));
 }
 
 // | Get row count
@@ -328,7 +334,7 @@ lean_obj_res lean_qr_nrows(b_lean_obj_arg qr_obj, lean_obj_arg world) {
 // | Get column name
 lean_obj_res lean_qr_col_name(b_lean_obj_arg qr_obj, uint64_t col, lean_obj_arg world) {
     QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
-    if ((int64_t)col >= qr->schema.n_children) return lean_io_result_mk_ok(lean_mk_string(""));
+    if ((int64_t)col >= qr->n_children) return lean_io_result_mk_ok(lean_mk_string(""));
     const char* name = qr->schema.children[col]->name;
     return lean_io_result_mk_ok(lean_mk_string(name ? name : ""));
 }
@@ -336,9 +342,48 @@ lean_obj_res lean_qr_col_name(b_lean_obj_arg qr_obj, uint64_t col, lean_obj_arg 
 // | Get column format (Arrow type string)
 lean_obj_res lean_qr_col_fmt(b_lean_obj_arg qr_obj, uint64_t col, lean_obj_arg world) {
     QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
-    if ((int64_t)col >= qr->schema.n_children) return lean_io_result_mk_ok(lean_mk_string(""));
+    if ((int64_t)col >= qr->n_children) return lean_io_result_mk_ok(lean_mk_string(""));
     const char* fmt = qr->schema.children[col]->format;
     return lean_io_result_mk_ok(lean_mk_string(fmt ? fmt : ""));
+}
+
+// | Get column type name (e.g. "time", "timestamp", "i64", "f64", "str", "bool", "date", "list", "struct")
+lean_obj_res lean_qr_col_type(b_lean_obj_arg qr_obj, uint64_t col, lean_obj_arg world) {
+    QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
+    if ((int64_t)col >= qr->n_children) return lean_io_result_mk_ok(lean_mk_string("?"));
+    enum ArrowType t = qr->col_types[col].type;
+    const char* s;
+    switch (t) {
+    case NANOARROW_TYPE_INT8: case NANOARROW_TYPE_INT16: case NANOARROW_TYPE_INT32: case NANOARROW_TYPE_INT64:
+    case NANOARROW_TYPE_UINT8: case NANOARROW_TYPE_UINT16: case NANOARROW_TYPE_UINT32: case NANOARROW_TYPE_UINT64:
+        s = "int"; break;
+    case NANOARROW_TYPE_FLOAT: case NANOARROW_TYPE_DOUBLE: case NANOARROW_TYPE_HALF_FLOAT:
+        s = "float"; break;
+    case NANOARROW_TYPE_STRING: case NANOARROW_TYPE_LARGE_STRING:
+        s = "str"; break;
+    case NANOARROW_TYPE_BINARY: case NANOARROW_TYPE_LARGE_BINARY: case NANOARROW_TYPE_FIXED_SIZE_BINARY:
+        s = "binary"; break;
+    case NANOARROW_TYPE_BOOL:
+        s = "bool"; break;
+    case NANOARROW_TYPE_DATE32: case NANOARROW_TYPE_DATE64:
+        s = "date"; break;
+    case NANOARROW_TYPE_TIME32: case NANOARROW_TYPE_TIME64:
+        s = "time"; break;
+    case NANOARROW_TYPE_TIMESTAMP:
+        s = "timestamp"; break;
+    case NANOARROW_TYPE_DURATION:
+        s = "duration"; break;
+    case NANOARROW_TYPE_DECIMAL128: case NANOARROW_TYPE_DECIMAL256:
+    case NANOARROW_TYPE_DECIMAL32: case NANOARROW_TYPE_DECIMAL64:
+        s = "decimal"; break;
+    case NANOARROW_TYPE_LIST: case NANOARROW_TYPE_LARGE_LIST: case NANOARROW_TYPE_FIXED_SIZE_LIST:
+        s = "list"; break;
+    case NANOARROW_TYPE_STRUCT:
+        s = "struct"; break;
+    default:
+        s = "?"; break;
+    }
+    return lean_io_result_mk_ok(lean_mk_string(s));
 }
 
 /* === Cell Access === */
@@ -357,56 +402,236 @@ static int find_batch(QueryResult* qr, int64_t row, int64_t* batch_idx, int64_t*
     return 1;
 }
 
-// | Check validity bitmap for null
-static int is_null(struct ArrowArray* arr, int64_t row) {
-    if (arr->null_count == 0 || !arr->buffers[0]) return 0;
-    const uint8_t* validity = (const uint8_t*)arr->buffers[0];
-    int64_t idx = arr->offset + row;
-    return !(validity[idx / 8] & (1 << (idx % 8)));
-}
-
-typedef struct { struct ArrowArray* arr; struct ArrowSchema* sch; const char* fmt; int64_t lr; } CellInfo;
+typedef struct {
+    struct ArrowArrayView* view;
+    struct ArrowSchemaView* sv;
+    int64_t lr;
+} CellInfo;
 
 static CellInfo get_cell(QueryResult* qr, int64_t row, int64_t col) {
-    CellInfo ci = {NULL, NULL, NULL, 0};
+    CellInfo ci = {NULL, NULL, 0};
     int64_t bi;
     if (!find_batch(qr, row, &bi, &ci.lr)) return ci;
-    if (col >= qr->schema.n_children) return ci;
-    ci.arr = qr->batches[bi].children[col];
-    ci.sch = qr->schema.children[col];
-    ci.fmt = ci.sch->format;
+    if (col >= qr->n_children) return ci;
+    ci.view = &qr->views[bi * qr->n_children + col];
+    ci.sv = &qr->col_types[col];
     return ci;
 }
 
-// forward decls
-static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t lr, char* buf, size_t buflen, uint8_t decimals);
-static size_t format_cell_full(struct ArrowArray* arr, struct ArrowSchema* sch, int64_t lr, char* buf, size_t buflen, uint8_t decimals);
+/* === Cell Formatting === */
+
+// | Format a cell value using nanoarrow typed accessors
+static size_t format_cell_view(const struct ArrowArrayView* view,
+    const struct ArrowSchemaView* sv, int64_t lr, char* buf, size_t buflen, uint8_t decimals)
+{
+    if (ArrowArrayViewIsNull(view, lr)) { buf[0] = '\0'; return 0; }
+
+    switch (sv->type) {
+    case NANOARROW_TYPE_INT8: case NANOARROW_TYPE_INT16: case NANOARROW_TYPE_INT32: case NANOARROW_TYPE_INT64:
+        return snprintf(buf, buflen, "%ld", (long)ArrowArrayViewGetIntUnsafe(view, lr));
+
+    case NANOARROW_TYPE_UINT8: case NANOARROW_TYPE_UINT16: case NANOARROW_TYPE_UINT32: case NANOARROW_TYPE_UINT64:
+        return snprintf(buf, buflen, "%lu", (unsigned long)ArrowArrayViewGetUIntUnsafe(view, lr));
+
+    case NANOARROW_TYPE_FLOAT: case NANOARROW_TYPE_DOUBLE: case NANOARROW_TYPE_HALF_FLOAT:
+        return snprintf(buf, buflen, "%.*f", decimals, ArrowArrayViewGetDoubleUnsafe(view, lr));
+
+    case NANOARROW_TYPE_BOOL:
+        return snprintf(buf, buflen, "%s", ArrowArrayViewGetIntUnsafe(view, lr) ? "true" : "false");
+
+    case NANOARROW_TYPE_STRING: case NANOARROW_TYPE_LARGE_STRING: {
+        struct ArrowStringView sv2 = ArrowArrayViewGetStringUnsafe(view, lr);
+        int64_t len = sv2.size_bytes;
+        if ((size_t)len >= buflen) len = buflen - 1;
+        memcpy(buf, sv2.data, len);
+        buf[len] = '\0';
+        return len;
+    }
+
+    case NANOARROW_TYPE_BINARY: case NANOARROW_TYPE_LARGE_BINARY: {
+        struct ArrowBufferView bv = ArrowArrayViewGetBytesUnsafe(view, lr);
+        int show = bv.size_bytes > 8 ? 8 : (int)bv.size_bytes;
+        int pos = 0;
+        for (int i = 0; i < show && (size_t)pos < buflen - 3; i++)
+            pos += snprintf(buf + pos, buflen - pos, "%02x", bv.data.as_uint8[i]);
+        if (bv.size_bytes > 8 && (size_t)pos < buflen - 3)
+            pos += snprintf(buf + pos, buflen - pos, "..");
+        return pos;
+    }
+
+    case NANOARROW_TYPE_DATE32: {
+        int32_t days = (int32_t)ArrowArrayViewGetIntUnsafe(view, lr);
+        time_t secs = (time_t)days * 86400;
+        struct tm* tm = gmtime(&secs);
+        return snprintf(buf, buflen, "%04d-%02d-%02d", tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday);
+    }
+
+    case NANOARROW_TYPE_DATE64: {
+        int64_t ms = ArrowArrayViewGetIntUnsafe(view, lr);
+        time_t secs = ms / 1000;
+        struct tm* tm = gmtime(&secs);
+        return snprintf(buf, buflen, "%04d-%02d-%02d", tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday);
+    }
+
+    case NANOARROW_TYPE_TIME32: case NANOARROW_TYPE_TIME64: {
+        int64_t raw = ArrowArrayViewGetIntUnsafe(view, lr);
+        int64_t s;
+        switch (sv->time_unit) {
+        case NANOARROW_TIME_UNIT_SECOND: s = raw; break;
+        case NANOARROW_TIME_UNIT_MILLI:  s = raw / 1000; break;
+        case NANOARROW_TIME_UNIT_MICRO:  s = raw / 1000000; break;
+        case NANOARROW_TIME_UNIT_NANO:   s = raw / 1000000000; break;
+        default: s = raw; break;
+        }
+        return snprintf(buf, buflen, "%02d:%02d:%02d", (int)((s/3600)%24), (int)((s/60)%60), (int)(s%60));
+    }
+
+    case NANOARROW_TYPE_TIMESTAMP: {
+        int64_t raw = ArrowArrayViewGetIntUnsafe(view, lr);
+        time_t secs;
+        switch (sv->time_unit) {
+        case NANOARROW_TIME_UNIT_SECOND: secs = raw; break;
+        case NANOARROW_TIME_UNIT_MILLI:  secs = raw / 1000; break;
+        case NANOARROW_TIME_UNIT_MICRO:  secs = raw / 1000000; break;
+        case NANOARROW_TIME_UNIT_NANO:   secs = raw / 1000000000; break;
+        default: secs = raw; break;
+        }
+        struct tm* tm = gmtime(&secs);
+        return snprintf(buf, buflen, "%04d-%02d-%02d %02d:%02d:%02d",
+                 tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec);
+    }
+
+    case NANOARROW_TYPE_DURATION: {
+        int64_t raw = ArrowArrayViewGetIntUnsafe(view, lr);
+        int neg = raw < 0; if (neg) raw = -raw;
+        int64_t s, ms;
+        switch (sv->time_unit) {
+        case NANOARROW_TIME_UNIT_NANO:   s = raw / 1000000000; ms = (raw % 1000000000) / 1000000; break;
+        case NANOARROW_TIME_UNIT_MICRO:  s = raw / 1000000; ms = (raw % 1000000) / 1000; break;
+        case NANOARROW_TIME_UNIT_MILLI:  s = raw / 1000; ms = raw % 1000; break;
+        case NANOARROW_TIME_UNIT_SECOND: s = raw; ms = 0; break;
+        default: s = raw; ms = 0; break;
+        }
+        return snprintf(buf, buflen, "%s%ld.%03ld s", neg ? "-" : "", (long)s, (long)ms);
+    }
+
+    case NANOARROW_TYPE_DECIMAL128: case NANOARROW_TYPE_DECIMAL256:
+    case NANOARROW_TYPE_DECIMAL32: case NANOARROW_TYPE_DECIMAL64: {
+        int scale = sv->decimal_scale;
+        double val;
+        if (sv->type == NANOARROW_TYPE_DECIMAL128 || sv->type == NANOARROW_TYPE_DECIMAL256) {
+            // Read first 64 bits of 128/256-bit value
+            const int64_t* data = view->buffer_views[1].data.as_int64;
+            int elems = (sv->type == NANOARROW_TYPE_DECIMAL256) ? 4 : 2;
+            val = (double)data[(view->offset + lr) * elems];
+        } else {
+            val = (double)ArrowArrayViewGetIntUnsafe(view, lr);
+        }
+        for (int i = 0; i < scale; i++) val /= 10.0;
+        return snprintf(buf, buflen, "%.*f", scale, val);
+    }
+
+    case NANOARROW_TYPE_LIST: case NANOARROW_TYPE_LARGE_LIST: {
+        int64_t oi = view->offset + lr;
+        int64_t start = ArrowArrayViewListChildOffset(view, oi);
+        int64_t end = ArrowArrayViewListChildOffset(view, oi + 1);
+        int64_t n = end - start;
+        int pos = snprintf(buf, buflen, "[%ld]", (long)n);
+        if (n > 0 && view->n_children > 0 && view->children[0]) {
+            const struct ArrowArrayView* child = view->children[0];
+            for (int64_t i = 0; i < n && i < 3 && (size_t)pos < buflen - 10; i++) {
+                pos += snprintf(buf + pos, buflen - pos, "%s", i ? "; " : " ");
+                if (child->storage_type == NANOARROW_TYPE_DOUBLE || child->storage_type == NANOARROW_TYPE_FLOAT)
+                    pos += snprintf(buf + pos, buflen - pos, "%.3f", ArrowArrayViewGetDoubleUnsafe(child, start + i));
+                else
+                    pos += snprintf(buf + pos, buflen - pos, "%ld", (long)ArrowArrayViewGetIntUnsafe(child, start + i));
+            }
+            if (n > 3 && (size_t)pos < buflen - 4) pos += snprintf(buf + pos, buflen - pos, "...");
+        }
+        return pos;
+    }
+
+    case NANOARROW_TYPE_FIXED_SIZE_LIST: {
+        int64_t n = view->layout.child_size_elements;
+        int pos = snprintf(buf, buflen, "[%ld]", (long)n);
+        if (n > 0 && view->n_children > 0 && view->children[0]) {
+            const struct ArrowArrayView* child = view->children[0];
+            int64_t start = (view->offset + lr) * n;
+            for (int64_t i = 0; i < n && i < 3 && (size_t)pos < buflen - 10; i++) {
+                pos += snprintf(buf + pos, buflen - pos, "%s", i ? "; " : " ");
+                pos += snprintf(buf + pos, buflen - pos, "%.3f", ArrowArrayViewGetDoubleUnsafe(child, start + i));
+            }
+            if (n > 3 && (size_t)pos < buflen - 4) pos += snprintf(buf + pos, buflen - pos, "...");
+        }
+        return pos;
+    }
+
+    case NANOARROW_TYPE_STRUCT:
+        return snprintf(buf, buflen, "{%ld}", (long)view->n_children);
+
+    default:
+        buf[0] = '\0';
+        return 0;
+    }
+}
+
+// | Format struct cell with child field preview
+static size_t format_struct_cell(const struct ArrowArrayView* view,
+    const struct ArrowSchema* sch, int64_t lr, char* buf, size_t buflen, uint8_t decimals)
+{
+    if (ArrowArrayViewIsNull(view, lr)) { buf[0] = '\0'; return 0; }
+    int64_t n = view->n_children;
+    if (!view->children || !sch->children || n == 0)
+        return snprintf(buf, buflen, "{%ld}", (long)n);
+
+    int show = n > 3 ? 3 : (int)n;
+    int pos = snprintf(buf, buflen, "{%ld}", (long)n);
+
+    for (int i = 0; i < show && (size_t)pos < buflen - 10; i++) {
+        struct ArrowArrayView* ch = view->children[i];
+        struct ArrowSchema* cs = sch->children[i];
+        if (!ch || !cs) continue;
+        const char* nm = cs->name ? cs->name : "";
+        pos += snprintf(buf + pos, buflen - pos, " %s=", nm);
+
+        if (ArrowArrayViewIsNull(ch, lr)) {
+            pos += snprintf(buf + pos, buflen - pos, "null");
+            continue;
+        }
+
+        struct ArrowSchemaView csv;
+        if (ArrowSchemaViewInit(&csv, cs, NULL) != NANOARROW_OK) {
+            pos += snprintf(buf + pos, buflen - pos, "?");
+            continue;
+        }
+
+        char tmp[32];
+        format_cell_view(ch, &csv, lr, tmp, sizeof(tmp), decimals);
+        pos += snprintf(buf + pos, buflen - pos, "%s", tmp);
+    }
+    return pos;
+}
 
 // | Get cell as string
 lean_obj_res lean_qr_cell_str(b_lean_obj_arg qr_obj, uint64_t row, uint64_t col, lean_obj_arg world) {
     QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
     CellInfo c = get_cell(qr, row, col);
-    if (!c.arr) return lean_io_result_mk_ok(lean_mk_string(""));
+    if (!c.view || !c.view->array) return lean_io_result_mk_ok(lean_mk_string(""));
     char buf[CELL_BUF_SIZE];
-    format_cell_full(c.arr, c.sch, c.lr, buf, sizeof(buf), 3);
+    if (c.sv->type == NANOARROW_TYPE_STRUCT)
+        format_struct_cell(c.view, qr->schema.children[col], c.lr, buf, sizeof(buf), 3);
+    else
+        format_cell_view(c.view, c.sv, c.lr, buf, sizeof(buf), 3);
     return lean_io_result_mk_ok(lean_mk_string(buf));
 }
 
-// | Get cell as Int (handles signed/unsigned integer types)
+// | Get cell as Int
 lean_obj_res lean_qr_cell_int(b_lean_obj_arg qr_obj, uint64_t row, uint64_t col, lean_obj_arg world) {
     QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
     CellInfo c = get_cell(qr, row, col);
-    if (!c.arr || is_null(c.arr, c.lr)) return lean_io_result_mk_ok(lean_int64_to_int(0));
-    int64_t val = 0;
-    char f = c.fmt[0];
-    if (f == 'l')      val = ((const int64_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
-    else if (f == 'L') val = (int64_t)((const uint64_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
-    else if (f == 'i') val = ((const int32_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
-    else if (f == 'I') val = ((const uint32_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
-    else if (f == 's') val = ((const int16_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
-    else if (f == 'S') val = ((const uint16_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
-    else if (f == 'c') val = ((const int8_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
-    else if (f == 'C') val = ((const uint8_t*)c.arr->buffers[1])[c.arr->offset + c.lr];
+    if (!c.view || !c.view->array || ArrowArrayViewIsNull(c.view, c.lr))
+        return lean_io_result_mk_ok(lean_int64_to_int(0));
+    int64_t val = ArrowArrayViewGetIntUnsafe(c.view, c.lr);
     return lean_io_result_mk_ok(lean_int64_to_int(val));
 }
 
@@ -414,10 +639,9 @@ lean_obj_res lean_qr_cell_int(b_lean_obj_arg qr_obj, uint64_t row, uint64_t col,
 lean_obj_res lean_qr_cell_float(b_lean_obj_arg qr_obj, uint64_t row, uint64_t col, lean_obj_arg world) {
     QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
     CellInfo c = get_cell(qr, row, col);
-    if (!c.arr || is_null(c.arr, c.lr)) return lean_io_result_mk_ok(lean_box_float(0.0));
-    double val = 0.0;
-    if (c.fmt[0] == 'g')      val = ((const double*)c.arr->buffers[1])[c.arr->offset + c.lr];
-    else if (c.fmt[0] == 'f') val = ((const float*)c.arr->buffers[1])[c.arr->offset + c.lr];
+    if (!c.view || !c.view->array || ArrowArrayViewIsNull(c.view, c.lr))
+        return lean_io_result_mk_ok(lean_box_float(0.0));
+    double val = ArrowArrayViewGetDoubleUnsafe(c.view, c.lr);
     return lean_io_result_mk_ok(lean_box_float(val));
 }
 
@@ -425,244 +649,5 @@ lean_obj_res lean_qr_cell_float(b_lean_obj_arg qr_obj, uint64_t row, uint64_t co
 lean_obj_res lean_qr_cell_is_null(b_lean_obj_arg qr_obj, uint64_t row, uint64_t col, lean_obj_arg world) {
     QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
     CellInfo c = get_cell(qr, row, col);
-    return lean_io_result_mk_ok(lean_box(!c.arr || is_null(c.arr, c.lr) ? 1 : 0));
-}
-
-/* === Cell Formatting === */
-
-// | Format cell value to string
-static size_t format_cell_batch(struct ArrowArray* arr, const char* fmt, int64_t lr, char* buf, size_t buflen, uint8_t decimals) {
-    char tmp[CELL_BUF_SIZE];
-    if (!buf) { buf = tmp; buflen = sizeof(tmp); }
-    if (is_null(arr, lr)) { buf[0] = '\0'; return 0; }
-
-    char f = fmt[0];
-    if (f == 'l') return snprintf(buf, buflen, "%ld", ((const int64_t*)arr->buffers[1])[arr->offset + lr]);
-    if (f == 'L') return snprintf(buf, buflen, "%lu", ((const uint64_t*)arr->buffers[1])[arr->offset + lr]);
-    if (f == 'i') return snprintf(buf, buflen, "%d", ((const int32_t*)arr->buffers[1])[arr->offset + lr]);
-    if (f == 'I') return snprintf(buf, buflen, "%u", ((const uint32_t*)arr->buffers[1])[arr->offset + lr]);
-    if (f == 's') return snprintf(buf, buflen, "%d", ((const int16_t*)arr->buffers[1])[arr->offset + lr]);
-    if (f == 'S') return snprintf(buf, buflen, "%u", ((const uint16_t*)arr->buffers[1])[arr->offset + lr]);
-    if (f == 'c') return snprintf(buf, buflen, "%d", ((const int8_t*)arr->buffers[1])[arr->offset + lr]);
-    if (f == 'C') return snprintf(buf, buflen, "%u", ((const uint8_t*)arr->buffers[1])[arr->offset + lr]);
-    if (f == 'g') return snprintf(buf, buflen, "%.*f", decimals, ((const double*)arr->buffers[1])[arr->offset + lr]);
-    if (f == 'f') return snprintf(buf, buflen, "%.*f", decimals, ((const float*)arr->buffers[1])[arr->offset + lr]);
-    if (f == 'e') {  // half-float
-        uint16_t h = ((const uint16_t*)arr->buffers[1])[arr->offset + lr];
-        uint32_t sign = (h & 0x8000) << 16;
-        uint32_t exp = (h >> 10) & 0x1F;
-        uint32_t mant = h & 0x3FF;
-        uint32_t f32;
-        if (exp == 0) f32 = sign | (mant << 13);
-        else if (exp == 31) f32 = sign | 0x7F800000 | (mant << 13);
-        else f32 = sign | ((exp + 112) << 23) | (mant << 13);
-        float val; memcpy(&val, &f32, 4);
-        return snprintf(buf, buflen, "%.*f", decimals, (double)val);
-    }
-    if (f == 'u') {  // utf8
-        const int32_t* off = (const int32_t*)arr->buffers[1];
-        const char* data = (const char*)arr->buffers[2];
-        int64_t idx = arr->offset + lr;
-        int32_t len = off[idx + 1] - off[idx];
-        if ((size_t)len >= buflen) len = buflen - 1;
-        memcpy(buf, data + off[idx], len);
-        buf[len] = '\0';
-        return len;
-    }
-    if (f == 'z') {  // binary: hex
-        const int32_t* off = (const int32_t*)arr->buffers[1];
-        const uint8_t* data = (const uint8_t*)arr->buffers[2];
-        int64_t idx = arr->offset + lr;
-        int32_t len = off[idx + 1] - off[idx];
-        int show = len > 8 ? 8 : len;
-        int pos = 0;
-        for (int i = 0; i < show && (size_t)pos < buflen - 3; i++)
-            pos += snprintf(buf + pos, buflen - pos, "%02x", data[off[idx] + i]);
-        if (len > 8 && (size_t)pos < buflen - 3) pos += snprintf(buf + pos, buflen - pos, "..");
-        return pos;
-    }
-    if (f == 'U') {  // large utf8
-        const int64_t* off = (const int64_t*)arr->buffers[1];
-        const char* data = (const char*)arr->buffers[2];
-        int64_t idx = arr->offset + lr;
-        int64_t len = off[idx + 1] - off[idx];
-        if ((size_t)len >= buflen) len = buflen - 1;
-        memcpy(buf, data + off[idx], len);
-        buf[len] = '\0';
-        return len;
-    }
-    if (f == 'Z') {  // large binary
-        const int64_t* off = (const int64_t*)arr->buffers[1];
-        const uint8_t* data = (const uint8_t*)arr->buffers[2];
-        int64_t idx = arr->offset + lr;
-        int64_t len = off[idx + 1] - off[idx];
-        int show = len > 8 ? 8 : len;
-        int pos = 0;
-        for (int i = 0; i < show && (size_t)pos < buflen - 3; i++)
-            pos += snprintf(buf + pos, buflen - pos, "%02x", data[off[idx] + i]);
-        if (len > 8 && (size_t)pos < buflen - 3) pos += snprintf(buf + pos, buflen - pos, "..");
-        return pos;
-    }
-    if (f == 'b') {  // bool
-        const uint8_t* data = (const uint8_t*)arr->buffers[1];
-        int64_t idx = arr->offset + lr;
-        return snprintf(buf, buflen, "%s", ((data[idx/8] >> (idx%8)) & 1) ? "true" : "false");
-    }
-    if (f == 'd' && fmt[1] == ':') {  // decimal
-        int scale = 0;
-        const char* p = fmt + 2;
-        while (*p && *p != ',') p++;
-        if (*p == ',') { p++; while (*p >= '0' && *p <= '9') scale = scale * 10 + (*p++ - '0'); }
-        double val = (double)((const int64_t*)arr->buffers[1])[(arr->offset + lr) * 2];
-        for (int i = 0; i < scale; i++) val /= 10.0;
-        return snprintf(buf, buflen, "%.*f", scale, val);
-    }
-    if (f == 't' && fmt[1] == 's') {  // timestamp
-        int64_t us = ((const int64_t*)arr->buffers[1])[arr->offset + lr];
-        time_t secs = us / 1000000;
-        struct tm* tm = gmtime(&secs);
-        return snprintf(buf, buflen, "%04d-%02d-%02d %02d:%02d:%02d",
-                 tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec);
-    }
-    if (f == 't' && fmt[1] == 't') {  // time
-        int64_t s = ((const int64_t*)arr->buffers[1])[arr->offset + lr] / 1000000;
-        return snprintf(buf, buflen, "%02d:%02d:%02d", (int)((s/3600)%24), (int)((s/60)%60), (int)(s%60));
-    }
-    if (f == 't' && fmt[1] == 'd') {  // date32
-        int32_t days = ((const int32_t*)arr->buffers[1])[arr->offset + lr];
-        time_t secs = (time_t)days * 86400;
-        struct tm* tm = gmtime(&secs);
-        return snprintf(buf, buflen, "%04d-%02d-%02d", tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday);
-    }
-    if (f == '+' && fmt[1] == 'l') {  // list
-        if (!arr->buffers[1]) { buf[0] = '\0'; return 0; }
-        const int32_t* off = (const int32_t*)arr->buffers[1];
-        int64_t idx = arr->offset + lr;
-        int32_t start = off[idx], end = off[idx + 1];
-        int32_t n = end - start;
-        int pos = snprintf(buf, buflen, "[%d]", n);
-        if (n > 0 && arr->n_children > 0 && arr->children && arr->children[0] && arr->children[0]->buffers[1]) {
-            struct ArrowArray* child = arr->children[0];
-            for (int32_t i = 0; i < n && i < 3 && (size_t)pos < buflen - 10; i++) {
-                pos += snprintf(buf + pos, buflen - pos, "%s", i ? "; " : " ");
-                int64_t v = ((const int64_t*)child->buffers[1])[start + i];
-                pos += snprintf(buf + pos, buflen - pos, "%ld", (long)v);
-            }
-            if (n > 3 && (size_t)pos < buflen - 4) pos += snprintf(buf + pos, buflen - pos, "...");
-        }
-        return pos;
-    }
-    if (f == '+' && fmt[1] == 'L') {  // large_list
-        if (!arr->buffers[1]) { buf[0] = '\0'; return 0; }
-        const int64_t* off = (const int64_t*)arr->buffers[1];
-        int64_t idx = arr->offset + lr;
-        int64_t start = off[idx], end = off[idx + 1];
-        int64_t n = end - start;
-        int pos = snprintf(buf, buflen, "[%ld]", (long)n);
-        if (n > 0 && arr->n_children > 0 && arr->children && arr->children[0] && arr->children[0]->buffers[1]) {
-            struct ArrowArray* child = arr->children[0];
-            for (int64_t i = 0; i < n && i < 3 && (size_t)pos < buflen - 10; i++) {
-                pos += snprintf(buf + pos, buflen - pos, "%s", i ? "; " : " ");
-                int64_t v = ((const int64_t*)child->buffers[1])[start + i];
-                pos += snprintf(buf + pos, buflen - pos, "%ld", (long)v);
-            }
-            if (n > 3 && (size_t)pos < buflen - 4) pos += snprintf(buf + pos, buflen - pos, "...");
-        }
-        return pos;
-    }
-    if (f == '+' && fmt[1] == 'w') {  // fixed_size_list
-        int n = 0;
-        const char* p = fmt + 3;
-        while (*p >= '0' && *p <= '9') n = n * 10 + (*p++ - '0');
-        int pos = snprintf(buf, buflen, "[%d]", n);
-        if (n > 0 && arr->n_children > 0 && arr->children && arr->children[0] && arr->children[0]->buffers[1]) {
-            struct ArrowArray* child = arr->children[0];
-            int64_t start = (arr->offset + lr) * n;
-            for (int i = 0; i < n && i < 3 && (size_t)pos < buflen - 10; i++) {
-                pos += snprintf(buf + pos, buflen - pos, "%s", i ? "; " : " ");
-                double v = ((const double*)child->buffers[1])[start + i];
-                pos += snprintf(buf + pos, buflen - pos, "%.3f", v);
-            }
-            if (n > 3 && (size_t)pos < buflen - 4) pos += snprintf(buf + pos, buflen - pos, "...");
-        }
-        return pos;
-    }
-    if (f == '+' && fmt[1] == 's') {  // struct
-        return snprintf(buf, buflen, "{%d}", (int)arr->n_children);
-    }
-    if (f == 't' && fmt[1] == 'D') {  // duration
-        char unit = fmt[2];
-        int64_t v = ((const int64_t*)arr->buffers[1])[arr->offset + lr];
-        int neg = v < 0; if (neg) v = -v;
-        int64_t s, ms;
-        if (unit == 'n') { s = v / 1000000000; ms = (v % 1000000000) / 1000000; }
-        else if (unit == 'u') { s = v / 1000000; ms = (v % 1000000) / 1000; }
-        else if (unit == 'm') { s = v / 1000; ms = v % 1000; }
-        else { s = v; ms = 0; }
-        return snprintf(buf, buflen, "%s%ld.%03ld s", neg ? "-" : "", (long)s, (long)ms);
-    }
-    buf[0] = '\0';
-    return 0;
-}
-
-// | Format cell with struct support
-static size_t format_cell_full(struct ArrowArray* arr, struct ArrowSchema* sch, int64_t lr, char* buf, size_t buflen, uint8_t decimals) {
-    if (!arr || !sch || !sch->format) { buf[0] = '\0'; return 0; }
-    const char* fmt = sch->format;
-
-    if (fmt[0] == '+' && fmt[1] == 's') {
-        int n = arr->n_children;
-        if (!arr->children || !sch->children || n == 0) return snprintf(buf, buflen, "{%d}", n);
-        int show = n > 3 ? 3 : n;
-        int pos = snprintf(buf, buflen, "{%d}", n);
-        for (int i = 0; i < show && (size_t)pos < buflen - 10; i++) {
-            struct ArrowArray* ch = arr->children[i];
-            struct ArrowSchema* cs = sch->children[i];
-            if (!ch || !cs || !cs->format) continue;
-            const char* nm = cs->name ? cs->name : "";
-            pos += snprintf(buf + pos, buflen - pos, " %s=", nm);
-            char cf = cs->format[0];
-            if (cf == 'l' && ch->buffers[1]) {
-                pos += snprintf(buf + pos, buflen - pos, "%ld", (long)((int64_t*)ch->buffers[1])[ch->offset + lr]);
-            } else if ((cf == 'U' || cf == 'u') && ch->buffers[1] && ch->buffers[2]) {
-                const int64_t* off = (cf == 'U') ? (int64_t*)ch->buffers[1] : NULL;
-                const int32_t* off32 = (cf == 'u') ? (int32_t*)ch->buffers[1] : NULL;
-                const char* data = (char*)ch->buffers[2];
-                int64_t idx = ch->offset + lr;
-                int64_t start = off ? off[idx] : off32[idx];
-                int64_t len = off ? (off[idx+1] - start) : (off32[idx+1] - start);
-                if (len > 12) len = 12;
-                pos += snprintf(buf + pos, buflen - pos, "%.*s", (int)len, data + start);
-            } else if (cf == 'b' && ch->buffers[1]) {
-                int v = (((uint8_t*)ch->buffers[1])[(ch->offset + lr)/8] >> ((ch->offset + lr)%8)) & 1;
-                pos += snprintf(buf + pos, buflen - pos, "%s", v ? "T" : "F");
-            } else {
-                pos += snprintf(buf + pos, buflen - pos, "?");
-            }
-        }
-        return pos;
-    }
-
-    return format_cell_batch(arr, fmt, lr, buf, buflen, decimals);
-}
-
-// | Get column widths
-lean_obj_res lean_qr_col_widths(b_lean_obj_arg qr_obj, lean_obj_arg world) {
-    QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
-    int64_t nc = qr->schema.n_children;
-    int64_t nr = qr->total_rows;
-
-    lean_object* arr = lean_alloc_array(nc, nc);
-    for (int64_t c = 0; c < nc; c++) {
-        const char* name = qr->schema.children[c]->name;
-        size_t w = name ? strlen(name) : 0;
-        for (int64_t r = 0; r < nr; r++) {
-            CellInfo ci = get_cell(qr, r, c);
-            if (!ci.arr) continue;
-            size_t cw = format_cell_batch(ci.arr, ci.fmt, ci.lr, NULL, 0, 3);
-            if (cw > w) w = cw;
-        }
-        lean_array_set_core(arr, c, lean_box(w));
-    }
-    return lean_io_result_mk_ok(arr);
+    return lean_io_result_mk_ok(lean_box(!c.view || !c.view->array || ArrowArrayViewIsNull(c.view, c.lr) ? 1 : 0));
 }
