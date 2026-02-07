@@ -29,8 +29,13 @@ initialize memTblCounter : IO.Ref Nat ← IO.mkRef 0
 
 namespace AdbcTable
 
--- | Init ADBC backend (DuckDB)
-def init : IO Bool := Adbc.init
+-- | Init ADBC backend (DuckDB), install+load httpfs for hf:// support
+def init : IO Bool := do
+  let ok ← Adbc.init
+  if ok then
+    try let _ ← Adbc.query "INSTALL httpfs; LOAD httpfs"
+    catch e => IO.eprintln s!"httpfs extension: {e}"
+  pure ok
 
 -- | Shutdown ADBC backend
 def shutdown : IO Unit := Adbc.shutdown
