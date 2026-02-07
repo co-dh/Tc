@@ -34,7 +34,6 @@ instance : TblOps (MockTable nRows nCols) where
   nRows _ := nRows
   colNames t := t.names
   queryMeta _ := pure (#[], #[], #[], #[], #[], #[], #[])
-  queryFreq _ _ := pure ⟨#[], #[], #[], #[], #[], 0, rfl, ⟨rfl, rfl⟩⟩
   filter _ _ := pure none
   distinct _ _ := pure #[]
   findRow _ _ _ _ _ := pure none
@@ -349,22 +348,22 @@ end S3Tests
 
 section FreqTests
 
--- | freqStats produces pct array of same size as input
-#guard (freqStats #[10, 20, 30]).val.1.size == 3
+-- | freqPctBar produces pct array of same size as input
+#guard (freqPctBar #[10, 20, 30]).1.size == 3
 
--- | freqStats produces bar array of same size as input
-#guard (freqStats #[10, 20, 30]).val.2.size == 3
+-- | freqPctBar produces bar array of same size as input
+#guard (freqPctBar #[10, 20, 30]).2.size == 3
 
--- | freqStats with empty input
-#guard (freqStats #[]).val.1.size == 0
-#guard (freqStats #[]).val.2.size == 0
+-- | freqPctBar with empty input
+#guard (freqPctBar #[]).1.size == 0
+#guard (freqPctBar #[]).2.size == 0
 
--- | freqStats with single element
-#guard (freqStats #[100]).val.1.size == 1
-#guard (freqStats #[100]).val.2.size == 1
+-- | freqPctBar with single element
+#guard (freqPctBar #[100]).1.size == 1
+#guard (freqPctBar #[100]).2.size == 1
 
--- | freqStats pct and bar arrays have same size as each other
-#guard (freqStats #[5, 10, 15]).val.1.size == (freqStats #[5, 10, 15]).val.2.size
+-- | freqPctBar pct and bar arrays have same size as each other
+#guard (freqPctBar #[5, 10, 15]).1.size == (freqPctBar #[5, 10, 15]).2.size
 
 end FreqTests
 
@@ -1068,27 +1067,34 @@ def test_distinct (t : KdbTable) : IO Unit := do
 -- === 6. Freq Tests ===
 
 def test_freq_single (t : KdbTable) : IO Unit := do
-  let freq ← t.queryFreq #[t.colNames.getD 0 ""]
-  kassert (freq.keyNames.size > 0) "freq has keys"
-  kassert (freq.keyCols.size > 0) "freq has cols"
-  kassert (freq.cntData.size > 0) s!"freq has {freq.cntData.size} groups"
+  let (names, cols, total) ← t.freqRaw #[t.colNames.getD 0 ""]
+  kassert (names.size > 0) "freq has names"
+  kassert (cols.size > 0) "freq has cols"
+  kassert (total > 0) s!"freq has {total} groups"
 
 def test_freq_counts (t : KdbTable) : IO Unit := do
-  let freq ← t.queryFreq #[t.colNames.getD 0 ""]
-  let cnts := freq.cntData
-  let total := cnts.foldl (· + ·) 0
+  let (_, cols, _) ← t.freqRaw #[t.colNames.getD 0 ""]
+  let cntCol := cols.getD (cols.size - 3) default  -- Cnt is 3rd from end
+  let total : Int64 := match cntCol with
+    | .ints data => data.foldl (· + ·) 0
+    | _ => 0
   kassert (total > 0) s!"freq counts sum = {total}"
 
 def test_freq_pcts (t : KdbTable) : IO Unit := do
-  let freq ← t.queryFreq #[t.colNames.getD 0 ""]
-  let pcts := freq.pctData
-  let sum := pcts.foldl (· + ·) 0
+  let (_, cols, _) ← t.freqRaw #[t.colNames.getD 0 ""]
+  let pctCol := cols.getD (cols.size - 2) default  -- Pct is 2nd from end
+  let sum : Float := match pctCol with
+    | .floats data => data.foldl (· + ·) 0
+    | _ => 0
   kassert (sum > 99 && sum < 101) s!"freq pcts sum = {sum}"
 
 def test_freq_bars (t : KdbTable) : IO Unit := do
-  let freq ← t.queryFreq #[t.colNames.getD 0 ""]
-  let bars := freq.barData
-  kassert (bars.size > 0) "freq has bars"
+  let (_, cols, _) ← t.freqRaw #[t.colNames.getD 0 ""]
+  let barCol := cols.getD (cols.size - 1) default  -- Bar is last
+  let size := match barCol with
+    | .strs data => data.size
+    | _ => 0
+  kassert (size > 0) "freq has bars"
 
 -- === 7. Column Extraction Tests ===
 

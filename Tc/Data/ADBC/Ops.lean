@@ -13,7 +13,6 @@ instance : TblOps AdbcTable where
   colNames  := (·.colNames)
   totalRows := (·.totalRows)
   queryMeta := AdbcTable.queryMeta
-  queryFreq := AdbcTable.queryFreq
   filter    := AdbcTable.filter
   distinct  := AdbcTable.distinct
   findRow   := AdbcTable.findRow

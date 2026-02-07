@@ -13,18 +13,16 @@ private def rowKey (cols : Array Column) (idxs : Array Nat) (row : Nat) : String
     let c := (cols.getD i default).get row
     acc ++ (if acc.isEmpty then "" else "\x00") ++ c.toRaw
 
--- | Query freq for MemTable: group by column names, count, pct, bar
-def queryFreq (t : MemTable) (colNames : Array String) : IO FreqResult := pure $
+-- | Freq for MemTable: returns (names, cols, totalGroups) with Cnt/Pct/Bar included
+def freqRaw (t : MemTable) (colNames : Array String) : IO (Array String × Array Column × Nat) := pure $
   let colIdxs := colNames.filterMap t.names.idxOf?
   let n := MemTable.nRows t
-  -- count occurrences per key
   let counts := Id.run do
     let mut m : Std.HashMap String Nat := {}
     for r in [:n] do
       let k := rowKey t.cols colIdxs r
       m := m.insert k (m.getD k 0 + 1)
     m
-  -- collect unique keys with first occurrence row
   let (keys, firstRows) := Id.run do
     let mut seen : Std.HashMap String Nat := {}
     let mut ks : Array String := #[]
@@ -36,15 +34,13 @@ def queryFreq (t : MemTable) (colNames : Array String) : IO FreqResult := pure $
         ks := ks.push k
         rs := rs.push r
     (ks, rs)
-  -- build key columns from first occurrence rows
   let keyCols := colIdxs.map fun i => (t.cols.getD i default).gather firstRows
   let keyNames := colIdxs.map fun i => t.names.getD i ""
-  -- compute cnt, pct, bar
   let cntData := keys.map fun k => (counts.getD k 0).toInt64
-  let ⟨(pctData, barData), hPct, hBar⟩ := freqStats cntData
-  { keyNames, keyCols, cntData, pctData, barData, totalGroups := keys.size,
-    hKeys := by simp [keyNames, keyCols, Array.size_map],
-    hData := ⟨hPct.symm, by rw [hPct]; exact hBar.symm⟩ }
+  let (pctData, barData) := freqPctBar cntData
+  let names := keyNames ++ #["Cnt", "Pct", "Bar"]
+  let allCols := keyCols ++ #[.ints cntData, .floats pctData, .strs barData]
+  (names, allCols, keys.size)
 
 end MemTable
 end Tc

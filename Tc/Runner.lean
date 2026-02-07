@@ -31,21 +31,10 @@ def runStackEffect (s : ViewStack Table) (eff : Effect) : IO (ViewStack Table) :
   -- query effects
   | .queryMeta => runOpt s (Meta.push s)
   | .queryFreq colNames =>
-    let n := s.cur.nav
-    match n.tbl with
-    | .adbc t =>
-      let some (adbc, totalGroups) ← AdbcTable.freqTable t colNames | pure s
-      match View.fromTbl (.adbc adbc) s.cur.path 0 colNames with
-      | some v => pure (s.push { v with vkind := .freqV colNames totalGroups, disp := s!"freq {colNames.join ","}" })
-      | none => pure s
-    | _ =>
-      let freq ← TblOps.queryFreq n.tbl colNames
-      let arrNames := freq.keyNames ++ #["Cnt", "Pct", "Bar"]
-      let arrCols := freq.keyCols ++ #[.ints freq.cntData, .floats freq.pctData, .strs freq.barData]
-      let some adbc ← AdbcTable.fromArrays arrNames arrCols | pure s
-      match View.fromTbl (.adbc adbc) s.cur.path 0 colNames with
-      | some v => pure (s.push { v with vkind := .freqV colNames freq.totalGroups, disp := s!"freq {colNames.join ","}" })
-      | none => pure s
+    let some (adbc, totalGroups) ← Table.freqTable s.cur.nav.tbl colNames | pure s
+    match View.fromTbl (.adbc adbc) s.cur.path 0 colNames with
+    | some v => pure (s.push { v with vkind := .freqV colNames totalGroups, disp := s!"freq {colNames.join ","}" })
+    | none => pure s
   | .freqFilter cols row =>
     match s.cur.vkind, s.pop with
     | .freqV _ _, some s' => do

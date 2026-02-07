@@ -186,45 +186,6 @@ def freqTable (t : AdbcTable) (colNames : Array String) : IO (Option (AdbcTable 
   | some t' => return some (t', totalGroups)
   | none => return none
 
--- | Freq: use SQL GROUP BY, query total distinct count
-def queryFreq (t : AdbcTable) (colNames : Array String) : IO FreqResult := do
-  if colNames.isEmpty then return emptyFreq
-  let cols := colNames.map Prql.quote |> (", ".intercalate ·.toList)
-  -- query total distinct groups using cntdist function
-  let cntPrql := s!"{t.query.render} | cntdist \{{cols}}"
-  Log.write "prql-cntdist" cntPrql
-  let totalGroups ← do
-    let some sql ← Prql.compile cntPrql | pure 0
-    let qr ← Adbc.query sql
-    let v ← Adbc.cellStr qr 0 0
-    pure (v.toNat?.getD 0)
-  -- limit to top 1000 by count (cell-by-cell fetch is O(rows × cols))
-  let prql := s!"{t.query.render} | group \{{cols}} (aggregate \{Cnt = std.count this}) | sort \{-Cnt} | take 1000"
-  Log.write "prql-freq" prql
-  let some sql ← Prql.compile prql | return emptyFreq
-  let qr ← Adbc.query sql
-  let nr ← Adbc.nrows qr
-  -- build key columns using sequential indices (freq result: key cols 0..n-1, then Cnt)
-  let mut keyCols : Array Column := #[]
-  for idx in [:colNames.size] do
-    let mut vals : Array String := #[]
-    for r in [:nr.toNat] do
-      vals := vals.push (← Adbc.cellStr qr r.toUInt64 idx.toUInt64)
-    keyCols := keyCols.push (Column.strs vals)
-  let cntColIdx := colNames.size  -- Cnt is the column after all key columns
-  let mut cntData : Array Int64 := #[]
-  for r in [:nr.toNat] do
-    let v ← Adbc.cellStr qr r.toUInt64 cntColIdx.toUInt64
-    cntData := cntData.push (v.toInt?.getD 0).toInt64
-  let fs := freqStats cntData
-  let pctData := fs.val.1
-  let barData := fs.val.2
-  let hData : cntData.size = pctData.size ∧ pctData.size = barData.size :=
-    ⟨fs.property.1.symm, by rw [fs.property.1]; exact fs.property.2.symm⟩
-  if hKeys : colNames.size = keyCols.size then
-    pure ⟨colNames, keyCols, cntData, pctData, barData, totalGroups, hKeys, hData⟩
-  else return emptyFreq
-
 -- | Filter: requery with filter (queries new filtered count)
 def filter (t : AdbcTable) (expr : String) : IO (Option AdbcTable) := do
   let q := t.query.filter expr

@@ -27,18 +27,9 @@ def push (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   let curCol := colIdxAt n.grp names n.col.cur.val
   let curName := names.getD curCol ""
   let colNames := if n.grp.contains curName then n.grp else n.grp.push curName
-  match n.tbl with
-  | .adbc t =>
-    let some (adbc, totalGroups) ← AdbcTable.freqTable t colNames | return none
-    let some v := View.fromTbl (.adbc adbc) s.cur.path 0 colNames | return none
-    return some (s.push { v with vkind := .freqV colNames totalGroups, disp := s!"freq {colNames.join ","}" })
-  | _ =>
-    let freq ← TblOps.queryFreq n.tbl colNames
-    let arrNames := freq.keyNames ++ #["Cnt", "Pct", "Bar"]
-    let arrCols := freq.keyCols ++ #[.ints freq.cntData, .floats freq.pctData, .strs freq.barData]
-    let some adbc ← AdbcTable.fromArrays arrNames arrCols | return none
-    let some v := View.fromTbl (.adbc adbc) s.cur.path 0 colNames | return none
-    return some (s.push { v with vkind := .freqV colNames freq.totalGroups, disp := s!"freq {colNames.join ","}" })
+  let some (adbc, totalGroups) ← Table.freqTable n.tbl colNames | return none
+  let some v := View.fromTbl (.adbc adbc) s.cur.path 0 colNames | return none
+  return some (s.push { v with vkind := .freqV colNames totalGroups, disp := s!"freq {colNames.join ","}" })
 
 -- | Filter parent by selected freq row, pop freq and push filtered view
 def filter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do

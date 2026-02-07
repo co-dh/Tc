@@ -117,34 +117,12 @@ namespace Tc
 -- Meta tuple: (names, types, cnts, dists, nullPcts, mins, maxs)
 abbrev MetaTuple := Array String × Array String × Array Int64 × Array Int64 × Array Int64 × Array String × Array String
 
--- | Frequency result with length invariants:
---   keyNames.size = keyCols.size, cntData.size = pctData.size = barData.size
-structure FreqResult where
-  keyNames    : Array String
-  keyCols     : Array Column
-  cntData     : Array Int64
-  pctData     : Array Float
-  barData     : Array String
-  totalGroups : Nat
-  hKeys : keyNames.size = keyCols.size
-  hData : cntData.size = pctData.size ∧ pctData.size = barData.size
-
--- | Empty FreqResult (shared by ADBC/Kdb/Mem early returns)
-def emptyFreq : FreqResult :=
-  { keyNames := #[], keyCols := #[], cntData := #[], pctData := #[], barData := #[],
-    totalGroups := 0, hKeys := rfl, hData := ⟨rfl, rfl⟩ }
-
--- Bar chart: each '#' represents this many percent
-def barPctPerChar : Float := 5.0
-
--- | Compute pct and bar from count data (shared by Mem/ADBC/Kdb freq).
---   Returns arrays with proof that sizes equal input size.
-def freqStats (cntData : Array Int64)
-    : { pb : Array Float × Array String // pb.1.size = cntData.size ∧ pb.2.size = cntData.size } :=
+-- | Compute pct and bar from count data (for Kdb/Mem freq → fromArrays).
+def freqPctBar (cntData : Array Int64) : Array Float × Array String :=
   let total := cntData.foldl (init := 0) (· + ·)
   let pct := cntData.map fun c => if total > 0 then c.toFloat * 100 / total.toFloat else 0
-  let bar := pct.map fun p => String.ofList (List.replicate (p / barPctPerChar).toUInt32.toNat '#')
-  ⟨(pct, bar), Array.size_map .., by simp [bar, pct, Array.size_map]⟩
+  let bar := pct.map fun p => String.ofList (List.replicate (p / 5.0).toUInt32.toNat '#')
+  (pct, bar)
 
 /-! ## Core Typeclasses -/
 
@@ -156,7 +134,6 @@ class TblOps (α : Type) where
   colNames  : α → Array String                                   -- column names
   totalRows : α → Nat := nRows                                   -- actual rows (ADBC)
   queryMeta : α → IO MetaTuple                                   -- column metadata
-  queryFreq : α → Array String → IO FreqResult                     -- frequency query
   filter    : α → String → IO (Option α)                         -- filter by expr
   distinct  : α → Nat → IO (Array String)                        -- distinct values
   findRow   : α → Nat → String → Nat → Bool → IO (Option Nat)    -- find row

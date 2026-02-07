@@ -179,9 +179,9 @@ def extractTblName (tbl : String) : String :=
   | some i => parts.getD (i + 1) "t"
   | none => parts.getLastD "t"
 
--- | Freq: group by + count (partition-aware)
-def queryFreq (t : KdbTable) (colNames : Array String) : IO FreqResult := do
-  if colNames.isEmpty then return emptyFreq
+-- | Freq: group by + count (partition-aware), returns (names, cols, totalGroups)
+def freqRaw (t : KdbTable) (colNames : Array String) : IO (Array String × Array Column × Nat) := do
+  if colNames.isEmpty then return (#[], #[], 0)
   let cols := colNames.toList |> String.intercalate ","
   let tblName := extractTblName t.query.tbl
   let partFilt := extractPartFilter t.query.tbl
@@ -190,7 +190,6 @@ def queryFreq (t : KdbTable) (colNames : Array String) : IO FreqResult := do
   Log.write "q-freq" q
   let qr ← Kdb.query q
   let nr ← Kdb.nrows qr
-  -- build key columns using sequential indices (result: key cols 0..n-1, then Cnt)
   let mut keyCols : Array Column := #[]
   for idx in [:colNames.size] do
     let mut vals : Array String := #[]
@@ -201,14 +200,10 @@ def queryFreq (t : KdbTable) (colNames : Array String) : IO FreqResult := do
   for r in [:nr.toNat] do
     let v ← Kdb.cellStr qr r.toUInt64 colNames.size.toUInt64
     cntData := cntData.push (v.toInt?.getD 0).toInt64
-  let fs := freqStats cntData
-  let pctData := fs.val.1
-  let barData := fs.val.2
-  let hData : cntData.size = pctData.size ∧ pctData.size = barData.size :=
-    ⟨fs.property.1.symm, by rw [fs.property.1]; exact fs.property.2.symm⟩
-  if hKeys : colNames.size = keyCols.size then
-    pure ⟨colNames, keyCols, cntData, pctData, barData, nr.toNat, hKeys, hData⟩
-  else return emptyFreq
+  let (pctData, barData) := freqPctBar cntData
+  let names := colNames ++ #["Cnt", "Pct", "Bar"]
+  let allCols := keyCols ++ #[.ints cntData, .floats pctData, .strs barData]
+  pure (names, allCols, nr.toNat)
 
 -- | Filter: requery with filter expr
 def filter (t : KdbTable) (expr : String) : IO (Option KdbTable) := do

@@ -3,6 +3,7 @@
   Lowers universe from Type 1 to Type 0, enabling standard IO.
 -/
 import Tc.Data.Mem.Ops   -- TblOps/ModifyTable for MemTable
+import Tc.Data.Mem.Freq  -- MemTable.freqRaw
 import Tc.Data.ADBC.Ops  -- TblOps/ModifyTable for AdbcTable
 import Tc.Data.Kdb.Ops   -- TblOps/ModifyTable/ExecOp for KdbTable
 
@@ -44,7 +45,6 @@ instance : TblOps Table where
   colNames := lift (·.names) (·.colNames) (·.colNames)
   totalRows := lift MemTable.nRows (·.totalRows) (·.totalRows)
   queryMeta := liftM MemTable.queryMeta AdbcTable.queryMeta KdbTable.queryMeta
-  queryFreq t n := liftM (MemTable.queryFreq · n) (AdbcTable.queryFreq · n) (KdbTable.queryFreq · n) t
   filter t e := liftW (MemTable.filter · e) (AdbcTable.filter · e) (KdbTable.filter · e) t
   distinct t c := liftM (MemTable.distinct · c) (AdbcTable.distinct · c) (KdbTable.distinct · c) t
   findRow t c v s f := liftM (MemTable.findRow · c v s f) (AdbcTable.findRow · c v s f) (KdbTable.findRow · c v s f) t
@@ -65,6 +65,19 @@ instance : ModifyTable Table where
 
 instance : ExecOp Table where
   exec t o := liftW (ExecOp.exec · o) (ExecOp.exec · o) (ExecOp.exec · o) t
+
+-- | Freq table: returns AdbcTable + totalGroups (all backends → DuckDB temp table)
+def freqTable (tbl : Table) (colNames : Array String) : IO (Option (AdbcTable × Nat)) :=
+  match tbl with
+  | .adbc t => AdbcTable.freqTable t colNames
+  | .kdb t => do
+    let (names, cols, total) ← KdbTable.freqRaw t colNames
+    if names.isEmpty then return none
+    pure <| (← AdbcTable.fromArrays names cols).map (·, total)
+  | .mem t => do
+    let (names, cols, total) ← MemTable.freqRaw t colNames
+    if names.isEmpty then return none
+    pure <| (← AdbcTable.fromArrays names cols).map (·, total)
 
 -- toText: mem is pure, adbc/kdb fetch cols then format
 private def dbText (names : Array String) (nc nr : Nat) (getCol : Nat → Nat → Nat → IO Column) : IO String := do

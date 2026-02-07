@@ -4,7 +4,6 @@
 -/
 import Tc.Data.Mem.Table
 import Tc.Data.Mem.Meta
-import Tc.Data.Mem.Freq
 
 namespace Tc
 
@@ -13,7 +12,6 @@ instance : TblOps MemTable where
   nRows     := MemTable.nRows
   colNames  := (·.names)
   queryMeta := MemTable.queryMeta
-  queryFreq := MemTable.queryFreq
   filter    := MemTable.filter
   distinct  := MemTable.distinct
   findRow   := MemTable.findRow
