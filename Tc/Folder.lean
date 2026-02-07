@@ -7,6 +7,7 @@ import Tc.View
 import Tc.Term
 import Tc.S3
 import Tc.Table
+import Tc.HF
 
 namespace Tc.Folder
 
@@ -102,6 +103,13 @@ def mkView (path : String) (depth : Nat) : IO (Option (View Table)) := do
       pure <| View.fromTbl (Table.adbc adbc) path |>.map fun v =>
         { v with vkind := .fld path depth, disp := disp }
     | none => pure none
+  else if HF.isHF path then
+    let output ← HF.list path
+    match ← AdbcTable.fromTsv output with
+    | some adbc =>
+      pure <| View.fromTbl (Table.adbc adbc) path |>.map fun v =>
+        { v with vkind := .fld path depth, disp := HF.dispName path }
+    | none => pure none
   else
     -- resolve to absolute path
     let rp ← IO.Process.output { cmd := "realpath", args := #[path] }
@@ -132,21 +140,35 @@ private def joinPath (parent entry : String) : String :=
   else if parent.endsWith "/" then s!"{parent}{entry}"
   else s!"{parent}/{entry}"
 
+-- | Is path a remote (S3 or HF) path?
+private def isRemote (path : String) : Bool := S3.isS3 path || HF.isHF path
+
+-- | Get parent path for remote URIs
+private def remoteParent (path : String) : Option String :=
+  if S3.isS3 path then S3.parent path
+  else if HF.isHF path then HF.parent path
+  else none
+
+-- | Join remote path with child name
+private def remoteJoin (path name : String) : String :=
+  if S3.isS3 path then S3.join path name
+  else HF.join path name
+
 -- | Enter directory or view file based on current row
 def enter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
-  let s3 := S3.isS3 curDir
+  let remote := isRemote curDir
   match ← curType s.cur, ← curPath s.cur with
   | some 'd', some p =>  -- directory: push new folder view
     -- ".." navigates to parent (pop if possible, else go to parent path)
     if p == ".." || p.endsWith "/.." then
-      if s3 then
-        match S3.parent curDir with
+      if remote then
+        match remoteParent curDir with
         | some parent =>
           match ← mkView parent 1 with
           | some v => pure (some (s.setCur v))
           | none => pure (some s)
-        | none => pure (some s)  -- at bucket root, no-op
+        | none => pure (some s)  -- at root, no-op
       else if let some s' := s.pop then pure (some s')
       else  -- at root, go to actual parent
         let depth := match s.cur.vkind with | .fld _ d => d | _ => 1
@@ -155,12 +177,12 @@ def enter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
         | none => pure (some s)
     else
       let depth := match s.cur.vkind with | .fld _ d => d | _ => 1
-      let fullPath := if s3 then S3.join curDir (p ++ "/") else joinPath curDir p
+      let fullPath := if remote then remoteJoin curDir (p ++ "/") else joinPath curDir p
       match ← mkView fullPath depth with
       | some v => pure (some (s.push v))
       | none => pure (some s)
   | some ' ', some p =>  -- regular file: open data or view
-    if s3 then
+    if S3.isS3 curDir then
       let s3Path := S3.join curDir p
       if p.endsWith ".csv" || p.endsWith ".parquet" then
         let local_ ← S3.download s3Path
@@ -168,6 +190,15 @@ def enter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
         | some s' => pure (some s')
         | none => pure (some s)
       else pure (some s)  -- non-data S3 files: no-op
+    else if HF.isHF curDir then
+      -- DuckDB reads hf:// paths directly — no download needed
+      let hfPath := HF.join curDir p
+      if p.endsWith ".csv" || p.endsWith ".parquet" then
+        statusMsg s!"Loading {hfPath} ..."
+        match ← openDataFile s hfPath with
+        | some s' => pure (some s')
+        | none => pure (some s)
+      else pure (some s)  -- non-data HF files: no-op
     else
       let fullPath := joinPath curDir p
       if p.endsWith ".csv" || p.endsWith ".parquet" then
@@ -177,7 +208,7 @@ def enter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
       else
         viewFile fullPath; pure (some s)
   | some 'l', some p =>  -- symlink: check if dir or file (local only)
-    if s3 then pure (some s)
+    if remote then pure (some s)
     else
       let fullPath := joinPath curDir p
       let stat ← IO.Process.output { cmd := "test", args := #["-d", fullPath] }
@@ -211,7 +242,7 @@ def selPaths (v : View Table) : IO (Array String) := do
     let cols ← TblOps.getCols v.nav.tbl #[pathCol] 0 v.nRows
     let c := cols.getD 0 default
     let rows := if v.nav.row.sels.isEmpty then #[v.nav.row.cur.val] else v.nav.row.sels
-    let join := if S3.isS3 curDir then S3.join else joinPath
+    let join := if isRemote curDir then remoteJoin else joinPath
     return rows.map fun r => join curDir (c.get r).toRaw
   | _ => return #[]
 
@@ -281,7 +312,7 @@ def trashFiles (paths : Array String) : IO Bool := do
 def del (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   if !(s.cur.vkind matches .fld _ _) then return none
   let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => ""
-  if S3.isS3 curDir then return some s
+  if isRemote curDir then return some s
   let paths ← selPaths s.cur
   if paths.isEmpty then return none
   if !(← confirmDel paths) then return some s  -- cancelled
@@ -302,7 +333,7 @@ def del (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
 def setDepth (s : ViewStack Table) (delta : Int) : IO (Option (ViewStack Table)) := do
   match s.cur.vkind with
   | .fld path depth =>
-    if S3.isS3 path then return some s
+    if isRemote path then return some s
     let newDepth := max 1 ((depth : Int) + delta).toNat
     if newDepth == depth then pure (some s)  -- no change
     else match ← mkView path newDepth with

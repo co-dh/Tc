@@ -10,6 +10,7 @@ import Tc.UI.Info
 import Tc.Types
 import Tc.Validity
 import Tc.S3
+import Tc.HF
 import Tc.Data.Text
 import Tc.Data.Kdb.FFI
 import Tc.Data.Kdb.Q
@@ -328,6 +329,49 @@ section S3Tests
 #guard S3.join "s3://b/" "subdir/" == "s3://b/subdir/"
 
 end S3Tests
+
+/-! ## HF Path Helper Tests -/
+
+section HFTests
+
+-- | isHF recognizes hf:// prefix
+#guard HF.isHF "hf://datasets/user/dataset" == true
+#guard HF.isHF "hf://datasets/user/dataset/data/" == true
+
+-- | isHF rejects non-HF paths
+#guard HF.isHF "/local/path" == false
+#guard HF.isHF "s3://bucket/path" == false
+#guard HF.isHF "" == false
+
+-- | parsePath extracts repo and subpath
+#guard HF.parsePath "hf://datasets/user/ds" == some ("user/ds", "")
+#guard HF.parsePath "hf://datasets/user/ds/data" == some ("user/ds", "data")
+#guard HF.parsePath "hf://datasets/user/ds/data/train" == some ("user/ds", "data/train")
+
+-- | parsePath rejects too-short paths
+#guard HF.parsePath "hf://datasets/user" == none
+
+-- | parent strips last component
+#guard HF.parent "hf://datasets/user/ds/a/b/" == some "hf://datasets/user/ds/a/"
+#guard HF.parent "hf://datasets/user/ds/a/" == some "hf://datasets/user/ds/"
+
+-- | parent returns none at dataset root
+#guard HF.parent "hf://datasets/user/ds" == none
+#guard HF.parent "hf://datasets/user/ds/" == none
+
+-- | join with/without trailing slash
+#guard HF.join "hf://datasets/u/d/" "x" == "hf://datasets/u/d/x"
+#guard HF.join "hf://datasets/u/d" "x" == "hf://datasets/u/d/x"
+
+-- | apiUrl builds correct HF Hub API URL
+#guard HF.apiUrl "hf://datasets/user/ds" == some "https://huggingface.co/api/datasets/user/ds/tree/main"
+#guard HF.apiUrl "hf://datasets/user/ds/data" == some "https://huggingface.co/api/datasets/user/ds/tree/main/data"
+
+-- | dispName extracts last component
+#guard HF.dispName "hf://datasets/user/ds" == "ds"
+#guard HF.dispName "hf://datasets/user/ds/data/" == "data"
+
+end HFTests
 
 /-! ## FreqResult Construction Tests -/
 
