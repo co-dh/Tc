@@ -9,6 +9,7 @@ import Tc.View
 import Tc.UI.Info
 import Tc.Types
 import Tc.Validity
+import Tc.Remote
 import Tc.S3
 import Tc.HF
 import Tc.Data.Text
@@ -319,16 +320,33 @@ section S3Tests
 -- | parent without trailing slash
 #guard S3.parent "s3://bucket/a/b" == some "s3://bucket/a/"
 
+end S3Tests
+
+/-! ## Remote Path Helper Tests -/
+
+section RemoteTests
+
 -- | join with trailing slash
-#guard S3.join "s3://b/a/" "x" == "s3://b/a/x"
+#guard Remote.join "s3://b/a/" "x" == "s3://b/a/x"
 
 -- | join without trailing slash adds separator
-#guard S3.join "s3://b/a" "x" == "s3://b/a/x"
+#guard Remote.join "s3://b/a" "x" == "s3://b/a/x"
 
 -- | join preserves trailing slash on child
-#guard S3.join "s3://b/" "subdir/" == "s3://b/subdir/"
+#guard Remote.join "s3://b/" "subdir/" == "s3://b/subdir/"
 
-end S3Tests
+-- | dispName extracts last component
+#guard Remote.dispName "hf://datasets/user/ds" == "ds"
+#guard Remote.dispName "hf://datasets/user/ds/data/" == "data"
+#guard Remote.dispName "s3://bucket/prefix/" == "prefix"
+
+-- | parent with different minParts
+#guard Remote.parent "s3://bucket/" 3 == none
+#guard Remote.parent "s3://bucket/a/b" 3 == some "s3://bucket/a/"
+#guard Remote.parent "hf://datasets/user/ds" 5 == none
+#guard Remote.parent "hf://datasets/user/ds/a/" 5 == some "hf://datasets/user/ds/"
+
+end RemoteTests
 
 /-! ## HF Path Helper Tests -/
 
@@ -363,17 +381,9 @@ section HFTests
 #guard HF.parent "hf://datasets/user/ds" == none
 #guard HF.parent "hf://datasets/user/ds/" == none
 
--- | join with/without trailing slash
-#guard HF.join "hf://datasets/u/d/" "x" == "hf://datasets/u/d/x"
-#guard HF.join "hf://datasets/u/d" "x" == "hf://datasets/u/d/x"
-
 -- | apiUrl builds correct HF Hub API URL
 #guard HF.apiUrl "hf://datasets/user/ds" == some "https://huggingface.co/api/datasets/user/ds/tree/main"
 #guard HF.apiUrl "hf://datasets/user/ds/data" == some "https://huggingface.co/api/datasets/user/ds/tree/main/data"
-
--- | dispName extracts last component
-#guard HF.dispName "hf://datasets/user/ds" == "ds"
-#guard HF.dispName "hf://datasets/user/ds/data/" == "data"
 
 end HFTests
 
