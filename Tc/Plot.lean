@@ -218,8 +218,12 @@ private def showPng (png : String) : IO Unit := do
 
 -- | Read one key from /dev/tty
 private def readKey : IO Char := do
+  -- set raw mode so we get single keypress without Enter
+  let _ ← IO.Process.output { cmd := "stty", args := #["-F", "/dev/tty", "raw", "-echo"] }
   let tty ← IO.FS.Handle.mk "/dev/tty" .read
   let buf ← tty.read 1
+  -- restore cooked mode
+  let _ ← IO.Process.output { cmd := "stty", args := #["-F", "/dev/tty", "sane"] }
   pure (if buf.size > 0 then Char.ofNat buf[0]!.toNat else 'q')
 
 -- | Log error and return current stack unchanged
