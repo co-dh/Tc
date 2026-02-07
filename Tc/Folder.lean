@@ -191,14 +191,16 @@ def enter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
         | none => pure (some s)
       else pure (some s)  -- non-data S3 files: no-op
     else if HF.isHF curDir then
-      -- DuckDB reads hf:// paths directly — no download needed
       let hfPath := HF.join curDir p
       if p.endsWith ".csv" || p.endsWith ".parquet" then
+        -- DuckDB reads hf:// paths directly — no download needed
         statusMsg s!"Loading {hfPath} ..."
         match ← openDataFile s hfPath with
         | some s' => pure (some s')
         | none => pure (some s)
-      else pure (some s)  -- non-data HF files: no-op
+      else  -- non-data HF files: download and view with bat/cat
+        let local_ ← HF.download hfPath
+        viewFile local_; pure (some s)
     else
       let fullPath := joinPath curDir p
       if p.endsWith ".csv" || p.endsWith ".parquet" then

@@ -34,7 +34,7 @@ def init : IO Bool := do
   let ok ← Adbc.init
   if ok then
     try let _ ← Adbc.query "INSTALL httpfs; LOAD httpfs"
-    catch e => IO.eprintln s!"httpfs extension: {e}"
+    catch e => Log.write "init" s!"httpfs extension: {e}"
   pure ok
 
 -- | Shutdown ADBC backend

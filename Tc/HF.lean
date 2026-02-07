@@ -3,6 +3,7 @@
   Uses HF Hub API for directory listing, DuckDB httpfs for file reading.
 -/
 import Tc.Render
+import Tc.Error
 
 namespace Tc.HF
 
@@ -59,11 +60,11 @@ def apiUrl (path : String) : Option String := do
 def list (path : String) : IO String := do
   statusMsg s!"Loading {path} ..."
   let some url := apiUrl path | do
-    IO.eprintln "Invalid HF path. Use: hf://datasets/{user}/{dataset}"
+    Log.write "hf" "Invalid HF path"
     return ""
   let curlOut ← IO.Process.output { cmd := "curl", args := #["-sf", url] }
   if curlOut.exitCode != 0 then
-    IO.eprintln s!"HF API request failed for: {url}"
+    Log.write "hf" s!"API request failed for: {url}"
     return ""
   -- write JSON to temp file, then run jq on it (avoids shell quoting issues)
   let tmp := "/tmp/tc-hf-api.json"
@@ -92,6 +93,25 @@ def list (path : String) : IO String := do
   let parentEntry := if parent path |>.isSome then "..\t0\t\td" else ""
   let entries := if parentEntry.isEmpty then body else [parentEntry] ++ body
   pure (hdr ++ (if entries.isEmpty then "" else "\n" ++ "\n".intercalate entries))
+
+-- | Build raw download URL for an HF file
+-- "hf://datasets/user/dataset/sub/file.txt" → "https://huggingface.co/datasets/user/dataset/resolve/main/sub/file.txt"
+def rawUrl (path : String) : Option String := do
+  let (repo, sub) ← parsePath path
+  if sub.isEmpty then none  -- can't download a directory
+  else some s!"https://huggingface.co/datasets/{repo}/resolve/main/{sub}"
+
+-- | Download HF file to local temp path, returns local path
+def download (hfPath : String) : IO String := do
+  statusMsg s!"Downloading {hfPath} ..."
+  let _ ← IO.Process.output { cmd := "mkdir", args := #["-p", "/tmp/tc-hf"] }
+  let name := hfPath.splitOn "/" |>.getLast? |>.getD "file"
+  let local_ := s!"/tmp/tc-hf/{name}"
+  match rawUrl hfPath with
+  | some url =>
+    let _ ← IO.Process.output { cmd := "curl", args := #["-sfL", "-o", local_, url] }
+  | none => pure ()
+  pure local_
 
 -- | Display name for HF path (last meaningful component)
 def dispName (path : String) : String :=

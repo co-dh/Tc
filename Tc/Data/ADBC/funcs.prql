@@ -66,21 +66,23 @@ let ds_trunc_cat = func x y c len tbl <relation> -> (
 )
 
 # Downsample by sampling every Nth row, filter zeros/nulls
+# Note: no final select — PRQL miscompiles select after filter on derived column.
+# Extra _rn column in output is harmless (gnuplot uses 'using 1:2').
 let ds_nth = func x y step tbl <relation> -> (
   from tbl
+  select {x, y}
   filter s"{y} IS NOT NULL AND CAST({y} AS VARCHAR) NOT IN ('0','0.0','0.000000')"
   derive {_rn = s"ROW_NUMBER() OVER ()"}
   filter s"(_rn - 1) % {step} = 0"
-  select {x, y}
 )
 
 # Downsample by sampling with category
 let ds_nth_cat = func x y c step tbl <relation> -> (
   from tbl
+  select {x, y, c}
   filter s"{y} IS NOT NULL AND CAST({y} AS VARCHAR) NOT IN ('0','0.0','0.000000')"
   derive {_rn = s"ROW_NUMBER() OVER ()"}
   filter s"(_rn - 1) % {step} = 0"
-  select {x, y, c}
 )
 
 let colstat = func c nm tp tbl <relation> -> (

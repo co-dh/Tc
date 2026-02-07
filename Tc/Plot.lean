@@ -26,7 +26,7 @@ private def maxPoints : Nat := 2000
 
 -- | Check if column type is time-like
 private def isTimeType (typ : String) : Bool :=
-  typ == "time" || typ == "timestamp"
+  typ == "time" || typ == "timestamp" || typ == "date"
 
 -- | Check if y-value is zero (filter out no-bid/no-ask conditions)
 private def isZeroY (yv : String) : Bool :=
@@ -55,6 +55,13 @@ private def tsIntervals : Array Interval := #[
   ⟨"1d", 10, "%Y-%m-%d", "%m-%d"⟩
 ]
 
+-- | Date intervals (colType = "date", format YYYY-MM-DD)
+private def dateIntervals : Array Interval := #[
+  ⟨"1d", 10, "%Y-%m-%d", "%Y-%m-%d"⟩,
+  ⟨"1M", 7, "%Y-%m", "%Y-%m"⟩,
+  ⟨"1Y", 4, "%Y", "%Y"⟩
+]
+
 -- | Build non-time interval array from base step
 private def stepIntervals (baseStep : Nat) : Array Interval :=
   let s0 := if baseStep == 0 then 1 else baseStep
@@ -65,6 +72,7 @@ private def stepIntervals (baseStep : Nat) : Array Interval :=
 private def getIntervals (xType : String) (baseStep : Nat) : Array Interval :=
   if xType == "time" then timeIntervals
   else if xType == "timestamp" then tsIntervals
+  else if xType == "date" then dateIntervals
   else stepIntervals baseStep
 
 -- | Truncate time string to given length
@@ -292,7 +300,7 @@ def run (s : ViewStack T) (bar : Bool) : IO (Option (ViewStack T)) := do
         if ← renderGnuplot script then
           showPng "/tmp/tc-plot.png"
         else
-          IO.println s!"plot error (see /tmp/tc-plot.log)"
+          IO.println s!"plot error (see /tmp/tc.log)"
       else
         IO.println "failed to extract columns or y-axis not numeric"
     -- show info line: x=col y=col [1s 1m 1h] +/-:interval q:exit
