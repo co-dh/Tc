@@ -193,9 +193,10 @@ def enter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
     else if HF.isHF curDir then
       let hfPath := HF.join curDir p
       if p.endsWith ".csv" || p.endsWith ".parquet" then
-        -- DuckDB reads hf:// paths directly — no download needed
-        statusMsg s!"Loading {hfPath} ..."
-        match ← openDataFile s hfPath with
+        -- use local cache (downloads if not cached)
+        let local_ ← HF.cachedPath hfPath
+        statusMsg s!"Loading {local_} ..."
+        match ← openDataFile s local_ with
         | some s' => pure (some s')
         | none => pure (some s)
       else  -- non-data HF files: download and view with bat/cat

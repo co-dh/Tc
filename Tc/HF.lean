@@ -101,17 +101,40 @@ def rawUrl (path : String) : Option String := do
   if sub.isEmpty then none  -- can't download a directory
   else some s!"https://huggingface.co/datasets/{repo}/resolve/main/{sub}"
 
--- | Download HF file to local temp path, returns local path
-def download (hfPath : String) : IO String := do
+-- | Get cached local path for HF file. Downloads if not cached.
+-- Returns the local file path (cached or freshly downloaded).
+def cachedPath (hfPath : String) : IO String := do
+  -- try cache first
+  let home ← IO.Process.output { cmd := "sh", args := #["-c", "echo $HOME"] }
+  let homeDir := home.stdout.trimAscii.toString
+  let base := s!"{homeDir}/.cache/tc/hf"
+  let some (repo, sub) := parsePath hfPath | pure hfPath
+  if sub.isEmpty then return hfPath
+  let local_ := s!"{base}/{repo}/{sub}"
+  -- check if cached file exists
+  let cached ← try discard (IO.FS.Handle.mk local_ .read); pure true catch _ => pure false
+  if cached then
+    Log.write "hf" s!"cache hit: {local_}"
+    return local_
+  -- download to cache
   statusMsg s!"Downloading {hfPath} ..."
-  let _ ← IO.Process.output { cmd := "mkdir", args := #["-p", "/tmp/tc-hf"] }
-  let name := hfPath.splitOn "/" |>.getLast? |>.getD "file"
-  let local_ := s!"/tmp/tc-hf/{name}"
+  -- mkdir -p for parent directory
+  let parent := "/".intercalate (local_.splitOn "/" |>.dropLast)
+  let _ ← IO.Process.output { cmd := "mkdir", args := #["-p", parent] }
   match rawUrl hfPath with
   | some url =>
-    let _ ← IO.Process.output { cmd := "curl", args := #["-sfL", "-o", local_, url] }
-  | none => pure ()
-  pure local_
+    let r ← IO.Process.output { cmd := "curl", args := #["-sfL", "-o", local_, url] }
+    if r.exitCode != 0 then
+      Log.write "hf" s!"download failed: {url}"
+      return hfPath  -- fallback to hf:// (let DuckDB try)
+    Log.write "hf" s!"cached: {local_}"
+    return local_
+  | none => return hfPath
+
+-- | Download HF file to temp path (for non-data file viewing)
+def download (hfPath : String) : IO String := do
+  -- for viewable files, use the cache too
+  cachedPath hfPath
 
 -- | Display name for HF path (last meaningful component)
 def dispName (path : String) : String :=
