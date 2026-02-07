@@ -11,7 +11,6 @@ instance : TblOps KdbTable where
   nRows     := (·.nRows)
   colNames  := (·.colNames)
   totalRows := (·.totalRows)
-  isAdbc    := fun _ => true
   queryMeta := KdbTable.queryMeta
   queryFreq := KdbTable.queryFreq
   filter    := KdbTable.filter

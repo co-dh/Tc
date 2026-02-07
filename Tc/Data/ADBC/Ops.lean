@@ -12,7 +12,6 @@ instance : TblOps AdbcTable where
   nRows     := (·.nRows)
   colNames  := (·.colNames)
   totalRows := (·.totalRows)
-  isAdbc    := fun _ => true
   queryMeta := AdbcTable.queryMeta
   queryFreq := AdbcTable.queryFreq
   filter    := AdbcTable.filter

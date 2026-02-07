@@ -35,7 +35,6 @@ def colSearch (s : ViewStack T) : IO (ViewStack T) := do
 -- | row search (/): find value in current column, jump to matching row (IO)
 def rowSearch (s : ViewStack T) : IO (ViewStack T) := do
   let v := s.cur
-  if TblOps.isAdbc v.nav.tbl then errorPopup "search disabled for DB; use \\ filter"; return s
   let names := TblOps.colNames v.nav.tbl
   let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
   let curName := names.getD curCol ""
@@ -48,7 +47,6 @@ def rowSearch (s : ViewStack T) : IO (ViewStack T) := do
 -- | search next (n): repeat last search forward (IO)
 def searchNext (s : ViewStack T) : IO (ViewStack T) := do
   let v := s.cur
-  if TblOps.isAdbc v.nav.tbl then errorPopup "search disabled for DB"; return s
   let some (col, val) := v.search | return s
   let start := v.nav.row.cur.val + 1
   let some rowIdx ← TblOps.findRow v.nav.tbl col val start true | return s
@@ -57,7 +55,6 @@ def searchNext (s : ViewStack T) : IO (ViewStack T) := do
 -- | search prev (N): repeat last search backward (IO)
 def searchPrev (s : ViewStack T) : IO (ViewStack T) := do
   let v := s.cur
-  if TblOps.isAdbc v.nav.tbl then errorPopup "search disabled for DB"; return s
   let some (col, val) := v.search | return s
   let start := v.nav.row.cur.val
   let some rowIdx ← TblOps.findRow v.nav.tbl col val start false | return s

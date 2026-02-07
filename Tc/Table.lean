@@ -32,13 +32,10 @@ namespace Table
     (f : {α : Type} → [TblOps α] → α → IO β) : Table → IO β := liftM f f f
 
 def asMem? : Table → Option MemTable | .mem t => some t | _ => none
-def isAdbc : Table → Bool | .mem _ => false | _ => true
-
 instance : MemConvert MemTable Table where wrap := .mem; unwrap := asMem?
 
 def fromFile (p : String) : IO (Option Table) := do
-  if p.endsWith ".csv" then (← MemTable.load p).toOption.map .mem |> pure
-  else (← AdbcTable.fromFile p).map .adbc |> pure
+  (← AdbcTable.fromFile p).map .adbc |> pure
 def fromUrl (u : String) : IO (Option Table) := do
   if u.startsWith "kdb://" then (← KdbTable.fromUrl u).map .kdb |> pure else pure none
 
@@ -46,7 +43,6 @@ instance : TblOps Table where
   nRows    := lift MemTable.nRows (·.nRows) (·.nRows)
   colNames := lift (·.names) (·.colNames) (·.colNames)
   totalRows := lift MemTable.nRows (·.totalRows) (·.totalRows)
-  isAdbc   := isAdbc
   queryMeta := liftM MemTable.queryMeta AdbcTable.queryMeta KdbTable.queryMeta
   queryFreq t n := liftM (MemTable.queryFreq · n) (AdbcTable.queryFreq · n) (KdbTable.queryFreq · n) t
   filter t e := liftW (MemTable.filter · e) (AdbcTable.filter · e) (KdbTable.filter · e) t

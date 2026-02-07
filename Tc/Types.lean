@@ -155,7 +155,6 @@ class TblOps (α : Type) where
   nRows     : α → Nat                                            -- row count in view
   colNames  : α → Array String                                   -- column names
   totalRows : α → Nat := nRows                                   -- actual rows (ADBC)
-  isAdbc    : α → Bool := fun _ => false                         -- DB-backed?
   queryMeta : α → IO MetaTuple                                   -- column metadata
   queryFreq : α → Array String → IO FreqResult                     -- frequency query
   filter    : α → String → IO (Option α)                         -- filter by expr
