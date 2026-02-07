@@ -11,16 +11,14 @@ import Tc.Plot
 
 namespace Tc.Runner
 
-variable {T : Type} [TblOps T] [ModifyTable T] [MemConvert MemTable T]
-
 -- | Helper: run IO (Option ViewStack), default to original on none
-def runOpt (s : ViewStack T) (io : IO (Option (ViewStack T))) : IO (ViewStack T) := do
+def runOpt (s : ViewStack Table) (io : IO (Option (ViewStack Table))) : IO (ViewStack Table) := do
   match ← io with
   | some s' => pure s'
   | none => pure s
 
 -- | Run effect on ViewStack, return updated stack
-def runStackEffect (s : ViewStack T) (eff : Effect) : IO (ViewStack T) := do
+def runStackEffect (s : ViewStack Table) (eff : Effect) : IO (ViewStack Table) := do
   match eff with
   | .none => pure s
   -- fzf effects
@@ -34,21 +32,30 @@ def runStackEffect (s : ViewStack T) (eff : Effect) : IO (ViewStack T) := do
   | .queryMeta => runOpt s (Meta.push s)
   | .queryFreq colNames =>
     let n := s.cur.nav
-    let freq ← TblOps.queryFreq n.tbl colNames
-    let tbl := Freq.toMemTable freq
-    match View.fromTbl (MemConvert.wrap tbl : T) s.cur.path 0 colNames with
-    | some v => pure (s.push { v with vkind := .freqV colNames freq.totalGroups, disp := s!"freq {colNames.join ","}" })
-    | none => pure s
+    match n.tbl with
+    | .adbc t =>
+      let some (adbc, totalGroups) ← AdbcTable.freqTable t colNames | pure s
+      match View.fromTbl (.adbc adbc) s.cur.path 0 colNames with
+      | some v => pure (s.push { v with vkind := .freqV colNames totalGroups, disp := s!"freq {colNames.join ","}" })
+      | none => pure s
+    | _ =>
+      let freq ← TblOps.queryFreq n.tbl colNames
+      let arrNames := freq.keyNames ++ #["Cnt", "Pct", "Bar"]
+      let arrCols := freq.keyCols ++ #[.ints freq.cntData, .floats freq.pctData, .strs freq.barData]
+      let some adbc ← AdbcTable.fromArrays arrNames arrCols | pure s
+      match View.fromTbl (.adbc adbc) s.cur.path 0 colNames with
+      | some v => pure (s.push { v with vkind := .freqV colNames freq.totalGroups, disp := s!"freq {colNames.join ","}" })
+      | none => pure s
   | .freqFilter cols row =>
-    match s.cur.vkind, MemConvert.unwrap s.cur.nav.tbl, s.pop with
-    | .freqV _ _, some tbl, some s' =>
-      let expr := Freq.filterExpr tbl cols row
+    match s.cur.vkind, s.pop with
+    | .freqV _ _, some s' => do
+      let expr ← Freq.filterExprIO s.cur.nav.tbl cols row
       match ← TblOps.filter s'.cur.nav.tbl expr with
       | some tbl' => match View.fromTbl tbl' s'.cur.path 0 s'.cur.nav.grp 0 with
         | some v => pure (s'.push v)
         | none => pure s
       | none => pure s
-    | _, _, _ => pure s
+    | _, _ => pure s
   | .queryFilter expr =>
     match ← TblOps.filter s.cur.nav.tbl expr with
     | some tbl' => match View.fromTbl tbl' s.cur.path s.cur.nav.col.cur.val s.cur.nav.grp 0 with

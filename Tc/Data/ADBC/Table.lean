@@ -155,7 +155,36 @@ end AdbcTable
 -- NOTE: ReadTable/ModifyTable/RenderTable instances for AdbcTable are defined in Table variants
 -- (Table.lean, Table/DuckDB.lean) which import queryMeta from ADBC/Meta.lean
 
+-- | Counter for unique temp table names
+initialize memTblCounter : IO.Ref Nat ← IO.mkRef 0
+
 namespace AdbcTable
+
+-- | Create freq table entirely in SQL (no round-trip to Lean)
+def freqTable (t : AdbcTable) (colNames : Array String) : IO (Option (AdbcTable × Nat)) := do
+  if colNames.isEmpty then return none
+  let cols := colNames.map Prql.quote |> (", ".intercalate ·.toList)
+  -- total distinct groups
+  let cntPrql := s!"{t.query.render} | cntdist \{{cols}}"
+  Log.write "prql-cntdist" cntPrql
+  let totalGroups ← do
+    let some sql ← Prql.compile cntPrql | pure 0
+    let qr ← Adbc.query sql
+    let v ← Adbc.cellStr qr 0 0
+    pure (v.toNat?.getD 0)
+  -- freq table: uses freq PRQL function which computes Cnt, Pct, Bar in SQL
+  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
+  let tblName := s!"tc_freq_{n}"
+  let prql := s!"{t.query.render} | freq \{{cols}} | take 1000"
+  Log.write "prql-freq" prql
+  let some sql ← Prql.compile prql | return none
+  -- strip trailing semicolon for CREATE TABLE subquery
+  let sql := sql.trimAscii.toString
+  let sql := if sql.endsWith ";" then (sql.take (sql.length - 1)).toString else sql
+  let _ ← Adbc.query s!"CREATE TEMP TABLE {tblName} AS {sql}"
+  match ← requery { base := s!"from {tblName}" } with
+  | some t' => return some (t', totalGroups)
+  | none => return none
 
 -- | Freq: use SQL GROUP BY, query total distinct count
 def queryFreq (t : AdbcTable) (colNames : Array String) : IO FreqResult := do
@@ -235,6 +264,34 @@ def findRow (t : AdbcTable) (col : Nat) (val : String) (start : Nat) (fwd : Bool
       let c ← t.getCol col idx (idx + 1)
       if (c.get 0).toRaw == val then return some idx
   return none
+
+-- | Create AdbcTable from column names + Column arrays via DuckDB temp table
+def fromArrays (names : Array String) (cols : Array Column) : IO (Option AdbcTable) := do
+  if names.isEmpty || cols.isEmpty then return none
+  let nRows := (cols.getD 0 default).size
+  if nRows == 0 then return none
+  -- escape SQL string: single quotes doubled
+  let esc (s : String) := s.replace "'" "''"
+  -- build column aliases
+  let colAliases := names.map fun n => s!"\"{esc n}\""
+  -- build VALUES rows
+  let mut rows : Array String := #[]
+  for r in [:nRows] do
+    let mut vals : Array String := #[]
+    for c in cols do
+      let v := match c with
+        | .ints data   => s!"{data.getD r 0}"
+        | .floats data => s!"{data.getD r 0}"
+        | .strs data   => s!"'{esc (data.getD r "")}'"
+      vals := vals.push v
+    rows := rows.push s!"({", ".intercalate vals.toList})"
+  let valuesSql := ", ".intercalate rows.toList
+  let aliasSql := ", ".intercalate colAliases.toList
+  let sql := s!"CREATE OR REPLACE TEMP TABLE tc_freq AS SELECT * FROM (VALUES {valuesSql}) AS t({aliasSql})"
+  Log.write "fromArrays" sql
+  let _ ← Adbc.query sql
+  let qr ← Adbc.query "SELECT * FROM tc_freq"
+  some <$> ofQueryResult qr { base := "from tc_freq" } nRows
 
 end AdbcTable
 

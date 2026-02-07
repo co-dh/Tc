@@ -1,55 +1,57 @@
 /-
   Freq view: group by columns, count, pct, bar
-  Returns MemTable sorted by Cnt descending.
+  Converts FreqResult to AdbcTable via AdbcTable.fromArrays.
   Pure update returns Effect; Runner executes IO.
 -/
 import Tc.View
-import Tc.Data.Mem.Freq
+import Tc.Table
 
 namespace Tc.Freq
 
-variable {T : Type} [TblOps T] [MemConvert MemTable T]
-
--- | Convert queryFreq tuple result to MemTable (sorted by Cnt desc)
-def toMemTable (f : FreqResult) : MemTable :=
-  let names := f.keyNames ++ #["Cnt", "Pct", "Bar"]
-  let cols := f.keyCols ++ #[.ints f.cntData, .floats f.pctData, .strs f.barData]
-  MemTable.sort { names, cols, h_eq := by simp [names, cols, Array.size_append, f.hKeys] } #[f.keyCols.size] false
-
--- | Build filter expression from freq row (col1 == val1 && col2 == val2 ...)
-def filterExpr (tbl : MemTable) (cols : Array String) (row : Nat) : String :=
-  let vals := cols.mapIdx fun i _ =>
-    match tbl.cols.getD i default with
-    | .strs data => s!"'{data.getD row ""}'"
-    | .ints data => s!"{data.getD row 0}"
-    | .floats data => s!"{data.getD row 0}"
+-- | Build filter expression from freq view row (IO: fetches cells from table)
+def filterExprIO (tbl : Table) (cols : Array String) (row : Nat) : IO String := do
+  let names := TblOps.colNames tbl
+  let idxs := cols.filterMap names.idxOf?
+  let fetchedCols ← TblOps.getCols tbl idxs row (row + 1)
+  let vals := fetchedCols.mapIdx fun i _ =>
+    match fetchedCols.getD i default with
+    | .strs data => s!"'{data.getD 0 ""}'"
+    | .ints data => s!"{data.getD 0 0}"
+    | .floats data => s!"{data.getD 0 0}"
   let exprs := cols.zip vals |>.map fun (c, v) => s!"{c} == {v}"
-  " && ".intercalate exprs.toList
+  pure (" && ".intercalate exprs.toList)
 
 -- | Push frequency view (group by grp + cursor column)
-def push (s : ViewStack T) : IO (Option (ViewStack T)) := do
+def push (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   let n := s.cur.nav; let names := TblOps.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   let curName := names.getD curCol ""
   let colNames := if n.grp.contains curName then n.grp else n.grp.push curName
-  let freq ← TblOps.queryFreq n.tbl colNames
-  let tbl := toMemTable freq
-  let some v := View.fromTbl (MemConvert.wrap tbl) s.cur.path 0 colNames | return none
-  return some (s.push { v with vkind := .freqV colNames freq.totalGroups, disp := s!"freq {colNames.join ","}" })
+  match n.tbl with
+  | .adbc t =>
+    let some (adbc, totalGroups) ← AdbcTable.freqTable t colNames | return none
+    let some v := View.fromTbl (.adbc adbc) s.cur.path 0 colNames | return none
+    return some (s.push { v with vkind := .freqV colNames totalGroups, disp := s!"freq {colNames.join ","}" })
+  | _ =>
+    let freq ← TblOps.queryFreq n.tbl colNames
+    let arrNames := freq.keyNames ++ #["Cnt", "Pct", "Bar"]
+    let arrCols := freq.keyCols ++ #[.ints freq.cntData, .floats freq.pctData, .strs freq.barData]
+    let some adbc ← AdbcTable.fromArrays arrNames arrCols | return none
+    let some v := View.fromTbl (.adbc adbc) s.cur.path 0 colNames | return none
+    return some (s.push { v with vkind := .freqV colNames freq.totalGroups, disp := s!"freq {colNames.join ","}" })
 
 -- | Filter parent by selected freq row, pop freq and push filtered view
-def filter (s : ViewStack T) : IO (Option (ViewStack T)) := do
+def filter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   let .freqV cols _ := s.cur.vkind | return some s
   if !s.hasParent then return some s
-  let some tbl := MemConvert.unwrap s.cur.nav.tbl | return some s
+  let expr ← filterExprIO s.cur.nav.tbl cols s.cur.nav.row.cur.val
   let some s' := s.pop | return some s
-  let expr := filterExpr tbl cols s.cur.nav.row.cur.val
   let some tbl' ← TblOps.filter s'.cur.nav.tbl expr | return some s'
   let some v := View.fromTbl tbl' s'.cur.path 0 s'.cur.nav.grp 0 | return some s'
   return some (s'.push v)
 
 -- | Pure update: returns Effect for IO operations
-def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
+def update (s : ViewStack Table) (cmd : Cmd) : Option (ViewStack Table × Effect) :=
   let n := s.cur.nav; let names := TblOps.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   let curName := names.getD curCol ""
@@ -62,7 +64,7 @@ def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   | _ => none
 
 -- | Execute freq command (IO version for backward compat)
-def exec (s : ViewStack T) (cmd : Cmd) : IO (Option (ViewStack T)) := do
+def exec (s : ViewStack Table) (cmd : Cmd) : IO (Option (ViewStack Table)) := do
   match cmd with
   | .freq .dup => (← push s).orElse (fun _ => some s) |> pure
   | .freq .ent => match s.cur.vkind with
