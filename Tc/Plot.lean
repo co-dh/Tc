@@ -132,11 +132,22 @@ private def exportData (cols : Array Column) (hasCat : Bool) (xIsTime : Bool) (t
     let catArr := if cats.isEmpty then none else some cats.toArray
     pure (path, catArr)
 
+-- | Max number of x-axis labels before thinning
+private def maxLabels : Nat := 40
+
+-- | Generate gnuplot xtic expression that thins labels for string x-axis
+-- Shows label every N-th point; empty string for others
+private def thinXtic (nPoints : Nat) : String :=
+  let stride := if nPoints > maxLabels then nPoints / maxLabels else 1
+  if stride <= 1 then "xtic(1)"
+  else s!"(int($0) % {stride} == 0 ? stringcolumn(1) : \"\")"
+
 -- | Generate gnuplot script (ggplot-minimal style)
 -- timefmt/xfmt: gnuplot time format strings (from Interval)
+-- nPoints: data point count (for thinning string x-axis labels)
 private def gnuplotScript (dataPath : String) (xName yName : String)
     (catVals : Option (Array String)) (bar : Bool) (xIsStr xIsTime : Bool)
-    (timefmt xfmt : String) : String :=
+    (timefmt xfmt : String) (nPoints : Nat) : String :=
   let pngPath := "/tmp/tc-plot.png"
   -- terminal + data
   let header := "set terminal pngcairo size 1200,700 enhanced font 'Sans,11'\n" ++
@@ -150,6 +161,8 @@ private def gnuplotScript (dataPath : String) (xName yName : String)
   let xsetup := if xIsTime then
       s!"set xdata time\nset timefmt \"{timefmt}\"\nset format x \"{xfmt}\"\n"
     else if xIsStr then "set xtics rotate by -45\n" else ""
+  -- xtic expression for string axes (thins labels when too many points)
+  let xt := thinXtic nPoints
   -- plot commands
   let lineColor := "rgb '#4682B4'"  -- steelblue
   let plotCmd := match catVals, bar with
@@ -157,16 +170,13 @@ private def gnuplotScript (dataPath : String) (xName yName : String)
       if xIsTime then
         s!"plot '{dataPath}' using 1:2 with lines title '{yName}' lw 1.5 lc {lineColor}\n"
       else if xIsStr then
-        s!"plot '{dataPath}' using 2:xtic(1) with lines title '{yName}' lw 1.5 lc {lineColor}\n"
+        s!"plot '{dataPath}' using 2:{xt} with lines title '{yName}' lw 1.5 lc {lineColor}\n"
       else
         s!"plot '{dataPath}' using 1:2 with lines title '{yName}' lw 1.5 lc {lineColor}\n"
     | none, true =>
       "set style data histogram\nset style histogram clustered\n" ++
       s!"set style fill solid 0.8 border -1\nset boxwidth 0.8\n" ++
-      (if xIsTime then
-        s!"plot '{dataPath}' using 2:xtic(1) title '{yName}' lc {lineColor}\n"
-      else
-        s!"plot '{dataPath}' using 2:xtic(1) title '{yName}' lc {lineColor}\n")
+      s!"plot '{dataPath}' using 2:{xt} title '{yName}' lc {lineColor}\n"
     | some cats, false =>
       let catList := " ".intercalate cats.toList
       if xIsTime then
@@ -174,13 +184,13 @@ private def gnuplotScript (dataPath : String) (xName yName : String)
         s!"using 1:(stringcolumn(3) eq cat ? $2 : 1/0) with lines title cat lw 1.5\n"
       else
         s!"plot for [cat in \"{catList}\"] '{dataPath}' " ++
-        s!"using (stringcolumn(3) eq cat ? $2 : 1/0):xtic(1) with lines title cat lw 1.5\n"
+        s!"using (stringcolumn(3) eq cat ? $2 : 1/0):{xt} with lines title cat lw 1.5\n"
     | some cats, true =>
       let catList := " ".intercalate cats.toList
       "set style data histogram\nset style histogram clustered\n" ++
       "set style fill solid 0.8 border -1\nset boxwidth 0.8\n" ++
       s!"plot for [cat in \"{catList}\"] '{dataPath}' " ++
-      s!"using (stringcolumn(3) eq cat ? $2 : 1/0):xtic(1) title cat\n"
+      s!"using (stringcolumn(3) eq cat ? $2 : 1/0):{xt} title cat\n"
   header ++ style ++ labels ++ xsetup ++ plotCmd
 
 -- | Display PNG via viu (no wait — caller handles key reading)
@@ -268,7 +278,7 @@ def run (s : ViewStack T) (bar : Bool) : IO (Option (ViewStack T)) := do
     let dbOk ← do
       if let some cats := ← TblOps.plotExport n.tbl xName yName catName? xIsTime baseStep iv.truncLen then
         let catVals := if cats.isEmpty then none else some cats
-        let script := gnuplotScript "/tmp/tc-plot.dat" xName yName catVals bar xIsStr xIsTime iv.timefmt iv.xfmt
+        let script := gnuplotScript "/tmp/tc-plot.dat" xName yName catVals bar xIsStr xIsTime iv.timefmt iv.xfmt nr
         if ← renderGnuplot script then
           showPng "/tmp/tc-plot.png"
           pure true
@@ -278,7 +288,7 @@ def run (s : ViewStack T) (bar : Bool) : IO (Option (ViewStack T)) := do
     if !dbOk then
       if let some cols := ← hasFallbackCols then
         let (dataPath, catVals) ← exportData cols catIdx.isSome xIsTime iv.truncLen
-        let script := gnuplotScript dataPath xName yName catVals bar xIsStr xIsTime iv.timefmt iv.xfmt
+        let script := gnuplotScript dataPath xName yName catVals bar xIsStr xIsTime iv.timefmt iv.xfmt nr
         if ← renderGnuplot script then
           showPng "/tmp/tc-plot.png"
         else
