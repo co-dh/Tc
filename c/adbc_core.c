@@ -421,6 +421,20 @@ static CellInfo get_cell(QueryResult* qr, int64_t row, int64_t col) {
 /* === Cell Formatting === */
 
 // | Format a cell value using nanoarrow typed accessors
+// | Convert ArrowDecimal to double using its scale
+static double decimal_to_double(const struct ArrowDecimal* d) {
+    double scale = 1.0;
+    for (int i = 0; i < d->scale; i++) scale *= 10.0;
+    if (d->n_words <= 1) {
+        return (double)ArrowDecimalGetIntUnsafe(d) / scale;
+    }
+    // 128-bit: (int64_t)hi * 2^64 + (uint64_t)lo
+    int64_t hi = (int64_t)d->words[d->high_word_index];
+    uint64_t lo = d->words[d->low_word_index];
+    double val = (double)hi * 18446744073709551616.0 + (double)lo;
+    return val / scale;
+}
+
 static size_t format_cell_view(const struct ArrowArrayView* view,
     const struct ArrowSchemaView* sv, int64_t lr, char* buf, size_t buflen, uint8_t decimals)
 {
@@ -517,18 +531,15 @@ static size_t format_cell_view(const struct ArrowArrayView* view,
 
     case NANOARROW_TYPE_DECIMAL128: case NANOARROW_TYPE_DECIMAL256:
     case NANOARROW_TYPE_DECIMAL32: case NANOARROW_TYPE_DECIMAL64: {
-        int scale = sv->decimal_scale;
-        double val;
-        if (sv->type == NANOARROW_TYPE_DECIMAL128 || sv->type == NANOARROW_TYPE_DECIMAL256) {
-            // Read first 64 bits of 128/256-bit value
-            const int64_t* data = view->buffer_views[1].data.as_int64;
-            int elems = (sv->type == NANOARROW_TYPE_DECIMAL256) ? 4 : 2;
-            val = (double)data[(view->offset + lr) * elems];
-        } else {
-            val = (double)ArrowArrayViewGetIntUnsafe(view, lr);
-        }
-        for (int i = 0; i < scale; i++) val /= 10.0;
-        return snprintf(buf, buflen, "%.*f", scale, val);
+        int bw = sv->type == NANOARROW_TYPE_DECIMAL32 ? 32
+               : sv->type == NANOARROW_TYPE_DECIMAL64 ? 64
+               : sv->type == NANOARROW_TYPE_DECIMAL128 ? 128 : 256;
+        struct ArrowDecimal dec;
+        ArrowDecimalInit(&dec, bw, sv->decimal_precision, sv->decimal_scale);
+        ArrowArrayViewGetDecimalUnsafe(view, lr, &dec);
+        double val = decimal_to_double(&dec);
+        int dp = sv->decimal_scale > 0 ? sv->decimal_scale : decimals;
+        return snprintf(buf, buflen, "%.*f", dp, val);
     }
 
     case NANOARROW_TYPE_LIST: case NANOARROW_TYPE_LARGE_LIST: {
@@ -635,13 +646,26 @@ lean_obj_res lean_qr_cell_int(b_lean_obj_arg qr_obj, uint64_t row, uint64_t col,
     return lean_io_result_mk_ok(lean_int64_to_int(val));
 }
 
-// | Get cell as Float
+// | Get cell as Float (handles DECIMAL via ArrowDecimal conversion)
 lean_obj_res lean_qr_cell_float(b_lean_obj_arg qr_obj, uint64_t row, uint64_t col, lean_obj_arg world) {
     QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
     CellInfo c = get_cell(qr, row, col);
     if (!c.view || !c.view->array || ArrowArrayViewIsNull(c.view, c.lr))
         return lean_io_result_mk_ok(lean_box_float(0.0));
-    double val = ArrowArrayViewGetDoubleUnsafe(c.view, c.lr);
+    double val;
+    enum ArrowType t = c.sv->type;
+    if (t == NANOARROW_TYPE_DECIMAL32 || t == NANOARROW_TYPE_DECIMAL64 ||
+        t == NANOARROW_TYPE_DECIMAL128 || t == NANOARROW_TYPE_DECIMAL256) {
+        int bw = t == NANOARROW_TYPE_DECIMAL32 ? 32
+               : t == NANOARROW_TYPE_DECIMAL64 ? 64
+               : t == NANOARROW_TYPE_DECIMAL128 ? 128 : 256;
+        struct ArrowDecimal dec;
+        ArrowDecimalInit(&dec, bw, c.sv->decimal_precision, c.sv->decimal_scale);
+        ArrowArrayViewGetDecimalUnsafe(c.view, c.lr, &dec);
+        val = decimal_to_double(&dec);
+    } else {
+        val = ArrowArrayViewGetDoubleUnsafe(c.view, c.lr);
+    }
     return lean_io_result_mk_ok(lean_box_float(val));
 }
 
