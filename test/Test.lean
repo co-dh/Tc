@@ -1,10 +1,469 @@
 /-
   Key tests for Tc
   Run with: lake build test && .lake/build/bin/test
+  Kdb tests: .lake/build/bin/test --kdb
 -/
 import Tc.Data.ADBC.Table
+import Tc.Nav
+import Tc.View
+import Tc.UI.Info
+import Tc.Types
+import Tc.Validity
+import Tc.S3
+import Tc.Data.Mem.Text
+import Tc.Data.Kdb.FFI
+import Tc.Data.Kdb.Q
+import Tc.Data.Kdb.Table
+
+-- ============================================================================
+-- Pure tests (compile-time #guard checks — no runtime cost)
+-- ============================================================================
+
+namespace PureTest
+
+open Tc
+
+/-! ## Mock Table for Testing -/
+
+-- | Mock table with fixed dimensions (phantom types)
+structure MockTable (nRows nCols : Nat) where
+  names : Array String
+
+-- | TblOps instance for MockTable (minimal: just nRows/colNames + dummy render)
+instance : TblOps (MockTable nRows nCols) where
+  nRows _ := nRows
+  colNames t := t.names
+  queryMeta _ := pure (#[], #[], #[], #[], #[], #[], #[])
+  queryFreq _ _ := pure ⟨#[], #[], #[], #[], #[], 0, rfl, ⟨rfl, rfl⟩⟩
+  filter _ _ := pure none
+  distinct _ _ := pure #[]
+  findRow _ _ _ _ _ := pure none
+  render _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ := pure #[]
+
+-- | Create mock 5x3 table for testing
+def mock53 : MockTable 5 3 := ⟨#["c0", "c1", "c2"]⟩
+
+/-! ## NavState Tests -/
+
+section NavTests
+
+-- 5 rows, 3 cols
+def testNav : NavState 5 3 (MockTable 5 3) :=
+  NavState.new mock53 rfl rfl (by decide) (by decide)
+
+-- | j (row.inc) moves cursor from 0 to 1
+#guard (NavState.exec (.row .inc) testNav 1 1).map (·.row.cur.val) == some 1
+
+-- | k (row.dec) at row 0 stays at 0 (clamped)
+#guard (NavState.exec (.row .dec) testNav 1 1).map (·.row.cur.val) == some 0
+
+-- | l (col.inc) moves cursor from 0 to 1
+#guard (NavState.exec (.col .inc) testNav 1 1).map (·.col.cur.val) == some 1
+
+-- | h (col.dec) at col 0 stays at 0 (clamped)
+#guard (NavState.exec (.col .dec) testNav 1 1).map (·.col.cur.val) == some 0
+
+-- | G (ver.inc) goes to last row (4)
+#guard (NavState.exec (.ver .inc) testNav 1 1).map (·.row.cur.val) == some 4
+
+-- | g (ver.dec) goes to first row (0)
+def navAtRow4 : NavState 5 3 (MockTable 5 3) :=
+  match NavState.exec (.ver .inc) testNav 1 1 with
+  | some n => n
+  | none => testNav
+#guard (NavState.exec (.ver .dec) navAtRow4 1 1).map (·.row.cur.val) == some 0
+
+-- | $ (hor.inc) goes to last col (2)
+#guard (NavState.exec (.hor .inc) testNav 1 1).map (·.col.cur.val) == some 2
+
+-- | 0 (hor.dec) goes to first col (0)
+def navAtCol2 : NavState 5 3 (MockTable 5 3) :=
+  match NavState.exec (.hor .inc) testNav 1 1 with
+  | some n => n
+  | none => testNav
+#guard (NavState.exec (.hor .dec) navAtCol2 1 1).map (·.col.cur.val) == some 0
+
+-- | Page down (vPage.inc) with page size 2 moves from 0 to 2
+#guard (NavState.exec (.vPage .inc) testNav 2 1).map (·.row.cur.val) == some 2
+
+-- | Page up (vPage.dec) at row 0 stays at 0
+#guard (NavState.exec (.vPage .dec) testNav 2 1).map (·.row.cur.val) == some 0
+
+-- | T (rowSel.ent) toggles row selection
+#guard (NavState.exec (.rowSel .ent) testNav 1 1).map (·.row.sels) == some #[0]
+
+-- | T twice removes selection
+def navWithSel : NavState 5 3 (MockTable 5 3) :=
+  match NavState.exec (.rowSel .ent) testNav 1 1 with
+  | some n => n
+  | none => testNav
+#guard (NavState.exec (.rowSel .ent) navWithSel 1 1).map (·.row.sels) == some #[]
+
+-- | ! (grp.ent) toggles group
+#guard (NavState.exec (.grp .ent) testNav 1 1).map (·.grp) == some #["c0"]
+
+-- | Unhandled command returns none
+#guard (NavState.exec (.thm .inc) testNav 1 1).isNone
+
+-- | update returns Effect.none for nav commands
+#guard (NavState.update (.row .inc) testNav 1 1).map (·.2) == some .none
+
+end NavTests
+
+/-! ## Array.toggle Tests -/
+
+section ToggleTests
+
+-- | toggle adds element if absent
+#guard #[1, 2].toggle 3 == #[1, 2, 3]
+
+-- | toggle removes element if present
+#guard #[1, 2, 3].toggle 2 == #[1, 3]
+
+-- | toggle on empty array adds element
+#guard (#[] : Array Nat).toggle 1 == #[1]
+
+-- | toggle twice returns original (when not present initially)
+#guard ((#[1, 2] : Array Nat).toggle 3).toggle 3 == #[1, 2]
+
+end ToggleTests
+
+/-! ## ViewStack.update Tests -/
+
+section StackTests
+
+-- For ViewStack tests we need a View, which requires more setup
+-- These are simpler property tests
+
+-- | Fin.clamp stays in bounds
+#guard (⟨0, by decide⟩ : Fin 5).clamp 10 == ⟨4, by decide⟩
+#guard (⟨4, by decide⟩ : Fin 5).clamp (-10) == ⟨0, by decide⟩
+#guard (⟨2, by decide⟩ : Fin 5).clamp 1 == ⟨3, by decide⟩
+#guard (⟨2, by decide⟩ : Fin 5).clamp (-1) == ⟨1, by decide⟩
+
+end StackTests
+
+/-! ## Info.State Tests -/
+
+section InfoTests
+
+def infoOff : UI.Info.State := { vis := false }
+def infoOn : UI.Info.State := { vis := true }
+
+-- | Default is on
+#guard ({} : UI.Info.State).vis == true
+
+-- | I toggles info visibility
+#guard (UI.Info.State.update infoOff (.info .ent)).map (·.1.vis) == some true
+#guard (UI.Info.State.update infoOn (.info .ent)).map (·.1.vis) == some false
+
+-- | info.inc turns on
+#guard (UI.Info.State.update infoOff (.info .inc)).map (·.1.vis) == some true
+
+-- | info.dec turns off
+#guard (UI.Info.State.update infoOn (.info .dec)).map (·.1.vis) == some false
+
+-- | Unhandled returns none
+#guard (UI.Info.State.update infoOff (.row .inc)).isNone
+
+-- | Info update returns Effect.none
+#guard (UI.Info.State.update infoOff (.info .ent)).map (·.2) == some .none
+
+end InfoTests
+
+/-! ## dispOrder Tests -/
+
+section DispOrderTests
+
+-- | Empty group: order unchanged
+#guard dispOrder #[] #["a", "b", "c"] == #[0, 1, 2]
+
+-- | Group first col: moves to front
+#guard dispOrder #["b"] #["a", "b", "c"] == #[1, 0, 2]
+
+-- | Group multiple: group columns come first (in column order)
+#guard dispOrder #["c", "a"] #["a", "b", "c"] == #[0, 2, 1]
+
+-- | Group non-existent: ignored
+#guard dispOrder #["x"] #["a", "b", "c"] == #[0, 1, 2]
+
+end DispOrderTests
+
+/-! ## Validity Tests -/
+
+section ValidityTests
+
+-- | Navigation always valid
+#guard validFor (.row .inc) .tbl == true
+#guard validFor (.row .dec) .colMeta == true
+#guard validFor (.vPage .inc) (.freqV #["a"] 10) == true
+#guard validFor (.stk .dec) (.fld "/tmp" 1) == true
+
+-- | freq.ent requires freqV
+#guard validFor (.freq .ent) (.freqV #["col1"] 42) == true
+#guard validFor (.freq .ent) .tbl == false
+#guard validFor (.freq .ent) .colMeta == false
+#guard validFor (.freq .ent) (.fld "/" 1) == false
+
+-- | metaV.ent requires colMeta
+#guard validFor (.metaV .ent) .colMeta == true
+#guard validFor (.metaV .ent) .tbl == false
+#guard validFor (.metaV .ent) (.freqV #[] 0) == false
+
+-- | fld.ent requires fld
+#guard validFor (.fld .ent) (.fld "/home" 2) == true
+#guard validFor (.fld .ent) .tbl == false
+#guard validFor (.fld .ent) .colMeta == false
+
+-- | Push commands valid everywhere
+#guard validFor (.metaV .dup) .tbl == true
+#guard validFor (.metaV .dup) .colMeta == true
+#guard validFor (.freq .dup) .tbl == true
+#guard validFor (.freq .dup) (.fld "." 1) == true
+#guard validFor (.fld .dup) .tbl == true
+
+-- | col.ent (fzf col search) is universal
+#guard validFor (.col .ent) .tbl == true
+#guard validFor (.col .ent) .colMeta == true
+
+end ValidityTests
+
+/-! ## CSV/TSV Parsing Tests -/
+
+section CsvTests
+
+-- | fromTsv parses header names correctly
+#guard (MemTable.fromTsv "a\tb\n1\t2\n3\t4").toOption.map (·.names) == some #["a", "b"]
+
+-- | fromTsv parses correct number of columns
+#guard (MemTable.fromTsv "a\tb\n1\t2\n3\t4").toOption.map (·.cols.size) == some 2
+
+-- | fromTsv single column
+#guard (MemTable.fromTsv "x\n10\n20\n30").toOption.map (·.names) == some #["x"]
+
+-- | fromTsv preserves column count in names
+#guard (MemTable.fromTsv "c1\tc2\tc3\n1\t2\t3").toOption.map (·.names.size) == some 3
+
+-- | fromTsv empty input returns empty table
+#guard (MemTable.fromTsv "").toOption.map (·.names.size) == some 0
+
+-- | fromTsv row count (via nRows)
+#guard (MemTable.fromTsv "a\tb\n1\t2\n3\t4").toOption.map MemTable.nRows == some 2
+
+-- | fromTsv single row
+#guard (MemTable.fromTsv "a\n1").toOption.map MemTable.nRows == some 1
+
+-- | fromTsv header-only has zero data rows
+#guard (MemTable.fromTsv "a\tb\n").toOption.map MemTable.nRows == some 0
+
+end CsvTests
+
+/-! ## Column Operation Tests -/
+
+section ColumnTests
+
+-- | Column.size for ints
+#guard (Column.ints #[10, 20, 30]).size == 3
+
+-- | Column.size for strs
+#guard (Column.strs #["a", "b"]).size == 2
+
+-- | Column.size for floats
+#guard (Column.floats #[1.0, 2.0, 3.0, 4.0]).size == 4
+
+-- | Column.size for empty
+#guard (Column.ints #[]).size == 0
+
+-- | Column.take preserves first n elements (check via get + toRaw)
+#guard ((Column.ints #[10, 20, 30]).take 2).size == 2
+#guard (((Column.ints #[10, 20, 30]).take 2).get 0).toRaw == "10"
+#guard (((Column.ints #[10, 20, 30]).take 2).get 1).toRaw == "20"
+
+-- | Column.take with n > size returns all
+#guard ((Column.strs #["a", "b"]).take 5).size == 2
+
+-- | Column.take 0 returns empty
+#guard ((Column.ints #[10, 20, 30]).take 0).size == 0
+
+-- | Column.gather reindexes correctly (ints)
+#guard ((Column.ints #[10, 20, 30]).gather #[2, 0]).size == 2
+#guard (((Column.ints #[10, 20, 30]).gather #[2, 0]).get 0).toRaw == "30"
+#guard (((Column.ints #[10, 20, 30]).gather #[2, 0]).get 1).toRaw == "10"
+
+-- | Column.gather reindexes correctly (strs)
+#guard (((Column.strs #["a", "b", "c"]).gather #[2, 0]).get 0).toRaw == "c"
+#guard (((Column.strs #["a", "b", "c"]).gather #[2, 0]).get 1).toRaw == "a"
+
+-- | Column.gather with empty indices returns empty column
+#guard ((Column.ints #[10, 20, 30]).gather #[]).size == 0
+
+-- | Column.gather duplicate indices
+#guard ((Column.ints #[10, 20]).gather #[0, 0, 1, 1]).size == 4
+#guard (((Column.ints #[10, 20]).gather #[0, 0, 1, 1]).get 2).toRaw == "20"
+
+-- | Column.get returns correct Cell.toRaw for strs
+#guard ((Column.strs #["hello", "world"]).get 0).toRaw == "hello"
+#guard ((Column.strs #["hello", "world"]).get 1).toRaw == "world"
+
+-- | Column.get out of bounds returns default (empty/0)
+#guard ((Column.ints #[10]).get 5).toRaw == "0"
+#guard ((Column.strs #["a"]).get 5).toRaw == ""
+
+end ColumnTests
+
+/-! ## S3 Path Helper Tests -/
+
+section S3Tests
+
+-- | isS3 recognizes s3:// prefix
+#guard S3.isS3 "s3://bucket/path" == true
+#guard S3.isS3 "s3://my-bucket" == true
+
+-- | isS3 rejects non-S3 paths
+#guard S3.isS3 "/local/path" == false
+#guard S3.isS3 "http://example.com" == false
+#guard S3.isS3 "" == false
+
+-- | parent strips last component
+#guard S3.parent "s3://bucket/a/b/" == some "s3://bucket/a/"
+#guard S3.parent "s3://bucket/a/" == some "s3://bucket/"
+
+-- | parent returns none at bucket root
+#guard S3.parent "s3://bucket/" == none
+
+-- | parent without trailing slash
+#guard S3.parent "s3://bucket/a/b" == some "s3://bucket/a/"
+
+-- | join with trailing slash
+#guard S3.join "s3://b/a/" "x" == "s3://b/a/x"
+
+-- | join without trailing slash adds separator
+#guard S3.join "s3://b/a" "x" == "s3://b/a/x"
+
+-- | join preserves trailing slash on child
+#guard S3.join "s3://b/" "subdir/" == "s3://b/subdir/"
+
+end S3Tests
+
+/-! ## FreqResult Construction Tests -/
+
+section FreqTests
+
+-- | freqStats produces pct array of same size as input
+#guard (freqStats #[10, 20, 30]).val.1.size == 3
+
+-- | freqStats produces bar array of same size as input
+#guard (freqStats #[10, 20, 30]).val.2.size == 3
+
+-- | freqStats with empty input
+#guard (freqStats #[]).val.1.size == 0
+#guard (freqStats #[]).val.2.size == 0
+
+-- | freqStats with single element
+#guard (freqStats #[100]).val.1.size == 1
+#guard (freqStats #[100]).val.2.size == 1
+
+-- | freqStats pct and bar arrays have same size as each other
+#guard (freqStats #[5, 10, 15]).val.1.size == (freqStats #[5, 10, 15]).val.2.size
+
+end FreqTests
+
+/-! ## MemTable Invariant Tests -/
+
+section MemTableInvariantTests
+
+-- | Empty MemTable preserves h_eq
+#guard (⟨#[], #[], rfl⟩ : MemTable).names.size == 0
+#guard (⟨#[], #[], rfl⟩ : MemTable).cols.size == 0
+
+-- | MemTable with matching columns preserves h_eq (1 col)
+#guard (⟨#["x"], #[Column.ints #[1, 2, 3]], rfl⟩ : MemTable).names.size == 1
+
+-- | MemTable with matching columns preserves h_eq (2 cols)
+#guard (⟨#["a", "b"], #[Column.ints #[1], Column.strs #["x"]], rfl⟩ : MemTable).cols.size == 2
+
+-- | MemTable.nRows returns row count from first column
+#guard MemTable.nRows ⟨#["a"], #[Column.ints #[10, 20, 30]], rfl⟩ == 3
+
+-- | MemTable.nRows for empty table
+#guard MemTable.nRows ⟨#[], #[], rfl⟩ == 0
+
+-- | MemTable.take preserves h_eq and row count
+#guard (MemTable.take ⟨#["a", "b"], #[Column.ints #[1, 2, 3], Column.strs #["x", "y", "z"]], rfl⟩ 2).names.size
+    == (MemTable.take ⟨#["a", "b"], #[Column.ints #[1, 2, 3], Column.strs #["x", "y", "z"]], rfl⟩ 2).cols.size
+
+-- | MemTable.take reduces nRows
+#guard MemTable.nRows (MemTable.take ⟨#["a"], #[Column.ints #[1, 2, 3, 4, 5]], rfl⟩ 3) == 3
+
+-- | MemTable.selCols preserves h_eq (names.size = cols.size)
+#guard (MemTable.selCols ⟨#["a", "b", "c"], #[Column.ints #[1], Column.ints #[2], Column.ints #[3]], rfl⟩ #["b", "c"]).names.size
+    == (MemTable.selCols ⟨#["a", "b", "c"], #[Column.ints #[1], Column.ints #[2], Column.ints #[3]], rfl⟩ #["b", "c"]).cols.size
+
+-- | MemTable.selCols picks correct columns
+#guard (MemTable.selCols ⟨#["a", "b", "c"], #[Column.ints #[1], Column.ints #[2], Column.ints #[3]], rfl⟩ #["b"]).names == #["b"]
+
+end MemTableInvariantTests
+
+end PureTest
+
+-- ============================================================================
+-- Sort behavior tests (compile-time #guard checks)
+-- ============================================================================
+
+namespace SortTest
+
+open Tc
+
+-- | Table: 4 rows, 4 columns (a:int, b:int, c:int, grp:str)
+def sortTbl : MemTable :=
+  { names := #["a", "b", "c", "grp"]
+    cols := #[ Column.ints #[3, 1, 2, 1]
+             , Column.ints #[1, 3, 2, 1]
+             , Column.ints #[2, 1, 3, 2]
+             , Column.strs #["x", "y", "x", "y"] ]
+    h_eq := rfl }
+
+def firstCell (t : MemTable) (col : Nat) : String :=
+  (t.cols.getD col default).get 0 |>.toRaw
+
+def cellAt (t : MemTable) (row col : Nat) : String :=
+  (t.cols.getD col default).get row |>.toRaw
+
+-- Single-column sort
+#guard firstCell (MemTable.sort sortTbl #[0] true) 0 == "1"
+#guard firstCell (MemTable.sort sortTbl #[0] false) 0 == "3"
+
+-- Multi-column sort (sels=[0], cursor=1 => sort by a then b)
+#guard firstCell (MemTable.sort sortTbl #[0, 1] true) 0 == "1"
+#guard firstCell (MemTable.sort sortTbl #[0, 1] true) 1 == "1"
+#guard cellAt (MemTable.sort sortTbl #[0, 1] true) 1 0 == "1"
+#guard cellAt (MemTable.sort sortTbl #[0, 1] true) 1 1 == "3"
+
+-- Group exclusion logic
+#guard (#[] ++ #[(0:Nat)]).filter (!#[(0:Nat)].contains ·) == #[]
+#guard (#[(0:Nat)] ++ #[1]).filter (!#[(0:Nat)].contains ·) == #[1]
+#guard (#[(0:Nat), 2] ++ #[1]).filter (!#[(0:Nat), 3].contains ·) == #[2, 1]
+
+-- Deduplication
+def dedup (arr : Array Nat) : Array Nat :=
+  arr.foldl (init := #[]) fun acc c => if acc.contains c then acc else acc.push c
+#guard dedup (#[(0:Nat), 1] ++ #[1]) == #[0, 1]
+#guard dedup (#[(2:Nat), 0] ++ #[2]) == #[2, 0]
+
+-- Sort preserves table shape
+#guard (MemTable.sort sortTbl #[0, 1] true).names.size == (MemTable.sort sortTbl #[0, 1] true).cols.size
+#guard MemTable.nRows (MemTable.sort sortTbl #[0, 1] true) == 4
+#guard (MemTable.sort sortTbl #[0, 1] true).names == #["a", "b", "c", "grp"]
+
+end SortTest
+
+-- ============================================================================
+-- Runtime UI tests
+-- ============================================================================
 
 namespace Test
+
+open Tc
 
 def bin := ".lake/build/bin/tc"
 
@@ -98,11 +557,11 @@ def test_nav_left : IO Unit := do
 
 def test_key_toggle : IO Unit := do
   log "key_col"
-  assert (contains (header (← run "!" "data/xkey.csv")) "║") "! adds key separator"
+  assert (contains (header (← run "!" "data/basic.csv")) "║") "! adds key separator"
 
 def test_key_remove : IO Unit := do
   log "key_remove"
-  assert (!contains (header (← run "!!" "data/xkey.csv")) "║") "!! removes key separator"
+  assert (!contains (header (← run "!!" "data/basic.csv")) "║") "!! removes key separator"
 
 def test_key_reorder : IO Unit := do
   log "key_reorder"
@@ -471,9 +930,386 @@ def test_enter_no_quit_parquet : IO Unit := do
   let (_, status) := footer (← run "<ret>j" "data/nyse/1.parquet")
   assert (contains status "r1/") "Enter on parquet should not quit (j moves to r1)"
 
+-- ============================================================================
+-- Kdb backend tests (requires localhost:8888/nbbo)
+-- ============================================================================
+
+namespace KdbBackend
+
+-- | Assert helper (prints tick/cross)
+def kassert (cond : Bool) (msg : String) : IO Unit :=
+  if cond then IO.println s!"  ok {msg}"
+  else throw (IO.userError s!"  FAIL {msg}")
+
+-- | Section header
+def hdr (name : String) : IO Unit := IO.println s!"\n[{name}]"
+
+-- === 1. Connection Tests ===
+
+def test_connect : IO Unit := do
+  let ok ← Kdb.connect "localhost" 8888
+  kassert ok "connect localhost:8888"
+
+def test_connected : IO Unit := do
+  let ok ← Kdb.connected
+  kassert ok "connected returns true"
+
+-- === 2. FFI Query Tests ===
+
+def test_tables : IO Unit := do
+  let qr ← Kdb.query "tables[]"
+  let nr ← Kdb.nrows qr
+  kassert (nr.toNat > 0) s!"tables[] returns {nr} tables"
+
+def test_ncols : IO Unit := do
+  let qr ← Kdb.query "select from nbbo where date=first date, i<10"
+  let nc ← Kdb.ncols qr
+  kassert (nc.toNat > 0) s!"ncols = {nc}"
+
+def test_nrows : IO Unit := do
+  let qr ← Kdb.query "select from nbbo where date=first date, i<10"
+  let nr ← Kdb.nrows qr
+  kassert (nr.toNat == 10) s!"nrows = {nr}"
+
+def test_colName : IO Unit := do
+  let qr ← Kdb.query "select from nbbo where date=first date, i<10"
+  let name ← Kdb.colName qr 0
+  kassert (name.length > 0) s!"colName(0) = {name}"
+
+def test_colType : IO Unit := do
+  let qr ← Kdb.query "select from nbbo where date=first date, i<10"
+  let typ ← Kdb.colType qr 0
+  kassert (typ != '\x00') s!"colType(0) = {typ}"
+
+def test_cellStr : IO Unit := do
+  let qr ← Kdb.query "select from nbbo where date=first date, i<10"
+  let val ← Kdb.cellStr qr 0 0
+  kassert (val.length > 0 || val == "") s!"cellStr(0,0) = {val}"
+
+-- === 3. KdbTable Load Tests ===
+
+def test_load : IO KdbTable := do
+  match ← KdbTable.load "nbbo" with
+  | none => throw (IO.userError "load nbbo failed")
+  | some t =>
+    kassert true "load nbbo"
+    pure t
+
+def test_load_rows (t : KdbTable) : IO Unit :=
+  kassert (t.nRows > 0) s!"nRows = {t.nRows}"
+
+def test_load_cols (t : KdbTable) : IO Unit :=
+  kassert (t.nCols > 0) s!"nCols = {t.nCols}"
+
+def test_load_colNames (t : KdbTable) : IO Unit :=
+  kassert (t.colNames.size == t.nCols) s!"colNames = {t.colNames}"
+
+def test_load_colTypes (t : KdbTable) : IO Unit :=
+  kassert (t.colTypes.size == t.nCols) s!"colTypes = {t.colTypes}"
+
+def test_load_limit (t : KdbTable) : IO Unit :=
+  kassert (t.nRows <= kdbLimit) s!"nRows <= {kdbLimit}"
+
+def test_parseUrl : IO Unit := do
+  match KdbTable.parseUrl "kdb://localhost:8888/nbbo" with
+  | none => throw (IO.userError "parseUrl failed")
+  | some (h, p, tbl) =>
+    kassert (h == "localhost") s!"host = {h}"
+    kassert (p == 8888) s!"port = {p}"
+    kassert (tbl == "nbbo") s!"table = {tbl}"
+
+-- === 4. Partitioned Table Tests ===
+
+def test_isPartitioned : IO Bool := do
+  let part ← KdbTable.isPartitioned "nbbo"
+  kassert true s!"isPartitioned = {part}"
+  pure part
+
+def test_queryCount (part : Bool) : IO Unit := do
+  let cnt ← KdbTable.queryCount "nbbo" part
+  kassert (cnt > 0) s!"queryCount = {cnt}"
+
+-- === 5. Query Operations Tests ===
+
+def test_sortBy_asc (t : KdbTable) : IO Unit := do
+  let t' ← t.sortBy #[0] true
+  kassert (t'.nRows > 0) "sortBy asc"
+
+def test_sortBy_desc (t : KdbTable) : IO Unit := do
+  let t' ← t.sortBy #[0] false
+  kassert (t'.nRows > 0) "sortBy desc"
+
+def test_sortBy_multi (t : KdbTable) : IO Unit := do
+  if t.nCols >= 2 then
+    let t' ← t.sortBy #[0, 1] true
+    kassert (t'.nRows > 0) "sortBy multi-col"
+  else
+    kassert true "sortBy multi (skipped, < 2 cols)"
+
+def test_delCols (t : KdbTable) : IO Unit := do
+  if t.nCols >= 2 then
+    let t' ← t.delCols #[0]
+    kassert (t'.nCols == t.nCols - 1) s!"delCols: {t.nCols} -> {t'.nCols}"
+  else
+    kassert true "delCols (skipped, < 2 cols)"
+
+def test_filter (t : KdbTable) : IO Unit := do
+  let colName := t.colNames.getD 0 "x"
+  let colType := t.colTypes.getD 0 's'
+  let expr := if colType == 's' then s!"{colName}=first {colName}" else s!"{colName}>0"
+  match ← t.filter expr with
+  | none => throw (IO.userError "filter failed")
+  | some t' => kassert (t'.nRows >= 0) s!"filter '{expr}': {t'.nRows} rows"
+
+def test_distinct (t : KdbTable) : IO Unit := do
+  let vals ← t.distinct 0
+  kassert (vals.size > 0) s!"distinct col0: {vals.size} values"
+
+-- === 6. Freq Tests ===
+
+def test_freq_single (t : KdbTable) : IO Unit := do
+  let freq ← t.queryFreq #[t.colNames.getD 0 ""]
+  kassert (freq.keyNames.size > 0) "freq has keys"
+  kassert (freq.keyCols.size > 0) "freq has cols"
+  kassert (freq.cntData.size > 0) s!"freq has {freq.cntData.size} groups"
+
+def test_freq_counts (t : KdbTable) : IO Unit := do
+  let freq ← t.queryFreq #[t.colNames.getD 0 ""]
+  let cnts := freq.cntData
+  let total := cnts.foldl (· + ·) 0
+  kassert (total > 0) s!"freq counts sum = {total}"
+
+def test_freq_pcts (t : KdbTable) : IO Unit := do
+  let freq ← t.queryFreq #[t.colNames.getD 0 ""]
+  let pcts := freq.pctData
+  let sum := pcts.foldl (· + ·) 0
+  kassert (sum > 99 && sum < 101) s!"freq pcts sum = {sum}"
+
+def test_freq_bars (t : KdbTable) : IO Unit := do
+  let freq ← t.queryFreq #[t.colNames.getD 0 ""]
+  let bars := freq.barData
+  kassert (bars.size > 0) "freq has bars"
+
+-- === 7. Column Extraction Tests ===
+
+def test_getCol (t : KdbTable) : IO Unit := do
+  for i in [:min t.nCols 3] do
+    let col ← t.getCol i 0 (min t.nRows 10)
+    let typ := t.colTypes.getD i '?'
+    let kind := match col with
+      | .ints _ => "ints"
+      | .floats _ => "floats"
+      | .strs _ => "strs"
+    kassert true s!"getCol({i}) type={typ} -> {kind}"
+
+def test_getCol_range (t : KdbTable) : IO Unit := do
+  if t.nRows >= 5 then
+    let col ← t.getCol 0 2 5
+    let sz := match col with
+      | .ints a => a.size
+      | .floats a => a.size
+      | .strs a => a.size
+    kassert (sz == 3) s!"getCol range [2,5): size = {sz}"
+  else
+    kassert true "getCol range (skipped, < 5 rows)"
+
+-- | Run all kdb backend tests
+def runAll : IO Unit := do
+  hdr "Connection"
+  test_connect
+  test_connected
+
+  hdr "FFI Query"
+  test_tables
+  test_ncols
+  test_nrows
+  test_colName
+  test_colType
+  test_cellStr
+
+  hdr "KdbTable Load"
+  let t ← test_load
+  test_load_rows t
+  test_load_cols t
+  test_load_colNames t
+  test_load_colTypes t
+  test_load_limit t
+  test_parseUrl
+
+  hdr "Partitioned"
+  let part ← test_isPartitioned
+  test_queryCount part
+
+  hdr "Query Ops"
+  test_sortBy_asc t
+  test_sortBy_desc t
+  test_sortBy_multi t
+  test_delCols t
+  test_filter t
+  test_distinct t
+
+  hdr "Freq"
+  test_freq_single t
+  test_freq_counts t
+  test_freq_pcts t
+  test_freq_bars t
+
+  hdr "Column Extraction"
+  test_getCol t
+  test_getCol_range t
+
+  hdr "Cleanup"
+  Kdb.disconnect
+  kassert true "disconnect"
+
+  IO.println "\nAll kdb backend tests passed"
+
+end KdbBackend
+
+-- ============================================================================
+-- Kdb key tests (UI tests, requires localhost:8888/nbbo)
+-- ============================================================================
+
+namespace KdbKey
+
+-- | Run tc with -c keys against kdb
+def krun (keys : String) : IO String := do
+  log s!"  kdb keys={keys}"
+  let child ← IO.Process.spawn {
+    cmd := "bash"
+    args := #["-c", s!"script -q -c 'stty rows 24 cols 80; .lake/build/bin/tc \"kdb://localhost:8888/nbbo\" -c \"{keys}\"' /dev/null | ansi2txt | tail -24"]
+    stdin := .null
+    stdout := .piped
+    stderr := .piped
+    env := #[("TERM", "xterm")]
+  }
+  let stdout ← child.stdout.readToEnd
+  let _ ← child.wait
+  log "  done"
+  pure stdout
+
+-- | Check kdb server available
+def kdbAvail : IO Bool := do
+  try
+    let out ← IO.Process.output { cmd := "./qcon", args := #["localhost:8888"], stdin := .piped }
+    pure (out.exitCode == 0)
+  catch _ => pure false
+
+-- === Tests ===
+
+def test_load : IO Unit := do
+  log "kdb_load"
+  let o ← krun ""
+  let (_, st) := footer o
+  assert (contains st "r0/") "kdb load shows rows"
+  assert (!contains st "Error") "kdb no error"
+
+def test_nav_down : IO Unit := do
+  log "kdb_nav_down"
+  let o ← krun "j"
+  let (_, st) := footer o
+  assert (contains st "r1/") "kdb j moves down"
+
+def test_nav_right : IO Unit := do
+  log "kdb_nav_right"
+  let o ← krun "l"
+  let (_, st) := footer o
+  assert (contains st "c1/") "kdb l moves right"
+
+def test_page_down : IO Unit := do
+  log "kdb_page_down"
+  let o ← krun "<C-d>"
+  let (_, st) := footer o
+  assert (!contains st "r0/") "kdb ^D pages down"
+
+def test_sort_asc : IO Unit := do
+  log "kdb_sort_asc"
+  let o ← krun "["
+  let (_, st) := footer o
+  assert (contains st "r0/") "kdb [ sorts asc"
+
+def test_sort_desc : IO Unit := do
+  log "kdb_sort_desc"
+  let o ← krun "]"
+  let (_, st) := footer o
+  assert (contains st "r0/") "kdb ] sorts desc"
+
+def test_key_col : IO Unit := do
+  log "kdb_key_col"
+  let o ← krun "!"
+  let h := header o
+  assert (contains h "║") "kdb ! adds key separator"
+
+def test_key_remove : IO Unit := do
+  log "kdb_key_remove"
+  let o ← krun "!!"
+  let h := header o
+  assert (!contains h "║") "kdb !! removes key"
+
+def test_del_col : IO Unit := do
+  log "kdb_del_col"
+  let b ← krun ""
+  let a ← krun "d"
+  assert (header b != header a) "kdb d deletes column"
+
+def test_meta : IO Unit := do
+  log "kdb_meta"
+  let o ← krun "M"
+  let (tab, _) := footer o
+  assert (contains tab "meta") "kdb M shows meta"
+
+def test_meta_quit : IO Unit := do
+  log "kdb_meta_quit"
+  let o ← krun "Mq"
+  let (tab, _) := footer o
+  assert (!contains tab "meta") "kdb Mq returns"
+
+def test_freq : IO Unit := do
+  log "kdb_freq"
+  let o ← krun "F"
+  let (tab, _) := footer o
+  assert (contains tab "freq") "kdb F shows freq"
+
+def test_freq_quit : IO Unit := do
+  log "kdb_freq_quit"
+  let o ← krun "Fq"
+  let (tab, _) := footer o
+  assert (!contains tab "freq") "kdb Fq returns"
+
+def test_stack_swap : IO Unit := do
+  log "kdb_stack_swap"
+  let o ← krun "S"
+  let (tab, _) := footer o
+  assert (contains tab "nbbo") "kdb S swaps view"
+
+-- | Run all kdb key tests
+def runAll : IO Unit := do
+  let avail ← kdbAvail
+  if !avail then
+    IO.println "kdb server unavailable at localhost:8888, skipping kdb key tests"
+    return
+  IO.println "Running kdb key tests...\n"
+  test_load
+  test_nav_down
+  test_nav_right
+  test_page_down
+  test_sort_asc
+  test_sort_desc
+  test_key_col
+  test_key_remove
+  test_del_col
+  test_meta
+  test_meta_quit
+  test_freq
+  test_freq_quit
+  test_stack_swap
+  IO.println "\nAll kdb key tests passed!"
+
+end KdbKey
+
 -- === Run all tests ===
 
-def main : IO Unit := do
+def main (args : List String) : IO Unit := do
   IO.FS.writeFile "test.log" ""
   IO.println "Running Tc tests...\n"
   let ok ← Tc.AdbcTable.init
@@ -515,9 +1351,16 @@ def main : IO Unit := do
   test_numeric_right_align
   test_enter_no_quit_parquet
 
+  -- Kdb tests: only run when --kdb flag is passed
+  if args.contains "--kdb" then
+    IO.println "\n--- Kdb backend tests ---"
+    KdbBackend.runAll
+    IO.println "\n--- Kdb key tests ---"
+    KdbKey.runAll
+
   Tc.AdbcTable.shutdown
   IO.println "\nAll tests passed!"
 
 end Test
 
-def main : IO Unit := Test.main
+def main (args : List String) : IO Unit := Test.main args

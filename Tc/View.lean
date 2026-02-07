@@ -75,8 +75,14 @@ def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
     let sels := n.col.sels.filterMap names.idxOf?
     some (v, .queryDel curCol sels n.grp)
   -- effect: sort (runner will execute and rebuild view)
-  | .colSel .inc => some (v, .querySort curCol (n.grp.filterMap names.idxOf?) true)
-  | .colSel .dec => some (v, .querySort curCol (n.grp.filterMap names.idxOf?) false)
+  | .colSel .inc =>
+    let selIdxs := n.col.sels.filterMap names.idxOf?
+    let grpIdxs := n.grp.filterMap names.idxOf?
+    some (v, .querySort curCol selIdxs grpIdxs true)
+  | .colSel .dec =>
+    let selIdxs := n.col.sels.filterMap names.idxOf?
+    let grpIdxs := n.grp.filterMap names.idxOf?
+    some (v, .querySort curCol selIdxs grpIdxs false)
   -- pure: navigation (detect at-bottom for fetchMore on downward scroll)
   | _ => (NavState.exec cmd n rowPg colPageSize).map fun nav' =>
     let needsMore := nav'.row.cur.val + 1 >= v.nRows
@@ -103,7 +109,9 @@ def exec [ModifyTable T] (v : View T) (cmd : Cmd) : IO (Option (View T)) := do
     let (tbl', grp') ← ModifyTable.del n.tbl curCol (n.col.sels.filterMap names.idxOf?) n.grp
     pure (mk tbl' n.col.cur.val grp' 0)
   | .colSel .inc | .colSel .dec =>
-    let tbl' ← ModifyTable.sort n.tbl curCol (n.grp.filterMap names.idxOf?) (cmd == .colSel .inc)
+    let selIdxs := n.col.sels.filterMap names.idxOf?
+    let grpIdxs := n.grp.filterMap names.idxOf?
+    let tbl' ← ModifyTable.sort n.tbl curCol selIdxs grpIdxs (cmd == .colSel .inc)
     pure (mk tbl' curCol n.grp n.row.cur.val)
   | _ => -- delegate to pure update
     let rowPg := ((← Term.height).toNat - reservedLines) / 2

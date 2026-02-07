@@ -132,7 +132,7 @@ inductive Effect where
   | queryFreq (colNames : Array String)
   | freqFilter (cols : Array String) (row : Nat)
   | queryFilter (expr : String)
-  | querySort (colIdx : Nat) (grp : Array Nat) (asc : Bool)
+  | querySort (colIdx : Nat) (sels : Array Nat) (grp : Array Nat) (asc : Bool)
   | queryDel (colIdx : Nat) (sels : Array Nat) (grp : Array String)
   | folderPush | folderEnter | folderDel
   | folderDepth (delta : Int)

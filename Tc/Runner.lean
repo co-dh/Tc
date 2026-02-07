@@ -55,9 +55,9 @@ def runStackEffect (s : ViewStack T) (eff : Effect) : IO (ViewStack T) := do
       | some v => pure (s.push { v with disp := s!"\\filter" })
       | none => pure s
     | none => pure s
-  | .querySort colIdx grp asc =>
+  | .querySort colIdx sels grp asc =>
     let n := s.cur.nav
-    let tbl' ← ModifyTable.sort n.tbl colIdx grp asc
+    let tbl' ← ModifyTable.sort n.tbl colIdx sels grp asc
     match View.fromTbl tbl' s.cur.path colIdx (n.grp) n.row.cur.val with
     | some v => pure (s.setCur { v with precAdj := s.cur.precAdj, widthAdj := s.cur.widthAdj })
     | none => pure s

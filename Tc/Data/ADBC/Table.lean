@@ -94,13 +94,9 @@ def fromFile (path : String) : IO (Option AdbcTable) := do
   let total ← queryCount query
   requery query total
 
--- | Sort: append sort op and re-query (group cols asc, last col uses given asc)
+-- | Sort: append sort op and re-query (all columns use given direction)
 def sortBy (t : AdbcTable) (idxs : Array Nat) (asc : Bool) : IO AdbcTable := do
-  let n := idxs.size
-  let sortCols := idxs.mapIdx fun i idx =>
-    let name := t.colNames.getD idx ""
-    let isLast := i + 1 == n
-    (name, if isLast then asc else true)
+  let sortCols := idxs.map fun idx => (t.colNames.getD idx "", asc)
   let newQuery := t.query.pipe (.sort sortCols)
   match ← requery newQuery t.totalRows with
   | some t' => pure t'
