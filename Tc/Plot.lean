@@ -285,9 +285,14 @@ def run (s : ViewStack T) (bar : Bool) : IO (Option (ViewStack T)) := do
           IO.println s!"plot error (see /tmp/tc-plot.log)"
       else
         IO.println "failed to extract columns or y-axis not numeric"
-    -- show status and read key
+    -- show info line: x=col y=col [1s 1m 1h] +/-:interval q:exit
     let maxIdx := intervals.size - 1
-    IO.print s!"\x1b[1m[{iv.label}]\x1b[0m  +\x2f-: interval  any key: exit  "
+    let bar_ := if bar then "bar" else "line"
+    let ivLabels := intervals.map (·.label)
+    let ivBar := String.intercalate " " (ivLabels.toList.mapIdx fun i l =>
+      if i == idx then s!"\x1b[1;7m {l} \x1b[0m" else s!" {l} ")
+    IO.println s!"─── x={xName}  y={yName}  {bar_} ───"
+    IO.print s!"{ivBar}  +\x2f-: interval  any key: exit "
     let key ← readKey
     IO.println ""
     if key == '+' || key == '=' then
