@@ -259,8 +259,22 @@ def run (s : ViewStack T) (bar : Bool) : IO (Option (ViewStack T)) := do
   -- skip if y is a group column (nothing to plot)
   if n.grp.contains yName then return ← err s "move cursor to a non-group column"
   let nr := TblOps.nRows n.tbl
-  let xType := TblOps.colType n.tbl xIdx
-  Log.write "plot" s!"xType={xType} xIdx={xIdx} xName={xName}"
+  let xType0 := TblOps.colType n.tbl xIdx
+  -- infer date/time from string values (e.g. "2024-01-15" → "date")
+  let xType ← do
+    if xType0 != "str" then pure xType0
+    else
+      let cols ← TblOps.getCols n.tbl #[xIdx] 0 1
+      let v := match cols.getD 0 default with
+        | .strs vals => (vals.getD 0 "").trimAscii.toString
+        | _ => ""
+      let cs := v.toList
+      let at_ (i : Nat) := cs.getD i ' '
+      if cs.length >= 19 && at_ 4 == '-' && at_ 10 == ' ' then pure "timestamp"
+      else if cs.length >= 10 && at_ 4 == '-' && at_ 7 == '-' then pure "date"
+      else if cs.length >= 8 && at_ 2 == ':' && at_ 5 == ':' then pure "time"
+      else pure xType0
+  Log.write "plot" s!"xType={xType} (raw={xType0}) xIdx={xIdx} xName={xName}"
   let xIsTime := isTimeType xType
   let xIsStr := !isNumericType xType
   let baseStep := if nr > maxPoints then nr / maxPoints else 1
