@@ -75,6 +75,15 @@ def runStackEffect (s : ViewStack T) (eff : Effect) : IO (ViewStack T) := do
   -- plot effects
   | .plotLine => runOpt s (Plot.run s false)
   | .plotBar  => runOpt s (Plot.run s true)
+  -- fetch more rows (scroll-to-bottom)
+  | .fetchMore =>
+    let v := s.cur
+    match ← TblOps.fetchMore v.nav.tbl with
+    | some tbl' =>
+      match View.fromTbl tbl' v.path v.nav.col.cur.val v.nav.grp v.nav.row.cur.val with
+      | some v' => pure (s.setCur { v' with precAdj := v.precAdj, widthAdj := v.widthAdj, search := v.search })
+      | none => pure s
+    | none => pure s
   -- other effects handled at AppState level
   | .quit | .fzfCmd | .themeLoad _ => pure s
 

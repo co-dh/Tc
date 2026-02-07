@@ -173,6 +173,8 @@ class TblOps (α : Type) where
   -- export plot data to /tmp/tc-plot.dat via DB (returns category list, or none for fallback)
   plotExport : α → String → String → Option String → Bool → Nat → IO (Option (Array String))
     := fun _ _ _ _ _ _ => pure none
+  -- fetch more rows (scroll-to-bottom): returns table with more rows, or none
+  fetchMore : α → IO (Option α) := fun _ => pure none
   -- loading (file or URL)
   fromFile  : String → IO (Option α) := fun _ => pure none
   fromUrl   : String → IO (Option α) := fun _ => pure none

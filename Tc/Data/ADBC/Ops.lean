@@ -21,6 +21,7 @@ instance : TblOps AdbcTable where
   getCols t idxs r0 r1 := idxs.mapM fun i => t.getCol i r0 r1
   colType t col := t.colTypes.getD col "?"
   plotExport := AdbcTable.plotExport
+  fetchMore := AdbcTable.fetchMore
   render t _ _ _ inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj := do
     if inWidths.isEmpty then
       let cols ← (Array.range t.nCols).mapM fun c => t.getCol c 0 t.nRows

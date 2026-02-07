@@ -77,8 +77,12 @@ def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
   -- effect: sort (runner will execute and rebuild view)
   | .colSel .inc => some (v, .querySort curCol (n.grp.filterMap names.idxOf?) true)
   | .colSel .dec => some (v, .querySort curCol (n.grp.filterMap names.idxOf?) false)
-  -- pure: navigation
-  | _ => (NavState.exec cmd n rowPg colPageSize).map fun nav' => ({ v with nav := nav' }, .none)
+  -- pure: navigation (detect at-bottom for fetchMore on downward scroll)
+  | _ => (NavState.exec cmd n rowPg colPageSize).map fun nav' =>
+    let needsMore := nav'.row.cur.val + 1 >= v.nRows
+      && TblOps.totalRows n.tbl > v.nRows
+      && (cmd matches .row .inc | .vPage .inc | .ver .inc)
+    ({ v with nav := nav' }, if needsMore then .fetchMore else .none)
 
 instance : Update (View T) where update v cmd := update v cmd defaultRowPg
 

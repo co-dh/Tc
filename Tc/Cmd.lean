@@ -139,6 +139,7 @@ inductive Effect where
   | findNext | findPrev
   | themeLoad (delta : Int)
   | plotLine | plotBar
+  | fetchMore
   deriving Repr, BEq
 
 namespace Effect

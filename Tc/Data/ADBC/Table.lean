@@ -111,6 +111,16 @@ def delCols (t : AdbcTable) (delIdxs : Array Nat) : IO AdbcTable := do
   match ← requery (t.query.pipe (.sel (keepCols t.nCols delIdxs t.colNames))) t.totalRows with
   | some t' => pure t' | none => pure t
 
+-- | Fetch more rows (increase limit by prqlLimit)
+def fetchMore (t : AdbcTable) : IO (Option AdbcTable) := do
+  if t.nRows >= t.totalRows then return none
+  let limit := t.nRows + prqlLimit
+  let prql := s!"{t.query.render} | take {limit}"
+  Log.write "fetch" s!"fetchMore limit={limit}"
+  let some sql ← Prql.compile prql | return none
+  let qr ← Adbc.query sql
+  some <$> ofQueryResult qr t.query t.totalRows
+
 -- | Export plot data to /tmp/tc-plot.dat via DuckDB COPY (downsample in SQL)
 def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String) (xIsTime : Bool) (step : Nat)
     : IO (Option (Array String)) := do

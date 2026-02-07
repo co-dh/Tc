@@ -168,6 +168,20 @@ def test_filter_parquet_full_db : IO Unit := do
   let count := countStr.toString.toNat?.getD 0
   assert (count > 1000) s!"filter queries full DB ({count} rows, expected 40000 or 60000)"
 
+-- === Scroll fetch tests (parquet) ===
+
+def test_scroll_fetches_more : IO Unit := do
+  log "scroll_fetches_more"
+  -- nyse10k.parquet has 10k rows, initially loads 1000 (prqlLimit)
+  -- 105 page-downs × 10 rows/page = 1050 → triggers fetchMore at ~row 990
+  let keys := String.join (List.replicate 105 "<C-d>")
+  let output ← runKeys keys "data/nyse10k.parquet" 1000
+  let (_, status) := footer output
+  -- Extract cursor from status "... r{cursor}/{total}"
+  let rpart := (status.splitOn " r" |>.getD 1 "").takeWhile (· != ' ')
+  let cursor := ((rpart.toString.splitOn "/").headD "").toNat?.getD 0
+  assert (cursor > 999) s!"Scroll fetches more: cursor={cursor}, expected > 999"
+
 -- === Misc (parquet) ===
 
 def test_numeric_right_align : IO Unit := do
@@ -229,6 +243,9 @@ def main : IO Unit := do
 
   -- Parquet filter
   test_filter_parquet_full_db
+
+  -- Parquet scroll fetch
+  test_scroll_fetches_more
 
   -- Parquet misc
   test_numeric_right_align
