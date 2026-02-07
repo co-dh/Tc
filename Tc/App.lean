@@ -1,5 +1,5 @@
 /-
-  App: Full build entry point (MemTable + ADBC + Kdb)
+  App: Full build entry point (ADBC + Kdb)
 -/
 import Tc.Table
 import Tc.App.Common

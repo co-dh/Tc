@@ -80,6 +80,10 @@ def runStackEffect (s : ViewStack Table) (eff : Effect) : IO (ViewStack Table) :
       | some v' => pure (s.setCur { v' with precAdj := v.precAdj, widthAdj := v.widthAdj, search := v.search })
       | none => pure s
     | none => pure s
+  -- meta effects
+  | .metaSelNull => do pure (← Meta.selNull s)
+  | .metaSelSingle => do pure (← Meta.selSingle s)
+  | .metaSetKey => runOpt s (Meta.setKey s)
   -- other effects handled at AppState level
   | .quit | .fzfCmd | .themeLoad _ => pure s
 

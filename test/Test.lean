@@ -10,7 +10,7 @@ import Tc.UI.Info
 import Tc.Types
 import Tc.Validity
 import Tc.S3
-import Tc.Data.Mem.Text
+import Tc.Data.Text
 import Tc.Data.Kdb.FFI
 import Tc.Data.Kdb.Q
 import Tc.Data.Kdb.Table
@@ -227,35 +227,20 @@ section ValidityTests
 
 end ValidityTests
 
-/-! ## CSV/TSV Parsing Tests -/
+/-! ## TextParse Tests -/
 
-section CsvTests
+section TextParseTests
 
--- | fromTsv parses header names correctly
-#guard (MemTable.fromTsv "a\tb\n1\t2\n3\t4").toOption.map (·.names) == some #["a", "b"]
+-- | fromText parses tab-separated content
+#guard (Tc.TextParse.fromText "a\tb\n1\t2\n3\t4").toOption.isSome
 
--- | fromTsv parses correct number of columns
-#guard (MemTable.fromTsv "a\tb\n1\t2\n3\t4").toOption.map (·.cols.size) == some 2
+-- | fromText parses space-separated content
+#guard (Tc.TextParse.fromText "PID  CMD\n1    init\n2    kthreadd").toOption.isSome
 
--- | fromTsv single column
-#guard (MemTable.fromTsv "x\n10\n20\n30").toOption.map (·.names) == some #["x"]
+-- | fromText empty input returns error
+#guard (Tc.TextParse.fromText "").toOption.isNone
 
--- | fromTsv preserves column count in names
-#guard (MemTable.fromTsv "c1\tc2\tc3\n1\t2\t3").toOption.map (·.names.size) == some 3
-
--- | fromTsv empty input returns empty table
-#guard (MemTable.fromTsv "").toOption.map (·.names.size) == some 0
-
--- | fromTsv row count (via nRows)
-#guard (MemTable.fromTsv "a\tb\n1\t2\n3\t4").toOption.map MemTable.nRows == some 2
-
--- | fromTsv single row
-#guard (MemTable.fromTsv "a\n1").toOption.map MemTable.nRows == some 1
-
--- | fromTsv header-only has zero data rows
-#guard (MemTable.fromTsv "a\tb\n").toOption.map MemTable.nRows == some 0
-
-end CsvTests
+end TextParseTests
 
 /-! ## Column Operation Tests -/
 
@@ -367,41 +352,6 @@ section FreqTests
 
 end FreqTests
 
-/-! ## MemTable Invariant Tests -/
-
-section MemTableInvariantTests
-
--- | Empty MemTable preserves h_eq
-#guard (⟨#[], #[], rfl⟩ : MemTable).names.size == 0
-#guard (⟨#[], #[], rfl⟩ : MemTable).cols.size == 0
-
--- | MemTable with matching columns preserves h_eq (1 col)
-#guard (⟨#["x"], #[Column.ints #[1, 2, 3]], rfl⟩ : MemTable).names.size == 1
-
--- | MemTable with matching columns preserves h_eq (2 cols)
-#guard (⟨#["a", "b"], #[Column.ints #[1], Column.strs #["x"]], rfl⟩ : MemTable).cols.size == 2
-
--- | MemTable.nRows returns row count from first column
-#guard MemTable.nRows ⟨#["a"], #[Column.ints #[10, 20, 30]], rfl⟩ == 3
-
--- | MemTable.nRows for empty table
-#guard MemTable.nRows ⟨#[], #[], rfl⟩ == 0
-
--- | MemTable.take preserves h_eq and row count
-#guard (MemTable.take ⟨#["a", "b"], #[Column.ints #[1, 2, 3], Column.strs #["x", "y", "z"]], rfl⟩ 2).names.size
-    == (MemTable.take ⟨#["a", "b"], #[Column.ints #[1, 2, 3], Column.strs #["x", "y", "z"]], rfl⟩ 2).cols.size
-
--- | MemTable.take reduces nRows
-#guard MemTable.nRows (MemTable.take ⟨#["a"], #[Column.ints #[1, 2, 3, 4, 5]], rfl⟩ 3) == 3
-
--- | MemTable.selCols preserves h_eq (names.size = cols.size)
-#guard (MemTable.selCols ⟨#["a", "b", "c"], #[Column.ints #[1], Column.ints #[2], Column.ints #[3]], rfl⟩ #["b", "c"]).names.size
-    == (MemTable.selCols ⟨#["a", "b", "c"], #[Column.ints #[1], Column.ints #[2], Column.ints #[3]], rfl⟩ #["b", "c"]).cols.size
-
--- | MemTable.selCols picks correct columns
-#guard (MemTable.selCols ⟨#["a", "b", "c"], #[Column.ints #[1], Column.ints #[2], Column.ints #[3]], rfl⟩ #["b"]).names == #["b"]
-
-end MemTableInvariantTests
 
 end PureTest
 
@@ -413,31 +363,6 @@ namespace SortTest
 
 open Tc
 
--- | Table: 4 rows, 4 columns (a:int, b:int, c:int, grp:str)
-def sortTbl : MemTable :=
-  { names := #["a", "b", "c", "grp"]
-    cols := #[ Column.ints #[3, 1, 2, 1]
-             , Column.ints #[1, 3, 2, 1]
-             , Column.ints #[2, 1, 3, 2]
-             , Column.strs #["x", "y", "x", "y"] ]
-    h_eq := rfl }
-
-def firstCell (t : MemTable) (col : Nat) : String :=
-  (t.cols.getD col default).get 0 |>.toRaw
-
-def cellAt (t : MemTable) (row col : Nat) : String :=
-  (t.cols.getD col default).get row |>.toRaw
-
--- Single-column sort
-#guard firstCell (MemTable.sort sortTbl #[0] true) 0 == "1"
-#guard firstCell (MemTable.sort sortTbl #[0] false) 0 == "3"
-
--- Multi-column sort (sels=[0], cursor=1 => sort by a then b)
-#guard firstCell (MemTable.sort sortTbl #[0, 1] true) 0 == "1"
-#guard firstCell (MemTable.sort sortTbl #[0, 1] true) 1 == "1"
-#guard cellAt (MemTable.sort sortTbl #[0, 1] true) 1 0 == "1"
-#guard cellAt (MemTable.sort sortTbl #[0, 1] true) 1 1 == "3"
-
 -- Group exclusion logic
 #guard (#[] ++ #[(0:Nat)]).filter (!#[(0:Nat)].contains ·) == #[]
 #guard (#[(0:Nat)] ++ #[1]).filter (!#[(0:Nat)].contains ·) == #[1]
@@ -448,11 +373,6 @@ def dedup (arr : Array Nat) : Array Nat :=
   arr.foldl (init := #[]) fun acc c => if acc.contains c then acc else acc.push c
 #guard dedup (#[(0:Nat), 1] ++ #[1]) == #[0, 1]
 #guard dedup (#[(2:Nat), 0] ++ #[2]) == #[2, 0]
-
--- Sort preserves table shape
-#guard (MemTable.sort sortTbl #[0, 1] true).names.size == (MemTable.sort sortTbl #[0, 1] true).cols.size
-#guard MemTable.nRows (MemTable.sort sortTbl #[0, 1] true) == 4
-#guard (MemTable.sort sortTbl #[0, 1] true).names == #["a", "b", "c", "grp"]
 
 end SortTest
 

@@ -1,9 +1,10 @@
 /-
-  Text parsing: space-separated input (ps aux, ls -l, etc.)
+  Text parsing: space-separated input (ps aux, ls -l, etc.) → TSV string
+  DuckDB handles type detection via read_csv_auto.
 -/
-import Tc.Data.Mem.Table
+import Std.Data.HashMap
 
-namespace Tc.MemTable
+namespace Tc.TextParse
 
 -- | Find mode (most common value) in array
 private def mode (xs : Array Nat) : Nat := Id.run do
@@ -59,12 +60,12 @@ private def splitByStarts (s : String) (starts : Array Nat) : Array String := Id
     result := result.push ((s.drop st).take (en - st)).trimAscii.toString
   return result
 
--- | Parse space-separated text (like ps aux, ls -l, systemctl output)
+-- | Parse space-separated text to TSV string (like ps aux, ls -l, systemctl output)
 -- Fixed-width if header has 2+ space gaps AND gives more cols than mode-based
-def fromText (content : String) : Except String MemTable :=
+def fromText (content : String) : Except String String :=
   let lines := content.splitOn "\n" |>.filter (·.length > 0)
   match lines with
-  | [] => .ok ⟨#[], #[], rfl⟩
+  | [] => .error "empty input"
   | hdr :: rest =>
     let starts := findColStarts hdr
     let allLines := (hdr :: rest).toArray
@@ -72,52 +73,23 @@ def fromText (content : String) : Except String MemTable :=
     -- use fixed-width only if it gives >= mode columns (handles mixed spacing)
     if starts.size >= modeNc && starts.size > 1 then
       let names := splitByStarts hdr starts
-      let strCols : Array (Array String) := Id.run do
-        let mut cols := (List.replicate starts.size #[]).toArray
-        for line in rest do
-          let fields := splitByStarts line starts
-          for i in [:starts.size] do cols := cols.modify i (·.push (fields.getD i ""))
-        return cols
-      let cols := strCols.map buildColumn
-      if h : names.size = cols.size then .ok ⟨names, cols, h⟩
-      else .error "column count mismatch"
+      let header := "\t".intercalate names.toList
+      let rows := rest.map fun line =>
+        "\t".intercalate (splitByStarts line starts).toList
+      .ok (header ++ "\n" ++ "\n".intercalate rows)
     else
       -- else use mode of word counts (handles "total 836" outliers)
       let nc := modeNc
-      if nc == 0 then .ok ⟨#[], #[], rfl⟩ else
+      if nc == 0 then .error "no columns" else
       let names := splitN hdr nc
-      let strCols : Array (Array String) := Id.run do
-        let mut cols := (List.replicate nc #[]).toArray
-        for line in rest do
-          let fields := splitN line nc
-          for i in [:nc] do cols := cols.modify i (·.push (fields.getD i ""))
-        return cols
-      let cols := strCols.map buildColumn
-      if h : names.size = cols.size then .ok ⟨names, cols, h⟩
-      else .error "column count mismatch"
+      let header := "\t".intercalate names.toList
+      let rows := rest.map fun line =>
+        "\t".intercalate (splitN line nc).toList
+      .ok (header ++ "\n" ++ "\n".intercalate rows)
 
--- | Parse tab-separated text (TSV format)
-def fromTsv (content : String) : Except String MemTable :=
-  let lines := content.splitOn "\n" |>.filter (·.length > 0)
-  match lines with
-  | [] => .ok ⟨#[], #[], rfl⟩
-  | hdr :: rest =>
-    let names := (hdr.splitOn "\t").toArray
-    let nc := names.size
-    if nc == 0 then .ok ⟨#[], #[], rfl⟩ else
-    let strCols : Array (Array String) := Id.run do
-      let mut cols := (List.replicate nc #[]).toArray
-      for line in rest do
-        let fields := (line.splitOn "\t").toArray
-        for i in [:nc] do cols := cols.modify i (·.push (fields.getD i ""))
-      return cols
-    let cols := strCols.map buildColumn
-      if h : names.size = cols.size then .ok ⟨names, cols, h⟩
-      else .error "column count mismatch"
-
--- | Load from stdin (reads all input)
-def fromStdin : IO (Except String MemTable) := do
+-- | Load from stdin (reads all input, returns TSV)
+def fromStdin : IO (Except String String) := do
   let content ← (← IO.getStdin).readToEnd
   pure (fromText content)
 
-end Tc.MemTable
+end Tc.TextParse

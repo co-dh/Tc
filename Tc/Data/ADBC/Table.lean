@@ -24,6 +24,9 @@ structure AdbcTable where
   query     : Prql.Query        -- PRQL query (base + ops)
   totalRows : Nat               -- total rows in underlying data
 
+-- | Counter for unique temp table names
+initialize memTblCounter : IO.Ref Nat ← IO.mkRef 0
+
 namespace AdbcTable
 
 -- | Init ADBC backend (DuckDB)
@@ -150,12 +153,27 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
     return some cats
   | none => return some #[]
 
+-- | Create AdbcTable from TSV content via DuckDB read_csv_auto
+def fromTsv (content : String) : IO (Option AdbcTable) := do
+  if content.isEmpty then return none
+  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
+  let tmpFile := s!"/tmp/tc-tsv-{n}.tsv"
+  IO.FS.writeFile tmpFile content
+  let tblName := s!"tc_tsv_{n}"
+  try
+    let _ ← Adbc.query s!"CREATE TEMP TABLE {tblName} AS SELECT * FROM read_csv_auto('{tmpFile}')"
+    try IO.FS.removeFile tmpFile catch _ => pure ()
+    let query : Prql.Query := { base := s!"from {tblName}" }
+    let total ← queryCount query
+    requery query total
+  catch e =>
+    try IO.FS.removeFile tmpFile catch _ => pure ()
+    Log.write "fromTsv" s!"error: {e.toString}"
+    return none
+
 end AdbcTable
 
 -- NOTE: TblOps/ModifyTable instances for AdbcTable are in ADBC/Ops.lean
-
--- | Counter for unique temp table names
-initialize memTblCounter : IO.Ref Nat ← IO.mkRef 0
 
 namespace AdbcTable
 

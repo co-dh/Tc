@@ -140,6 +140,7 @@ inductive Effect where
   | themeLoad (delta : Int)
   | plotLine | plotBar
   | fetchMore
+  | metaSelNull | metaSelSingle | metaSetKey
   deriving Repr, BEq
 
 namespace Effect

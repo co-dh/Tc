@@ -1,14 +1,11 @@
 /-
   Meta view: column statistics (name, type, count, distinct, null%, min, max)
-  Returns MemTable with typed columns for proper sorting.
-  Pure update returns Effect; Runner executes IO.
+  Creates AdbcTable directly via fromArrays. IO-based selection via getCols.
 -/
 import Tc.View
-import Tc.Data.Mem.Meta
+import Tc.Table
 
 namespace Tc.Meta
-
-variable {T : Type} [TblOps T] [MemConvert MemTable T]
 
 -- Meta column headers
 def headers : Array String := #["column", "type", "cnt", "dist", "null%", "min", "max"]
@@ -17,80 +14,57 @@ def headers : Array String := #["column", "type", "cnt", "dist", "null%", "min",
 def colDist : Nat := 3  -- distinct count
 def colNull : Nat := 4  -- null%
 
--- Convert queryMeta tuple result to MemTable
-def toMemTable (m : Array String × Array String × Array Int64 × Array Int64 × Array Int64 × Array String × Array String) : MemTable :=
-  let (names, types, cnts, dists, nulls, mins, maxs) := m
-  ⟨headers, #[.strs names, .strs types, .ints cnts, .ints dists, .ints nulls, .strs mins, .strs maxs], rfl⟩
-
--- Get int value from column at row
-def getInt (t : MemTable) (col row : Nat) : Int64 :=
-  match t.cols.getD col default with
-  | .ints data => data.getD row 0
-  | _ => 0
-
--- Select rows where int column satisfies predicate
-def selectRows (t : MemTable) (col : Nat) (pred : Int64 → Bool) : Array Nat :=
-  (Array.range (MemTable.nRows t)).filter fun r => pred (getInt t col r)
-
--- Select 100% null columns
-def selNull (t : MemTable) : Array Nat := selectRows t colNull (· == 100)
-
--- Select single-value columns (distinct == 1)
-def selSingle (t : MemTable) : Array Nat := selectRows t colDist (· == 1)
-
--- Get column names from selected rows (col 0 is "column")
-def selNames (t : MemTable) (selRows : Array Nat) : Array String :=
-  selRows.filterMap fun r =>
-    match t.cols.getD 0 default with
-    | .strs data => some (data.getD r "")
-    | _ => none
-
 -- | Push column metadata view onto stack
-def push (s : ViewStack T) : IO (Option (ViewStack T)) := do
-  let tbl ← TblOps.queryMeta s.cur.nav.tbl <&> toMemTable
-  let some v := View.fromTbl (MemConvert.wrap tbl) s.cur.path | return none
-  return some (s.push { v with vkind := .colMeta, disp := "meta" })
+def push (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
+  let m ← TblOps.queryMeta s.cur.nav.tbl
+  let (names, types, cnts, dists, nulls, mins, maxs) := m
+  let cols : Array Column := #[.strs names, .strs types, .ints cnts, .ints dists, .ints nulls, .strs mins, .strs maxs]
+  match ← AdbcTable.fromArrays headers cols with
+  | some adbc =>
+    match View.fromTbl (Table.adbc adbc) s.cur.path with
+    | some v => return some (s.push { v with vkind := .colMeta, disp := "meta" })
+    | none => return none
+  | none => return none
 
--- | Select rows in meta view by predicate on MemTable
-def sel (s : ViewStack T) (f : MemTable → Array Nat) : ViewStack T :=
-  if s.cur.vkind != .colMeta then s else
-  match MemConvert.unwrap s.cur.nav.tbl with
-  | some tbl =>
-    let rows := f tbl
-    let nav' := { s.cur.nav with row := { s.cur.nav.row with sels := rows } }
-    s.setCur { s.cur with nav := nav' }
-  | none => s
+-- | Select rows where int column satisfies predicate (IO via getCols)
+private def selBy (s : ViewStack Table) (col : Nat) (pred : Int64 → Bool) : IO (ViewStack Table) := do
+  if s.cur.vkind != .colMeta then return s
+  let cols ← TblOps.getCols s.cur.nav.tbl #[col] 0 s.cur.nRows
+  let c := cols.getD 0 default
+  let rows := (Array.range s.cur.nRows).filter fun r =>
+    match c with | .ints data => pred (data.getD r 0) | _ => false
+  let nav' := { s.cur.nav with row := { s.cur.nav.row with sels := rows } }
+  return s.setCur { s.cur with nav := nav' }
+
+-- | Select 100% null columns
+def selNull (s : ViewStack Table) : IO (ViewStack Table) := selBy s colNull (· == 100)
+
+-- | Select single-value columns (distinct == 1)
+def selSingle (s : ViewStack Table) : IO (ViewStack Table) := selBy s colDist (· == 1)
 
 -- | Set key cols from meta view selections, pop to parent, select cols
-def setKey (s : ViewStack T) : Option (ViewStack T) :=
-  if s.cur.vkind != .colMeta then some s else
-  if !s.hasParent then some s else
-  match MemConvert.unwrap s.cur.nav.tbl with
-  | some tbl =>
-    let colNames := selNames tbl s.cur.nav.row.sels
-    match s.pop with
-    | some s' =>
-      let nav' := { s'.cur.nav with grp := colNames, col := { s'.cur.nav.col with sels := colNames } }
-      some (s'.setCur { s'.cur with nav := nav' })
-    | none => some s
-  | none => some s
+def setKey (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
+  if s.cur.vkind != .colMeta then return some s
+  if !s.hasParent then return some s
+  -- read column 0 (name column) to get selected column names
+  let cols ← TblOps.getCols s.cur.nav.tbl #[0] 0 s.cur.nRows
+  let nameCol := cols.getD 0 default
+  let colNames := s.cur.nav.row.sels.filterMap fun r =>
+    let v := (nameCol.get r).toRaw
+    if v.isEmpty then none else some v
+  match s.pop with
+  | some s' =>
+    let nav' := { s'.cur.nav with grp := colNames, col := { s'.cur.nav.col with sels := colNames } }
+    return some (s'.setCur { s'.cur with nav := nav' })
+  | none => return some s
 
--- | Pure update: returns Effect for IO operations, pure for selections
-def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
+-- | Pure update: returns Effect for IO operations
+def update (s : ViewStack Table) (cmd : Cmd) : Option (ViewStack Table × Effect) :=
   match cmd with
-  | .metaV .dup => some (s, .queryMeta)              -- push meta view (IO)
-  | .metaV .dec => some (sel s selNull, .none)       -- select null cols (pure)
-  | .metaV .inc => some (sel s selSingle, .none)     -- select single-val cols (pure)
-  | .metaV .ent => if s.cur.vkind == .colMeta then setKey s |>.map (·, .none) else none
+  | .metaV .dup => some (s, .queryMeta)
+  | .metaV .dec => some (s, .metaSelNull)
+  | .metaV .inc => some (s, .metaSelSingle)
+  | .metaV .ent => if s.cur.vkind matches .colMeta then some (s, .metaSetKey) else none
   | _ => none
-
--- | Execute meta command (IO version for backward compat)
-def exec (s : ViewStack T) (cmd : Cmd) : IO (Option (ViewStack T)) := do
-  match cmd with
-  | .metaV .dup => (← push s).orElse (fun _ => some s) |> pure
-  | .metaV .dec => pure (some (sel s selNull))
-  | .metaV .inc => pure (some (sel s selSingle))
-  | .metaV .ent => if s.cur.vkind == .colMeta then pure (setKey s) else pure none
-  | _ => pure none
 
 end Tc.Meta

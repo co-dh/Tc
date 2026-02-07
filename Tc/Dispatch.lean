@@ -55,8 +55,6 @@ def exec (a : AppState) (cmd : Cmd) : IO (Option (AppState)) := do
   if let some t' ← a.theme.exec cmd then return some { a with theme := t' }
   if let some i' ← a.info.exec cmd then return some { a with info := i' }
   if let some s' ← a.stk.exec cmd then return some (withStk a cmd s')
-  if let some s' ← Folder.exec a.stk cmd then return some (withStk a cmd s')
-  if let some s' ← Meta.exec a.stk cmd then return some (withStk a cmd s')
   if let some s' ← Freq.exec a.stk cmd then return some (withStk a cmd s')
   if let some s' ← Plot.exec a.stk cmd then return some (withStk a cmd s')
   if let some s' ← Filter.exec a.stk cmd then return some (withStk a cmd s')

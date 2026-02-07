@@ -7,7 +7,7 @@ import Tc.Term
 import Tc.Theme
 import Tc.UI.Info
 import Tc.Dispatch
-import Tc.Data.Mem.Text
+import Tc.Data.Text
 import Tc.Folder
 import Tc.View
 
@@ -59,14 +59,17 @@ def runApp (v : View Table) (pipe test : Bool) (th : Theme.State) (ks : Array Ch
   let a' ← mainLoop ⟨⟨#[v], by simp⟩, .default, th, {}⟩ test ks
   Term.shutdown; pure a'
 
--- run from MemTable result
-def runMem (r : Except String MemTable) (nm : String) (pipe test : Bool)
+-- run from TSV string result
+def runTsv (r : Except String String) (nm : String) (pipe test : Bool)
     (th : Theme.State) (ks : Array Char) : IO (Option AppState) := do
   match r with
   | .error e => IO.eprintln s!"Parse error: {e}"; return none
-  | .ok t => match View.fromTbl (Table.mem t) nm with
+  | .ok tsv =>
+    match ← AdbcTable.fromTsv tsv with
     | none => IO.eprintln "Empty table"; return none
-    | some v => some <$> runApp v pipe test th ks
+    | some adbc => match View.fromTbl (Table.adbc adbc) nm with
+      | none => IO.eprintln "Empty table"; return none
+      | some v => some <$> runApp v pipe test th ks
 
 -- output table as plain text
 def outputTable (toText : Table → IO String) (a : AppState) : IO Unit := do
@@ -83,7 +86,7 @@ def appMain (toText : Table → IO String) (init : IO Bool) (shutdown : IO Unit)
   let ok ← try init catch e => IO.eprintln s!"Backend init error: {e}"; return
   if !ok then IO.eprintln "Backend init failed"; return
   if pipeMode && path?.isNone then
-    if let some a ← runMem (← MemTable.fromStdin) "stdin" true testMode theme keys then
+    if let some a ← runTsv (← Tc.TextParse.fromStdin) "stdin" true testMode theme keys then
       outputTable toText a
     return
   let path := path?.getD ""
@@ -103,7 +106,7 @@ def appMain (toText : Table → IO String) (init : IO Bool) (shutdown : IO Unit)
         | none => IO.eprintln "Empty kdb table"
       | none => IO.eprintln "Cannot open kdb table"
     else if path.endsWith ".txt" then
-      let _ ← runMem (MemTable.fromText (← IO.FS.readFile path)) path pipeMode testMode theme keys
+      let _ ← runTsv (Tc.TextParse.fromText (← IO.FS.readFile path)) path pipeMode testMode theme keys
     else match ← TblOps.fromFile (α := Table) path with
       | some tbl => match View.fromTbl tbl path with
         | some v => let _ ← runApp v pipeMode testMode theme keys

@@ -3,6 +3,8 @@
   X-axis = first group column, category = second group column (optional),
   Y-axis = current column under cursor (must be numeric).
 -/
+import Std.Data.HashMap
+import Std.Data.HashSet
 import Tc.View
 import Tc.Term
 import Tc.Error

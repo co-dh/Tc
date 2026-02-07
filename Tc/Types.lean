@@ -175,11 +175,6 @@ def ModifyTable.sort [ModifyTable α] (tbl : α) (cursor : Nat) (selIdxs : Array
   let cols := cols.foldl (init := #[]) fun acc c => if acc.contains c then acc else acc.push c
   if cols.isEmpty then pure tbl else sortBy cols asc tbl
 
-/-- MemConvert: bidirectional conversion between MemTable and unified Table type.
-    Enables generic code to work with in-memory representation when available. -/
-class MemConvert (M T : Type) where
-  wrap   : M → T              -- M → T (e.g., MemTable → Table)
-  unwrap : T → Option M       -- T → M? (e.g., Table → MemTable?)
 
 -- | Keep columns not in delete set (shared by delCols impls)
 def keepCols (nCols : Nat) (delIdxs : Array Nat) (names : Array String) : Array String :=

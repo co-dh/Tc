@@ -4,7 +4,6 @@
 -/
 import Tc.Cmd
 import Tc.Render
-import Tc.Data.Mem.Text
 
 namespace Tc
 
