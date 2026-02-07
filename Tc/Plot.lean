@@ -2,6 +2,7 @@
   Plot: export table data to gnuplot, display via viu.
   X-axis = first group column, category = second group column (optional),
   Y-axis = current column under cursor (must be numeric).
+  Interactive: after display, +/− keys change downsampling interval.
 -/
 import Std.Data.HashMap
 import Std.Data.HashSet
@@ -27,26 +28,60 @@ private def maxPoints : Nat := 2000
 private def isTimeType (typ : String) : Bool :=
   typ == "time" || typ == "timestamp"
 
--- | Truncate time string to HH:MM:SS (drop sub-second fraction)
-private def truncSec (s : String) : String :=
-  if s.length > 8 then (s.take 8).toString else s
-
 -- | Check if y-value is zero (filter out no-bid/no-ask conditions)
 private def isZeroY (yv : String) : Bool :=
   yv == "0" || yv == "0.0" || yv == "0.000000"
 
--- | Export data to tab-separated file for gnuplot
+-- | Downsampling interval for interactive plot control
+structure Interval where
+  label    : String  -- display label (e.g. "1s", "1m", "2x")
+  truncLen : Nat     -- SUBSTRING length for time; step for non-time
+  timefmt  : String  -- gnuplot timefmt string
+  xfmt     : String  -- gnuplot format x string
+  deriving Inhabited
+
+-- | Time intervals (colType = "time", format HH:MM:SS)
+private def timeIntervals : Array Interval := #[
+  ⟨"1s", 8, "%H:%M:%S", "%H:%M:%S"⟩,
+  ⟨"1m", 5, "%H:%M", "%H:%M"⟩,
+  ⟨"1h", 2, "%H", "%H"⟩
+]
+
+-- | Timestamp intervals (colType = "timestamp", format YYYY-MM-DD HH:MM:SS)
+private def tsIntervals : Array Interval := #[
+  ⟨"1s", 19, "%Y-%m-%d %H:%M:%S", "%H:%M"⟩,
+  ⟨"1m", 16, "%Y-%m-%d %H:%M", "%H:%M"⟩,
+  ⟨"1h", 13, "%Y-%m-%d %H", "%d %Hh"⟩,
+  ⟨"1d", 10, "%Y-%m-%d", "%m-%d"⟩
+]
+
+-- | Build non-time interval array from base step
+private def stepIntervals (baseStep : Nat) : Array Interval :=
+  let s0 := if baseStep == 0 then 1 else baseStep
+  #[s0, s0 * 2, s0 * 4, s0 * 8, s0 * 16].map fun s =>
+    ⟨s!"{s}x", s, "", ""⟩
+
+-- | Get interval array based on column type
+private def getIntervals (xType : String) (baseStep : Nat) : Array Interval :=
+  if xType == "time" then timeIntervals
+  else if xType == "timestamp" then tsIntervals
+  else stepIntervals baseStep
+
+-- | Truncate time string to given length
+private def truncTime (len : Nat) (s : String) : String :=
+  if s.length > len then (s.take len).toString else s
+
+-- | Export data to tab-separated file for gnuplot (Lean-side fallback)
 -- cols order: [xCol, yCol] or [xCol, yCol, catCol]
--- Filters zero y-values. For time x-axis: last value per second.
--- For non-time: even sampling when too many points.
-private def exportData (cols : Array Column) (hasCat : Bool) (xIsTime : Bool)
+-- truncLen: SUBSTRING length for time x-axis; step for non-time
+private def exportData (cols : Array Column) (hasCat : Bool) (xIsTime : Bool) (truncLen : Nat)
     : IO (String × Option (Array String)) := do
   let xCol := cols.getD 0 default
   let yCol := cols.getD 1 default
   let nr := xCol.size
   let path := "/tmp/tc-plot.dat"
   if xIsTime then
-    -- time x-axis: keep last value per second (keyed by x string)
+    -- time x-axis: keep last value per truncated period
     let mut last : Std.HashMap String String := {}
     let mut lastCat : Std.HashMap String String := {}
     let mut cats : Std.HashSet String := {}
@@ -55,7 +90,7 @@ private def exportData (cols : Array Column) (hasCat : Bool) (xIsTime : Bool)
       let xvRaw := (xCol.get r).toRaw
       let yv := (yCol.get r).toRaw
       if xvRaw.isEmpty || yv.isEmpty || isZeroY yv then continue
-      let xv := truncSec xvRaw
+      let xv := truncTime truncLen xvRaw
       if hasCat then
         let cv := ((cols.getD 2 default).get r).toRaw
         if cv.isEmpty then continue
@@ -77,8 +112,8 @@ private def exportData (cols : Array Column) (hasCat : Bool) (xIsTime : Bool)
     let catArr := if cats.isEmpty then none else some cats.toArray
     pure (path, catArr)
   else
-    -- non-time: even sampling
-    let step := if nr > maxPoints then nr / maxPoints else 1
+    -- non-time: even sampling with given step
+    let step := if truncLen == 0 then 1 else truncLen
     let mut lines : Array String := #[]
     let mut cats : Std.HashSet String := {}
     let idxs := Array.range ((nr + step - 1) / step) |>.map (· * step)
@@ -98,8 +133,10 @@ private def exportData (cols : Array Column) (hasCat : Bool) (xIsTime : Bool)
     pure (path, catArr)
 
 -- | Generate gnuplot script (ggplot-minimal style)
+-- timefmt/xfmt: gnuplot time format strings (from Interval)
 private def gnuplotScript (dataPath : String) (xName yName : String)
-    (catVals : Option (Array String)) (bar : Bool) (xIsStr xIsTime : Bool) : String :=
+    (catVals : Option (Array String)) (bar : Bool) (xIsStr xIsTime : Bool)
+    (timefmt xfmt : String) : String :=
   let pngPath := "/tmp/tc-plot.png"
   -- terminal + data
   let header := "set terminal pngcairo size 1200,700 enhanced font 'Sans,11'\n" ++
@@ -111,7 +148,7 @@ private def gnuplotScript (dataPath : String) (xName yName : String)
   let labels := s!"set xlabel '{xName}' offset 0,0.5\nset ylabel '{yName}' offset 1.5,0\n"
   -- x-axis: time parsing or categorical
   let xsetup := if xIsTime then
-      "set xdata time\nset timefmt \"%H:%M:%S\"\nset format x \"%H:%M\"\n"
+      s!"set xdata time\nset timefmt \"{timefmt}\"\nset format x \"{xfmt}\"\n"
     else if xIsStr then "set xtics rotate by -45\n" else ""
   -- plot commands
   let lineColor := "rgb '#4682B4'"  -- steelblue
@@ -146,11 +183,10 @@ private def gnuplotScript (dataPath : String) (xName yName : String)
       s!"using (stringcolumn(3) eq cat ? $2 : 1/0):xtic(1) title cat\n"
   header ++ style ++ labels ++ xsetup ++ plotCmd
 
--- | Display PNG via viu (fallback to xdg-open), wait for keypress
-private def displayPng (png : String) : IO Unit := do
+-- | Display PNG via viu (no wait — caller handles key reading)
+private def showPng (png : String) : IO Unit := do
   let viu ← IO.Process.output { cmd := "which", args := #["viu"] }
   if viu.exitCode == 0 then
-    -- viu needs direct terminal access (inherited stdio)
     let child ← IO.Process.spawn
       { cmd := "viu", args := #[png]
         stdin := .inherit, stdout := .inherit, stderr := .inherit }
@@ -160,9 +196,12 @@ private def displayPng (png : String) : IO Unit := do
       { cmd := "xdg-open", args := #[png]
         stdin := .inherit, stdout := .inherit, stderr := .inherit }
     let _ ← child.wait
-  -- wait for keypress before restoring TUI
+
+-- | Read one key from /dev/tty
+private def readKey : IO Char := do
   let tty ← IO.FS.Handle.mk "/dev/tty" .read
-  let _ ← tty.read 1
+  let buf ← tty.read 1
+  pure (if buf.size > 0 then Char.ofNat buf[0]!.toNat else 'q')
 
 -- | Log error and return current stack unchanged
 private def err (s : ViewStack T) (msg : String) : IO (Option (ViewStack T)) := do
@@ -172,23 +211,17 @@ private def err (s : ViewStack T) (msg : String) : IO (Option (ViewStack T)) := 
 private def isNumericType (typ : String) : Bool :=
   typ == "int" || typ == "float" || typ == "decimal"
 
--- | Run gnuplot and display result
-private def plotAndShow (s : ViewStack T) (dataPath xName yName : String)
-    (catVals : Option (Array String)) (bar xIsStr xIsTime : Bool)
-    : IO (Option (ViewStack T)) := do
-  let script := gnuplotScript dataPath xName yName catVals bar xIsStr xIsTime
+-- | Render gnuplot script and run it, return false on error
+private def renderGnuplot (script : String) : IO Bool := do
   IO.FS.writeFile "/tmp/tc-plot.gp" script
-  Log.write "plot" "running gnuplot..."
   let gp ← IO.Process.output { cmd := "gnuplot", args := #["/tmp/tc-plot.gp"] }
-  Log.write "plot" s!"gnuplot exit={gp.exitCode}"
-  if gp.exitCode != 0 then return ← err s s!"gnuplot failed: {gp.stderr.trimAscii.toString}"
-  Log.write "plot" "displaying..."
-  Term.shutdown
-  displayPng "/tmp/tc-plot.png"
-  let _ ← Term.init
-  pure (some s)
+  if gp.exitCode != 0 then
+    Log.write "plot" s!"gnuplot failed: {gp.stderr.trimAscii.toString}"
+    return false
+  return true
 
--- | Run plot: export data, generate gnuplot script, render, display
+-- | Run plot with interactive interval control
+-- After displaying, press + or - to change interval and re-render in place.
 def run (s : ViewStack T) (bar : Bool) : IO (Option (ViewStack T)) := do
   Log.write "plot" "run entered"
   let n := s.cur.nav
@@ -207,30 +240,64 @@ def run (s : ViewStack T) (bar : Bool) : IO (Option (ViewStack T)) := do
   -- skip if y is a group column (nothing to plot)
   if n.grp.contains yName then return ← err s "move cursor to a non-group column"
   let nr := TblOps.nRows n.tbl
-  let xIsTime := isTimeType (TblOps.colType n.tbl xIdx)
-  -- try DB-side export (downsample in SQL, COPY to file)
-  let step := if nr > maxPoints then nr / maxPoints else 1
+  let xType := TblOps.colType n.tbl xIdx
+  let xIsTime := isTimeType xType
+  let xIsStr := !isNumericType xType
+  let baseStep := if nr > maxPoints then nr / maxPoints else 1
   let catName? := if catIdx.isSome then some catName else none
-  if let some cats := ← TblOps.plotExport n.tbl xName yName catName? xIsTime step then
-    Log.write "plot" s!"DB export done, cats={cats.size}"
-    let xIsStr := !isNumericType (TblOps.colType n.tbl xIdx)
-    let catVals := if cats.isEmpty then none else some cats
-    return ← plotAndShow s "/tmp/tc-plot.dat" xName yName catVals bar xIsStr xIsTime
-  -- fallback: fetch columns and export in Lean
+  -- build interval array
+  let intervals := getIntervals xType baseStep
+  -- for Lean-side fallback: preload columns once
   let colIdxs := match catIdx with
     | some ci => #[xIdx, yIdx, ci]
     | none    => #[xIdx, yIdx]
-  Log.write "plot" s!"getCols idxs={colIdxs} nr={nr} xIdx={xIdx} yIdx={yIdx}"
-  let cols ← TblOps.getCols n.tbl colIdxs 0 nr
-  Log.write "plot" s!"getCols returned {cols.size} columns"
-  if cols.size < 2 then return ← err s "failed to extract columns"
-  -- y-axis must be numeric
-  if !isNumericCol (cols.getD 1 default) then return ← err s s!"y-axis '{yName}' is not numeric"
-  let xIsStr := !isNumericCol (cols.getD 0 default)
-  Log.write "plot" "exporting data..."
-  let (dataPath, catVals) ← exportData cols catIdx.isSome xIsTime
-  Log.write "plot" s!"exported to {dataPath} xIsTime={xIsTime}"
-  plotAndShow s dataPath xName yName catVals bar xIsStr xIsTime
+  -- check y is numeric (for fallback path)
+  let hasFallbackCols := do
+    let cols ← TblOps.getCols n.tbl colIdxs 0 nr
+    if cols.size < 2 then return none
+    if !isNumericCol (cols.getD 1 default) then return none
+    return some cols
+  -- shutdown TUI once for the interactive loop
+  Term.shutdown
+  let mut idx : Nat := 0  -- start at finest interval
+  let mut continue_ := true
+  while continue_ do
+    let iv := intervals.getD idx default
+    Log.write "plot" s!"interval={iv.label} truncLen={iv.truncLen} idx={idx}"
+    -- try DB-side export
+    let dbOk ← do
+      if let some cats := ← TblOps.plotExport n.tbl xName yName catName? xIsTime baseStep iv.truncLen then
+        let catVals := if cats.isEmpty then none else some cats
+        let script := gnuplotScript "/tmp/tc-plot.dat" xName yName catVals bar xIsStr xIsTime iv.timefmt iv.xfmt
+        if ← renderGnuplot script then
+          showPng "/tmp/tc-plot.png"
+          pure true
+        else pure false
+      else pure false
+    -- fallback: Lean-side export
+    if !dbOk then
+      if let some cols := ← hasFallbackCols then
+        let (dataPath, catVals) ← exportData cols catIdx.isSome xIsTime iv.truncLen
+        let script := gnuplotScript dataPath xName yName catVals bar xIsStr xIsTime iv.timefmt iv.xfmt
+        if ← renderGnuplot script then
+          showPng "/tmp/tc-plot.png"
+        else
+          IO.println s!"plot error (see /tmp/tc-plot.log)"
+      else
+        IO.println "failed to extract columns or y-axis not numeric"
+    -- show status and read key
+    let maxIdx := intervals.size - 1
+    IO.print s!"\x1b[1m[{iv.label}]\x1b[0m  +\x2f-: interval  any key: exit  "
+    let key ← readKey
+    IO.println ""
+    if key == '+' || key == '=' then
+      idx := min (idx + 1) maxIdx
+    else if key == '-' || key == '_' then
+      idx := if idx > 0 then idx - 1 else 0
+    else
+      continue_ := false
+  let _ ← Term.init
+  pure (some s)
 
 -- | Pure update: map Cmd to Effect
 def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=

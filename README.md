@@ -108,16 +108,20 @@ cat data.csv | tc             # Pipe mode (stdin)
 
 | Key | Action |
 |-----|--------|
-| `.` / `,` | Increase/decrease decimal precision |
-| `>` / `<` | Widen/narrow columns |
+| `Space p .`/`,` | Increase/decrease decimal precision |
+| `Space w .`/`,` | Widen/narrow columns |
 | `I` | Toggle info overlay |
 
 ### Plot
 
 | Key | Action |
 |-----|--------|
-| `p` | Line plot (cursor col vs first col) |
-| `P` | Bar plot |
+| `.` | Line plot (y=cursor col, x=first group col) |
+| `,` | Bar plot |
+| `+` | Coarser interval (1s→1m→1h→1d) |
+| `-` | Finer interval (1d→1h→1m→1s) |
+
+After plotting, `+`/`-` cycle the downsampling interval and re-render in place. Any other key exits back to the table.
 
 ## Known Limitations
 

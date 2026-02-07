@@ -44,7 +44,7 @@ instance : TblOps Table where
     (TblOps.render · c n f w d g o r0 r1 cr cc m s rs st pa wa) t
   getCols t idxs r0 r1 := liftM (TblOps.getCols · idxs r0 r1) (TblOps.getCols · idxs r0 r1) t
   colType := lift (TblOps.colType ·) (TblOps.colType ·)
-  plotExport t x y c b n := liftM (TblOps.plotExport · x y c b n) (TblOps.plotExport · x y c b n) t
+  plotExport t x y c b n tl := liftM (TblOps.plotExport · x y c b n tl) (TblOps.plotExport · x y c b n tl) t
   fetchMore := liftW (TblOps.fetchMore ·) (TblOps.fetchMore ·)
   fromFile := fromFile
   fromUrl  := fromUrl

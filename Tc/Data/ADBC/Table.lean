@@ -121,12 +121,13 @@ def fetchMore (t : AdbcTable) : IO (Option AdbcTable) := do
   some <$> ofQueryResult qr t.query t.totalRows
 
 -- | Export plot data to /tmp/tc-plot.dat via DuckDB COPY (downsample in SQL)
-def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String) (xIsTime : Bool) (step : Nat)
+-- truncLen: SUBSTRING length for time truncation; step: every-Nth-row for non-time
+def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String) (xIsTime : Bool) (step : Nat) (truncLen : Nat)
     : IO (Option (Array String)) := do
   let q := Prql.quote
   let prql := match xIsTime, catName? with
-    | true,  some cn => s!"{t.query.render} | ds_time_cat {q xName} {q yName} {q cn}"
-    | true,  none    => s!"{t.query.render} | ds_time {q xName} {q yName}"
+    | true,  some cn => s!"{t.query.render} | ds_trunc_cat {q xName} {q yName} {q cn} {truncLen}"
+    | true,  none    => s!"{t.query.render} | ds_trunc {q xName} {q yName} {truncLen}"
     | false, some cn => s!"{t.query.render} | ds_nth_cat {q xName} {q yName} {q cn} {step}"
     | false, none    => s!"{t.query.render} | ds_nth {q xName} {q yName} {step}"
   Log.write "plot-prql" prql

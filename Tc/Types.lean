@@ -147,8 +147,9 @@ class TblOps (α : Type) where
   -- column type name (e.g. "time", "int", "float", "str")
   colType   : α → Nat → String := fun _ _ => "?"
   -- export plot data to /tmp/tc-plot.dat via DB (returns category list, or none for fallback)
-  plotExport : α → String → String → Option String → Bool → Nat → IO (Option (Array String))
-    := fun _ _ _ _ _ _ => pure none
+  -- args: tbl xName yName catName? xIsTime step truncLen
+  plotExport : α → String → String → Option String → Bool → Nat → Nat → IO (Option (Array String))
+    := fun _ _ _ _ _ _ _ => pure none
   -- fetch more rows (scroll-to-bottom): returns table with more rows, or none
   fetchMore : α → IO (Option α) := fun _ => pure none
   -- loading (file or URL)

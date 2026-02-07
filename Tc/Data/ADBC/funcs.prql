@@ -45,6 +45,26 @@ let ds_time_cat = func x y c tbl <relation> -> (
   select {_sec, y, c}
 )
 
+# Downsample time series with parameterized truncation length
+let ds_trunc = func x y len tbl <relation> -> (
+  from tbl
+  filter s"{y} IS NOT NULL AND CAST({y} AS VARCHAR) NOT IN ('0','0.0','0.000000')"
+  derive {_sec = s"SUBSTRING(CAST({x} AS VARCHAR), 1, {len})"}
+  group {_sec} (sort {s"{x} DESC"} | take 1)
+  sort {_sec}
+  select {_sec, y}
+)
+
+# Downsample time series with category and parameterized truncation
+let ds_trunc_cat = func x y c len tbl <relation> -> (
+  from tbl
+  filter s"{y} IS NOT NULL AND CAST({y} AS VARCHAR) NOT IN ('0','0.0','0.000000')"
+  derive {_sec = s"SUBSTRING(CAST({x} AS VARCHAR), 1, {len})"}
+  group {_sec, c} (sort {s"{x} DESC"} | take 1)
+  sort {_sec}
+  select {_sec, y, c}
+)
+
 # Downsample by sampling every Nth row, filter zeros/nulls
 let ds_nth = func x y step tbl <relation> -> (
   from tbl
