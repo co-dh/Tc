@@ -10,7 +10,7 @@ namespace Tc.UI.Info
 
 -- | Info state
 structure State where
-  vis : Bool := false
+  vis : Bool := true
 
 namespace State
 
@@ -44,12 +44,13 @@ def viewHints : ViewKind → Array (String × String)
 -- | Common key hints (shown after view-specific)
 def commonHints : Array (String × String) := #[
   ("j/k", "up/down"), ("h/l", "left/right"),
-  ("g/G", "top/end"), ("^D/^U", "page"),
-  ("[/]", "sort"), ("/", "search"),
+  ("^D/^U", "page"), ("[/]", "sort"),
+  ("/", "search"), ("n/N", "next/prev"),
   ("\\", "filter"), ("!", "key col"),
   ("t/T", "sel"), ("d", "delete"),
-  ("s", "col jump"), ("S", "stack"),
-  ("I", "info"), ("q", "pop"), ("Q", "quit")
+  ("s", "col jump"), (".", "plot"),
+  ("S", "swap"), ("I", "info"),
+  ("q", "pop"), ("Q", "quit")
 ]
 
 -- | Render info overlay at bottom-right

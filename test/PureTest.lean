@@ -138,8 +138,11 @@ end StackTests
 
 section InfoTests
 
-def infoOff : UI.Info.State := {}
+def infoOff : UI.Info.State := { vis := false }
 def infoOn : UI.Info.State := { vis := true }
+
+-- | Default is on
+#guard (UI.Info.State.mk).vis == true
 
 -- | I toggles info visibility
 #guard (UI.Info.State.update infoOff (.info .ent)).map (·.1.vis) == some true

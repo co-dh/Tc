@@ -192,8 +192,8 @@ def test_freq_quit : IO Unit := do
 
 def test_info : IO Unit := do
   log "info"
-  let output ← run "I" "data/basic.csv"
-  assert (contains output "hjkl" || contains output "quit") "I shows info overlay"
+  let output ← run "" "data/basic.csv"
+  assert (contains output "quit" || contains output "up/down") "Info overlay shown by default"
 
 -- === Precision/Width adjustment ===
 
