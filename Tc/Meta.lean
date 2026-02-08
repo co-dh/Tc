@@ -7,18 +7,13 @@ import Tc.Table
 
 namespace Tc.Meta
 
--- Meta column headers
-def headers : Array String := #["column", "type", "cnt", "dist", "null%", "min", "max"]
-
 -- Meta column indices
 def colDist : Nat := 3  -- distinct count
 def colNull : Nat := 4  -- null%
 
 -- | Push column metadata view onto stack
 def push (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
-  let m ← TblOps.queryMeta s.cur.nav.tbl
-  let cols : Array Column := #[.strs m.names, .strs m.types, .ints m.counts, .ints m.dists,
-    .ints m.nullPcts, .strs m.mins, .strs m.maxs]
+  let (headers, cols) ← TblOps.queryMeta s.cur.nav.tbl
   match ← AdbcTable.fromArrays headers cols with
   | some adbc =>
     match View.fromTbl (Table.adbc adbc) s.cur.path with

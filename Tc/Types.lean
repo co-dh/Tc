@@ -109,16 +109,6 @@ end Cell
 
 namespace Tc
 
--- Meta: column statistics (names, types, counts, distincts, null%, mins, maxs)
-structure MetaTuple where
-  names    : Array String
-  types    : Array String
-  counts   : Array Int64
-  dists    : Array Int64
-  nullPcts : Array Int64
-  mins     : Array String
-  maxs     : Array String
-
 -- | Compute pct and bar from count data (for Kdb/Mem freq → fromArrays).
 def freqPctBar (cntData : Array Int64) : Array Float × Array String :=
   let total := cntData.foldl (init := 0) (· + ·)
@@ -151,7 +141,7 @@ class TblOps (α : Type) where
   nRows     : α → Nat                                            -- row count in view
   colNames  : α → Array String                                   -- column names
   totalRows : α → Nat := nRows                                   -- actual rows (ADBC)
-  queryMeta : α → IO MetaTuple                                   -- column metadata
+  queryMeta : α → IO (Array String × Array Column)                -- column metadata (headers, cols)
   filter    : α → String → IO (Option α)                         -- filter by expr
   distinct  : α → Nat → IO (Array String)                        -- distinct values
   findRow   : α → Nat → String → Nat → Bool → IO (Option Nat)    -- find row

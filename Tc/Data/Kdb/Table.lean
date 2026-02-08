@@ -236,18 +236,16 @@ def findRow (_ : KdbTable) (_ : Nat) (_ : String) (_ : Nat) (_ : Bool) : IO (Opt
 
 -- | Query meta: column stats (name, type, cnt, dist, null%, min, max)
 -- Uses q `meta` for names/types, basic stats for rest
-def queryMeta (t : KdbTable) : IO MetaTuple := do
+def queryMeta (t : KdbTable) : IO (Array String × Array Column) := do
   let names := t.colNames
   let types := t.colTypes.map String.singleton
   let cnt := t.totalRows.toInt64
   let n := names.size
-  let cnts := #[].append (Array.range n |>.map fun _ => cnt)
-  -- dists/nulls/mins/maxs: expensive, use placeholders
-  let dists := #[].append (Array.range n |>.map fun _ => (0 : Int64))
-  let nulls := #[].append (Array.range n |>.map fun _ => (0 : Int64))
-  let mins := #[].append (Array.range n |>.map fun _ => "")
-  let maxs := #[].append (Array.range n |>.map fun _ => "")
-  pure ⟨names, types, cnts, dists, nulls, mins, maxs⟩
+  let cnts := Array.range n |>.map fun _ => cnt
+  let zeros := Array.range n |>.map fun _ => (0 : Int64)
+  let empty := Array.range n |>.map fun _ => ""
+  pure (#["column", "type", "cnt", "dist", "null%", "min", "max"],
+    #[.strs names, .strs types, .ints cnts, .ints zeros, .ints zeros, .strs empty, .strs empty])
 
 end KdbTable
 

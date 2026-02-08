@@ -28,14 +28,15 @@ private def colStr (qr : Adbc.QueryResult) (nr : Nat) (c : UInt64) : IO (Array S
 private def colInt (qr : Adbc.QueryResult) (nr : Nat) (c : UInt64) : IO (Array Int64) :=
   (Array.range nr).mapM fun r => (·.toInt64) <$> Adbc.cellInt qr r.toUInt64 c
 
--- | Build MetaTuple from query result (cols: name,type,cnt,dist,null%,min,max)
-private def metaFromQuery (qr : Adbc.QueryResult) : IO MetaTuple := do
+-- | Build (headers, cols) from query result (cols: name,type,cnt,dist,null%,min,max)
+private def metaFromQuery (qr : Adbc.QueryResult) : IO (Array String × Array Column) := do
   let nr := (← Adbc.nrows qr).toNat
   let s := colStr qr nr; let i := colInt qr nr  -- s/i: read col as str/int
-  pure ⟨← s 0, ← s 1, ← i 2, ← i 3, ← i 4, ← s 5, ← s 6⟩
+  pure (#["column", "type", "cnt", "dist", "null%", "min", "max"],
+    #[.strs (← s 0), .strs (← s 1), .ints (← i 2), .ints (← i 3), .ints (← i 4), .strs (← s 5), .strs (← s 6)])
 
 -- | Load meta from parquet cache
-def loadCache (path : String) : IO (Option MetaTuple) := do
+def loadCache (path : String) : IO (Option (Array String × Array Column)) := do
   if !(← cacheValid path) then return none
   try
     let cp := metaCachePath path
@@ -77,7 +78,7 @@ private def canCache (t : AdbcTable) : Option String :=
   else none
 
 -- | Query meta via PRQL colstat + append (with parquet caching)
-def queryMeta (t : AdbcTable) : IO MetaTuple := do
+def queryMeta (t : AdbcTable) : IO (Array String × Array Column) := do
   let cachePath := canCache t
   -- Try cache for base parquet queries
   if let some p := cachePath then
@@ -90,7 +91,7 @@ def queryMeta (t : AdbcTable) : IO MetaTuple := do
     s!" | append ({colstatPrql base (names.getD (i+1) "") (types.getD (i+1) "?")})"
   let prql := first ++ rest.foldl (· ++ ·) ""
   Log.write "meta" prql
-  let some sql ← Prql.compile prql | return ⟨#[], #[], #[], #[], #[], #[], #[]⟩
+  let some sql ← Prql.compile prql | return (#[], #[])
   -- Save to cache for base parquet queries
   if let some p := cachePath then
     try saveCache p sql catch e => Log.write "adbc-meta" (toString e)

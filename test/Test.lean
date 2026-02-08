@@ -34,7 +34,7 @@ structure MockTable (nRows nCols : Nat) where
 instance : TblOps (MockTable nRows nCols) where
   nRows _ := nRows
   colNames t := t.names
-  queryMeta _ := pure ⟨#[], #[], #[], #[], #[], #[], #[]⟩
+  queryMeta _ := pure (#[], #[])
   filter _ _ := pure none
   distinct _ _ := pure #[]
   findRow _ _ _ _ _ := pure none

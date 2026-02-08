@@ -18,8 +18,8 @@ extern_lib adbcshim pkg := mkCLib pkg "adbcshim" "adbc_core.c"
 extern_lib kdbshim pkg := mkCLib pkg "kdbshim" "kdb_shim.c"
 
 lean_lib Tc where
-  roots := #[`Tc.Cmd, `Tc.Nav, `Tc.Render, `Tc.Key, `Tc.App,
-             `Tc.Term, `Tc.Types, `Tc.Error, `Tc.View, `Tc.Dispatch,
+  roots := #[`Tc.Cmd, `Tc.Nav, `Tc.Render, `Tc.Key, `Tc.App.Common,
+             `Tc.Term, `Tc.Types, `Tc.Error, `Tc.View,
              `Tc.Meta, `Tc.Freq, `Tc.Fzf, `Tc.Table, `Tc.Search, `Tc.Filter, `Tc.Folder,
              `Tc.Theme, `Tc.Plot, `Tc.UI.Info, `Tc.Runner, `Tc.Remote, `Tc.S3, `Tc.HF, `Tc.Data.CSV,
              `Tc.Data.Text, `Tc.Data.ADBC.FFI, `Tc.Data.ADBC.Prql,
@@ -29,7 +29,7 @@ lean_lib Tc where
 -- | Full build: all backends (ADBC + Kdb)
 @[default_target]
 lean_exe tc where
-  root := `Tc.App
+  root := `Tc.App.Common
 
 -- | Test executable (spawns tc subprocess; pass --kdb for kdb tests)
 lean_exe test where
