@@ -142,14 +142,5 @@ def runEffect (s : State) (delta : Int) : IO State := do
   let (sty, idx) ← doCycle s.themeIdx delta
   pure ⟨sty, idx⟩
 
--- | IO wrapper (for backward compat)
-def exec (s : State) (cmd : Cmd) : IO (Option State) := do
-  match cmd with
-  | .thm .inc => some <$> runEffect s 1
-  | .thm .dec => some <$> runEffect s (-1)
-  | _ => pure none
-
-instance : Exec State where exec := exec
-
 end State
 end Tc.Theme

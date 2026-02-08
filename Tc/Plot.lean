@@ -349,11 +349,4 @@ def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   | .plot .dec => some (s, .plotBar)
   | _ => none
 
--- | Execute (IO version for backward compat)
-def exec (s : ViewStack T) (cmd : Cmd) : IO (Option (ViewStack T)) := do
-  match cmd with
-  | .plot .inc => run s false
-  | .plot .dec => run s true
-  | _ => pure none
-
 end Tc.Plot

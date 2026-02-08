@@ -14,7 +14,7 @@ inductive Table where
 
 namespace Table
 
--- lift ops over sum type (Arthur Whitney style)
+-- lift ops over sum type
 @[inline] def lift (a : AdbcTable → α) (k : KdbTable → α) : Table → α
   | .adbc t => a t | .kdb t => k t
 @[inline] def liftM (a : AdbcTable → IO α) (k : KdbTable → IO α) : Table → IO α
@@ -25,6 +25,11 @@ namespace Table
 @[inline] def liftIO (a : AdbcTable → IO AdbcTable)
     (k : KdbTable → IO KdbTable) : Table → IO Table
   | .adbc t => .adbc <$> a t | .kdb t => .kdb <$> k t
+-- lift when both branches use the same typeclass method
+@[inline] def liftS (f : ∀ {α : Type} [TblOps α], α → β) : Table → β
+  | .adbc t => f t | .kdb t => f t
+@[inline] def liftSM (f : ∀ {α : Type} [TblOps α], α → IO β) : Table → IO β
+  | .adbc t => f t | .kdb t => f t
 
 def fromFile (p : String) : IO (Option Table) := do
   (← AdbcTable.fromFile p).map .adbc |> pure
@@ -32,19 +37,18 @@ def fromUrl (u : String) : IO (Option Table) := do
   if u.startsWith "kdb://" then (← KdbTable.fromUrl u).map .kdb |> pure else pure none
 
 instance : TblOps Table where
-  nRows    := lift (·.nRows) (·.nRows)
-  colNames := lift (·.colNames) (·.colNames)
-  totalRows := lift (·.totalRows) (·.totalRows)
+  nRows     := liftS TblOps.nRows
+  colNames  := liftS TblOps.colNames
+  totalRows := liftS TblOps.totalRows
   queryMeta := liftM AdbcTable.queryMeta KdbTable.queryMeta
   filter t e := liftW (AdbcTable.filter · e) (KdbTable.filter · e) t
-  distinct t c := liftM (AdbcTable.distinct · c) (KdbTable.distinct · c) t
-  findRow t c v s f := liftM (AdbcTable.findRow · c v s f) (KdbTable.findRow · c v s f) t
-  render t c n f w d g o r0 r1 cr cc m s rs st pa wa := liftM
-    (TblOps.render · c n f w d g o r0 r1 cr cc m s rs st pa wa)
-    (TblOps.render · c n f w d g o r0 r1 cr cc m s rs st pa wa) t
-  getCols t idxs r0 r1 := liftM (TblOps.getCols · idxs r0 r1) (TblOps.getCols · idxs r0 r1) t
-  colType := lift (TblOps.colType ·) (TblOps.colType ·)
-  plotExport t x y c b n tl := liftM (TblOps.plotExport · x y c b n tl) (TblOps.plotExport · x y c b n tl) t
+  distinct t c := liftSM (TblOps.distinct · c) t
+  findRow t c v s f := liftSM (TblOps.findRow · c v s f) t
+  render t c n f w d g o r0 r1 cr cc m s rs st pa wa :=
+    liftSM (TblOps.render · c n f w d g o r0 r1 cr cc m s rs st pa wa) t
+  getCols t idxs r0 r1 := liftSM (TblOps.getCols · idxs r0 r1) t
+  colType   := liftS TblOps.colType
+  plotExport t x y c b n tl := liftSM (TblOps.plotExport · x y c b n tl) t
   fetchMore := liftW (TblOps.fetchMore ·) (TblOps.fetchMore ·)
   fromFile := fromFile
   fromUrl  := fromUrl

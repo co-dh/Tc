@@ -97,26 +97,6 @@ theorem width_inc_adds (v : View T) (rowPg : Nat) :
 theorem width_dec_subs (v : View T) (rowPg : Nat) :
     (update v (.width .dec) rowPg).map (fun p => p.1.widthAdj) = some (v.widthAdj - 1) := rfl
 
--- | Execute Cmd, returns IO (Option View) (for backward compat)
--- Delegates to pure update for non-IO cases; only .colSel .del/.inc/.dec need IO
-def exec [ModifyTable T] (v : View T) (cmd : Cmd) : IO (Option (View T)) := do
-  let n := v.nav; let names := TblOps.colNames n.tbl
-  let curCol := colIdxAt n.grp names n.col.cur.val
-  let mk tbl col grp row := preserve v (fromTbl tbl v.path col grp row)
-  match cmd with
-  | .colSel .del =>
-    let (tbl', grp') ← ModifyTable.del n.tbl curCol (n.col.sels.filterMap names.idxOf?) n.grp
-    pure (mk tbl' n.col.cur.val grp' 0)
-  | .colSel .inc | .colSel .dec =>
-    let selIdxs := n.col.sels.filterMap names.idxOf?
-    let grpIdxs := n.grp.filterMap names.idxOf?
-    let tbl' ← ModifyTable.sort n.tbl curCol selIdxs grpIdxs (cmd == .colSel .inc)
-    pure (mk tbl' curCol n.grp n.row.cur.val)
-  | _ => -- delegate to pure update
-    let rowPg := ((← Term.height).toNat - reservedLines) / 2
-    pure <| (update v cmd rowPg).map Prod.fst
-
-instance [ModifyTable T] : Exec (View T) where exec := exec
 
 end View
 
@@ -177,13 +157,6 @@ def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   | _ => none
 
 instance : Update (ViewStack T) where update := update
-
--- | IO wrapper (for backward compat)
-def exec (s : ViewStack T) (cmd : Cmd) : IO (Option (ViewStack T)) := pure <|
-  match update s cmd with
-  | some (s', _) => some s' | none => none
-
-instance : Exec (ViewStack T) where exec := exec
 
 end ViewStack
 

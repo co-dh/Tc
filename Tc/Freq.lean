@@ -54,13 +54,4 @@ def update (s : ViewStack Table) (cmd : Cmd) : Option (ViewStack Table × Effect
     | _ => none
   | _ => none
 
--- | Execute freq command (IO version for backward compat)
-def exec (s : ViewStack Table) (cmd : Cmd) : IO (Option (ViewStack Table)) := do
-  match cmd with
-  | .freq .dup => (← push s).orElse (fun _ => some s) |> pure
-  | .freq .ent => match s.cur.vkind with
-    | .freqV _ _ => filter s
-    | _ => pure none
-  | _ => pure none
-
 end Tc.Freq

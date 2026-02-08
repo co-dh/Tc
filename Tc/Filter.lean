@@ -82,26 +82,13 @@ variable {T : Type} [TblOps T]
 
 -- | Pure update: returns Effect describing fzf/search operation
 def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
-  let v := s.cur; let names := TblOps.colNames v.nav.tbl
-  let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
-  let curName := names.getD curCol ""
   match cmd with
   | .col .ent    => some (s, .fzfCol)                          -- s: column picker
-  | .rowSel .inc => some (s, .fzfRow curCol curName)           -- /: row search
-  | .rowSel .dec => some (s, .fzfFilter curCol curName)        -- \: row filter
+  | .rowSel .inc => some (s, .fzfRow)                          -- /: row search
+  | .rowSel .dec => some (s, .fzfFilter)                       -- \: row filter
   | .grp .inc    => some (s, .findNext)                        -- n: search next
   | .grp .dec    => some (s, .findPrev)                        -- N: search prev
   | _ => none
-
--- | Execute search/filter command (IO version for backward compat)
-def exec (s : ViewStack T) (cmd : Cmd) : IO (Option (ViewStack T)) := do
-  match cmd with
-  | .col .ent    => some <$> s.colSearch   -- s: fzf jump to column
-  | .rowSel .inc => some <$> s.rowSearch   -- /: fzf search in column
-  | .rowSel .dec => some <$> s.rowFilter   -- \: fzf PRQL filter
-  | .grp .inc    => some <$> s.searchNext  -- n: repeat search forward
-  | .grp .dec    => some <$> s.searchPrev  -- N: repeat search backward
-  | _ => pure none  -- not handled
 
 end Tc.Filter
 

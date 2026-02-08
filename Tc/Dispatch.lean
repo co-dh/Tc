@@ -50,19 +50,5 @@ def update (a : AppState) (cmd : Cmd) : Option (AppState × Effect) :=
 
 instance : Update (AppState) where update := update
 
--- | Execute Cmd on AppState (IO version for backward compat)
-def exec (a : AppState) (cmd : Cmd) : IO (Option (AppState)) := do
-  if let some t' ← a.theme.exec cmd then return some { a with theme := t' }
-  if let some i' ← a.info.exec cmd then return some { a with info := i' }
-  if let some s' ← a.stk.exec cmd then return some (withStk a cmd s')
-  if let some s' ← Freq.exec a.stk cmd then return some (withStk a cmd s')
-  if let some s' ← Plot.exec a.stk cmd then return some (withStk a cmd s')
-  if let some s' ← Filter.exec a.stk cmd then return some (withStk a cmd s')
-  match ← a.stk.cur.exec cmd with
-  | some v' => pure (some (withStk a cmd (a.stk.setCur v')))
-  | none => pure none
-
-instance : Exec (AppState) where exec := exec
-
 end AppState
 end Tc

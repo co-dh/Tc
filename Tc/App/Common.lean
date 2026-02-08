@@ -91,18 +91,11 @@ def appMain (toText : Table → IO String) (init : IO Bool) (shutdown : IO Unit)
     return
   let path := path?.getD ""
   try
-    if path.isEmpty then
-      match ← Folder.mkView "." 1 with
+    if path.isEmpty || path.startsWith "s3://" || path.startsWith "hf://" then
+      let p := if path.isEmpty then "." else path
+      match ← Folder.mkView p 1 with
       | some v => let _ ← runApp v pipeMode testMode theme keys
-      | none => IO.eprintln "Cannot list directory"
-    else if path.startsWith "s3://" then
-      match ← Folder.mkView path 1 with
-      | some v => let _ ← runApp v pipeMode testMode theme keys
-      | none => IO.eprintln s!"Cannot browse S3 path: {path}"
-    else if path.startsWith "hf://" then
-      match ← Folder.mkView path 1 with
-      | some v => let _ ← runApp v pipeMode testMode theme keys
-      | none => IO.eprintln s!"Cannot browse HF dataset: {path}\nUsage: tc hf://datasets/<user>/<dataset>"
+      | none => IO.eprintln s!"Cannot browse: {p}"
     else if path.startsWith "kdb://" then
       match ← TblOps.fromUrl (α := Table) path with
       | some tbl => match View.fromTbl tbl path with
