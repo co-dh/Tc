@@ -12,7 +12,6 @@ instance : TblOps KdbTable where
   nRows     := (·.nRows)
   colNames  := (·.colNames)
   totalRows := (·.totalRows)
-  queryMeta := KdbTable.queryMeta
   filter    := KdbTable.filter
   distinct  := KdbTable.distinct
   findRow   := KdbTable.findRow

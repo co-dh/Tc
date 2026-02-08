@@ -141,7 +141,6 @@ class TblOps (α : Type) where
   nRows     : α → Nat                                            -- row count in view
   colNames  : α → Array String                                   -- column names
   totalRows : α → Nat := nRows                                   -- actual rows (ADBC)
-  queryMeta : α → IO (Array String × Array Column)                -- column metadata (headers, cols)
   filter    : α → String → IO (Option α)                         -- filter by expr
   distinct  : α → Nat → IO (Array String)                        -- distinct values
   findRow   : α → Nat → String → Nat → Bool → IO (Option Nat)    -- find row

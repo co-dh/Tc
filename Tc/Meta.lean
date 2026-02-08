@@ -13,12 +13,14 @@ def colNull : Nat := 4  -- null%
 
 -- | Push column metadata view onto stack
 def push (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
-  let (headers, cols) ← TblOps.queryMeta s.cur.nav.tbl
-  match ← AdbcTable.fromArrays headers cols with
-  | some adbc =>
-    match View.fromTbl (Table.adbc adbc) s.cur.path with
-    | some v => return some (s.push { v with vkind := .colMeta, disp := "meta" })
-    | none => return none
+  let adbc? ← match s.cur.nav.tbl with
+    | .adbc t => AdbcTable.queryMeta t
+    | .kdb t => do
+      let (headers, cols) ← KdbTable.queryMeta t
+      AdbcTable.fromArrays headers cols
+  let some adbc := adbc? | return none
+  match View.fromTbl (Table.adbc adbc) s.cur.path with
+  | some v => return some (s.push { v with vkind := .colMeta, disp := "meta" })
   | none => return none
 
 -- | Select rows where int column satisfies predicate (IO via getCols)

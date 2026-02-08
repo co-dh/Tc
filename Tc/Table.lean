@@ -36,7 +36,6 @@ instance : TblOps Table where
   nRows     := liftS TblOps.nRows
   colNames  := liftS TblOps.colNames
   totalRows := liftS TblOps.totalRows
-  queryMeta | .adbc t => AdbcTable.queryMeta t | .kdb t => KdbTable.queryMeta t
   filter t e := liftW (AdbcTable.filter · e) (KdbTable.filter · e) t
   distinct t c := liftSM (TblOps.distinct · c) t
   findRow t c v s f := liftSM (TblOps.findRow · c v s f) t
