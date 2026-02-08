@@ -65,5 +65,23 @@ def queryMeta (t : AdbcTable) : IO (Option AdbcTable) := do
   let qr ← Adbc.query "SELECT * FROM tc_meta"
   some <$> ofQueryResult qr { base := "from tc_meta" }
 
+-- | Query row indices matching PRQL filter on tc_meta
+def queryMetaIndices (flt : String) : IO (Array Nat) := do
+  let prql := "from tc_meta | derive {idx = s\"(ROW_NUMBER() OVER () - 1)\"} | filter " ++ flt ++ " | select {idx}"
+  let some sql ← Prql.compile prql | return #[]
+  let qr ← Adbc.query sql
+  let nr ← Adbc.nrows qr
+  (Array.range nr.toNat).mapM fun r => (·.toNat) <$> Adbc.cellInt qr r.toUInt64 0
+
+-- | Query column names from tc_meta at given row indices
+def queryMetaColNames (rows : Array Nat) : IO (Array String) := do
+  if rows.isEmpty then return #[]
+  let idxs := ", ".intercalate (rows.map (s!"{·}") |>.toList)
+  let prql := "from tc_meta | derive {idx = s\"(ROW_NUMBER() OVER () - 1)\"} | filter s\"idx IN (" ++ idxs ++ ")\" | select {column, idx}"
+  let some sql ← Prql.compile prql | return #[]
+  let qr ← Adbc.query sql
+  let nr ← Adbc.nrows qr
+  (Array.range nr.toNat).mapM fun r => Adbc.cellStr qr r.toUInt64 0
+
 end AdbcTable
 end Tc

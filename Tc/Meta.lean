@@ -1,30 +1,11 @@
 /-
   Meta view: column statistics via DuckDB temp table tc_meta.
-  Selection and key operations use composable PRQL.
+  Selection and key operations use composable PRQL (via ADBC/Meta).
 -/
 import Tc.View
 import Tc.Table
-import Tc.Data.ADBC.Prql
 
 namespace Tc.Meta
-
--- | Query row indices matching PRQL filter on tc_meta
-private def queryIndices (flt : String) : IO (Array Nat) := do
-  let prql := "from tc_meta | derive {idx = s\"(ROW_NUMBER() OVER () - 1)\"} | filter " ++ flt ++ " | select {idx}"
-  let some sql ← Prql.compile prql | return #[]
-  let qr ← Adbc.query sql
-  let nr ← Adbc.nrows qr
-  (Array.range nr.toNat).mapM fun r => (·.toNat) <$> Adbc.cellInt qr r.toUInt64 0
-
--- | Query column names from tc_meta at given row indices
-private def queryColNames (rows : Array Nat) : IO (Array String) := do
-  if rows.isEmpty then return #[]
-  let idxs := ", ".intercalate (rows.map (s!"{·}") |>.toList)
-  let prql := "from tc_meta | derive {idx = s\"(ROW_NUMBER() OVER () - 1)\"} | filter s\"idx IN (" ++ idxs ++ ")\" | select {column, idx}"
-  let some sql ← Prql.compile prql | return #[]
-  let qr ← Adbc.query sql
-  let nr ← Adbc.nrows qr
-  (Array.range nr.toNat).mapM fun r => Adbc.cellStr qr r.toUInt64 0
 
 -- | Push column metadata view onto stack
 def push (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
@@ -41,14 +22,14 @@ def push (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
 -- | Select 100% null columns
 def selNull (s : ViewStack Table) : IO (ViewStack Table) := do
   if s.cur.vkind != .colMeta then return s
-  let rows ← queryIndices "null_pct == 100"
+  let rows ← AdbcTable.queryMetaIndices "null_pct == 100"
   let nav' := { s.cur.nav with row := { s.cur.nav.row with sels := rows } }
   return s.setCur { s.cur with nav := nav' }
 
 -- | Select single-value columns (distinct == 1)
 def selSingle (s : ViewStack Table) : IO (ViewStack Table) := do
   if s.cur.vkind != .colMeta then return s
-  let rows ← queryIndices "dist == 1"
+  let rows ← AdbcTable.queryMetaIndices "dist == 1"
   let nav' := { s.cur.nav with row := { s.cur.nav.row with sels := rows } }
   return s.setCur { s.cur with nav := nav' }
 
@@ -56,7 +37,7 @@ def selSingle (s : ViewStack Table) : IO (ViewStack Table) := do
 def setKey (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   if s.cur.vkind != .colMeta then return some s
   if !s.hasParent then return some s
-  let colNames ← queryColNames s.cur.nav.row.sels
+  let colNames ← AdbcTable.queryMetaColNames s.cur.nav.row.sels
   match s.pop with
   | some s' =>
     let col' := { s'.cur.nav.col with sels := colNames }
