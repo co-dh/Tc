@@ -39,6 +39,7 @@ def rowSearch (s : ViewStack T) : IO (ViewStack T) := do
   let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
   let curName := names.getD curCol ""
   let vals ← TblOps.distinct v.nav.tbl curCol
+  let vals := vals.qsort (· < ·)
   let some result ← Fzf.fzf #[s!"--prompt=/{curName}: "] ("\n".intercalate vals.toList) | return s
   let start := v.nav.row.cur.val + 1
   let some rowIdx ← TblOps.findRow v.nav.tbl curCol result start true | return s
@@ -66,6 +67,7 @@ def rowFilter (s : ViewStack T) : IO (ViewStack T) := do
   let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
   let curName := names.getD curCol ""
   let vals ← TblOps.distinct v.nav.tbl curCol
+  let vals := vals.qsort (· < ·)
   let prompt := s!"{curName} == 'x' | > 5 | ~= 'pat' > "
   let some result ← Fzf.fzf #["--print-query", s!"--prompt={prompt}"] ("\n".intercalate vals.toList) | return s
   let expr := Fzf.buildFilterExpr curName vals result
