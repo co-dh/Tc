@@ -3,7 +3,7 @@
   Lowers universe from Type 1 to Type 0, enabling standard IO.
 -/
 import Tc.Data.ADBC.Ops  -- TblOps/ModifyTable for AdbcTable
-import Tc.Data.Kdb.Ops   -- TblOps/ModifyTable/ExecOp for KdbTable
+import Tc.Data.Kdb.Ops   -- TblOps/ModifyTable for KdbTable
 
 namespace Tc
 
@@ -50,9 +50,6 @@ instance : TblOps Table where
 instance : ModifyTable Table where
   delCols i := liftIO (ModifyTable.delCols i) (ModifyTable.delCols i)
   sortBy i a := liftIO (ModifyTable.sortBy i a) (ModifyTable.sortBy i a)
-
-instance : ExecOp Table where
-  exec t o := liftW (ExecOp.exec · o) (ExecOp.exec · o) t
 
 -- | Freq table: returns AdbcTable + totalGroups (all backends → DuckDB temp table)
 def freqTable (tbl : Table) (colNames : Array String) : IO (Option (AdbcTable × Nat)) :=

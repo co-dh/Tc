@@ -292,8 +292,4 @@ def fromArrays (names : Array String) (cols : Array Column) : IO (Option AdbcTab
 
 end AdbcTable
 
--- | ExecOp instance for AdbcTable (all ops via PRQL requery)
-instance : ExecOp AdbcTable where
-  exec t op := AdbcTable.requery (t.query.pipe op) t.totalRows
-
 end Tc

@@ -213,10 +213,6 @@ inductive Op where
   | take (n : Nat)
   deriving Inhabited
 
--- | Execute operation on table (backend-specific)
-class ExecOp (α : Type) where
-  exec : α → Op → IO (Option α)
-
 -- | View kind: how to render/interact (used by key mapping for context-sensitive verbs)
 inductive ViewKind where
   | tbl                                           -- table view

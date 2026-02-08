@@ -10,9 +10,6 @@
 │    distinct, findRow, render                            │
 │    getCols, colType, plotExport, fetchMore              │
 │    fromFile, fromUrl                                    │
-├─────────────────────────────────────────────────────────┤
-│  ExecOp α                                               │
-│    exec : Op → IO α                                     │
 └───────────────────────────┬─────────────────────────────┘
                             │ instance
                             ▼
@@ -97,7 +94,6 @@ The architecture separates pure state logic from IO effects:
 |             | fromFile, fromUrl                    | Load from path/URL         |
 | ModifyTable | delCols, sortBy                      | Table mutations            |
 | Update      | update                               | Pure: Cmd → (State, Effect)|
-| ExecOp      | exec                                 | IO: Op → IO Table          |
 
 ## Backends
 
@@ -341,7 +337,7 @@ This prevents CPU burn on large tables (e.g., 300M row parquet).
 ```
 LAYER 1: FOUNDATION (35 files)
 ┌─────────────────────────────────────────────────────────────────┐
-│ Types (Cell,Column,TblOps,ModifyTable,Agg,Op,ExecOp)           │
+│ Types (Cell,Column,TblOps,ModifyTable,Agg,Op)                  │
 │ Cmd (Verb,Cmd,Effect,Update)   Error   Term                    │
 └─────────────────────────────────────────────────────────────────┘
                               ↓

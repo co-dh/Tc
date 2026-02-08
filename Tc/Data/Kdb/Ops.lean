@@ -1,5 +1,5 @@
 /-
-  TblOps/ModifyTable/ExecOp instances for KdbTable
+  TblOps/ModifyTable instances for KdbTable
   Used by Full build only
 -/
 import Tc.Data.Kdb.Table
@@ -29,9 +29,5 @@ instance : TblOps KdbTable where
 instance : ModifyTable KdbTable where
   delCols := fun delIdxs t => KdbTable.delCols t delIdxs
   sortBy  := fun idxs asc t => KdbTable.sortBy t idxs asc
-
--- | ExecOp instance for KdbTable
-instance : ExecOp KdbTable where
-  exec t op := KdbTable.requery (t.query.pipe op) t.totalRows
 
 end Tc

@@ -249,7 +249,7 @@ def queryMeta (t : KdbTable) : IO (Array String × Array Column) := do
 
 end KdbTable
 
--- NOTE: Table/ModifyTable/ExecOp instances for KdbTable
--- are defined in Table.lean which imports all query methods
+-- NOTE: TblOps/ModifyTable instances for KdbTable
+-- are defined in Ops.lean which imports all query methods
 
 end Tc
