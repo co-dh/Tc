@@ -19,19 +19,15 @@ def push (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   | some v => return some (s.push { v with vkind := .colMeta, disp := "meta" })
   | none => return none
 
--- | Select 100% null columns
-def selNull (s : ViewStack Table) : IO (ViewStack Table) := do
+-- | Select meta rows matching PRQL filter
+private def selBy (s : ViewStack Table) (flt : String) : IO (ViewStack Table) := do
   if s.cur.vkind != .colMeta then return s
-  let rows ← AdbcTable.queryMetaIndices "null_pct == 100"
+  let rows ← AdbcTable.queryMetaIndices flt
   let nav' := { s.cur.nav with row := { s.cur.nav.row with sels := rows } }
   return s.setCur { s.cur with nav := nav' }
 
--- | Select single-value columns (distinct == 1)
-def selSingle (s : ViewStack Table) : IO (ViewStack Table) := do
-  if s.cur.vkind != .colMeta then return s
-  let rows ← AdbcTable.queryMetaIndices "dist == 1"
-  let nav' := { s.cur.nav with row := { s.cur.nav.row with sels := rows } }
-  return s.setCur { s.cur with nav := nav' }
+def selNull (s : ViewStack Table)   := selBy s "null_pct == 100"
+def selSingle (s : ViewStack Table) := selBy s "dist == 1"
 
 -- | Set key cols from meta view selections, pop to parent, select cols
 def setKey (s : ViewStack Table) : IO (Option (ViewStack Table)) := do

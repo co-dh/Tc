@@ -75,37 +75,21 @@ def list (path : String) : IO String := do
   let entries := if parentEntry.isEmpty then body else [parentEntry] ++ body
   pure (hdr ++ (if entries.isEmpty then "" else "\n" ++ "\n".intercalate entries))
 
--- | Build raw download URL for an HF file
-def rawUrl (path : String) : Option String := do
-  let (repo, sub) ← parsePath path
-  if sub.isEmpty then none
-  else some s!"https://huggingface.co/datasets/{repo}/resolve/main/{sub}"
+-- | Resolve data file: return hf:// URL as-is (DuckDB reads via httpfs, caches in temp table)
+def resolve (_hfPath : String) : IO String := pure _hfPath
 
--- | Get cached local path for HF file. Downloads if not cached.
-def cachedPath (hfPath : String) : IO String := do
-  let home ← IO.Process.output { cmd := "sh", args := #["-c", "echo $HOME"] }
-  let homeDir := home.stdout.trimAscii.toString
-  let base := s!"{homeDir}/.cache/tc/hf"
-  let some (repo, sub) := parsePath hfPath | pure hfPath
+-- | Download file to /tmp for non-data viewing (bat/less)
+def download (hfPath : String) : IO String := do
+  let some (repo, sub) := parsePath hfPath | return hfPath
   if sub.isEmpty then return hfPath
-  let local_ := s!"{base}/{repo}/{sub}"
-  let cached ← try discard (IO.FS.Handle.mk local_ .read); pure true catch _ => pure false
-  if cached then
-    Log.write "hf" s!"cache hit: {local_}"
-    return local_
+  let url := s!"https://huggingface.co/datasets/{repo}/resolve/main/{sub}"
+  let base := sub.splitOn "/" |>.getLast? |>.getD "file"
+  let tmp := s!"/tmp/tc-hf-{base}"
   statusMsg s!"Downloading {hfPath} ..."
-  let parent := "/".intercalate (local_.splitOn "/" |>.dropLast)
-  let _ ← IO.Process.output { cmd := "mkdir", args := #["-p", parent] }
-  match rawUrl hfPath with
-  | some url =>
-    let r ← IO.Process.output { cmd := "curl", args := #["-sfL", "-o", local_, url] }
-    if r.exitCode != 0 then
-      Log.write "hf" s!"download failed: {url}"
-      return hfPath
-    Log.write "hf" s!"cached: {local_}"
-    return local_
-  | none => return hfPath
+  let r ← IO.Process.output { cmd := "curl", args := #["-sfL", "-o", tmp, url] }
+  if r.exitCode != 0 then
+    Log.write "hf" s!"download failed: {url}"
+    return hfPath
+  return tmp
 
--- | Download HF file (uses cache)
-def download (hfPath : String) : IO String := cachedPath hfPath
 end Tc.HF

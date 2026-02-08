@@ -96,9 +96,20 @@ def requery (query : Prql.Query) (total : Nat := 0) : IO (Option AdbcTable) := d
   let qr ← Adbc.query sql
   some <$> ofQueryResult qr query total
 
--- | Create from file path (queries total count)
+-- | Sanitize path to valid SQL identifier (alphanumeric + underscore)
+private def remoteTblName (path : String) : String :=
+  "tc_" ++ String.mk (path.toList.map fun c => if c.isAlphanum then c else '_')
+
+-- | Create from file path (queries total count).
+--   Remote URLs (hf://) are materialized into a DuckDB temp table first.
 def fromFile (path : String) : IO (Option AdbcTable) := do
-  let query : Prql.Query := { base := s!"from `{path}`" }
+  let query ← if path.startsWith "hf://" then do
+    let tbl := remoteTblName path
+    let esc := path.replace "'" "''"
+    let _ ← Adbc.query s!"CREATE OR REPLACE TEMP TABLE \"{tbl}\" AS (SELECT * FROM '{esc}')"
+    pure { base := s!"from {tbl}" : Prql.Query }
+  else
+    pure { base := s!"from `{path}`" : Prql.Query }
   let total ← queryCount query
   requery query total
 

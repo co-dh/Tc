@@ -28,7 +28,7 @@ private def s3Back : Backend where
 private def hfBack : Backend where
   list     := HF.list
   parent   := HF.parent
-  resolve  := HF.cachedPath
+  resolve  := HF.resolve
   download := HF.download
 
 private def backend? (path : String) : Option Backend :=
