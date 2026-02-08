@@ -24,14 +24,6 @@ def update (s : State) (cmd : Cmd) : Option (State × Effect) :=
 
 instance : Update State where update := update
 
--- | IO wrapper (for backward compat)
-def exec (s : State) (cmd : Cmd) : IO (Option State) := pure <|
-  match update s cmd with
-  | some (s', _) => some s'
-  | none => none
-
-instance : Exec State where exec := exec
-
 end State
 
 -- | View-specific key hints (shown first)

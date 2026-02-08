@@ -118,16 +118,10 @@ theorem parse_toString (c : Cmd) : Parse.parse? (toString c) = some c := by
 
 end Cmd
 
--- | Exec typeclass: handle Cmd, return updated state or none (IO version)
-class Exec (α : Type) where
-  exec : α → Cmd → IO (Option α)
-
 -- | Effect: describes an IO operation to perform (Runner interprets)
 inductive Effect where
   | none | quit
-  | fzfCmd | fzfCol
-  | fzfRow (colIdx : Nat) (colName : String)
-  | fzfFilter (colIdx : Nat) (colName : String)
+  | fzfCmd | fzfCol | fzfRow | fzfFilter
   | queryMeta
   | queryFreq (colNames : Array String)
   | freqFilter (cols : Array String) (row : Nat)

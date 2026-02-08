@@ -23,8 +23,8 @@ def runStackEffect (s : ViewStack Table) (eff : Effect) : IO (ViewStack Table) :
   | .none => pure s
   -- fzf effects
   | .fzfCol => s.colSearch
-  | .fzfRow _ _ => s.rowSearch
-  | .fzfFilter _ _ => s.rowFilter
+  | .fzfRow => s.rowSearch
+  | .fzfFilter => s.rowFilter
   -- search effects
   | .findNext => s.searchNext
   | .findPrev => s.searchPrev
