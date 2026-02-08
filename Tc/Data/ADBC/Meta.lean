@@ -25,16 +25,11 @@ private def extractPath (base : String) : Option String :=
     if p.isEmpty then none else some p
   else none
 
--- | SQL: column stats from parquet file metadata (instant, no data scan)
-private def parquetMetaSql (path : String) : String :=
+-- | PRQL: column stats from parquet file metadata (instant, no data scan)
+--   Uses pqmeta function from funcs.prql
+private def parquetMetaPrql (path : String) : String :=
   let p := escSql path
-  "SELECT path_in_schema AS \"column\", type AS coltype, " ++
-  "SUM(num_values)::BIGINT AS cnt, 0::BIGINT AS dist, " ++
-  "CAST(ROUND(SUM(stats_null_count)::FLOAT / NULLIF(SUM(num_values),0) * 100) AS BIGINT) AS null_pct, " ++
-  s!"MIN(stats_min_value) AS mn, MAX(stats_max_value) AS mx " ++
-  s!"FROM parquet_metadata('{p}') " ++
-  "WHERE path_in_schema != '' " ++
-  "GROUP BY path_in_schema, type ORDER BY MIN(column_id)"
+  "from s\"SELECT * FROM parquet_metadata('" ++ p ++ "')\" | pqmeta"
 
 -- | SQL: per-column stats via UNION ALL (for non-parquet sources)
 private def colStatsSql (baseSql : String) (names : Array String) (types : Array String) : String :=
@@ -57,7 +52,9 @@ def queryMeta (t : AdbcTable) : IO (Option AdbcTable) := do
   if names.isEmpty then return none
   let parquetPath := (extractPath t.query.base).filter (·.endsWith ".parquet")
   let metaSql ← match parquetPath with
-    | some p => pure (parquetMetaSql p)
+    | some p => do
+      let some sql ← Prql.compile (parquetMetaPrql p) | return none
+      pure sql
     | none => do
       let some baseSql ← Prql.compile t.query.base | return none
       pure (colStatsSql (baseSql.trimAsciiEnd).toString names types)

@@ -81,6 +81,27 @@ let ds_nth_cat = func x y c step tbl <relation> -> (
   filter s"{y} IS NOT NULL AND CAST({y} AS VARCHAR) NOT IN ('0','0.0','0.000000') AND (_rn - 1) % {step} = 0"
 )
 
+# Parquet file metadata: column stats from file footer (instant, no data scan)
+# Usage: from s"SELECT * FROM parquet_metadata('path')" | pqmeta
+let pqmeta = func tbl <relation> -> (
+  from tbl
+  filter path_in_schema != ''
+  group {path_in_schema, `type`} (
+    aggregate {
+      _cnt = sum num_values, _null = sum stats_null_count,
+      mn = min stats_min_value, mx = max stats_max_value,
+      _id = min column_id
+    }
+  )
+  sort {_id}
+  derive {
+    cnt = s"CAST({_cnt} AS BIGINT)",
+    dist = s"0::BIGINT",
+    null_pct = s"CAST(ROUND(CAST({_null} AS FLOAT) / NULLIF({_cnt},0) * 100) AS BIGINT)"
+  }
+  select {column = path_in_schema, coltype = `type`, this.cnt, this.dist, this.null_pct, mn, mx}
+)
+
 let colstat = func c nm tp tbl <relation> -> (
   from tbl
   aggregate {
