@@ -1,6 +1,8 @@
 /-
-  AdbcTable meta: column statistics via SQL UNION ALL
-  Caches result to .tv.meta.parquet for parquet files.
+  AdbcTable meta: column statistics from parquet metadata or SQL aggregation.
+  Parquet: instant via parquet_metadata() (no data scan).
+  Non-parquet: raw SQL UNION ALL per column.
+  Result stored as DuckDB temp table tc_meta.
 -/
 import Tc.Data.ADBC.Table
 import Tc.Data.ADBC.Prql
@@ -8,81 +10,60 @@ import Tc.Data.ADBC.Prql
 namespace Tc
 namespace AdbcTable
 
--- | Cache path for meta data (parquet alongside source file)
-def metaCachePath (path : String) : String := path ++ ".tv.meta.parquet"
+-- | Escape single quotes for SQL string literals
+private def escSql (s : String) : String := s.replace "'" "''"
 
--- | Check if cache is valid (exists and newer than source)
-def cacheValid (path : String) : IO Bool := do
-  let cp := metaCachePath path
-  try
-    let srcMeta ← System.FilePath.metadata path
-    let cacheMeta ← System.FilePath.metadata cp
-    return decide (cacheMeta.modified.sec.toNat >= srcMeta.modified.sec.toNat)
-  catch e => Log.write "adbc-meta" (toString e); return false
+-- | Double-quote identifier for DuckDB
+private def quoteId (s : String) : String :=
+  "\"" ++ s.replace "\"" "\"\"" ++ "\""
 
--- | Load meta from parquet cache
-def loadCache (path : String) : IO (Option AdbcTable) := do
-  if !(← cacheValid path) then return none
-  try
-    let cp := metaCachePath path
-    let qr ← Adbc.query s!"SELECT * FROM read_parquet('{cp}')"
-    Log.write "meta" s!"[cache] loaded {cp}"
-    some <$> ofQueryResult qr
-  catch e => Log.write "adbc-meta" (toString e); return none
-
--- | Save meta to parquet cache
-def saveCache (path : String) (metaSql : String) : IO Unit := do
-  let cp := metaCachePath path
-  let _ ← Adbc.query s!"COPY ({metaSql}) TO '{cp}' (FORMAT PARQUET)"
-  Log.write "meta" s!"[cache] saved {cp}"
-
--- | Arrow format char → type name (fallback for cache compat)
-private def fmtToType : Char → String
-  | 'l' => "i64" | 'i' => "i32" | 's' => "i16" | 'c' => "i8"
-  | 'L' => "u64" | 'I' => "u32" | 'S' => "u16" | 'C' => "u8"
-  | 'g' => "f64" | 'f' => "f32" | 'd' => "dec"
-  | 'u' | 'U' => "str" | 'b' => "bool"
-  | _ => "?"
-
--- | Build PRQL colstat call for one column
-private def colstatPrql (base colName colType : String) : String :=
-  let q := Prql.quote colName
-  s!"{base} | colstat {q} \"{colName}\" \"{colType}\""
-
--- | Extract source file path from PRQL base (e.g., "from `x.parquet`" → "x.parquet")
+-- | Extract file path from PRQL base: "from `path`" → some "path"
 private def extractPath (base : String) : Option String :=
-  let s := base.splitOn "`" |>.getD 1 ""
-  if s.isEmpty then none else some s
-
--- | Check if cacheable: base parquet query with no ops
-private def canCache (t : AdbcTable) : Option String :=
-  if t.query.ops.isEmpty then
-    match extractPath t.query.base with
-    | some p => if p.endsWith ".parquet" then some p else none
-    | none => none
+  let parts := base.splitOn "`"
+  if parts.length >= 3 then
+    let p := parts.getD 1 ""
+    if p.isEmpty then none else some p
   else none
 
--- | Query meta via PRQL colstat + append (with parquet caching)
--- Returns AdbcTable wrapping the colstat query result directly.
+-- | SQL: column stats from parquet file metadata (instant, no data scan)
+private def parquetMetaSql (path : String) : String :=
+  let p := escSql path
+  "SELECT path_in_schema AS \"column\", type AS coltype, " ++
+  "SUM(num_values)::BIGINT AS cnt, 0::BIGINT AS dist, " ++
+  "CAST(ROUND(SUM(stats_null_count)::FLOAT / NULLIF(SUM(num_values),0) * 100) AS BIGINT) AS null_pct, " ++
+  s!"MIN(stats_min_value) AS mn, MAX(stats_max_value) AS mx " ++
+  s!"FROM parquet_metadata('{p}') " ++
+  "WHERE path_in_schema != '' " ++
+  "GROUP BY path_in_schema, type ORDER BY MIN(column_id)"
+
+-- | SQL: per-column stats via UNION ALL (for non-parquet sources)
+private def colStatsSql (baseSql : String) (names : Array String) (types : Array String) : String :=
+  let one (i : Nat) : String :=
+    let nm := escSql (names.getD i "")
+    let tp := escSql (types.getD i "?")
+    let q := quoteId (names.getD i "")
+    s!"SELECT '{nm}' AS \"column\", '{tp}' AS coltype, " ++
+    s!"CAST(COUNT({q}) AS BIGINT) AS cnt, " ++
+    s!"CAST(COUNT(DISTINCT {q}) AS BIGINT) AS dist, " ++
+    s!"CAST(ROUND((1.0 - COUNT({q})::FLOAT / NULLIF(COUNT(*),0)) * 100) AS BIGINT) AS null_pct, " ++
+    s!"CAST(MIN({q}) AS VARCHAR) AS mn, CAST(MAX({q}) AS VARCHAR) AS mx FROM __src"
+  let parts := (Array.range names.size).map one
+  "WITH __src AS (" ++ baseSql ++ ") " ++ " UNION ALL ".intercalate parts.toList
+
+-- | Query meta: parquet uses file metadata (instant), others use SQL aggregation.
+--   Creates temp table tc_meta for PRQL-based selection queries.
 def queryMeta (t : AdbcTable) : IO (Option AdbcTable) := do
-  let cachePath := canCache t
-  -- Try cache for base parquet queries
-  if let some p := cachePath then
-    if let some cached ← loadCache p then return some cached
   let names := t.colNames; let types := t.colTypes
-  let base := t.query.base
-  -- Build PRQL: first col | append (second col) | append ...
-  let first := colstatPrql base (names.getD 0 "") (types.getD 0 "?")
-  let rest := (Array.range (names.size - 1)).map fun i =>
-    s!" | append ({colstatPrql base (names.getD (i+1) "") (types.getD (i+1) "?")})"
-  let prql := first ++ rest.foldl (· ++ ·) ""
-  Log.write "meta" prql
-  let some sql ← Prql.compile prql | return none
-  -- Save to cache for base parquet queries
-  if let some p := cachePath then
-    try saveCache p sql catch e => Log.write "adbc-meta" (toString e)
-  let qr ← Adbc.query sql
-  some <$> ofQueryResult qr
+  if names.isEmpty then return none
+  let parquetPath := (extractPath t.query.base).filter (·.endsWith ".parquet")
+  let metaSql ← match parquetPath with
+    | some p => pure (parquetMetaSql p)
+    | none => do
+      let some baseSql ← Prql.compile t.query.base | return none
+      pure (colStatsSql (baseSql.trimAsciiEnd).toString names types)
+  let _ ← Adbc.query s!"CREATE OR REPLACE TEMP TABLE tc_meta AS ({metaSql})"
+  let qr ← Adbc.query "SELECT * FROM tc_meta"
+  some <$> ofQueryResult qr { base := "from tc_meta" }
 
 end AdbcTable
 end Tc

@@ -1,15 +1,30 @@
 /-
-  Meta view: column statistics (name, type, count, distinct, null%, min, max)
-  Creates AdbcTable directly via fromArrays. IO-based selection via getCols.
+  Meta view: column statistics via DuckDB temp table tc_meta.
+  Selection and key operations use composable PRQL.
 -/
 import Tc.View
 import Tc.Table
+import Tc.Data.ADBC.Prql
 
 namespace Tc.Meta
 
--- Meta column indices
-def colDist : Nat := 3  -- distinct count
-def colNull : Nat := 4  -- null%
+-- | Query row indices matching PRQL filter on tc_meta
+private def queryIndices (flt : String) : IO (Array Nat) := do
+  let prql := "from tc_meta | derive {idx = s\"(ROW_NUMBER() OVER () - 1)\"} | filter " ++ flt ++ " | select {idx}"
+  let some sql ← Prql.compile prql | return #[]
+  let qr ← Adbc.query sql
+  let nr ← Adbc.nrows qr
+  (Array.range nr.toNat).mapM fun r => (·.toNat) <$> Adbc.cellInt qr r.toUInt64 0
+
+-- | Query column names from tc_meta at given row indices
+private def queryColNames (rows : Array Nat) : IO (Array String) := do
+  if rows.isEmpty then return #[]
+  let idxs := ", ".intercalate (rows.map (s!"{·}") |>.toList)
+  let prql := "from tc_meta | derive {idx = s\"(ROW_NUMBER() OVER () - 1)\"} | filter s\"idx IN (" ++ idxs ++ ")\" | select {column, idx}"
+  let some sql ← Prql.compile prql | return #[]
+  let qr ← Adbc.query sql
+  let nr ← Adbc.nrows qr
+  (Array.range nr.toNat).mapM fun r => Adbc.cellStr qr r.toUInt64 0
 
 -- | Push column metadata view onto stack
 def push (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
@@ -23,32 +38,25 @@ def push (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   | some v => return some (s.push { v with vkind := .colMeta, disp := "meta" })
   | none => return none
 
--- | Select rows where int column satisfies predicate (IO via getCols)
-private def selBy (s : ViewStack Table) (col : Nat) (pred : Int64 → Bool) : IO (ViewStack Table) := do
+-- | Select 100% null columns
+def selNull (s : ViewStack Table) : IO (ViewStack Table) := do
   if s.cur.vkind != .colMeta then return s
-  let cols ← TblOps.getCols s.cur.nav.tbl #[col] 0 s.cur.nRows
-  let c := cols.getD 0 default
-  let rows := (Array.range s.cur.nRows).filter fun r =>
-    match c with | .ints data => pred (data.getD r 0) | _ => false
+  let rows ← queryIndices "null_pct == 100"
   let nav' := { s.cur.nav with row := { s.cur.nav.row with sels := rows } }
   return s.setCur { s.cur with nav := nav' }
 
--- | Select 100% null columns
-def selNull (s : ViewStack Table) : IO (ViewStack Table) := selBy s colNull (· == 100)
-
 -- | Select single-value columns (distinct == 1)
-def selSingle (s : ViewStack Table) : IO (ViewStack Table) := selBy s colDist (· == 1)
+def selSingle (s : ViewStack Table) : IO (ViewStack Table) := do
+  if s.cur.vkind != .colMeta then return s
+  let rows ← queryIndices "dist == 1"
+  let nav' := { s.cur.nav with row := { s.cur.nav.row with sels := rows } }
+  return s.setCur { s.cur with nav := nav' }
 
 -- | Set key cols from meta view selections, pop to parent, select cols
 def setKey (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   if s.cur.vkind != .colMeta then return some s
   if !s.hasParent then return some s
-  -- read column 0 (name column) to get selected column names
-  let cols ← TblOps.getCols s.cur.nav.tbl #[0] 0 s.cur.nRows
-  let nameCol := cols.getD 0 default
-  let colNames := s.cur.nav.row.sels.filterMap fun r =>
-    let v := (nameCol.get r).toRaw
-    if v.isEmpty then none else some v
+  let colNames ← queryColNames s.cur.nav.row.sels
   match s.pop with
   | some s' =>
     let col' := { s'.cur.nav.col with sels := colNames }
