@@ -56,10 +56,11 @@ private def verbDelta (verb : Verb) : Int := if verb == .inc then 1 else -1
 @[simp] theorem verbDelta_inc : verbDelta .inc = 1 := rfl
 @[simp] theorem verbDelta_dec : verbDelta .dec = -1 := rfl
 
--- | Preserve precAdj/widthAdj when recreating View
--- | Preserve view properties (vkind, disp, precAdj, widthAdj) when recreating
-private def preserve (v : View T) (v' : Option (View T)) : Option (View T) :=
-  v'.map fun x => { x with vkind := v.vkind, disp := v.disp, precAdj := v.precAdj, widthAdj := v.widthAdj }
+-- | Rebuild view with new table, carrying forward display settings
+def rebuild (old : View T) (tbl : T) (col : Nat := old.nav.col.cur.val)
+    (grp : Array String := old.nav.grp) (row : Nat := 0) : Option (View T) :=
+  (View.fromTbl tbl old.path col grp row).map fun v =>
+    { v with precAdj := old.precAdj, widthAdj := old.widthAdj, search := old.search }
 
 -- | Pure update: returns (new view, effect). IO ops return Effect to defer.
 def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
@@ -102,42 +103,32 @@ end View
 
 /-! ## ViewStack: non-empty view stack -/
 
--- | Non-empty view stack: hd = current, tl = parents
+-- | Non-empty view stack: hd = current, tl = parents (List for O(1) push/pop)
 structure ViewStack (T : Type) [TblOps T] where
   hd : View T
-  tl : Array (View T) := #[]
+  tl : List (View T) := []
 
 namespace ViewStack
 
 variable {T : Type} [TblOps T]
 
--- | Current view
 @[inline] def cur (s : ViewStack T) : View T := s.hd
-
--- | Has parent?
-@[inline] def hasParent (s : ViewStack T) : Bool := s.tl.size > 0
-
--- | Update current view
+@[inline] def hasParent (s : ViewStack T) : Bool := !s.tl.isEmpty
 @[inline] def setCur (s : ViewStack T) (v : View T) : ViewStack T := { s with hd := v }
+def push (s : ViewStack T) (v : View T) : ViewStack T := ⟨v, s.hd :: s.tl⟩
 
--- | Push new view (current becomes parent)
-def push (s : ViewStack T) (v : View T) : ViewStack T := ⟨v, #[s.hd] ++ s.tl⟩
-
--- | Pop view (returns to parent, or none if no parent)
 def pop (s : ViewStack T) : Option (ViewStack T) :=
-  if h : s.tl.size > 0 then some ⟨s.tl[0]'h, s.tl.extract 1 s.tl.size⟩
-  else none
+  match s.tl with
+  | hd :: tl => some ⟨hd, tl⟩
+  | [] => none
 
--- | Swap top two views
 def swap (s : ViewStack T) : ViewStack T :=
-  if h : s.tl.size > 0 then ⟨s.tl[0]'h, #[s.hd] ++ s.tl.extract 1 s.tl.size⟩
-  else s
+  match s.tl with
+  | hd :: tl => ⟨hd, s.hd :: tl⟩
+  | [] => s
 
--- | Duplicate current view (push copy of current)
-def dup (s : ViewStack T) : ViewStack T := ⟨s.hd, #[s.hd] ++ s.tl⟩
-
--- | Tab names for display (current first)
-def tabNames (s : ViewStack T) : Array String := (#[s.hd] ++ s.tl).map (·.tabName)
+def dup (s : ViewStack T) : ViewStack T := ⟨s.hd, s.hd :: s.tl⟩
+def tabNames (s : ViewStack T) : Array String := (s.hd :: s.tl).toArray.map (·.tabName)
 
 -- | Pure update: returns (new stack, effect). q on empty stack → quit
 def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=

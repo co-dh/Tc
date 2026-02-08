@@ -4,6 +4,7 @@
 -/
 import Tc.Data.ADBC.Table
 import Tc.Data.ADBC.Meta
+import Tc.Render
 
 namespace Tc
 
@@ -21,22 +22,12 @@ instance : TblOps AdbcTable where
   plotExport := AdbcTable.plotExport
   fetchMore := AdbcTable.fetchMore
   render t ctx := do
-    let c := ctx
-    if c.inWidths.isEmpty then
+    if ctx.inWidths.isEmpty then
       let cols ← (Array.range t.nCols).mapM fun i => t.getCol i 0 t.nRows
-      Term.renderTable cols t.colNames t.colFmts c.inWidths c.dispIdxs
-        t.nRows.toUInt64 c.nGrp.toUInt64 c.colOff.toUInt64
-        0 t.nRows.toUInt64 c.curRow.toUInt64 c.curCol.toUInt64
-        c.moveDir.toInt64 c.selColIdxs c.rowSels c.styles c.precAdj.toInt64 c.widthAdj.toInt64
+      renderCols cols t.colNames t.colFmts t.nRows ctx 0 t.nRows
     else
-      let cols ← (Array.range t.nCols).mapM fun i => t.getCol i c.r0 c.r1
-      let adjCur := c.curRow - c.r0
-      let adjSel := c.rowSels.filterMap fun r =>
-        if r >= c.r0 && r < c.r1 then some (r - c.r0) else none
-      Term.renderTable cols t.colNames t.colFmts c.inWidths c.dispIdxs
-        t.nRows.toUInt64 c.nGrp.toUInt64 c.colOff.toUInt64
-        0 (c.r1 - c.r0).toUInt64 adjCur.toUInt64 c.curCol.toUInt64
-        c.moveDir.toInt64 c.selColIdxs adjSel c.styles c.precAdj.toInt64 c.widthAdj.toInt64
+      let cols ← (Array.range t.nCols).mapM fun i => t.getCol i ctx.r0 ctx.r1
+      renderCols cols t.colNames t.colFmts t.nRows ctx ctx.r0 (ctx.r1 - ctx.r0)
 
 -- | ModifyTable instance for AdbcTable
 instance : ModifyTable AdbcTable where

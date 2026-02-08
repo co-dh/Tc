@@ -39,7 +39,10 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
     | none => mainLoop a test ks'
     | some c => match a.update c with
       | none => mainLoop a test ks'
-      | some (a', e) => if e == .quit then pure a' else mainLoop (← if e.isNone then pure a' else runEffect a' e) test ks'
+      | some (a', e) =>
+        if e == .quit then pure a'
+        else let a'' ← if e.isNone then pure a' else runEffect a' e
+             mainLoop a'' test ks'
 
 -- parse args: path?, -c keys?, test mode, +n (S3 no-sign-request)
 def parseArgs (args : List String) : Option String × Array Char × Bool × Bool :=
@@ -56,7 +59,7 @@ def parseArgs (args : List String) : Option String × Array Char × Bool × Bool
 def runApp (v : View Table) (pipe test : Bool) (th : Theme.State) (ks : Array Char) : IO AppState := do
   if pipe then let _ ← Term.reopenTty
   let _ ← Term.init
-  let a' ← mainLoop ⟨⟨v, #[]⟩, .default, th, {}⟩ test ks
+  let a' ← mainLoop ⟨⟨v, []⟩, .default, th, {}⟩ test ks
   Term.shutdown; pure a'
 
 -- run from TSV string result

@@ -54,7 +54,9 @@ def setKey (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
     if v.isEmpty then none else some v
   match s.pop with
   | some s' =>
-    let nav' := { s'.cur.nav with grp := colNames, col := { s'.cur.nav.col with sels := colNames } }
+    let col' := { s'.cur.nav.col with sels := colNames }
+    let di := dispOrder colNames (TblOps.colNames s'.cur.nav.tbl)
+    let nav' := { s'.cur.nav with grp := colNames, col := col', dispIdxs := di }
     return some (s'.setCur { s'.cur with nav := nav' })
   | none => return some s
 

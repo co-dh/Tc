@@ -3,6 +3,7 @@
   Used by Full build only
 -/
 import Tc.Data.Kdb.Table
+import Tc.Render
 
 namespace Tc
 
@@ -21,16 +22,9 @@ instance : TblOps KdbTable where
     | 't' => "time" | 'p' | 'z' => "timestamp" | 'd' => "date"
     | _ => "str"
   render t ctx := do
-    let c := ctx
-    let r1' := min c.r1 (c.r0 + maxVisRows)
-    let cols ← (Array.range t.nCols).mapM fun i => t.getCol i c.r0 r1'
-    let adjCur := c.curRow - c.r0
-    let adjSel := c.rowSels.filterMap fun r =>
-      if r >= c.r0 && r < r1' then some (r - c.r0) else none
-    Term.renderTable cols t.colNames t.colTypes c.inWidths c.dispIdxs
-      t.nRows.toUInt64 c.nGrp.toUInt64 c.colOff.toUInt64
-      0 (r1' - c.r0).toUInt64 adjCur.toUInt64 c.curCol.toUInt64
-      c.moveDir.toInt64 c.selColIdxs adjSel c.styles c.precAdj.toInt64 c.widthAdj.toInt64
+    let r1' := min ctx.r1 (ctx.r0 + maxVisRows)
+    let cols ← (Array.range t.nCols).mapM fun i => t.getCol i ctx.r0 r1'
+    renderCols cols t.colNames t.colTypes t.nRows ctx ctx.r0 (r1' - ctx.r0)
 
 -- | ModifyTable instance for KdbTable
 instance : ModifyTable KdbTable where

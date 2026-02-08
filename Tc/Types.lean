@@ -2,11 +2,6 @@
   Core types: Cell, Column, Table, PureKey
   Table stores columns by name (HashMap) for direct name-based access
 -/
--- | Join array of strings with separator (no intermediate List)
-def Array.join (arr : Array String) (sep : String) : String :=
-  if arr.isEmpty then "" else
-  arr[1:].foldl (init := arr.getD 0 "") fun acc s => acc ++ sep ++ s
-
 -- | Toggle element in array (add if absent, remove if present)
 def Array.toggle [BEq α] (arr : Array α) (x : α) : Array α :=
   if arr.contains x then arr.filter (· != x) else arr.push x

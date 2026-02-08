@@ -41,18 +41,18 @@ def aggName : Agg → String
 -- | Render single operation to PRQL string
 def Op.render : Op → String
   | .filter e => s!"filter {e}"
-  | .sort cols => s!"sort \{{(cols.map fun (c, asc) => renderSort c asc).join ", "}}"
-  | .sel cols => s!"select \{{(cols.map quote).join ", "}}"
-  | .derive bs => s!"derive \{{(bs.map fun (n, e) => s!"{quote n} = {e}").join ", "}}"
+  | .sort cols => s!"sort \{{", ".intercalate (cols.map fun (c, asc) => renderSort c asc).toList}}"
+  | .sel cols => s!"select \{{", ".intercalate (cols.map quote).toList}}"
+  | .derive bs => s!"derive \{{", ".intercalate (bs.map fun (n, e) => s!"{quote n} = {e}").toList}}"
   | .group keys aggs =>
     let as := aggs.map fun (fn, name, col) => s!"{name} = {aggName fn} {quote col}"
-    s!"group \{{(keys.map quote).join ", "}} (aggregate \{{as.join ", "}})"
+    s!"group \{{", ".intercalate (keys.map quote).toList}} (aggregate \{{", ".intercalate as.toList}})"
   | .take n => s!"take {n}"
 
 -- | Render full query to PRQL string
 def Query.render (q : Query) : String :=
   if q.ops.isEmpty then q.base
-  else q.base ++ " | " ++ (q.ops.map Op.render).join " | "
+  else q.base ++ " | " ++ " | ".intercalate (q.ops.map Op.render).toList
 
 -- | Pipe: append operation to query
 def Query.pipe (q : Query) (op : Op) : Query := { q with ops := q.ops.push op }

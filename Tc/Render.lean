@@ -171,6 +171,17 @@ def adjColOffFast (cur colOff : Nat) (widths : Array Nat) (dispIdxs : Array Nat)
 -- Proof requires showing: ∀ i ≤ n, (cumWidthArr w d n).getD i 0 = cumWidthDisp w d i
 -- (foldl intermediate state reasoning — nontrivial, omitted for now).
 
+-- | Shared render helper: adjusts cursor/selections for window, calls C FFI
+def renderCols (cols : Array Column) (names : Array String) (fmts : Array Char)
+    (totalRows : Nat) (ctx : RenderCtx) (r0 nVisible : Nat) : IO (Array Nat) :=
+  let adjCur := ctx.curRow - r0
+  let adjSel := ctx.rowSels.filterMap fun r =>
+    if r >= r0 && r < r0 + nVisible then some (r - r0) else none
+  Term.renderTable cols names fmts ctx.inWidths ctx.dispIdxs
+    totalRows.toUInt64 ctx.nGrp.toUInt64 ctx.colOff.toUInt64
+    0 nVisible.toUInt64 adjCur.toUInt64 ctx.curCol.toUInt64
+    ctx.moveDir.toInt64 ctx.selColIdxs adjSel ctx.styles ctx.precAdj.toInt64 ctx.widthAdj.toInt64
+
 -- | Render table to terminal, returns (ViewState, widths)
 -- Calls TblOps.render with NavState fields unpacked
 def render {nRows nCols : Nat} {t : Type} [TblOps t]

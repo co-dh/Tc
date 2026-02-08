@@ -154,62 +154,56 @@ private def joinPath (parent entry : String) : String :=
   if parent == "." then s!"./{entry}"
   else Remote.join parent entry
 
+-- | Try to create a view; push or setCur, fallback to original stack
+private def tryView (s : ViewStack Table) (path : String) (depth : Nat) (push? : Bool)
+    : IO (Option (ViewStack Table)) := do
+  match ← mkView path depth with
+  | some v => pure (some (if push? then s.push v else s.setCur v))
+  | none => pure (some s)
+
+-- | Get current folder depth
+private def curDepth (s : ViewStack Table) : Nat :=
+  match s.cur.vkind with | .fld _ d => d | _ => 1
+
 -- | Enter directory or view file based on current row
 def enter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
   let back := backend? curDir
   match ← curType s.cur, ← curPath s.cur with
-  | some 'd', some p =>  -- directory
+  | some 'd', some p =>
     if p == ".." || p.endsWith "/.." then
+      -- navigate to parent
       match back with
-      | some b =>
-        match b.parent curDir with
-        | some par =>
-          match ← mkView par 1 with
-          | some v => pure (some (s.setCur v))
-          | none => pure (some s)
+      | some b => match b.parent curDir with
+        | some par => tryView s par 1 false
         | none => pure (some s)
-      | none =>
-        if let some s' := s.pop then pure (some s')
-        else
-          let depth := match s.cur.vkind with | .fld _ d => d | _ => 1
-          match ← mkView ".." depth with
-          | some v => pure (some (s.setCur v))
-          | none => pure (some s)
+      | none => match s.pop with
+        | some s' => pure (some s')
+        | none => tryView s ".." (curDepth s) false
     else
-      let depth := match s.cur.vkind with | .fld _ d => d | _ => 1
+      -- enter child directory
       let fullPath := joinPath curDir (if back.isSome then p ++ "/" else p)
-      match ← mkView fullPath depth with
-      | some v => pure (some (s.push v))
-      | none => pure (some s)
-  | some ' ', some p =>  -- regular file
+      tryView s fullPath (curDepth s) true
+  | some ' ', some p =>
     let fullPath := joinPath curDir p
     if isDataFile p then
-      let openPath ← match back with
-        | some b => b.resolve fullPath
-        | none => pure fullPath
+      let openPath ← match back with | some b => b.resolve fullPath | none => pure fullPath
       match ← openDataFile s openPath with
       | some s' => pure (some s')
       | none => if back.isNone then viewFile fullPath; pure (some s) else pure (some s)
-    else match back with
-      | some b => let local_ ← b.download fullPath; viewFile local_; pure (some s)
-      | none => viewFile fullPath; pure (some s)
-  | some 'l', some p =>  -- symlink (local only)
-    if back.isSome then pure (some s)
     else
-      let fullPath := joinPath curDir p
-      let stat ← IO.Process.output { cmd := "test", args := #["-d", fullPath] }
-      if stat.exitCode == 0 then
-        let depth := match s.cur.vkind with | .fld _ d => d | _ => 1
-        match ← mkView fullPath depth with
-        | some v => pure (some (s.push v))
-        | none => pure (some s)
-      else if isDataFile fullPath then
-        match ← openDataFile s fullPath with
-        | some s' => pure (some s')
-        | none => viewFile fullPath; pure (some s)
-      else
-        viewFile fullPath; pure (some s)
+      let viewPath ← match back with | some b => b.download fullPath | none => pure fullPath
+      viewFile viewPath; pure (some s)
+  | some 'l', some p =>
+    if back.isSome then pure (some s) else
+    let fullPath := joinPath curDir p
+    let stat ← IO.Process.output { cmd := "test", args := #["-d", fullPath] }
+    if stat.exitCode == 0 then tryView s fullPath (curDepth s) true
+    else if isDataFile fullPath then
+      match ← openDataFile s fullPath with
+      | some s' => pure (some s')
+      | none => viewFile fullPath; pure (some s)
+    else viewFile fullPath; pure (some s)
   | _, _ => pure none
 
 -- | Get trash command (trash-put or gio trash)

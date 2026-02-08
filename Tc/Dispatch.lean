@@ -34,19 +34,21 @@ def withStk (a : AppState) (cmd : Cmd) (s' : ViewStack Table) : AppState :=
 private def liftStk (a : AppState) (cmd : Cmd) (r : Option (ViewStack Table × Effect)) : Option (AppState × Effect) :=
   r.map fun (s', eff) => (withStk a cmd s', eff)
 
--- | Pure update: chain handlers with <|> (Alternative), return (new state, effect)
--- Uses Kleisli-style composition: try each handler, first Some wins
--- Priority: theme > info > stack > folder > meta > freq > filter > view
+-- | Route by Cmd discriminant, fallback to view for nav/selection
 def update (a : AppState) (cmd : Cmd) : Option (AppState × Effect) :=
-  (a.theme.update cmd |>.map fun (t', eff) => ({ a with theme := t' }, eff))
-  <|> (a.info.update cmd |>.map fun (i', eff) => ({ a with info := i' }, eff))
-  <|> (liftStk a cmd (ViewStack.update a.stk cmd))
-  <|> (liftStk a cmd (Folder.update a.stk cmd))
-  <|> (liftStk a cmd (Meta.update a.stk cmd))
-  <|> (liftStk a cmd (Freq.update a.stk cmd))
-  <|> (liftStk a cmd (Plot.update a.stk cmd))
-  <|> (liftStk a cmd (Filter.update a.stk cmd))
-  <|> (View.update a.stk.cur cmd 20 |>.map fun (v', eff) => (withStk a cmd (a.stk.setCur v'), eff))
+  let viewUp := View.update a.stk.cur cmd 20 |>.map fun (v', e) => (withStk a cmd (a.stk.setCur v'), e)
+  match cmd with
+  | .thm _    => a.theme.update cmd |>.map fun (t', e) => ({ a with theme := t' }, e)
+  | .info _   => a.info.update cmd |>.map fun (i', e) => ({ a with info := i' }, e)
+  | .stk _    => liftStk a cmd (ViewStack.update a.stk cmd)
+  | .fld _    => liftStk a cmd (Folder.update a.stk cmd) <|> viewUp
+  | .metaV _  => liftStk a cmd (Meta.update a.stk cmd) <|> viewUp
+  | .freq _   => liftStk a cmd (Freq.update a.stk cmd) <|> viewUp
+  | .plot _   => liftStk a cmd (Plot.update a.stk cmd)
+  | .col .ent | .rowSel _ => liftStk a cmd (Filter.update a.stk cmd) <|> viewUp
+  | .grp .inc | .grp .dec => liftStk a cmd (Filter.update a.stk cmd)
+  | .colSel .del => liftStk a cmd (Folder.update a.stk cmd) <|> viewUp
+  | _ => viewUp
 
 instance : Update (AppState) where update := update
 

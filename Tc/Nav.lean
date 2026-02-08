@@ -29,16 +29,6 @@ end Fin
 
 namespace Tc
 
-/-! ## Classes -/
-
--- CurOps: cursor movement
--- α = state type, bound = max position, elem = element type (for find)
-class CurOps (α : Type) (bound : Nat) (elem : Type) where
-  pos    : α → Fin bound                           -- get cursor
-  setPos : Fin bound → α → α                       -- set cursor
-  move   : Int → α → α := fun d a => setPos ((pos a).clamp d) a  -- default
-  find   : (elem → Bool) → α → α := fun _ a => a   -- default no-op
-
 /-! ## Structures -/
 
 -- NavAxis: cursor + selection for one axis (row or col)
@@ -48,11 +38,6 @@ structure NavAxis (n : Nat) (elem : Type) [BEq elem] where
 
 -- Default NavAxis for n > 0
 def NavAxis.default [BEq elem] (h : n > 0) : NavAxis n elem := ⟨⟨0, h⟩, {}⟩
-
--- NavAxis CurOps (covers RowNav and ColNav)
-instance [BEq elem] : CurOps (NavAxis n elem) n elem where
-  pos    := (·.cur)
-  setPos := fun f a => { a with cur := f }
 
 -- Type aliases: Row uses Nat (index), Col uses String (name, stable across deletion)
 abbrev RowNav (m : Nat) := NavAxis m Nat
@@ -101,12 +86,13 @@ def colIdxAt (group : Array String) (names : Array String) (i : Nat) : Nat :=
 -- TblOps.nRows tbl is runtime (depends on tbl field), can't use directly in Fin.
 -- So we lift values to type level, then prove they match table via hRows/hCols.
 structure NavState (nRows nCols : Nat) (t : Type) [TblOps t] where
-  tbl   : t                                              -- underlying table
-  hRows : TblOps.nRows tbl = nRows                    -- row count matches
-  hCols : (TblOps.colNames tbl).size = nCols          -- col count matches
-  row   : RowNav nRows
-  col   : ColNav nCols
-  grp   : Array String := #[]                            -- grouped column names (stable)
+  tbl      : t                                              -- underlying table
+  hRows    : TblOps.nRows tbl = nRows                    -- row count matches
+  hCols    : (TblOps.colNames tbl).size = nCols          -- col count matches
+  row      : RowNav nRows
+  col      : ColNav nCols
+  grp      : Array String := #[]                            -- grouped column names (stable)
+  dispIdxs : Array Nat := dispOrder grp (TblOps.colNames tbl)  -- cached display order
 
 namespace NavState
 
@@ -115,8 +101,8 @@ variable {t : Type} [TblOps t]
 -- | Column names from table
 def colNames (nav : NavState nRows nCols t) : Array String := TblOps.colNames nav.tbl
 
--- | Column indices in display order (group cols first)
-def dispColIdxs (nav : NavState nRows nCols t) : Array Nat := dispOrder nav.grp nav.colNames
+-- | Column indices in display order (cached)
+def dispColIdxs (nav : NavState nRows nCols t) : Array Nat := nav.dispIdxs
 
 -- | Current column index in data order
 def curColIdx (nav : NavState nRows nCols t) : Nat := colIdxAt nav.grp nav.colNames nav.col.cur.val
@@ -130,7 +116,7 @@ def selColIdxs (nav : NavState nRows nCols t) : Array Nat := nav.col.sels.filter
 -- Constructor for external use
 def new (tbl : t) (hRows : TblOps.nRows tbl = nRows) (hCols : (TblOps.colNames tbl).size = nCols)
     (hr : nRows > 0) (hc : nCols > 0) : NavState nRows nCols t :=
-  ⟨tbl, hRows, hCols, NavAxis.default hr, NavAxis.default hc, #[]⟩
+  ⟨tbl, hRows, hCols, NavAxis.default hr, NavAxis.default hc, #[], dispOrder #[] (TblOps.colNames tbl)⟩
 
 -- Constructor with initial row/col cursor and group (clamped to valid range)
 def newAt (tbl : t) (hRows : TblOps.nRows tbl = nRows) (hCols : (TblOps.colNames tbl).size = nCols)
@@ -140,7 +126,7 @@ def newAt (tbl : t) (hRows : TblOps.nRows tbl = nRows) (hCols : (TblOps.colNames
   let r := min row (nRows - 1)
   have hltc : c < nCols := Nat.lt_of_le_of_lt (Nat.min_le_right ..) (Nat.sub_lt hc Nat.one_pos)
   have hltr : r < nRows := Nat.lt_of_le_of_lt (Nat.min_le_right ..) (Nat.sub_lt hr Nat.one_pos)
-  ⟨tbl, hRows, hCols, ⟨⟨r, hltr⟩, #[]⟩, ⟨⟨c, hltc⟩, #[]⟩, grp⟩
+  ⟨tbl, hRows, hCols, ⟨⟨r, hltr⟩, #[]⟩, ⟨⟨c, hltc⟩, #[]⟩, grp, dispOrder grp (TblOps.colNames tbl)⟩
 
 -- Execute Cmd, returns Option NavState (always some for nav commands)
 def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option (NavState nRows nCols t) :=
@@ -155,7 +141,9 @@ def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option
   | .hor .inc   => c (nCols - 1 - nav.col.cur.val) | .hor .dec => c (-nav.col.cur.val)
   | .rowSel .ent => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
   | .colSel .ent => some { nav with col := { nav.col with sels := nav.col.sels.toggle nav.curColName } }
-  | .grp .ent    => some { nav with grp := nav.grp.toggle nav.curColName }
+  | .grp .ent    =>
+    let newGrp := nav.grp.toggle nav.curColName
+    some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames }
   | _ => none  -- unhandled: .col .del, .colSel .sort*, .prec, .width, etc.
 
 -- | Pure update: wrap exec to return Effect

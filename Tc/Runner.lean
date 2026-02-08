@@ -33,7 +33,7 @@ def runStackEffect (s : ViewStack Table) (eff : Effect) : IO (ViewStack Table) :
   | .query (.freq colNames) =>
     let some (adbc, totalGroups) ← Table.freqTable s.cur.nav.tbl colNames | pure s
     match View.fromTbl (.adbc adbc) s.cur.path 0 colNames with
-    | some v => pure (s.push { v with vkind := .freqV colNames totalGroups, disp := s!"freq {colNames.join ","}" })
+    | some v => pure (s.push { v with vkind := .freqV colNames totalGroups, disp := s!"freq {",".intercalate colNames.toList}" })
     | none => pure s
   | .query (.freqFilter cols row) =>
     match s.cur.vkind, s.pop with
@@ -52,16 +52,14 @@ def runStackEffect (s : ViewStack Table) (eff : Effect) : IO (ViewStack Table) :
       | none => pure s
     | none => pure s
   | .query (.sort colIdx sels grp asc) =>
-    let n := s.cur.nav
-    let tbl' ← ModifyTable.sort n.tbl colIdx sels grp asc
-    match View.fromTbl tbl' s.cur.path colIdx (n.grp) n.row.cur.val with
-    | some v => pure (s.setCur { v with precAdj := s.cur.precAdj, widthAdj := s.cur.widthAdj })
+    let tbl' ← ModifyTable.sort s.cur.nav.tbl colIdx sels grp asc
+    match s.cur.rebuild tbl' (col := colIdx) (row := s.cur.nav.row.cur.val) with
+    | some v => pure (s.setCur v)
     | none => pure s
   | .query (.del colIdx sels grp) =>
-    let n := s.cur.nav
-    let (tbl', grp') ← ModifyTable.del n.tbl colIdx sels grp
-    match View.fromTbl tbl' s.cur.path n.col.cur.val grp' 0 with
-    | some v => pure (s.setCur { v with precAdj := s.cur.precAdj, widthAdj := s.cur.widthAdj })
+    let (tbl', grp') ← ModifyTable.del s.cur.nav.tbl colIdx sels grp
+    match s.cur.rebuild tbl' (grp := grp') with
+    | some v => pure (s.setCur v)
     | none => pure s
   -- folder effects
   | .folder .push => runOpt s (Folder.push s)
@@ -73,11 +71,10 @@ def runStackEffect (s : ViewStack Table) (eff : Effect) : IO (ViewStack Table) :
   | .plot .bar  => runOpt s (Plot.run s true)
   -- fetch more rows (scroll-to-bottom)
   | .fetchMore =>
-    let v := s.cur
-    match ← TblOps.fetchMore v.nav.tbl with
+    match ← TblOps.fetchMore s.cur.nav.tbl with
     | some tbl' =>
-      match View.fromTbl tbl' v.path v.nav.col.cur.val v.nav.grp v.nav.row.cur.val with
-      | some v' => pure (s.setCur { v' with precAdj := v.precAdj, widthAdj := v.widthAdj, search := v.search })
+      match s.cur.rebuild tbl' (row := s.cur.nav.row.cur.val) with
+      | some v => pure (s.setCur v)
       | none => pure s
     | none => pure s
   -- meta effects
