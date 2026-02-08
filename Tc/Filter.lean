@@ -32,17 +32,20 @@ def colSearch (s : ViewStack T) : IO (ViewStack T) := do
   let some idx ← Fzf.fzfIdx #["--prompt=Column: "] dispNames | return s
   return moveColTo s idx
 
--- | row search (/): find value in current column, jump to matching row (IO)
-def rowSearch (s : ViewStack T) : IO (ViewStack T) := do
-  let v := s.cur
-  let names := TblOps.colNames v.nav.tbl
+-- | Shared: resolve current column, fetch sorted distinct values
+private def withDistinct (s : ViewStack T)
+    (f : Nat → String → Array String → IO (ViewStack T)) : IO (ViewStack T) := do
+  let v := s.cur; let names := TblOps.colNames v.nav.tbl
   let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
   let curName := names.getD curCol ""
   let vals ← TblOps.distinct v.nav.tbl curCol
-  let vals := vals.qsort (· < ·)
+  f curCol curName (vals.qsort (· < ·))
+
+-- | row search (/): find value in current column, jump to matching row (IO)
+def rowSearch (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun curCol curName vals => do
   let some result ← Fzf.fzf #[s!"--prompt=/{curName}: "] ("\n".intercalate vals.toList) | return s
-  let start := v.nav.row.cur.val + 1
-  let some rowIdx ← TblOps.findRow v.nav.tbl curCol result start true | return s
+  let start := s.cur.nav.row.cur.val + 1
+  let some rowIdx ← TblOps.findRow s.cur.nav.tbl curCol result start true | return s
   return moveRowTo s rowIdx (some (curCol, result))
 
 -- | search next (n): repeat last search forward (IO)
@@ -62,18 +65,13 @@ def searchPrev (s : ViewStack T) : IO (ViewStack T) := do
   return moveRowTo s rowIdx
 
 -- | row filter (\): filter rows by PRQL expression, push filtered view (IO)
-def rowFilter (s : ViewStack T) : IO (ViewStack T) := do
-  let v := s.cur; let names := TblOps.colNames v.nav.tbl
-  let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
-  let curName := names.getD curCol ""
-  let vals ← TblOps.distinct v.nav.tbl curCol
-  let vals := vals.qsort (· < ·)
+def rowFilter (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun _curCol curName vals => do
   let prompt := s!"{curName} == 'x' | > 5 | ~= 'pat' > "
   let some result ← Fzf.fzf #["--print-query", s!"--prompt={prompt}"] ("\n".intercalate vals.toList) | return s
   let expr := Fzf.buildFilterExpr curName vals result
   if expr.isEmpty then return s
-  let some tbl' ← TblOps.filter v.nav.tbl expr | return s
-  let some v' := View.fromTbl tbl' v.path v.nav.col.cur.val v.nav.grp 0 | return s
+  let some tbl' ← TblOps.filter s.cur.nav.tbl expr | return s
+  let some v' := View.fromTbl tbl' s.cur.path s.cur.nav.col.cur.val s.cur.nav.grp 0 | return s
   return s.push { v' with disp := s!"\\{curName}" }
 
 end Tc.ViewStack

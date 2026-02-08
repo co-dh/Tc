@@ -15,10 +15,6 @@ inductive Table where
 namespace Table
 
 -- lift ops over sum type
-@[inline] def lift (a : AdbcTable → α) (k : KdbTable → α) : Table → α
-  | .adbc t => a t | .kdb t => k t
-@[inline] def liftM (a : AdbcTable → IO α) (k : KdbTable → IO α) : Table → IO α
-  | .adbc t => a t | .kdb t => k t
 @[inline] def liftW (a : AdbcTable → IO (Option AdbcTable))
     (k : KdbTable → IO (Option KdbTable)) : Table → IO (Option Table)
   | .adbc t => a t <&> (·.map .adbc) | .kdb t => k t <&> (·.map .kdb)
@@ -40,7 +36,7 @@ instance : TblOps Table where
   nRows     := liftS TblOps.nRows
   colNames  := liftS TblOps.colNames
   totalRows := liftS TblOps.totalRows
-  queryMeta := liftM AdbcTable.queryMeta KdbTable.queryMeta
+  queryMeta | .adbc t => AdbcTable.queryMeta t | .kdb t => KdbTable.queryMeta t
   filter t e := liftW (AdbcTable.filter · e) (KdbTable.filter · e) t
   distinct t c := liftSM (TblOps.distinct · c) t
   findRow t c v s f := liftSM (TblOps.findRow · c v s f) t

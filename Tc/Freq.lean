@@ -17,16 +17,6 @@ def filterExprIO (tbl : Table) (cols : Array String) (row : Nat) : IO String := 
   let exprs := cols.zip vals |>.map fun (c, v) => s!"{c} == {v}"
   pure (" && ".intercalate exprs.toList)
 
--- | Push frequency view (group by grp + cursor column)
-def push (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
-  let n := s.cur.nav; let names := TblOps.colNames n.tbl
-  let curCol := colIdxAt n.grp names n.col.cur.val
-  let curName := names.getD curCol ""
-  let colNames := if n.grp.contains curName then n.grp else n.grp.push curName
-  let some (adbc, totalGroups) ← Table.freqTable n.tbl colNames | return none
-  let some v := View.fromTbl (.adbc adbc) s.cur.path 0 colNames | return none
-  return some (s.push { v with vkind := .freqV colNames totalGroups, disp := s!"freq {",".intercalate colNames.toList}" })
-
 -- | Filter parent by selected freq row, pop freq and push filtered view
 def filter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   let .freqV cols _ := s.cur.vkind | return some s
