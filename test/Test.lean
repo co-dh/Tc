@@ -823,6 +823,20 @@ def test_parquet_sort_desc : IO Unit := do
   let first := (dataLines (← run "l]" "data/sample.parquet")).headD ""
   assert (contains first " 80 ") "] on age sorts desc, age=80"
 
+-- Sort by non-first column: l moves to val, [ sorts asc → val=1 first
+def test_sort_excludes_key : IO Unit := do
+  log "sort_excludes_key"
+  let first := (dataLines (← run "Il[" "data/grp_sort.csv")).headD ""
+  assert (contains first " 1 ") "sort by val: val=1 first"
+
+-- Sort on group column is no-op: ! groups grp, cursor stays on grp, [ → no sort
+def test_sort_selected_not_key : IO Unit := do
+  log "sort_on_key_noop"
+  let lines := dataLines (← run "I![" "data/grp_sort.csv")
+  let first := lines.headD ""
+  -- within filtered group, original order preserved (val=3 first for A, val=6 for B)
+  assert (contains first " 3 " || contains first " 6 ") "sort on key col is no-op"
+
 -- === Meta tests (parquet) ===
 
 def test_parquet_meta : IO Unit := do
@@ -1326,6 +1340,7 @@ def main (args : List String) : IO Unit := do
   test_page_down; test_page_up; test_page_down_scrolls; test_last_col_visible
   test_delete_twice; test_delete_then_key_then_freq
   test_parquet_sort_asc; test_parquet_sort_desc
+  test_sort_excludes_key; test_sort_selected_not_key
   test_parquet_meta
   test_freq_parquet; test_freq_enter_parquet; test_freq_parquet_key_values
   test_freq_total_count; test_freq_sort_preserves_total; test_freq_sort_asc_parquet
