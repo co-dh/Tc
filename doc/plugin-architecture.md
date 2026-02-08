@@ -163,8 +163,7 @@ This enables true runtime plugins, though with some Lean runtime overhead per pl
 1. **Dead import removed**: `Types.lean` no longer imports `ADBC.FFI`
 
 2. **C FFI split**:
-   - `c/adbc_core.c` - Generic ADBC: query, cells, formatting (~550 lines)
-   - `c/duckdb_driver.c` - DuckDB-specific init (~35 lines)
+   - `c/adbc_core.c` - Generic ADBC + DuckDB driver: query, cells, formatting
    - `lean_adbc_init_driver(driver, entrypoint)` - parameterized init
 
 3. **Table variants**:

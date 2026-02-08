@@ -9,8 +9,8 @@ libtermbox2.a: termbox2.c termbox2.h
 	gcc -std=c11 -g -fPIC -c termbox2.c -o termbox2.o
 	ar rcs $@ termbox2.o
 
-# ADBC: core + DuckDB driver + nanoarrow
-libadbcshim.a: adbc_core.o duckdb_driver.o nanoarrow.o
+# ADBC: core (includes DuckDB driver) + nanoarrow
+libadbcshim.a: adbc_core.o nanoarrow.o
 	ar rcs $@ $^
 
 adbc_core.o: adbc_core.c nanoarrow.h
@@ -18,9 +18,6 @@ adbc_core.o: adbc_core.c nanoarrow.h
 
 nanoarrow.o: nanoarrow.c nanoarrow.h
 	$(CC) -std=c11 $(CFLAGS) -c $< -o $@
-
-duckdb_driver.o: duckdb_driver.c
-	$(CC) $(CFLAGS) -c $< -o $@
 
 libtermshim.a: term_shim.o
 	ar rcs $@ $<

@@ -1,11 +1,19 @@
 /-
-  Meta view: column statistics via DuckDB temp table tc_meta.
+  Meta view: column statistics via DuckDB temp table tc_meta_N.
   Selection and key operations use composable PRQL (via ADBC/Meta).
+  Each meta view gets a unique temp table so concurrent views don't collide.
 -/
 import Tc.View
 import Tc.Table
 
 namespace Tc.Meta
+
+-- | Extract meta table name from the current view's AdbcTable query base.
+--   e.g. "from tc_meta_3" → "tc_meta_3"
+private def metaTblName (s : ViewStack Table) : String :=
+  match s.cur.nav.tbl with
+  | .adbc t => ((t.query.base.drop 5).trimAscii).toString  -- drop "from "
+  | _ => "tc_meta"
 
 -- | Push column metadata view onto stack
 def push (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
@@ -22,7 +30,7 @@ def push (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
 -- | Select meta rows matching PRQL filter
 private def selBy (s : ViewStack Table) (flt : String) : IO (ViewStack Table) := do
   if s.cur.vkind != .colMeta then return s
-  let rows ← AdbcTable.queryMetaIndices flt
+  let rows ← AdbcTable.queryMetaIndices (metaTblName s) flt
   let nav' := { s.cur.nav with row := { s.cur.nav.row with sels := rows } }
   return s.setCur { s.cur with nav := nav' }
 
@@ -33,7 +41,7 @@ def selSingle (s : ViewStack Table) := selBy s "dist == 1"
 def setKey (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   if s.cur.vkind != .colMeta then return some s
   if !s.hasParent then return some s
-  let colNames ← AdbcTable.queryMetaColNames s.cur.nav.row.sels
+  let colNames ← AdbcTable.queryMetaColNames (metaTblName s) s.cur.nav.row.sels
   match s.pop with
   | some s' =>
     let col' := { s'.cur.nav.col with sels := colNames }
