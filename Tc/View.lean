@@ -53,8 +53,8 @@ def fromTbl (tbl : T) (path : String)
 private def verbDelta (verb : Verb) : Int := if verb == .inc then 1 else -1
 
 -- | verbDelta theorems: .inc → +1, .dec → -1
-theorem verbDelta_inc : verbDelta .inc = 1 := rfl
-theorem verbDelta_dec : verbDelta .dec = -1 := rfl
+@[simp] theorem verbDelta_inc : verbDelta .inc = 1 := rfl
+@[simp] theorem verbDelta_dec : verbDelta .dec = -1 := rfl
 
 -- | Preserve precAdj/widthAdj when recreating View
 -- | Preserve view properties (vkind, disp, precAdj, widthAdj) when recreating
@@ -72,16 +72,16 @@ def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
   -- effect: column delete (runner will execute and rebuild view)
   | .colSel .del =>
     let sels := n.col.sels.filterMap names.idxOf?
-    some (v, .queryDel curCol sels n.grp)
+    some (v, .query (.del curCol sels n.grp))
   -- effect: sort (runner will execute and rebuild view)
   | .colSel .inc =>
     let selIdxs := n.col.sels.filterMap names.idxOf?
     let grpIdxs := n.grp.filterMap names.idxOf?
-    some (v, .querySort curCol selIdxs grpIdxs true)
+    some (v, .query (.sort curCol selIdxs grpIdxs true))
   | .colSel .dec =>
     let selIdxs := n.col.sels.filterMap names.idxOf?
     let grpIdxs := n.grp.filterMap names.idxOf?
-    some (v, .querySort curCol selIdxs grpIdxs false)
+    some (v, .query (.sort curCol selIdxs grpIdxs false))
   -- pure: navigation (detect at-bottom for fetchMore on downward scroll)
   | _ => (NavState.exec cmd n rowPg colPageSize).map fun nav' =>
     let needsMore := nav'.row.cur.val + 1 >= v.nRows
@@ -102,49 +102,42 @@ end View
 
 /-! ## ViewStack: non-empty view stack -/
 
--- | Non-empty view stack: a[0] = current, a[1:] = parents
-abbrev ViewStack (T : Type) [TblOps T] := { a : Array (View T) // a.size > 0 }
+-- | Non-empty view stack: hd = current, tl = parents
+structure ViewStack (T : Type) [TblOps T] where
+  hd : View T
+  tl : Array (View T) := #[]
 
 namespace ViewStack
 
 variable {T : Type} [TblOps T]
 
 -- | Current view
-@[inline] def cur (s : ViewStack T) : View T := s.val[0]'s.property
-
--- | All views
-@[inline] def views (s : ViewStack T) : Array (View T) := s.val
+@[inline] def cur (s : ViewStack T) : View T := s.hd
 
 -- | Has parent?
-@[inline] def hasParent (s : ViewStack T) : Bool := s.val.size > 1
+@[inline] def hasParent (s : ViewStack T) : Bool := s.tl.size > 0
 
 -- | Update current view
-def setCur (s : ViewStack T) (v : View T) : ViewStack T :=
-  ⟨s.val.set (Fin.mk 0 s.property) v, by simp [Array.size_set]; exact s.property⟩
+@[inline] def setCur (s : ViewStack T) (v : View T) : ViewStack T := { s with hd := v }
 
 -- | Push new view (current becomes parent)
-def push (s : ViewStack T) (v : View T) : ViewStack T :=
-  ⟨#[v] ++ s.val, by simp; omega⟩
+def push (s : ViewStack T) (v : View T) : ViewStack T := ⟨v, #[s.hd] ++ s.tl⟩
 
 -- | Pop view (returns to parent, or none if no parent)
 def pop (s : ViewStack T) : Option (ViewStack T) :=
-  if h : s.val.size > 1 then some ⟨s.val.extract 1 s.val.size, by simp [Array.size_extract]; omega⟩
+  if h : s.tl.size > 0 then some ⟨s.tl[0]'h, s.tl.extract 1 s.tl.size⟩
   else none
 
 -- | Swap top two views
 def swap (s : ViewStack T) : ViewStack T :=
-  if h : s.val.size > 1 then
-    let a := s.val[0]'s.property
-    let b := s.val[1]'h
-    ⟨#[b, a] ++ s.val.extract 2 s.val.size, by simp; omega⟩
+  if h : s.tl.size > 0 then ⟨s.tl[0]'h, #[s.hd] ++ s.tl.extract 1 s.tl.size⟩
   else s
 
 -- | Duplicate current view (push copy of current)
-def dup (s : ViewStack T) : ViewStack T :=
-  ⟨#[s.cur] ++ s.val, by simp; omega⟩
+def dup (s : ViewStack T) : ViewStack T := ⟨s.hd, #[s.hd] ++ s.tl⟩
 
 -- | Tab names for display (current first)
-def tabNames (s : ViewStack T) : Array String := s.views.map (·.tabName)
+def tabNames (s : ViewStack T) : Array String := (#[s.hd] ++ s.tl).map (·.tabName)
 
 -- | Pure update: returns (new stack, effect). q on empty stack → quit
 def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=

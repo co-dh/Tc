@@ -326,13 +326,13 @@ def setDepth (s : ViewStack Table) (delta : Int) : IO (Option (ViewStack Table))
 -- | Pure update: returns Effect for IO operations
 def update (s : ViewStack Table) (cmd : Cmd) : Option (ViewStack Table × Effect) :=
   match cmd with
-  | .fld .dup => some (s, .folderPush)
-  | .fld .inc => some (s, .folderDepth 1)
-  | .fld .dec => some (s, .folderDepth (-1))
+  | .fld .dup => some (s, .folder .push)
+  | .fld .inc => some (s, .folder (.depth 1))
+  | .fld .dec => some (s, .folder (.depth (-1)))
   | .colSel .del =>
-    if s.cur.vkind matches .fld _ _ then some (s, .folderDel) else none
+    if s.cur.vkind matches .fld _ _ then some (s, .folder .del) else none
   | .fld .ent =>
-    if s.cur.vkind matches .fld _ _ then some (s, .folderEnter) else none
+    if s.cur.vkind matches .fld _ _ then some (s, .folder .enter) else none
   | _ => none
 
 end Tc.Folder

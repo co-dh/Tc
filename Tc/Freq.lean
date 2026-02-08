@@ -13,11 +13,7 @@ def filterExprIO (tbl : Table) (cols : Array String) (row : Nat) : IO String := 
   let names := TblOps.colNames tbl
   let idxs := cols.filterMap names.idxOf?
   let fetchedCols ← TblOps.getCols tbl idxs row (row + 1)
-  let vals := fetchedCols.mapIdx fun i _ =>
-    match fetchedCols.getD i default with
-    | .strs data => s!"'{data.getD 0 ""}'"
-    | .ints data => s!"{data.getD 0 0}"
-    | .floats data => s!"{data.getD 0 0}"
+  let vals := fetchedCols.map fun col => (col.get 0).toPrql
   let exprs := cols.zip vals |>.map fun (c, v) => s!"{c} == {v}"
   pure (" && ".intercalate exprs.toList)
 
@@ -48,9 +44,9 @@ def update (s : ViewStack Table) (cmd : Cmd) : Option (ViewStack Table × Effect
   let curName := names.getD curCol ""
   let colNames := if n.grp.contains curName then n.grp else n.grp.push curName
   match cmd with
-  | .freq .dup => some (s, .queryFreq colNames)  -- push freq view (IO)
+  | .freq .dup => some (s, .query (.freq colNames))  -- push freq view (IO)
   | .freq .ent => match s.cur.vkind with  -- Enter and space F ~ both map to .freq .ent
-    | .freqV cols _ => some (s, .freqFilter cols s.cur.nav.row.cur.val)  -- filter (IO)
+    | .freqV cols _ => some (s, .query (.freqFilter cols s.cur.nav.row.cur.val))  -- filter (IO)
     | _ => none
   | _ => none
 

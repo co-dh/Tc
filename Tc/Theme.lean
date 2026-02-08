@@ -131,7 +131,7 @@ def init : IO State := do
 -- | Pure update: returns Effect.themeLoad to defer IO
 def update (s : State) (cmd : Cmd) : Option (State × Effect) :=
   match cmd with
-  | .thm .inc => some (s, .themeLoad 1)    -- runner will load and update
+  | .thm .inc => some (s, .themeLoad 1)
   | .thm .dec => some (s, .themeLoad (-1))
   | _ => none
 

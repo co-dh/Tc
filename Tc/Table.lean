@@ -44,8 +44,7 @@ instance : TblOps Table where
   filter t e := liftW (AdbcTable.filter · e) (KdbTable.filter · e) t
   distinct t c := liftSM (TblOps.distinct · c) t
   findRow t c v s f := liftSM (TblOps.findRow · c v s f) t
-  render t c n f w d g o r0 r1 cr cc m s rs st pa wa :=
-    liftSM (TblOps.render · c n f w d g o r0 r1 cr cc m s rs st pa wa) t
+  render t ctx := liftSM (TblOps.render · ctx) t
   getCols t idxs r0 r1 := liftSM (TblOps.getCols · idxs r0 r1) t
   colType   := liftS TblOps.colType
   plotExport t x y c b n tl := liftSM (TblOps.plotExport · x y c b n tl) t

@@ -118,23 +118,31 @@ theorem parse_toString (c : Cmd) : Parse.parse? (toString c) = some c := by
 
 end Cmd
 
+-- | Effect sub-types (grouped by domain)
+inductive FzfEffect where | cmd | col | row | filter deriving Repr, BEq
+inductive QueryEffect where
+  | «meta» | freq (colNames : Array String)
+  | freqFilter (cols : Array String) (row : Nat)
+  | filter (expr : String)
+  | sort (colIdx : Nat) (sels : Array Nat) (grp : Array Nat) (asc : Bool)
+  | del (colIdx : Nat) (sels : Array Nat) (grp : Array String)
+  deriving Repr, BEq
+inductive FolderEffect where | push | enter | del | depth (delta : Int) deriving Repr, BEq
+inductive SearchEffect where | next | prev deriving Repr, BEq
+inductive PlotEffect where | line | bar deriving Repr, BEq
+inductive MetaEffect where | selNull | selSingle | setKey deriving Repr, BEq
+
 -- | Effect: describes an IO operation to perform (Runner interprets)
 inductive Effect where
   | none | quit
-  | fzfCmd | fzfCol | fzfRow | fzfFilter
-  | queryMeta
-  | queryFreq (colNames : Array String)
-  | freqFilter (cols : Array String) (row : Nat)
-  | queryFilter (expr : String)
-  | querySort (colIdx : Nat) (sels : Array Nat) (grp : Array Nat) (asc : Bool)
-  | queryDel (colIdx : Nat) (sels : Array Nat) (grp : Array String)
-  | folderPush | folderEnter | folderDel
-  | folderDepth (delta : Int)
-  | findNext | findPrev
+  | fzf : FzfEffect → Effect
+  | query : QueryEffect → Effect
+  | folder : FolderEffect → Effect
+  | search : SearchEffect → Effect
+  | plot : PlotEffect → Effect
+  | «meta» : MetaEffect → Effect
   | themeLoad (delta : Int)
-  | plotLine | plotBar
   | fetchMore
-  | metaSelNull | metaSelSingle | metaSetKey
   deriving Repr, BEq
 
 namespace Effect

@@ -85,11 +85,11 @@ variable {T : Type} [TblOps T]
 -- | Pure update: returns Effect describing fzf/search operation
 def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   match cmd with
-  | .col .ent    => some (s, .fzfCol)                          -- s: column picker
-  | .rowSel .inc => some (s, .fzfRow)                          -- /: row search
-  | .rowSel .dec => some (s, .fzfFilter)                       -- \: row filter
-  | .grp .inc    => some (s, .findNext)                        -- n: search next
-  | .grp .dec    => some (s, .findPrev)                        -- N: search prev
+  | .col .ent    => some (s, .fzf .col)                         -- s: column picker
+  | .rowSel .inc => some (s, .fzf .row)                        -- /: row search
+  | .rowSel .dec => some (s, .fzf .filter)                     -- \: row filter
+  | .grp .inc    => some (s, .search .next)                    -- n: search next
+  | .grp .dec    => some (s, .search .prev)                    -- N: search prev
   | _ => none
 
 end Tc.Filter

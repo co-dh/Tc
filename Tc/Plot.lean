@@ -345,8 +345,8 @@ def run (s : ViewStack T) (bar : Bool) : IO (Option (ViewStack T)) := do
 -- | Pure update: map Cmd to Effect
 def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   match cmd with
-  | .plot .inc => some (s, .plotLine)
-  | .plot .dec => some (s, .plotBar)
+  | .plot .inc => some (s, .plot .line)
+  | .plot .dec => some (s, .plot .bar)
   | _ => none
 
 end Tc.Plot

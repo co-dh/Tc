@@ -183,10 +183,12 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
   let colOff := if inWidths.isEmpty then 0
                 else adjColOffFast nav.col.cur.val view.colOff inWidths nav.dispColIdxs w.toNat
   let moveDir := if nav.curColIdx > view.lastCol then 1 else if nav.curColIdx < view.lastCol then -1 else 0
-  -- call TblOps.render with unpacked nav fields
-  let outWidths ← TblOps.render nav.tbl #[] nav.colNames #[] inWidths nav.dispColIdxs
-    nav.grp.size colOff rowOff (min nRows (rowOff + visRows))
-    nav.row.cur.val nav.curColIdx moveDir nav.selColIdxs nav.row.sels styles precAdj widthAdj
+  let ctx : RenderCtx := {
+    inWidths, dispIdxs := nav.dispColIdxs, nGrp := nav.grp.size, colOff,
+    r0 := rowOff, r1 := min nRows (rowOff + visRows),
+    curRow := nav.row.cur.val, curCol := nav.curColIdx, moveDir,
+    selColIdxs := nav.selColIdxs, rowSels := nav.row.sels, styles, precAdj, widthAdj }
+  let outWidths ← TblOps.render nav.tbl ctx
   let widths := outWidths.map fun x => min maxColWidth (storedWidth x widthAdj)
   -- status line: colName left, stats right
   -- freqV shows total distinct groups, others show table totalRows
