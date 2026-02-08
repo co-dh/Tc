@@ -35,11 +35,11 @@ structure MockTable (nRows nCols : Nat) where
 instance : TblOps (MockTable nRows nCols) where
   nRows _ := nRows
   colNames t := t.names
-  queryMeta _ := pure (#[], #[], #[], #[], #[], #[], #[])
+  queryMeta _ := pure ⟨#[], #[], #[], #[], #[], #[], #[]⟩
   filter _ _ := pure none
   distinct _ _ := pure #[]
   findRow _ _ _ _ _ := pure none
-  render _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ := pure #[]
+  render _ _ := pure #[]
 
 -- | Create mock 5x3 table for testing
 def mock53 : MockTable 5 3 := ⟨#["c0", "c1", "c2"]⟩

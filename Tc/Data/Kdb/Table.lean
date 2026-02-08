@@ -247,7 +247,7 @@ def queryMeta (t : KdbTable) : IO MetaTuple := do
   let nulls := #[].append (Array.range n |>.map fun _ => (0 : Int64))
   let mins := #[].append (Array.range n |>.map fun _ => "")
   let maxs := #[].append (Array.range n |>.map fun _ => "")
-  pure (names, types, cnts, dists, nulls, mins, maxs)
+  pure ⟨names, types, cnts, dists, nulls, mins, maxs⟩
 
 end KdbTable
 

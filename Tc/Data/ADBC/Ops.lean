@@ -20,22 +20,23 @@ instance : TblOps AdbcTable where
   colType t col := t.colTypes.getD col "?"
   plotExport := AdbcTable.plotExport
   fetchMore := AdbcTable.fetchMore
-  render t _ _ _ inWidths dispIdxs nGrp colOff r0 r1 curRow curCol moveDir selColIdxs rowSels st precAdj widthAdj := do
-    if inWidths.isEmpty then
-      let cols ← (Array.range t.nCols).mapM fun c => t.getCol c 0 t.nRows
-      Term.renderTable cols t.colNames t.colFmts inWidths dispIdxs
-        t.nRows.toUInt64 nGrp.toUInt64 colOff.toUInt64
-        0 t.nRows.toUInt64 curRow.toUInt64 curCol.toUInt64
-        moveDir.toInt64 selColIdxs rowSels st precAdj.toInt64 widthAdj.toInt64
+  render t ctx := do
+    let c := ctx
+    if c.inWidths.isEmpty then
+      let cols ← (Array.range t.nCols).mapM fun i => t.getCol i 0 t.nRows
+      Term.renderTable cols t.colNames t.colFmts c.inWidths c.dispIdxs
+        t.nRows.toUInt64 c.nGrp.toUInt64 c.colOff.toUInt64
+        0 t.nRows.toUInt64 c.curRow.toUInt64 c.curCol.toUInt64
+        c.moveDir.toInt64 c.selColIdxs c.rowSels c.styles c.precAdj.toInt64 c.widthAdj.toInt64
     else
-      let cols ← (Array.range t.nCols).mapM fun c => t.getCol c r0 r1
-      let adjCur := curRow - r0
-      let adjSel := rowSels.filterMap fun r =>
-        if r >= r0 && r < r1 then some (r - r0) else none
-      Term.renderTable cols t.colNames t.colFmts inWidths dispIdxs
-        t.nRows.toUInt64 nGrp.toUInt64 colOff.toUInt64
-        0 (r1 - r0).toUInt64 adjCur.toUInt64 curCol.toUInt64
-        moveDir.toInt64 selColIdxs adjSel st precAdj.toInt64 widthAdj.toInt64
+      let cols ← (Array.range t.nCols).mapM fun i => t.getCol i c.r0 c.r1
+      let adjCur := c.curRow - c.r0
+      let adjSel := c.rowSels.filterMap fun r =>
+        if r >= c.r0 && r < c.r1 then some (r - c.r0) else none
+      Term.renderTable cols t.colNames t.colFmts c.inWidths c.dispIdxs
+        t.nRows.toUInt64 c.nGrp.toUInt64 c.colOff.toUInt64
+        0 (c.r1 - c.r0).toUInt64 adjCur.toUInt64 c.curCol.toUInt64
+        c.moveDir.toInt64 c.selColIdxs adjSel c.styles c.precAdj.toInt64 c.widthAdj.toInt64
 
 -- | ModifyTable instance for AdbcTable
 instance : ModifyTable AdbcTable where

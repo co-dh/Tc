@@ -17,8 +17,8 @@ def colNull : Nat := 4  -- null%
 -- | Push column metadata view onto stack
 def push (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   let m ← TblOps.queryMeta s.cur.nav.tbl
-  let (names, types, cnts, dists, nulls, mins, maxs) := m
-  let cols : Array Column := #[.strs names, .strs types, .ints cnts, .ints dists, .ints nulls, .strs mins, .strs maxs]
+  let cols : Array Column := #[.strs m.names, .strs m.types, .ints m.counts, .ints m.dists,
+    .ints m.nullPcts, .strs m.mins, .strs m.maxs]
   match ← AdbcTable.fromArrays headers cols with
   | some adbc =>
     match View.fromTbl (Table.adbc adbc) s.cur.path with
@@ -61,10 +61,10 @@ def setKey (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
 -- | Pure update: returns Effect for IO operations
 def update (s : ViewStack Table) (cmd : Cmd) : Option (ViewStack Table × Effect) :=
   match cmd with
-  | .metaV .dup => some (s, .queryMeta)
-  | .metaV .dec => some (s, .metaSelNull)
-  | .metaV .inc => some (s, .metaSelSingle)
-  | .metaV .ent => if s.cur.vkind matches .colMeta then some (s, .metaSetKey) else none
+  | .metaV .dup => some (s, .query .«meta»)
+  | .metaV .dec => some (s, .«meta» .selNull)
+  | .metaV .inc => some (s, .«meta» .selSingle)
+  | .metaV .ent => if s.cur.vkind matches .colMeta then some (s, .«meta» .setKey) else none
   | _ => none
 
 end Tc.Meta

@@ -22,7 +22,7 @@ def clamp (f : Fin n) (d : Int) : Fin n :=
   let v' := min v (n - 1)
   ⟨v', Nat.lt_of_le_of_lt (Nat.min_le_right _ _) (Nat.sub_lt f.pos Nat.one_pos)⟩
 -- | Clamping with delta 0 is identity
-theorem clamp_zero_id (f : Fin n) : f.clamp 0 = f := by
+@[simp] theorem clamp_zero_id (f : Fin n) : f.clamp 0 = f := by
   simp only [Fin.clamp, Fin.ext_iff]; omega
 
 end Fin
@@ -62,11 +62,12 @@ abbrev ColNav (n : Nat) := NavAxis n String
 def Array.idxOf? [BEq α] (a : Array α) (x : α) : Option Nat :=
   a.findIdx? (· == x)
 
--- Compute display order: group names first, then rest (by name lookup)
+-- Compute display order: group names first, then rest
 -- Uses range partition: filter + complement = full range
+-- O(n*m) where m = group.size (was O(n²*m) via idxOf? per index)
 def dispOrder (group : Array String) (names : Array String) : Array Nat :=
   let n := names.size
-  let isGrp := fun i => group.any fun g => names.idxOf? g == some i
+  let isGrp := fun i => group.contains (names.getD i "")
   (Array.range n).filter isGrp ++ (Array.range n).filter (!isGrp ·)
 
 -- Helper: list filter partition
@@ -81,7 +82,7 @@ theorem dispOrder_size (group : Array String) (names : Array String) :
     (dispOrder group names).size = names.size := by
   simp only [dispOrder]
   rw [Array.size_append]
-  let isGrp := fun i => group.any fun g => names.idxOf? g == some i
+  let isGrp := fun i => group.contains (names.getD i "")
   have s1 : (Array.filter isGrp (Array.range names.size)).size =
       (List.filter isGrp (List.range names.size)).length := by
     rw [Array.size_eq_length_toList, Array.toList_filter, Array.toList_range]

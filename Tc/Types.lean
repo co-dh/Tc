@@ -114,8 +114,15 @@ end Cell
 
 namespace Tc
 
--- Meta tuple: (names, types, cnts, dists, nullPcts, mins, maxs)
-abbrev MetaTuple := Array String × Array String × Array Int64 × Array Int64 × Array Int64 × Array String × Array String
+-- Meta: column statistics (names, types, counts, distincts, null%, mins, maxs)
+structure MetaTuple where
+  names    : Array String
+  types    : Array String
+  counts   : Array Int64
+  dists    : Array Int64
+  nullPcts : Array Int64
+  mins     : Array String
+  maxs     : Array String
 
 -- | Compute pct and bar from count data (for Kdb/Mem freq → fromArrays).
 def freqPctBar (cntData : Array Int64) : Array Float × Array String :=
@@ -126,9 +133,25 @@ def freqPctBar (cntData : Array Int64) : Array Float × Array String :=
 
 /-! ## Core Typeclasses -/
 
+-- Render context: all parameters for table rendering (avoids NavState dependency)
+structure RenderCtx where
+  inWidths   : Array Nat
+  dispIdxs   : Array Nat
+  nGrp       : Nat
+  colOff     : Nat
+  r0         : Nat
+  r1         : Nat
+  curRow     : Nat
+  curCol     : Nat
+  moveDir    : Int
+  selColIdxs : Array Nat
+  rowSels    : Array Nat
+  styles     : Array UInt32
+  precAdj    : Int
+  widthAdj   : Int
+
 /-- TblOps: unified read-only table interface.
-    Provides row/column access, metadata queries, filtering, and rendering.
-    Render params are expanded to avoid NavState dependency (NavState defined after Types). -/
+    Provides row/column access, metadata queries, filtering, and rendering. -/
 class TblOps (α : Type) where
   nRows     : α → Nat                                            -- row count in view
   colNames  : α → Array String                                   -- column names
@@ -137,11 +160,7 @@ class TblOps (α : Type) where
   filter    : α → String → IO (Option α)                         -- filter by expr
   distinct  : α → Nat → IO (Array String)                        -- distinct values
   findRow   : α → Nat → String → Nat → Bool → IO (Option Nat)    -- find row
-  -- render: expanded signature (NavState unpacked at call site)
-  render    : α → (cols : Array Column) → (names fmts : Array String)
-            → (inWidths dispIdxs : Array Nat) → (nGrp colOff r0 r1 curRow curCol : Nat)
-            → (moveDir : Int) → (selColIdxs rowSels : Array Nat)
-            → (styles : Array UInt32) → (precAdj widthAdj : Int) → IO (Array Nat)
+  render    : α → RenderCtx → IO (Array Nat)
   -- extract columns [r0, r1) by index (for plot/export)
   getCols   : α → Array Nat → Nat → Nat → IO (Array Column) := fun _ _ _ _ => pure #[]
   -- column type name (e.g. "time", "int", "float", "str")

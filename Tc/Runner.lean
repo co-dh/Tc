@@ -22,20 +22,20 @@ def runStackEffect (s : ViewStack Table) (eff : Effect) : IO (ViewStack Table) :
   match eff with
   | .none => pure s
   -- fzf effects
-  | .fzfCol => s.colSearch
-  | .fzfRow => s.rowSearch
-  | .fzfFilter => s.rowFilter
+  | .fzf .col => s.colSearch
+  | .fzf .row => s.rowSearch
+  | .fzf .filter => s.rowFilter
   -- search effects
-  | .findNext => s.searchNext
-  | .findPrev => s.searchPrev
+  | .search .next => s.searchNext
+  | .search .prev => s.searchPrev
   -- query effects
-  | .queryMeta => runOpt s (Meta.push s)
-  | .queryFreq colNames =>
+  | .query .«meta» => runOpt s (Meta.push s)
+  | .query (.freq colNames) =>
     let some (adbc, totalGroups) ← Table.freqTable s.cur.nav.tbl colNames | pure s
     match View.fromTbl (.adbc adbc) s.cur.path 0 colNames with
     | some v => pure (s.push { v with vkind := .freqV colNames totalGroups, disp := s!"freq {colNames.join ","}" })
     | none => pure s
-  | .freqFilter cols row =>
+  | .query (.freqFilter cols row) =>
     match s.cur.vkind, s.pop with
     | .freqV _ _, some s' => do
       let expr ← Freq.filterExprIO s.cur.nav.tbl cols row
@@ -45,32 +45,32 @@ def runStackEffect (s : ViewStack Table) (eff : Effect) : IO (ViewStack Table) :
         | none => pure s
       | none => pure s
     | _, _ => pure s
-  | .queryFilter expr =>
+  | .query (.filter expr) =>
     match ← TblOps.filter s.cur.nav.tbl expr with
     | some tbl' => match View.fromTbl tbl' s.cur.path s.cur.nav.col.cur.val s.cur.nav.grp 0 with
       | some v => pure (s.push { v with disp := s!"\\filter" })
       | none => pure s
     | none => pure s
-  | .querySort colIdx sels grp asc =>
+  | .query (.sort colIdx sels grp asc) =>
     let n := s.cur.nav
     let tbl' ← ModifyTable.sort n.tbl colIdx sels grp asc
     match View.fromTbl tbl' s.cur.path colIdx (n.grp) n.row.cur.val with
     | some v => pure (s.setCur { v with precAdj := s.cur.precAdj, widthAdj := s.cur.widthAdj })
     | none => pure s
-  | .queryDel colIdx sels grp =>
+  | .query (.del colIdx sels grp) =>
     let n := s.cur.nav
     let (tbl', grp') ← ModifyTable.del n.tbl colIdx sels grp
     match View.fromTbl tbl' s.cur.path n.col.cur.val grp' 0 with
     | some v => pure (s.setCur { v with precAdj := s.cur.precAdj, widthAdj := s.cur.widthAdj })
-    | none => pure s  -- table became empty, keep current
+    | none => pure s
   -- folder effects
-  | .folderPush => runOpt s (Folder.push s)
-  | .folderEnter => runOpt s (Folder.enter s)
-  | .folderDel => runOpt s (Folder.del s)
-  | .folderDepth delta => runOpt s (Folder.setDepth s delta)
+  | .folder .push => runOpt s (Folder.push s)
+  | .folder .enter => runOpt s (Folder.enter s)
+  | .folder .del => runOpt s (Folder.del s)
+  | .folder (.depth delta) => runOpt s (Folder.setDepth s delta)
   -- plot effects
-  | .plotLine => runOpt s (Plot.run s false)
-  | .plotBar  => runOpt s (Plot.run s true)
+  | .plot .line => runOpt s (Plot.run s false)
+  | .plot .bar  => runOpt s (Plot.run s true)
   -- fetch more rows (scroll-to-bottom)
   | .fetchMore =>
     let v := s.cur
@@ -81,10 +81,10 @@ def runStackEffect (s : ViewStack Table) (eff : Effect) : IO (ViewStack Table) :
       | none => pure s
     | none => pure s
   -- meta effects
-  | .metaSelNull => do pure (← Meta.selNull s)
-  | .metaSelSingle => do pure (← Meta.selSingle s)
-  | .metaSetKey => runOpt s (Meta.setKey s)
+  | .«meta» .selNull => Meta.selNull s
+  | .«meta» .selSingle => Meta.selSingle s
+  | .«meta» .setKey => runOpt s (Meta.setKey s)
   -- other effects handled at AppState level
-  | .quit | .fzfCmd | .themeLoad _ => pure s
+  | .quit | .fzf .cmd | .themeLoad _ => pure s
 
 end Tc.Runner

@@ -16,7 +16,7 @@ open Tc
 -- run effect, recurse on fzfCmd
 partial def runEffect (a : AppState) (e : Effect) : IO AppState := match e with
   | .none | .quit => pure a
-  | .fzfCmd => do match ← Fzf.cmdMode a.stk.cur.vkind with
+  | .fzf .cmd => do match ← Fzf.cmdMode a.stk.cur.vkind with
     | some c => match a.update c with
       | some (a', e') => if e'.isNone then pure a' else runEffect a' e'
       | none => pure a
@@ -34,7 +34,7 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   if test && ks.isEmpty then IO.print (← Term.bufferStr); return a
   let (ev, ks') ← nextEvent ks
   if isKey ev 'Q' then return a
-  if isKey ev ' ' then mainLoop (← runEffect a .fzfCmd) test ks'
+  if isKey ev ' ' then mainLoop (← runEffect a (.fzf .cmd)) test ks'
   else match evToCmd ev a.stk.cur.vkind with
     | none => mainLoop a test ks'
     | some c => match a.update c with
@@ -56,7 +56,7 @@ def parseArgs (args : List String) : Option String × Array Char × Bool × Bool
 def runApp (v : View Table) (pipe test : Bool) (th : Theme.State) (ks : Array Char) : IO AppState := do
   if pipe then let _ ← Term.reopenTty
   let _ ← Term.init
-  let a' ← mainLoop ⟨⟨#[v], by simp⟩, .default, th, {}⟩ test ks
+  let a' ← mainLoop ⟨⟨v, #[]⟩, .default, th, {}⟩ test ks
   Term.shutdown; pure a'
 
 -- run from TSV string result

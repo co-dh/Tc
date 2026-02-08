@@ -32,7 +32,7 @@ private def colInt (qr : Adbc.QueryResult) (nr : Nat) (c : UInt64) : IO (Array I
 private def metaFromQuery (qr : Adbc.QueryResult) : IO MetaTuple := do
   let nr := (← Adbc.nrows qr).toNat
   let s := colStr qr nr; let i := colInt qr nr  -- s/i: read col as str/int
-  pure (← s 0, ← s 1, ← i 2, ← i 3, ← i 4, ← s 5, ← s 6)  -- ← awaits IO
+  pure ⟨← s 0, ← s 1, ← i 2, ← i 3, ← i 4, ← s 5, ← s 6⟩
 
 -- | Load meta from parquet cache
 def loadCache (path : String) : IO (Option MetaTuple) := do
@@ -90,7 +90,7 @@ def queryMeta (t : AdbcTable) : IO MetaTuple := do
     s!" | append ({colstatPrql base (names.getD (i+1) "") (types.getD (i+1) "?")})"
   let prql := first ++ rest.foldl (· ++ ·) ""
   Log.write "meta" prql
-  let some sql ← Prql.compile prql | return (#[], #[], #[], #[], #[], #[], #[])
+  let some sql ← Prql.compile prql | return ⟨#[], #[], #[], #[], #[], #[], #[]⟩
   -- Save to cache for base parquet queries
   if let some p := cachePath then
     try saveCache p sql catch e => Log.write "adbc-meta" (toString e)
