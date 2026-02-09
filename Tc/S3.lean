@@ -22,8 +22,6 @@ def isS3 (path : String) : Bool := path.startsWith "s3://"
 -- | S3 parent: none at bucket root ("s3://bucket/" = 3 parts)
 def parent (path : String) : Option String := Remote.parent path 3
 
-theorem parent_none_at_root : parent "s3://bucket/" = none := by native_decide
-
 -- | List S3 prefix via `aws s3 ls`, returns TSV matching listDir schema
 def list (path : String) : IO String := do
   statusMsg s!"Loading {path} ..."

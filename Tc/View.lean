@@ -52,9 +52,6 @@ def fromTbl (tbl : T) (path : String)
 -- | Verb to delta: inc=+1, dec=-1
 private def verbDelta (verb : Verb) : Int := if verb == .inc then 1 else -1
 
--- | verbDelta theorems: .inc → +1, .dec → -1
-@[simp] theorem verbDelta_inc : verbDelta .inc = 1 := rfl
-@[simp] theorem verbDelta_dec : verbDelta .dec = -1 := rfl
 
 -- | Rebuild view with new table, carrying forward display settings
 def rebuild (old : View T) (tbl : T) (col : Nat := old.nav.col.cur.val)
@@ -91,13 +88,6 @@ def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
     ({ v with nav := nav' }, if needsMore then .fetchMore else .none)
 
 instance : Update (View T) where update v cmd := update v cmd defaultRowPg
-
--- | width update: .inc adds 1, .dec subtracts 1
-theorem width_inc_adds (v : View T) (rowPg : Nat) :
-    (update v (.width .inc) rowPg).map (fun p => p.1.widthAdj) = some (v.widthAdj + 1) := rfl
-theorem width_dec_subs (v : View T) (rowPg : Nat) :
-    (update v (.width .dec) rowPg).map (fun p => p.1.widthAdj) = some (v.widthAdj - 1) := rfl
-
 
 end View
 

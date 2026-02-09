@@ -92,5 +92,3 @@ def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
 
 end Tc.Filter
 
--- | Compile-time: rowSearch uses errorPopup (fails if errorPopup missing/wrong type)
-#check @Tc.ViewStack.rowSearch

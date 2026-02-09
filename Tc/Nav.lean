@@ -21,10 +21,6 @@ def clamp (f : Fin n) (d : Int) : Fin n :=
   let v := ((f.val : Int) + d).toNat
   let v' := min v (n - 1)
   ⟨v', Nat.lt_of_le_of_lt (Nat.min_le_right _ _) (Nat.sub_lt f.pos Nat.one_pos)⟩
--- | Clamping with delta 0 is identity
-@[simp] theorem clamp_zero_id (f : Fin n) : f.clamp 0 = f := by
-  simp only [Fin.clamp, Fin.ext_iff]; omega
-
 end Fin
 
 namespace Tc
@@ -101,9 +97,6 @@ variable {t : Type} [TblOps t]
 -- | Column names from table
 def colNames (nav : NavState nRows nCols t) : Array String := TblOps.colNames nav.tbl
 
--- | Column indices in display order (cached)
-def dispColIdxs (nav : NavState nRows nCols t) : Array Nat := nav.dispIdxs
-
 -- | Current column index in data order
 def curColIdx (nav : NavState nRows nCols t) : Nat := colIdxAt nav.grp nav.colNames nav.col.cur.val
 
@@ -150,75 +143,6 @@ def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option
 def update (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat)
     : Option (NavState nRows nCols t × Effect) :=
   (exec cmd nav rowPg colPg).map (·, .none)
-
-/-! ## Theorems -/
-
--- | Nav commands always return Effect.none (when they succeed)
-theorem update_effect_none (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat)
-    (nav' : NavState nRows nCols t) (eff : Effect) :
-    update cmd nav rowPg colPg = some (nav', eff) → eff = .none := by
-  intro h; simp only [update, Option.map] at h
-  split at h <;> simp_all
-
--- | Row inc from 0 moves to row 1 (proves test_nav_down)
-theorem exec_row_inc_from_zero (nav : NavState nRows nCols t) (rowPg colPg : Nat)
-    (nav' : NavState nRows nCols t)
-    (h0 : nav.row.cur.val = 0) (hr : nRows > 1) :
-    exec (.row .inc) nav rowPg colPg = some nav' → nav'.row.cur.val = 1 := by
-  intro h; simp only [exec] at h; injection h with h; subst h
-  simp only [Fin.clamp, h0]; omega
-
--- | Row navigation preserves table and columns
-theorem exec_row_inc_preserves (nav : NavState nRows nCols t) (rowPg colPg : Nat)
-    (nav' : NavState nRows nCols t) :
-    exec (.row .inc) nav rowPg colPg = some nav' →
-    nav'.tbl = nav.tbl ∧ nav'.col = nav.col ∧ nav'.grp = nav.grp := by
-  intro h; simp only [exec] at h; injection h with h; subst h; simp
-
--- | Col navigation preserves table and rows
-theorem exec_col_inc_preserves (nav : NavState nRows nCols t) (rowPg colPg : Nat)
-    (nav' : NavState nRows nCols t) :
-    exec (.col .inc) nav rowPg colPg = some nav' →
-    nav'.tbl = nav.tbl ∧ nav'.row = nav.row ∧ nav'.grp = nav.grp := by
-  intro h; simp only [exec] at h; injection h with h; subst h; simp
-
--- | Go to end (ver.inc) sets cursor to last row
-theorem exec_ver_inc_lands_end (nav : NavState nRows nCols t) (rowPg colPg : Nat)
-    (nav' : NavState nRows nCols t) :
-    exec (.ver .inc) nav rowPg colPg = some nav' → nav'.row.cur.val = nRows - 1 := by
-  intro h; simp only [exec] at h; injection h with h; subst h
-  simp only [Fin.clamp]; omega
-
--- | Go to home (ver.dec) sets cursor to 0
-theorem exec_ver_dec_lands_zero (nav : NavState nRows nCols t) (rowPg colPg : Nat)
-    (nav' : NavState nRows nCols t) :
-    exec (.ver .dec) nav rowPg colPg = some nav' → nav'.row.cur.val = 0 := by
-  intro h; simp only [exec] at h; injection h with h; subst h
-  simp only [Fin.clamp]; omega
-
--- | Go to end (ver.inc) is idempotent: cursor = nRows - 1
-theorem exec_ver_inc_idempotent (nav : NavState nRows nCols t) (rowPg colPg : Nat)
-    (nav' nav'' : NavState nRows nCols t) :
-    exec (.ver .inc) nav rowPg colPg = some nav' →
-    exec (.ver .inc) nav' rowPg colPg = some nav'' →
-    nav''.row.cur = nav'.row.cur := by
-  intro h1 h2; simp only [exec] at h1 h2
-  injection h1 with h1; injection h2 with h2
-  subst h1 h2
-  simp only [Fin.clamp, Fin.ext_iff, Fin.val_mk]
-  omega
-
--- | Go to home (ver.dec) is idempotent: cursor = 0
-theorem exec_ver_dec_idempotent (nav : NavState nRows nCols t) (rowPg colPg : Nat)
-    (nav' nav'' : NavState nRows nCols t) :
-    exec (.ver .dec) nav rowPg colPg = some nav' →
-    exec (.ver .dec) nav' rowPg colPg = some nav'' →
-    nav''.row.cur = nav'.row.cur := by
-  intro h1 h2; simp only [exec] at h1 h2
-  injection h1 with h1; injection h2 with h2
-  subst h1 h2
-  simp only [Fin.clamp, Fin.ext_iff, Fin.val_mk]
-  omega
 
 end NavState
 

@@ -98,7 +98,7 @@ def requery (query : Prql.Query) (total : Nat := 0) : IO (Option AdbcTable) := d
 
 -- | Sanitize path to valid SQL identifier (alphanumeric + underscore)
 private def remoteTblName (path : String) : String :=
-  "tc_" ++ String.mk (path.toList.map fun c => if c.isAlphanum then c else '_')
+  "tc_" ++ String.ofList (path.toList.map fun c => if c.isAlphanum then c else '_')
 
 -- | Create from file path (queries total count).
 --   Remote URLs (hf://) are materialized into a DuckDB temp table first.
@@ -252,26 +252,24 @@ def distinct (t : AdbcTable) (col : Nat) : IO (Array String) := do
     result := result.push (← Adbc.cellStr qr i.toUInt64 0)
   pure result
 
--- | Find row from starting position, forward or backward (with wrap)
+-- | Find row from starting position, forward or backward (with wrap).
+--   Single SQL query with ROW_NUMBER instead of O(n) FFI calls.
 def findRow (t : AdbcTable) (col : Nat) (val : String) (start : Nat) (fwd : Bool) : IO (Option Nat) := do
-  let n := t.nRows
+  let colName := Prql.quote (t.colNames.getD col "")
+  let esc := val.replace "'" "''"
+  let prql := s!"{t.query.render} | derive \{_rn = s\"ROW_NUMBER() OVER () - 1\"} | filter ({colName} == '{esc}') | select \{_rn}"
+  let some sql ← Prql.compile prql | return none
+  let qr ← Adbc.query sql
+  let nr ← Adbc.nrows qr
+  let mut rows : Array Nat := #[]
+  for i in [:nr.toNat] do
+    rows := rows.push (← Adbc.cellInt qr i.toUInt64 0).toNat
+  if rows.isEmpty then return none
+  -- find first row >= start (forward) or last row < start (backward), with wrap
   if fwd then
-    for i in [start:n] do
-      let c ← t.getCol col i (i + 1)
-      if (c.get 0).toRaw == val then return some i
-    for i in [:start] do
-      let c ← t.getCol col i (i + 1)
-      if (c.get 0).toRaw == val then return some i
+    return rows.find? (· >= start) |>.orElse fun _ => if rows.isEmpty then none else some (rows.getD 0 0)
   else
-    for i in [:start] do
-      let idx := start - 1 - i
-      let c ← t.getCol col idx (idx + 1)
-      if (c.get 0).toRaw == val then return some idx
-    for i in [:n - start] do
-      let idx := n - 1 - i
-      let c ← t.getCol col idx (idx + 1)
-      if (c.get 0).toRaw == val then return some idx
-  return none
+    return rows.findRev? (· < start) |>.orElse fun _ => if rows.isEmpty then none else some (rows.back!)
 
 -- | Create AdbcTable from column names + Column arrays via DuckDB temp table
 def fromArrays (names : Array String) (cols : Array Column) : IO (Option AdbcTable) := do
@@ -295,11 +293,13 @@ def fromArrays (names : Array String) (cols : Array Column) : IO (Option AdbcTab
     rows := rows.push s!"({", ".intercalate vals.toList})"
   let valuesSql := ", ".intercalate rows.toList
   let aliasSql := ", ".intercalate colAliases.toList
-  let sql := s!"CREATE OR REPLACE TEMP TABLE tc_freq AS SELECT * FROM (VALUES {valuesSql}) AS t({aliasSql})"
+  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
+  let tblName := s!"tc_arr_{n}"
+  let sql := s!"CREATE OR REPLACE TEMP TABLE {tblName} AS SELECT * FROM (VALUES {valuesSql}) AS t({aliasSql})"
   Log.write "fromArrays" sql
   let _ ← Adbc.query sql
-  let qr ← Adbc.query "SELECT * FROM tc_freq"
-  some <$> ofQueryResult qr { base := "from tc_freq" } nRows
+  let qr ← Adbc.query s!"SELECT * FROM {tblName}"
+  some <$> ofQueryResult qr { base := s!"from {tblName}" } nRows
 
 end AdbcTable
 

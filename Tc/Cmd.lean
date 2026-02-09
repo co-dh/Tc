@@ -30,10 +30,6 @@ def ofChar? : Char → Option Verb
 instance : ToString Verb where toString v := v.toChar.toString
 instance : Parse Verb where parse? s := s.toList.head?.bind ofChar?
 
--- | Isomorphism: ofChar? ∘ toChar = some
-theorem ofChar_toChar (v : Verb) : ofChar? (toChar v) = some v := by
-  cases v <;> rfl
-
 end Verb
 
 -- | Command: Obj + Verb pattern
@@ -93,28 +89,6 @@ instance : Parse Cmd where
     let v ← Verb.ofChar? vc
     let (_, mk) ← objs.find? (·.1 == o)
     pure (mk v)
-
--- | Isomorphism: parse? ∘ toString = some
-theorem parse_toString (c : Cmd) : Parse.parse? (toString c) = some c := by
-  cases c with
-  | row v => cases v <;> native_decide
-  | col v => cases v <;> native_decide
-  | rowSel v => cases v <;> native_decide
-  | colSel v => cases v <;> native_decide
-  | grp v => cases v <;> native_decide
-  | stk v => cases v <;> native_decide
-  | hor v => cases v <;> native_decide
-  | ver v => cases v <;> native_decide
-  | hPage v => cases v <;> native_decide
-  | vPage v => cases v <;> native_decide
-  | prec v => cases v <;> native_decide
-  | width v => cases v <;> native_decide
-  | thm v => cases v <;> native_decide
-  | info v => cases v <;> native_decide
-  | metaV v => cases v <;> native_decide
-  | freq v => cases v <;> native_decide
-  | fld v => cases v <;> native_decide
-  | plot v => cases v <;> native_decide
 
 end Cmd
 

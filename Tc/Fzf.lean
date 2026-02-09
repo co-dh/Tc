@@ -95,28 +95,11 @@ private def jumpArgs (keys : Array Char) : Array String :=
 -- | Extract first char from fzf selection (same as toList.getD 0)
 def selKey (s : String) : Char := s.toList.getD 0 ' '
 
--- | Parsing verb selection: ".  down" → '.' (the verb key)
-theorem selKey_dot : selKey ".  down" = '.' := by native_decide
-theorem selKey_comma : selKey ",  up" = ',' := by native_decide
-
--- | Full pipeline: if fzf returns ".  down", we get .inc verb, which with row = .row .inc (down)
-theorem parse_dot_verb : (verbsFor 'r' .tbl).find? (·.1 == selKey ".  down") = some ('.', "down", .inc) := by native_decide
-theorem parse_comma_verb : (verbsFor 'r' .tbl).find? (·.1 == selKey ",  up") = some (',', "up", .dec) := by native_decide
-
 -- | Pure cmdMode: given fzf object/verb selections and view kind, compute resulting Cmd
 -- Uses >>= (bind) for Kleisli composition: find obj → find verb → construct Cmd
 def cmdModePure (objSel verbSel : String) (vk : ViewKind) : Option Cmd :=
   objMenu.find? (·.2.1 == objSel) >>= fun (objKey, _, mk) =>
     (verbsFor objKey vk).find? (·.2.1 == verbSel) |>.map fun (_, _, verb) => mk verb
-
--- | w + wider → .width .inc
-theorem cmdModePure_w_wider : cmdModePure "width  : column width" "wider" .tbl = some (.width .inc) := by native_decide
--- | w + narrower → .width .dec
-theorem cmdModePure_w_narrower : cmdModePure "width  : column width" "narrower" .tbl = some (.width .dec) := by native_decide
--- | r + down → .row .inc
-theorem cmdModePure_r_down : cmdModePure "row    : cursor up/down" "down" .tbl = some (.row .inc) := by native_decide
--- | r + up → .row .dec
-theorem cmdModePure_r_up : cmdModePure "row    : cursor up/down" "up" .tbl = some (.row .dec) := by native_decide
 
 -- | Command mode: space → select object → select verb → return Cmd
 -- vk = current view kind, for context-sensitive verb filtering

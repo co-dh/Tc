@@ -4,8 +4,6 @@
   Y-axis = current column under cursor (must be numeric).
   Interactive: after display, +/− keys change downsampling interval.
 -/
-import Std.Data.HashMap
-import Std.Data.HashSet
 import Tc.View
 import Tc.Term
 import Tc.Error
@@ -14,24 +12,12 @@ namespace Tc.Plot
 
 variable {T : Type} [TblOps T]
 
--- | Check if a column is numeric
-private def isNumericCol (col : Column) : Bool :=
-  match col with
-  | .ints _   => true
-  | .floats _ => true
-  | .strs _   => false
-
 -- | Max data points for gnuplot (more is slow and unreadable)
 private def maxPoints : Nat := 2000
 
 -- | Check if column type is time-like
 private def isTimeType (typ : String) : Bool :=
   typ == "time" || typ == "timestamp" || typ == "date"
-
-
--- | Check if y-value is zero (filter out no-bid/no-ask conditions)
-private def isZeroY (yv : String) : Bool :=
-  yv == "0" || yv == "0.0" || yv == "0.000000"
 
 -- | Downsampling interval for interactive plot control
 structure Interval where
@@ -75,71 +61,6 @@ private def getIntervals (xType : String) (baseStep : Nat) : Array Interval :=
   else if xType == "timestamp" then tsIntervals
   else if xType == "date" then dateIntervals
   else stepIntervals baseStep
-
--- | Truncate time string to given length
-private def truncTime (len : Nat) (s : String) : String :=
-  if s.length > len then (s.take len).toString else s
-
--- | Export data to tab-separated file for gnuplot (Lean-side fallback)
--- cols order: [xCol, yCol] or [xCol, yCol, catCol]
--- truncLen: SUBSTRING length for time x-axis; step for non-time
-private def exportData (cols : Array Column) (hasCat : Bool) (xIsTime : Bool) (truncLen : Nat)
-    : IO (String × Option (Array String)) := do
-  let xCol := cols.getD 0 default
-  let yCol := cols.getD 1 default
-  let nr := xCol.size
-  let path := "/tmp/tc-plot.dat"
-  if xIsTime then
-    -- time x-axis: keep last value per truncated period
-    let mut last : Std.HashMap String String := {}
-    let mut lastCat : Std.HashMap String String := {}
-    let mut cats : Std.HashSet String := {}
-    let mut order : Array String := #[]
-    for r in [:nr] do
-      let xvRaw := (xCol.get r).toRaw
-      let yv := (yCol.get r).toRaw
-      if xvRaw.isEmpty || yv.isEmpty || isZeroY yv then continue
-      let xv := truncTime truncLen xvRaw
-      if hasCat then
-        let cv := ((cols.getD 2 default).get r).toRaw
-        if cv.isEmpty then continue
-        let key := s!"{xv}\t{cv}"
-        if !last.contains key then order := order.push key
-        cats := cats.insert cv
-        last := last.insert key yv
-        lastCat := lastCat.insert key cv
-      else
-        if !last.contains xv then order := order.push xv
-        last := last.insert xv yv
-    let mut lines : Array String := #[]
-    for key in order do
-      if hasCat then
-        lines := lines.push s!"{key.takeWhile (· != '\t')}\t{last.getD key ""}\t{lastCat.getD key ""}"
-      else
-        lines := lines.push s!"{key}\t{last.getD key ""}"
-    IO.FS.writeFile path ("\n".intercalate lines.toList)
-    let catArr := if cats.isEmpty then none else some cats.toArray
-    pure (path, catArr)
-  else
-    -- non-time: even sampling with given step
-    let step := if truncLen == 0 then 1 else truncLen
-    let mut lines : Array String := #[]
-    let mut cats : Std.HashSet String := {}
-    let idxs := Array.range ((nr + step - 1) / step) |>.map (· * step)
-    for r in idxs do
-      let xv := (xCol.get r).toRaw
-      let yv := (yCol.get r).toRaw
-      if xv.isEmpty || yv.isEmpty || isZeroY yv then continue
-      if hasCat then
-        let cv := ((cols.getD 2 default).get r).toRaw
-        if cv.isEmpty then continue
-        cats := cats.insert cv
-        lines := lines.push s!"{xv}\t{yv}\t{cv}"
-      else
-        lines := lines.push s!"{xv}\t{yv}"
-    IO.FS.writeFile path ("\n".intercalate lines.toList)
-    let catArr := if cats.isEmpty then none else some cats.toArray
-    pure (path, catArr)
 
 -- | Max number of x-axis labels before thinning
 private def maxLabels : Nat := 40
@@ -285,16 +206,6 @@ def run (s : ViewStack T) (bar : Bool) : IO (Option (ViewStack T)) := do
   let catName? := if catIdx.isSome then some catName else none
   -- build interval array
   let intervals := getIntervals xType baseStep
-  -- for Lean-side fallback: preload columns once
-  let colIdxs := match catIdx with
-    | some ci => #[xIdx, yIdx, ci]
-    | none    => #[xIdx, yIdx]
-  -- check y is numeric (for fallback path)
-  let hasFallbackCols := do
-    let cols ← TblOps.getCols n.tbl colIdxs 0 nr
-    if cols.size < 2 then return none
-    if !isNumericCol (cols.getD 1 default) then return none
-    return some cols
   -- shutdown TUI once for the interactive loop
   Term.shutdown
   let mut idx : Nat := 0  -- start at finest interval
@@ -302,27 +213,15 @@ def run (s : ViewStack T) (bar : Bool) : IO (Option (ViewStack T)) := do
   while continue_ do
     let iv := intervals.getD idx default
     Log.write "plot" s!"interval={iv.label} truncLen={iv.truncLen} idx={idx}"
-    -- try DB-side export
-    let dbOk ← do
+    -- DB-side export via PRQL
+    let ok ← do
       if let some cats := ← TblOps.plotExport n.tbl xName yName catName? xIsTime baseStep iv.truncLen then
         let catVals := if cats.isEmpty then none else some cats
         let script := gnuplotScript "/tmp/tc-plot.dat" xName yName catVals bar xIsStr xIsTime iv.timefmt iv.xfmt nr
-        if ← renderGnuplot script then
-          showPng "/tmp/tc-plot.png"
-          pure true
+        if ← renderGnuplot script then showPng "/tmp/tc-plot.png"; pure true
         else pure false
       else pure false
-    -- fallback: Lean-side export
-    if !dbOk then
-      if let some cols := ← hasFallbackCols then
-        let (dataPath, catVals) ← exportData cols catIdx.isSome xIsTime iv.truncLen
-        let script := gnuplotScript dataPath xName yName catVals bar xIsStr xIsTime iv.timefmt iv.xfmt nr
-        if ← renderGnuplot script then
-          showPng "/tmp/tc-plot.png"
-        else
-          IO.println s!"plot error (see /tmp/tc.log)"
-      else
-        IO.println "failed to extract columns or y-axis not numeric"
+    if !ok then IO.println "plot error (see /tmp/tc.log)"
     -- show info line: x=col y=col [1s 1m 1h] +/-:interval q:exit
     let maxIdx := intervals.size - 1
     let bar_ := if bar then "bar" else "line"

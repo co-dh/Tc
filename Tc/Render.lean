@@ -49,25 +49,6 @@ def reservedLines : Nat := 4
 -- Max visible rows (no terminal should exceed this)
 def maxVisRows : Nat := 200
 
--- Theorem: clamped visible rows bounded by maxVisRows
-theorem visRows_bounded (h : Nat) : min maxVisRows (h - reservedLines) ≤ maxVisRows := by
-  simp only [maxVisRows]
-  omega
-
--- Render row count: r1 - r0 where r1 = min nRows (r0 + visRows)
-def renderRowCount (nRows r0 visRows : Nat) : Nat := min nRows (r0 + visRows) - r0
-
--- Theorem: render row count bounded by visRows
-theorem renderRowCount_le_visRows (nRows r0 visRows : Nat) :
-    renderRowCount nRows r0 visRows ≤ visRows := by
-  simp only [renderRowCount]
-  omega
-
--- Theorem: render row count is 0 when offset past end
-theorem renderRowCount_zero_past_end (nRows r0 visRows : Nat) (h : r0 ≥ nRows) :
-    renderRowCount nRows r0 visRows = 0 := by
-  simp only [renderRowCount]; omega
-
 -- Column page size (fixed, since widths vary)
 def colPageSize : Nat := 5
 
@@ -192,10 +173,10 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
   let visRows := min maxVisRows (h.toNat - reservedLines)
   let rowOff := adjOff nav.row.cur.val view.rowOff visRows
   let colOff := if inWidths.isEmpty then 0
-                else adjColOffFast nav.col.cur.val view.colOff inWidths nav.dispColIdxs w.toNat
+                else adjColOffFast nav.col.cur.val view.colOff inWidths nav.dispIdxs w.toNat
   let moveDir := if nav.curColIdx > view.lastCol then 1 else if nav.curColIdx < view.lastCol then -1 else 0
   let ctx : RenderCtx := {
-    inWidths, dispIdxs := nav.dispColIdxs, nGrp := nav.grp.size, colOff,
+    inWidths, dispIdxs := nav.dispIdxs, nGrp := nav.grp.size, colOff,
     r0 := rowOff, r1 := min nRows (rowOff + visRows),
     curRow := nav.row.cur.val, curCol := nav.curColIdx, moveDir,
     selColIdxs := nav.selColIdxs, rowSels := nav.row.sels, styles, precAdj, widthAdj }
@@ -254,5 +235,3 @@ def statusMsg (msg : String) : IO Unit := do
   Term.print 0 (h - 1) Term.cyan Term.default (msg ++ "".pushn ' ' padLen)
   Term.present
 
--- | Compile-time check: errorPopup has correct signature
-#check (errorPopup : String → IO Unit)

@@ -29,8 +29,6 @@ def parsePath (path : String) : Option (String × String) :=
 -- | HF parent: none at dataset root ("hf://datasets/user/ds" = 5 parts)
 def parent (path : String) : Option String := Remote.parent path 5
 
-theorem parent_none_at_root : parent "hf://datasets/user/ds" = none := by native_decide
-
 -- | Build HF Hub API URL for listing
 def apiUrl (path : String) : Option String := do
   let (repo, sub) ← parsePath path

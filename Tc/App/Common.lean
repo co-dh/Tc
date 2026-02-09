@@ -26,7 +26,7 @@ structure AppState where
 
 namespace AppState
 
--- | Commands that reset ViewState
+-- | Commands that reset ViewState to default (clear scroll/cursor) because view content changes substantially
 def resetsVS (cmd : Cmd) : Bool :=
   cmd matches .stk .dec | .colSel .del | .colSel _ | .metaV _ | .freq _ | .fld _
     | .col .ent | .rowSel .inc | .rowSel .dec
