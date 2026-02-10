@@ -103,6 +103,7 @@ namespace ViewStack
 variable {T : Type} [TblOps T]
 
 @[inline] def cur (s : ViewStack T) : View T := s.hd
+@[inline] def tbl (s : ViewStack T) : T := s.hd.nav.tbl
 @[inline] def hasParent (s : ViewStack T) : Bool := !s.tl.isEmpty
 @[inline] def setCur (s : ViewStack T) (v : View T) : ViewStack T := { s with hd := v }
 def push (s : ViewStack T) (v : View T) : ViewStack T := ⟨v, s.hd :: s.tl⟩

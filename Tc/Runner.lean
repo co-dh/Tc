@@ -33,33 +33,33 @@ private def runSearch (s : ViewStack Table) : SearchEffect → IO (ViewStack Tab
 private def runQuery (s : ViewStack Table) : QueryEffect → IO (ViewStack Table)
   | .«meta» => runOpt s (Meta.push s)
   | .freq colNames => do
-    let some (adbc, totalGroups) ← Table.freqTable s.cur.nav.tbl colNames | pure s
+    let some (adbc, totalGroups) ← Table.freqTable s.tbl colNames | pure s
     match View.fromTbl (.adbc adbc) s.cur.path 0 colNames with
     | some v => pure (s.push { v with vkind := .freqV colNames totalGroups, disp := s!"freq {",".intercalate colNames.toList}" })
     | none => pure s
   | .freqFilter cols row => do
     match s.cur.vkind, s.pop with
     | .freqV _ _, some s' => do
-      let expr ← Freq.filterExprIO s.cur.nav.tbl cols row
-      match ← TblOps.filter s'.cur.nav.tbl expr with
+      let expr ← Freq.filterExprIO s.tbl cols row
+      match ← TblOps.filter s'.tbl expr with
       | some tbl' => match View.fromTbl tbl' s'.cur.path 0 s'.cur.nav.grp 0 with
         | some v => pure (s'.push v)
         | none => pure s
       | none => pure s
     | _, _ => pure s
   | .filter expr => do
-    match ← TblOps.filter s.cur.nav.tbl expr with
+    match ← TblOps.filter s.tbl expr with
     | some tbl' => match View.fromTbl tbl' s.cur.path s.cur.nav.col.cur.val s.cur.nav.grp 0 with
       | some v => pure (s.push { v with disp := s!"\\filter" })
       | none => pure s
     | none => pure s
   | .sort colIdx sels grp asc => do
-    let tbl' ← ModifyTable.sort s.cur.nav.tbl colIdx sels grp asc
+    let tbl' ← ModifyTable.sort s.tbl colIdx sels grp asc
     match s.cur.rebuild tbl' (col := colIdx) (row := s.cur.nav.row.cur.val) with
     | some v => pure (s.setCur v)
     | none => pure s
   | .del colIdx sels grp => do
-    let (tbl', grp') ← ModifyTable.del s.cur.nav.tbl colIdx sels grp
+    let (tbl', grp') ← ModifyTable.del s.tbl colIdx sels grp
     match s.cur.rebuild tbl' (grp := grp') with
     | some v => pure (s.setCur v)
     | none => pure s
@@ -93,7 +93,7 @@ def runStackEffect (s : ViewStack Table) (eff : Effect) : IO (ViewStack Table) :
   | .plot e => runPlot s e
   | .«meta» e => runMeta s e
   | .fetchMore => do
-    match ← TblOps.fetchMore s.cur.nav.tbl with
+    match ← TblOps.fetchMore s.tbl with
     | some tbl' =>
       match s.cur.rebuild tbl' (row := s.cur.nav.row.cur.val) with
       | some v => pure (s.setCur v)

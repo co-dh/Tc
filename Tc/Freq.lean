@@ -21,9 +21,9 @@ def filterExprIO (tbl : Table) (cols : Array String) (row : Nat) : IO String := 
 def filter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   let .freqV cols _ := s.cur.vkind | return some s
   if !s.hasParent then return some s
-  let expr ← filterExprIO s.cur.nav.tbl cols s.cur.nav.row.cur.val
+  let expr ← filterExprIO s.tbl cols s.cur.nav.row.cur.val
   let some s' := s.pop | return some s
-  let some tbl' ← TblOps.filter s'.cur.nav.tbl expr | return some s'
+  let some tbl' ← TblOps.filter s'.tbl expr | return some s'
   let some v := View.fromTbl tbl' s'.cur.path 0 s'.cur.nav.grp 0 | return some s'
   return some (s'.push v)
 

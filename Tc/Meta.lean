@@ -11,13 +11,13 @@ namespace Tc.Meta
 -- | Extract meta table name from the current view's AdbcTable query base.
 --   e.g. "from tc_meta_3" → "tc_meta_3"
 private def metaTblName (s : ViewStack Table) : String :=
-  match s.cur.nav.tbl with
+  match s.tbl with
   | .adbc t => ((t.query.base.drop 5).trimAscii).toString  -- drop "from "
   | _ => "tc_meta"
 
 -- | Push column metadata view onto stack
 def push (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
-  let adbc? ← match s.cur.nav.tbl with
+  let adbc? ← match s.tbl with
     | .adbc t => AdbcTable.queryMeta t
     | .kdb t => do
       let (headers, cols) ← KdbTable.queryMeta t
@@ -45,7 +45,7 @@ def setKey (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   match s.pop with
   | some s' =>
     let col' := { s'.cur.nav.col with sels := colNames }
-    let di := dispOrder colNames (TblOps.colNames s'.cur.nav.tbl)
+    let di := dispOrder colNames (TblOps.colNames s'.tbl)
     let nav' := { s'.cur.nav with grp := colNames, col := col', dispIdxs := di }
     return some (s'.setCur { s'.cur with nav := nav' })
   | none => return some s

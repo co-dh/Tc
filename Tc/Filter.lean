@@ -45,7 +45,7 @@ private def withDistinct (s : ViewStack T)
 def rowSearch (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun curCol curName vals => do
   let some result ← Fzf.fzf #[s!"--prompt=/{curName}: "] ("\n".intercalate vals.toList) | return s
   let start := s.cur.nav.row.cur.val + 1
-  let some rowIdx ← TblOps.findRow s.cur.nav.tbl curCol result start true | return s
+  let some rowIdx ← TblOps.findRow s.tbl curCol result start true | return s
   return moveRowTo s rowIdx (some (curCol, result))
 
 -- | search next (n): repeat last search forward (IO)
@@ -66,13 +66,13 @@ def searchPrev (s : ViewStack T) : IO (ViewStack T) := do
 
 -- | row filter (\): filter rows by PRQL expression, push filtered view (IO)
 def rowFilter (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun _curCol curName vals => do
-  let prompt := s!"{curName} == 'x' | > 5 | ~= 'pat' > "
+  let prompt := s!"{curName}: {curName} > 5 | {curName} ~= 'pat' > "
   let some result ← Fzf.fzf #["--print-query", s!"--prompt={prompt}"] ("\n".intercalate vals.toList) | return s
-  let typ := TblOps.colType s.cur.nav.tbl _curCol
+  let typ := TblOps.colType s.tbl _curCol
   let numeric := typ == "int" || typ == "float" || typ == "decimal"
   let expr := Fzf.buildFilterExpr curName vals result numeric
   if expr.isEmpty then return s
-  let some tbl' ← TblOps.filter s.cur.nav.tbl expr | return s
+  let some tbl' ← TblOps.filter s.tbl expr | return s
   let some v' := View.fromTbl tbl' s.cur.path s.cur.nav.col.cur.val s.cur.nav.grp 0 | return s
   return s.push { v' with disp := s!"\\{curName}" }
 

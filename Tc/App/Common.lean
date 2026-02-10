@@ -123,7 +123,7 @@ def runTsv (r : Except String String) (nm : String) (pipe test : Bool)
 
 -- output table as plain text
 def outputTable (toText : Table → IO String) (a : AppState) : IO Unit := do
-  IO.println (← toText a.stk.cur.nav.tbl)
+  IO.println (← toText a.stk.tbl)
 
 -- main entry point: init backend, parse args, run app
 def appMain (toText : Table → IO String) (init : IO Bool) (shutdown : IO Unit) (args : List String) : IO Unit := do
