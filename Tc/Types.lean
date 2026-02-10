@@ -135,6 +135,20 @@ structure RenderCtx where
   precAdj    : Int
   widthAdj   : Int
 
+-- | Build PRQL filter expression from fzf result (default for TblOps.buildFilter)
+-- With --print-query: line 0 = query, lines 1+ = selections
+def buildFilterPrql (col : String) (vals : Array String) (result : String) (numeric : Bool) : String :=
+  let lines := result.splitOn "\n" |>.filter (!·.isEmpty) |>.toArray
+  let input := lines.getD 0 ""
+  let fromHints := (lines.extract 1 lines.size).filter vals.contains
+  let selected := if vals.contains input && !fromHints.contains input
+                  then #[input] ++ fromHints else fromHints
+  let q := fun v => if numeric then v else s!"'{v}'"
+  if selected.size == 1 then s!"{col} == {q (selected.getD 0 "")}"
+  else if selected.size > 1 then "(" ++ " || ".intercalate (selected.map fun v => s!"{col} == {q v}").toList ++ ")"
+  else if !input.isEmpty then input
+  else ""
+
 /-- TblOps: unified read-only table interface.
     Provides row/column access, metadata queries, filtering, and rendering. -/
 class TblOps (α : Type) where
@@ -149,6 +163,12 @@ class TblOps (α : Type) where
   getCols   : α → Array Nat → Nat → Nat → IO (Array Column) := fun _ _ _ _ => pure #[]
   -- column type name (e.g. "time", "int", "float", "str")
   colType   : α → Nat → String := fun _ _ => "?"
+  -- build filter expression from fzf result (default: PRQL syntax)
+  buildFilter : α → String → Array String → String → Bool → String
+    := fun _ => buildFilterPrql
+  -- filter prompt hint (default: PRQL examples)
+  filterPrompt : α → String → String
+    := fun _ col => s!"{col}: {col} > 5 | {col} ~= 'pat' > "
   -- export plot data to tmpdir/plot.dat via DB (returns category list, or none for fallback)
   -- args: tbl xName yName catName? xIsTime step truncLen
   plotExport : α → String → String → Option String → Bool → Nat → Nat → IO (Option (Array String))

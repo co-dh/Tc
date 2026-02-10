@@ -247,8 +247,8 @@ static void format_vec_cell(K v, uint64_t row, char* buf, size_t sz) {
         case KH: if (kH(v)[row] != nh) snprintf(buf, sz, "%d", (int)kH(v)[row]); break;
         case KI: if (kI(v)[row] != ni) snprintf(buf, sz, "%d", kI(v)[row]); break;
         case KJ: if (kJ(v)[row] != nj) snprintf(buf, sz, "%lld", (long long)kJ(v)[row]); break;
-        case KE: snprintf(buf, sz, "%.6g", (double)kE(v)[row]); break;
-        case KF: snprintf(buf, sz, "%.6g", kF(v)[row]); break;
+        case KE: snprintf(buf, sz, "%.17g", (double)kE(v)[row]); break;
+        case KF: snprintf(buf, sz, "%.17g", kF(v)[row]); break;
         case KC: buf[0] = kC(v)[row]; buf[1] = '\0'; break;
         case KS: snprintf(buf, sz, "%s", kS(v)[row] ? kS(v)[row] : ""); break;
         case KP: format_timestamp(kJ(v)[row], buf, sz); break;
@@ -270,8 +270,8 @@ static void format_atom(K a, char* buf, size_t sz) {
         case KH: if (a->h != nh) snprintf(buf, sz, "%d", (int)a->h); break;
         case KI: if (a->i != ni) snprintf(buf, sz, "%d", a->i); break;
         case KJ: if (a->j != nj) snprintf(buf, sz, "%lld", (long long)a->j); break;
-        case KE: snprintf(buf, sz, "%.6g", (double)a->e); break;
-        case KF: snprintf(buf, sz, "%.6g", a->f); break;
+        case KE: snprintf(buf, sz, "%.17g", (double)a->e); break;
+        case KF: snprintf(buf, sz, "%.17g", a->f); break;
         case KC: buf[0] = (char)a->g; buf[1] = '\0'; break;
         case KS: snprintf(buf, sz, "%s", a->s ? a->s : ""); break;
         case KP: format_timestamp(a->j, buf, sz); break;

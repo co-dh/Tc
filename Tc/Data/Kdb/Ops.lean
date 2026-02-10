@@ -7,6 +7,28 @@ import Tc.Render
 
 namespace Tc
 
+-- | Build q filter expression from fzf result
+-- q uses = (not ==), backtick symbols, `in` for multiple values
+private def buildFilterQ (_t : KdbTable) (col : String) (vals : Array String)
+    (result : String) (numeric : Bool) : String :=
+  let lines := result.splitOn "\n" |>.filter (!·.isEmpty) |>.toArray
+  let input := lines.getD 0 ""
+  let fromHints := (lines.extract 1 lines.size).filter vals.contains
+  let selected := if vals.contains input && !fromHints.contains input
+                  then #[input] ++ fromHints else fromHints
+  if selected.size == 1 then
+    let v := selected.getD 0 ""
+    if numeric then s!"{col}={v}" else s!"{col}=`{v}"
+  else if selected.size > 1 then
+    if numeric then
+      let joined := selected.toList |> String.intercalate " "
+      s!"{col} in ({joined})"
+    else
+      let joined := String.join (selected.map fun v => s!"`{v}").toList
+      s!"{col} in {joined}"
+  else if !input.isEmpty then input
+  else ""
+
 -- | TblOps instance for KdbTable
 instance : TblOps KdbTable where
   nRows     := (·.nRows)
@@ -20,6 +42,8 @@ instance : TblOps KdbTable where
     | 'j' | 'i' | 'h' => "int" | 'f' | 'e' => "float"
     | 't' => "time" | 'p' | 'z' => "timestamp" | 'd' => "date"
     | _ => "str"
+  buildFilter := buildFilterQ
+  filterPrompt := fun _ col => s!"{col}: {col}>5 | {col}=`val > "
   render t ctx := do
     let r1' := min ctx.r1 (ctx.r0 + maxVisRows)
     let cols ← (Array.range t.nCols).mapM fun i => t.getCol i ctx.r0 r1'

@@ -31,7 +31,11 @@ lean_lib Tc where
 lean_exe tc where
   root := `Tc.App.Common
 
--- | Test executable (spawns tc subprocess; pass --kdb for kdb tests)
+-- | Test executable (DuckDB backend tests)
 lean_exe test where
   root := `test.Test
+
+-- | Kdb test executable (requires localhost:8888)
+lean_exe testkdb where
+  root := `test.TestKdb
 

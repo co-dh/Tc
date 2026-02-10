@@ -64,13 +64,14 @@ def searchPrev (s : ViewStack T) : IO (ViewStack T) := do
   let some rowIdx ← TblOps.findRow v.nav.tbl col val start false | return s
   return moveRowTo s rowIdx
 
--- | row filter (\): filter rows by PRQL expression, push filtered view (IO)
+-- | row filter (\): filter rows by expression, push filtered view (IO)
+-- Uses TblOps.buildFilter for backend-specific syntax (PRQL vs q)
 def rowFilter (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun _curCol curName vals => do
-  let prompt := s!"{curName}: {curName} > 5 | {curName} ~= 'pat' > "
+  let prompt := TblOps.filterPrompt s.tbl curName
   let some result ← Fzf.fzf #["--print-query", s!"--prompt={prompt}"] ("\n".intercalate vals.toList) | return s
   let typ := TblOps.colType s.tbl _curCol
   let numeric := typ == "int" || typ == "float" || typ == "decimal"
-  let expr := Fzf.buildFilterExpr curName vals result numeric
+  let expr := TblOps.buildFilter s.tbl curName vals result numeric
   if expr.isEmpty then return s
   let some tbl' ← TblOps.filter s.tbl expr | return s
   let some v' := View.fromTbl tbl' s.cur.path s.cur.nav.col.cur.val s.cur.nav.grp 0 | return s

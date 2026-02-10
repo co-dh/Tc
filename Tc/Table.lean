@@ -42,6 +42,8 @@ instance : TblOps Table where
   render t ctx := liftSM (TblOps.render · ctx) t
   getCols t idxs r0 r1 := liftSM (TblOps.getCols · idxs r0 r1) t
   colType   := liftS TblOps.colType
+  buildFilter t c v r n := liftS (TblOps.buildFilter · c v r n) t
+  filterPrompt := liftS TblOps.filterPrompt
   plotExport t x y c b n tl := liftSM (TblOps.plotExport · x y c b n tl) t
   fetchMore := liftW (TblOps.fetchMore ·) (TblOps.fetchMore ·)
   fromFile := fromFile
