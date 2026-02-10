@@ -55,35 +55,21 @@ def fzfIdx (opts : Array String) (items : Array String) : IO (Option Nat) := do
     | some n => return some n
     | none => return none
 
--- | Check if string is numeric (for PRQL quoting)
-def isNumeric (s : String) : Bool :=
-  if s.isEmpty then false
-  else
-    let s' := if s.startsWith "-" then s.drop 1 else s
-    let parts := s'.toString.splitOn "."
-    match parts with
-    | [int] => int.all Char.isDigit && !int.isEmpty
-    | [int, dec] => int.all Char.isDigit && dec.all Char.isDigit && !int.isEmpty
-    | _ => false
-
--- | Quote value for PRQL: numeric unquoted, strings single-quoted
-def quoteVal (v : String) : String :=
-  if isNumeric v then v else s!"'{v}'"
+-- | Quote value for PRQL based on column type
+def quoteVal (v : String) (numeric : Bool) : String :=
+  if numeric then v else s!"'{v}'"
 
 -- | Build filter expression from fzf result
 -- With --print-query: line 0 = query, lines 1+ = selections
-def buildFilterExpr (col : String) (vals : Array String) (result : String) : String :=
+def buildFilterExpr (col : String) (vals : Array String) (result : String) (numeric : Bool) : String :=
   let lines := result.splitOn "\n" |>.filter (!·.isEmpty) |>.toArray
   let input := lines.getD 0 ""
   let fromHints := (lines.extract 1 lines.size).filter vals.contains
   let selected := if vals.contains input && !fromHints.contains input
                   then #[input] ++ fromHints else fromHints
-  if selected.size == 1 then s!"{col} == {quoteVal (selected.getD 0 "")}"
-  else if selected.size > 1 then "(" ++ " || ".intercalate (selected.map fun v => s!"{col} == {quoteVal v}").toList ++ ")"
-  else if !input.isEmpty then
-    -- custom expr: > 5, < 10, == 'x', ~= 'pat'
-    if input.startsWith ">" || input.startsWith "<" || input.startsWith "=" || input.startsWith "~"
-    then s!"{col} {input}" else input
+  if selected.size == 1 then s!"{col} == {quoteVal (selected.getD 0 "") numeric}"
+  else if selected.size > 1 then "(" ++ " || ".intercalate (selected.map fun v => s!"{col} == {quoteVal v numeric}").toList ++ ")"
+  else if !input.isEmpty then input
   else ""
 
 -- | Build fzf args for 1-char selection using jump mode

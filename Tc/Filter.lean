@@ -68,7 +68,9 @@ def searchPrev (s : ViewStack T) : IO (ViewStack T) := do
 def rowFilter (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun _curCol curName vals => do
   let prompt := s!"{curName} == 'x' | > 5 | ~= 'pat' > "
   let some result ← Fzf.fzf #["--print-query", s!"--prompt={prompt}"] ("\n".intercalate vals.toList) | return s
-  let expr := Fzf.buildFilterExpr curName vals result
+  let typ := TblOps.colType s.cur.nav.tbl _curCol
+  let numeric := typ == "int" || typ == "float" || typ == "decimal"
+  let expr := Fzf.buildFilterExpr curName vals result numeric
   if expr.isEmpty then return s
   let some tbl' ← TblOps.filter s.cur.nav.tbl expr | return s
   let some v' := View.fromTbl tbl' s.cur.path s.cur.nav.col.cur.val s.cur.nav.grp 0 | return s
