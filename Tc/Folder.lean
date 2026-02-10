@@ -57,10 +57,7 @@ private def fmtType (s : String) : String :=
 -- | List directory with find command, returns tab-separated output
 def listDir (path : String) (depth : Nat) : IO String := do
   let p := if path.isEmpty then "." else path
-  let out ← IO.Process.output {
-    cmd := "find"
-    args := #["-L", p, "-maxdepth", toString depth, "-printf", "%y\t%s\t%T+\t%p\n"]
-  }
+  let out ← Log.run "find" "find" #["-L", p, "-maxdepth", toString depth, "-printf", "%y\t%s\t%T+\t%p\n"]
   let lines := out.stdout.splitOn "\n" |>.filter (·.length > 0)
   let hdr := "path\tsize\tdate\ttype"
   let parentEntry := "..\t0\t\td"
@@ -277,7 +274,7 @@ def trashFiles (paths : Array String) : IO Bool := do
   let some (cmd, baseArgs) ← trashCmd | return false
   let mut ok := true
   for p in paths do
-    let r ← IO.Process.output { cmd := cmd, args := baseArgs ++ #[p] }
+    let r ← Log.run "trash" cmd (baseArgs ++ #[p])
     if r.exitCode != 0 then ok := false
   pure ok
 

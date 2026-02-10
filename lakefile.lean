@@ -19,7 +19,7 @@ extern_lib kdbshim pkg := mkCLib pkg "kdbshim" "kdb_shim.c"
 
 lean_lib Tc where
   roots := #[`Tc.Cmd, `Tc.Nav, `Tc.Render, `Tc.Key, `Tc.App.Common,
-             `Tc.Term, `Tc.Types, `Tc.Error, `Tc.View,
+             `Tc.Term, `Tc.Types, `Tc.Error, `Tc.TmpDir, `Tc.View,
              `Tc.Meta, `Tc.Freq, `Tc.Fzf, `Tc.Table, `Tc.Search, `Tc.Filter, `Tc.Folder,
              `Tc.Theme, `Tc.Plot, `Tc.UI.Info, `Tc.Runner, `Tc.Remote, `Tc.S3, `Tc.HF,
              `Tc.Data.Text, `Tc.Data.ADBC.FFI, `Tc.Data.ADBC.Prql,

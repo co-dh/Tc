@@ -6,6 +6,7 @@ import Tc.Data.ADBC.Prql
 import Tc.Error
 import Tc.Render
 import Tc.Term
+import Tc.TmpDir
 import Tc.Types
 
 namespace Tc
@@ -136,7 +137,7 @@ def fetchMore (t : AdbcTable) : IO (Option AdbcTable) := do
   let qr ← Adbc.query sql
   some <$> ofQueryResult qr t.query t.totalRows
 
--- | Export plot data to /tmp/tc-plot.dat via DuckDB COPY (downsample in SQL)
+-- | Export plot data to tmpdir/plot.dat via DuckDB COPY (downsample in SQL)
 -- truncLen: SUBSTRING length for time truncation; step: every-Nth-row for non-time
 def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String) (xIsTime : Bool) (step : Nat) (truncLen : Nat)
     : IO (Option (Array String)) := do
@@ -163,7 +164,8 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
         | none    => s!"\"{xName}\", \"{yName}\""
       let yFilt := s!"\"{yName}\" IS NOT NULL AND CAST(\"{yName}\" AS VARCHAR) NOT IN ('0','0.0','0.000000')"
       pure s!"SELECT {cols} FROM (SELECT *, ROW_NUMBER() OVER () AS _rn FROM ({bs}) WHERE {yFilt}) WHERE (_rn - 1) % {step} = 0"
-  let copySql := s!"COPY ({sql'}) TO '/tmp/tc-plot.dat' (FORMAT CSV, DELIMITER '\\t', HEADER false)"
+  let datPath ← Tc.tmpPath "plot.dat"
+  let copySql := s!"COPY ({sql'}) TO '{datPath}' (FORMAT CSV, DELIMITER '\\t', HEADER false)"
   Log.write "plot-sql" copySql
   try
     let _ ← Adbc.query copySql
@@ -187,7 +189,7 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
 def fromTsv (content : String) : IO (Option AdbcTable) := do
   if content.isEmpty then return none
   let n ← memTblCounter.modifyGet fun n => (n, n + 1)
-  let tmpFile := s!"/tmp/tc-tsv-{n}.tsv"
+  let tmpFile ← Tc.tmpPath s!"tsv-{n}.tsv"
   IO.FS.writeFile tmpFile content
   let tblName := s!"tc_tsv_{n}"
   try

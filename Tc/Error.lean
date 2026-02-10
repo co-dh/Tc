@@ -22,6 +22,13 @@ def write (tag msg : String) : IO Unit := do
 -- | Log error message
 def error (msg : String) : IO Unit := write "error" msg
 
+-- | Run command and log on failure; returns output
+def run (tag cmd : String) (args : Array String) : IO IO.Process.Output := do
+  let r ← IO.Process.output { cmd, args }
+  if r.exitCode != 0 then
+    write tag s!"{cmd} {" ".intercalate args.toList} → exit {r.exitCode}: {r.stderr.trimAscii.toString}"
+  pure r
+
 end Log
 
 namespace Error

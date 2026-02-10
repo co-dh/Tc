@@ -149,7 +149,7 @@ class TblOps (α : Type) where
   getCols   : α → Array Nat → Nat → Nat → IO (Array Column) := fun _ _ _ _ => pure #[]
   -- column type name (e.g. "time", "int", "float", "str")
   colType   : α → Nat → String := fun _ _ => "?"
-  -- export plot data to /tmp/tc-plot.dat via DB (returns category list, or none for fallback)
+  -- export plot data to tmpdir/plot.dat via DB (returns category list, or none for fallback)
   -- args: tbl xName yName catName? xIsTime step truncLen
   plotExport : α → String → String → Option String → Bool → Nat → Nat → IO (Option (Array String))
     := fun _ _ _ _ _ _ _ => pure none

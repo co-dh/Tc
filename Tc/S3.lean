@@ -1,8 +1,10 @@
 /-
   S3: helpers for browsing S3 buckets via `aws s3` CLI
 -/
+import Tc.Error
 import Tc.Render
 import Tc.Remote
+import Tc.TmpDir
 
 namespace Tc.S3
 
@@ -27,7 +29,7 @@ def list (path : String) : IO String := do
   statusMsg s!"Loading {path} ..."
   let p := if path.endsWith "/" then path else s!"{path}/"
   let ex ← extra
-  let out ← IO.Process.output { cmd := "aws", args := #["s3", "ls"] ++ ex ++ #[p] }
+  let out ← Log.run "s3" "aws" (#["s3", "ls"] ++ ex ++ #[p])
   let lines := out.stdout.splitOn "\n" |>.filter (·.length > 0)
   let hdr := "path\tsize\tdate\ttype"
   let parentEntry := if parent path |>.isSome then "..\t0\t\td" else ""
@@ -50,11 +52,12 @@ def list (path : String) : IO String := do
 -- | Download S3 file to local temp path, returns local path
 def download (s3Path : String) : IO String := do
   statusMsg s!"Downloading {s3Path} ..."
-  let _ ← IO.Process.output { cmd := "mkdir", args := #["-p", "/tmp/tc-s3"] }
+  let s3Dir ← Tc.tmpPath "s3"
+  let _ ← Log.run "s3" "mkdir" #["-p", s3Dir]
   let name := s3Path.splitOn "/" |>.getLast? |>.getD "file"
-  let local_ := s!"/tmp/tc-s3/{name}"
+  let local_ := s!"{s3Dir}/{name}"
   let ex ← extra
-  let _ ← IO.Process.output { cmd := "aws", args := #["s3", "cp"] ++ ex ++ #[s3Path, local_] }
+  let _ ← Log.run "s3" "aws" (#["s3", "cp"] ++ ex ++ #[s3Path, local_])
   pure local_
 
 end Tc.S3

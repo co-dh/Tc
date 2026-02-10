@@ -1,6 +1,7 @@
 -- App: app state, dispatch, effect runner, main loop, entry point
 import Tc.Filter
 import Tc.Folder
+import Tc.TmpDir
 import Tc.Meta
 import Tc.Freq
 import Tc.Plot
@@ -132,6 +133,7 @@ def appMain (toText : Table → IO String) (init : IO Bool) (shutdown : IO Unit)
   S3.setNoSign noSign
   let pipeMode ← if testMode then pure false else (! ·) <$> Term.isattyStdin
   let theme ← Theme.State.init
+  Log.write "init" s!"tmpdir={← Tc.tmpDir.get}"
   let ok ← try init catch e => IO.eprintln s!"Backend init error: {e}"; return
   if !ok then IO.eprintln "Backend init failed"; return
   if pipeMode && path?.isNone then
@@ -160,6 +162,7 @@ def appMain (toText : Table → IO String) (init : IO Bool) (shutdown : IO Unit)
       | none => pure ()
   finally
     shutdown
+    Tc.cleanupTmp
 
 def main (args : List String) : IO Unit := do
   try appMain Table.toText Backend.init Backend.shutdown args

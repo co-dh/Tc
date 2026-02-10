@@ -7,6 +7,7 @@
 import Tc.View
 import Tc.Term
 import Tc.Error
+import Tc.TmpDir
 
 namespace Tc.Plot
 
@@ -75,10 +76,9 @@ private def thinXtic (nPoints : Nat) : String :=
 -- | Generate gnuplot script (ggplot-minimal style)
 -- timefmt/xfmt: gnuplot time format strings (from Interval)
 -- nPoints: data point count (for thinning string x-axis labels)
-private def gnuplotScript (dataPath : String) (xName yName : String)
+private def gnuplotScript (dataPath pngPath : String) (xName yName : String)
     (catVals : Option (Array String)) (bar : Bool) (xIsStr xIsTime : Bool)
     (timefmt xfmt : String) (nPoints : Nat) : String :=
-  let pngPath := "/tmp/tc-plot.png"
   -- terminal + data
   let header := "set terminal pngcairo size 1200,700 enhanced font 'Sans,11'\n" ++
     s!"set output '{pngPath}'\nset datafile separator '\\t'\n"
@@ -140,11 +140,11 @@ private def showPng (png : String) : IO Unit := do
 -- | Read one key from /dev/tty
 private def readKey : IO Char := do
   -- set raw mode so we get single keypress without Enter
-  let _ ← IO.Process.output { cmd := "stty", args := #["-F", "/dev/tty", "raw", "-echo"] }
+  let _ ← Log.run "stty" "stty" #["-F", "/dev/tty", "raw", "-echo"]
   let tty ← IO.FS.Handle.mk "/dev/tty" .read
   let buf ← tty.read 1
   -- restore cooked mode
-  let _ ← IO.Process.output { cmd := "stty", args := #["-F", "/dev/tty", "sane"] }
+  let _ ← Log.run "stty" "stty" #["-F", "/dev/tty", "sane"]
   pure (if buf.size > 0 then Char.ofNat buf[0]!.toNat else 'q')
 
 -- | Log error and return current stack unchanged
@@ -157,8 +157,9 @@ private def isNumericType (typ : String) : Bool :=
 
 -- | Render gnuplot script and run it, return false on error
 private def renderGnuplot (script : String) : IO Bool := do
-  IO.FS.writeFile "/tmp/tc-plot.gp" script
-  let gp ← IO.Process.output { cmd := "gnuplot", args := #["/tmp/tc-plot.gp"] }
+  let gpPath ← Tc.tmpPath "plot.gp"
+  IO.FS.writeFile gpPath script
+  let gp ← IO.Process.output { cmd := "gnuplot", args := #[gpPath] }
   if gp.exitCode != 0 then
     Log.write "plot" s!"gnuplot failed: {gp.stderr.trimAscii.toString}"
     return false
@@ -217,8 +218,10 @@ def run (s : ViewStack T) (bar : Bool) : IO (Option (ViewStack T)) := do
     let ok ← do
       if let some cats := ← TblOps.plotExport n.tbl xName yName catName? xIsTime baseStep iv.truncLen then
         let catVals := if cats.isEmpty then none else some cats
-        let script := gnuplotScript "/tmp/tc-plot.dat" xName yName catVals bar xIsStr xIsTime iv.timefmt iv.xfmt nr
-        if ← renderGnuplot script then showPng "/tmp/tc-plot.png"; pure true
+        let datPath ← Tc.tmpPath "plot.dat"
+        let pngPath ← Tc.tmpPath "plot.png"
+        let script := gnuplotScript datPath pngPath xName yName catVals bar xIsStr xIsTime iv.timefmt iv.xfmt nr
+        if ← renderGnuplot script then showPng pngPath; pure true
         else pure false
       else pure false
     if !ok then IO.println "plot error (see /tmp/tc.log)"

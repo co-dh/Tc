@@ -5,6 +5,7 @@
 import Tc.Render
 import Tc.Remote
 import Tc.Error
+import Tc.TmpDir
 
 namespace Tc.HF
 
@@ -48,7 +49,7 @@ def list (path : String) : IO String := do
     Log.write "hf" s!"API request failed for: {url}"
     return ""
   -- write JSON to temp file, then run jq on it (avoids shell quoting issues)
-  let tmp := "/tmp/tc-hf-api.json"
+  let tmp ← Tc.tmpPath "hf-api.json"
   IO.FS.writeFile tmp curlOut.stdout
   let jqFilter := ".[] | [.path, (.size|tostring), \"-\", ({\"directory\":\"d\",\"file\":\" \"}[.type] // .type)] | @tsv"
   let out ← IO.Process.output { cmd := "jq", args := #["-r", jqFilter, tmp] }
@@ -82,7 +83,7 @@ def download (hfPath : String) : IO String := do
   if sub.isEmpty then return hfPath
   let url := s!"https://huggingface.co/datasets/{repo}/resolve/main/{sub}"
   let base := sub.splitOn "/" |>.getLast? |>.getD "file"
-  let tmp := s!"/tmp/tc-hf-{base}"
+  let tmp ← Tc.tmpPath s!"hf-{base}"
   statusMsg s!"Downloading {hfPath} ..."
   let r ← IO.Process.output { cmd := "curl", args := #["-sfL", "-o", tmp, url] }
   if r.exitCode != 0 then
