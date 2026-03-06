@@ -29,7 +29,7 @@ namespace AppState
 
 -- | Commands that reset ViewState to default (clear scroll/cursor) because view content changes substantially
 def resetsVS (cmd : Cmd) : Bool :=
-  cmd matches .stk .dec | .colSel .del | .colSel _ | .metaV _ | .freq _ | .fld _
+  cmd matches .stk .dec | .colSel .inc | .colSel .dec | .metaV _ | .freq _ | .fld _
     | .col .ent | .rowSel .inc | .rowSel .dec
 
 -- | Update stk, reset vs if needed
@@ -53,7 +53,6 @@ def update (a : AppState) (cmd : Cmd) : Option (AppState × Effect) :=
   | .plot _   => liftStk a cmd (Plot.update a.stk cmd)
   | .col .ent | .rowSel _ => liftStk a cmd (Filter.update a.stk cmd) <|> viewUp
   | .grp .inc | .grp .dec => liftStk a cmd (Filter.update a.stk cmd)
-  | .colSel .del => liftStk a cmd (Folder.update a.stk cmd) <|> viewUp
   | _ => viewUp
 
 instance : Update (AppState) where update := update

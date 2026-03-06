@@ -501,13 +501,25 @@ def test_key_reorder : IO Unit := do
   log "key_reorder"
   assert ((header (← run "l!" "data/basic.csv")).take 5 |>.any (· == 'b')) "Key col moves to front"
 
--- === Delete tests (CSV) ===
+-- === Hide tests (CSV) ===
 
-def test_del_col : IO Unit := do
-  log "del_col"
-  let hdr := header (← run "ld" "data/basic.csv")
-  assert (contains hdr "a") "Has column a"
-  assert (!contains hdr "b") "Column b deleted"
+def test_hide_col : IO Unit := do
+  log "hide_col"
+  -- H hides current column (a). Status should show c0/ (cursor still on col 0)
+  let out ← run "H" "data/basic.csv"
+  let (_, status) := footer out
+  assert (contains status "c0/") "Cursor still on hidden col"
+  -- Hidden col a should NOT show full name in header (width=1, truncated)
+  let hdr := header out
+  let normalHdr := header (← run "" "data/basic.csv")
+  assert (hdr != normalHdr) "Header changes when column hidden"
+
+def test_hide_unhide : IO Unit := do
+  log "hide_unhide"
+  -- HH toggles hide off, header should match normal
+  let hdr := header (← run "HH" "data/basic.csv")
+  let normalHdr := header (← run "" "data/basic.csv")
+  assert (hdr == normalHdr) "Unhidden header matches normal"
 
 -- === Sort tests (CSV) ===
 
@@ -621,9 +633,6 @@ def test_meta_1_enter : IO Unit := do
   let hdr := header (← run "M1<ret>" "data/single_val.csv")
   assert (contains hdr "║" || contains hdr "|") "M1<ret> sets key cols"
 
-def test_meta_0_del : IO Unit := do
-  log "meta_0_enter_delete"
-  assert (contains (footer (← run "M0<ret>d" "data/null_col.csv")).2 "c0/1") "M0<ret>d deletes null column"
 
 -- === Stdin parsing tests ===
 
@@ -729,11 +738,6 @@ def test_folder_prefix : IO Unit := do
   let r2 := s2.splitOn "r0/" |>.getD 1 "" |>.takeWhile (·.isDigit)
   assert (r2.toNat?.getD 0 >= r1.toNat?.getD 0) ", prefix works in folder"
 
-def test_folder_del : IO Unit := do
-  log "folder_del"
-  let (_, s1) := footer (← run "")
-  let (_, s2) := footer (← run "d")
-  assert (s1 == s2) "d in folder view (test mode) keeps view unchanged"
 
 -- === Navigation tests (parquet) ===
 
@@ -759,20 +763,6 @@ def test_last_col_visible : IO Unit := do
   let nonWs := first.toList.filter (!·.isWhitespace) |>.length
   assert (nonWs > 0) "Last col shows data"
 
--- === Delete tests (parquet) ===
-
-def test_delete_twice : IO Unit := do
-  log "del_twice"
-  let hdr := header (← run "dd" "data/sample.parquet")
-  assert (!contains hdr "id") "id deleted"
-  assert (!contains hdr "age") "age deleted"
-  assert (contains hdr "year") "year remains"
-
-def test_delete_then_key_then_freq : IO Unit := do
-  log "del_key_freq"
-  let (tab, status) := footer (← run "dl!F" "data/sample.parquet")
-  assert (contains tab "freq") "D+key+F shows freq"
-  assert (!contains status "Error") "No error"
 
 -- === Sort tests (parquet) ===
 
@@ -892,7 +882,8 @@ def tests : Array (String × IO Unit) := #[
   ("nav_down", test_nav_down), ("nav_right", test_nav_right),
   ("nav_up", test_nav_up), ("nav_left", test_nav_left),
   ("key_toggle", test_key_toggle), ("key_remove", test_key_remove),
-  ("key_reorder", test_key_reorder), ("del_col", test_del_col),
+  ("key_reorder", test_key_reorder), ("hide_col", test_hide_col),
+  ("hide_unhide", test_hide_unhide),
   ("sort_asc", test_sort_asc), ("sort_desc", test_sort_desc),
   ("meta_shows", test_meta_shows), ("meta_col_info", test_meta_col_info),
   ("meta_no_garbage", test_meta_no_garbage),
@@ -905,7 +896,7 @@ def tests : Array (String × IO Unit) := #[
   ("prec_inc", test_prec_inc), ("prec_dec", test_prec_dec),
   ("meta_0", test_meta_0), ("meta_1", test_meta_1),
   ("meta_0_enter", test_meta_0_enter), ("meta_1_enter", test_meta_1_enter),
-  ("meta_0_del", test_meta_0_del), ("freq_enter", test_freq_enter),
+  ("freq_enter", test_freq_enter),
   ("spaced_header", test_spaced_header), ("key_cursor", test_key_cursor),
   ("no_stderr", test_no_stderr),
   ("search_jump", test_search_jump), ("search_next", test_search_next),
@@ -915,13 +906,11 @@ def tests : Array (String × IO Unit) := #[
   ("folder_no_args", test_folder_no_args), ("folder_D", test_folder_D),
   ("folder_tab", test_folder_tab), ("folder_enter", test_folder_enter),
   ("folder_relative", test_folder_relative), ("folder_pop", test_folder_pop),
-  ("folder_prefix", test_folder_prefix), ("folder_del", test_folder_del),
+  ("folder_prefix", test_folder_prefix),
   -- Parquet tests
   ("page_down", test_page_down), ("page_up", test_page_up),
   ("page_down_scrolls", test_page_down_scrolls),
   ("last_col_visible", test_last_col_visible),
-  ("delete_twice", test_delete_twice),
-  ("delete_then_key_then_freq", test_delete_then_key_then_freq),
   ("parquet_sort_asc", test_parquet_sort_asc),
   ("parquet_sort_desc", test_parquet_sort_desc),
   ("sort_excludes_key", test_sort_excludes_key),

@@ -38,7 +38,7 @@ namespace KeyMap
   -- Regular chars → Cmd (selection, group, colSel ops, stack, info, folder)
   private def char : Array (Char × Cmd) := #[
     ('t', .colSel .ent), ('T', .rowSel .ent),
-    ('!', .grp .ent), ('d', .colSel .del),
+    ('!', .grp .ent), ('H', .colSel .dup),  -- H=hide/unhide column
     ('[', .colSel .inc), (']', .colSel .dec),
     ('M', .metaV .dup), ('F', .freq .dup),   -- M=meta, F=freq view (dup=constructor)
     ('D', .fld .dup),                        -- D=folder view (dup=constructor)
@@ -80,7 +80,7 @@ def objMenu : Array (Char × String × (Verb → Cmd)) := #[
   ('H', "hor    : first/last column",    .hor),
   -- selection
   ('R', "rowSel : filter/search/toggle", .rowSel),
-  ('C', "colSel : sort/toggle/delete",   .colSel),
+  ('C', "colSel : sort/toggle/hide",     .colSel),
   ('g', "grp    : group prev/next",      .grp),
   -- options
   ('s', "stk    : view stack pop/swap",  .stk),
@@ -107,7 +107,7 @@ def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
   | 'H' => #[(',', "first",  .dec), ('.', "last",   .inc)]
   -- selection
   | 'R' => #[(',', "filter", .dec), ('.', "search", .inc), ('~', "toggle", .ent)]
-  | 'C' => #[(',', "sort desc", .dec), ('.', "sort asc", .inc), ('~', "toggle", .ent), ('d', "delete", .del)]
+  | 'C' => #[(',', "sort desc", .dec), ('.', "sort asc", .inc), ('~', "toggle", .ent), ('h', "hide", .dup)]
   | 'g' => #[(',', "prev match", .dec), ('.', "next match", .inc), ('~', "toggle group", .ent)]
   -- options
   | 's' => #[(',', "pop", .dec), ('~', "swap", .ent), ('c', "dup", .dup)]
@@ -138,7 +138,7 @@ def evToCmd (ev : Term.Event) (vk : ViewKind) : Option Cmd :=
   if ev.key == Term.keyEnter then enterCmd vk else  -- context-sensitive Enter
   let c := evToChar ev
   let shift := ev.mod &&& Term.modShift != 0
-  navCmd c shift <|> lookup KeyMap.char c <|> lookup KeyMap.special ev.key <|> lookup KeyMap.ctrl ev.key
+  lookup KeyMap.char c <|> navCmd c shift <|> lookup KeyMap.special ev.key <|> lookup KeyMap.ctrl ev.key
 
 -- | Parse key notation: <ret> → \r, <C-d> → Ctrl-D, etc.
 def parseKeys (s : String) : String :=

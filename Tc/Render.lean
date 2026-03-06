@@ -161,7 +161,8 @@ def renderCols (cols : Array Column) (names : Array String) (fmts : Array Char)
   Term.renderTable cols names fmts ctx.inWidths ctx.dispIdxs
     totalRows.toUInt64 ctx.nGrp.toUInt64 ctx.colOff.toUInt64
     0 nVisible.toUInt64 adjCur.toUInt64 ctx.curCol.toUInt64
-    ctx.moveDir.toInt64 ctx.selColIdxs adjSel ctx.styles ctx.precAdj.toInt64 ctx.widthAdj.toInt64
+    ctx.moveDir.toInt64 ctx.selColIdxs adjSel ctx.hiddenIdxs
+    ctx.styles ctx.precAdj.toInt64 ctx.widthAdj.toInt64
 
 -- | Render table to terminal, returns (ViewState, widths)
 -- Calls TblOps.render with NavState fields unpacked
@@ -179,7 +180,8 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
     inWidths, dispIdxs := nav.dispIdxs, nGrp := nav.grp.size, colOff,
     r0 := rowOff, r1 := min nRows (rowOff + visRows),
     curRow := nav.row.cur.val, curCol := nav.curColIdx, moveDir,
-    selColIdxs := nav.selColIdxs, rowSels := nav.row.sels, styles, precAdj, widthAdj }
+    selColIdxs := nav.selColIdxs, rowSels := nav.row.sels,
+    hiddenIdxs := nav.hiddenIdxs, styles, precAdj, widthAdj }
   let outWidths ← TblOps.render nav.tbl ctx
   let widths := outWidths.map fun x => min maxColWidth (storedWidth x widthAdj)
   -- status line: colName left, stats right

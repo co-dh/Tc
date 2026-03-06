@@ -57,7 +57,8 @@ private def verbDelta (verb : Verb) : Int := if verb == .inc then 1 else -1
 def rebuild (old : View T) (tbl : T) (col : Nat := old.nav.col.cur.val)
     (grp : Array String := old.nav.grp) (row : Nat := 0) : Option (View T) :=
   (View.fromTbl tbl old.path col grp row).map fun v =>
-    { v with precAdj := old.precAdj, widthAdj := old.widthAdj, search := old.search }
+    let nav' := { v.nav with hidden := old.nav.hidden }
+    { v with precAdj := old.precAdj, widthAdj := old.widthAdj, search := old.search, nav := nav' }
 
 -- | Pure update: returns (new view, effect). IO ops return Effect to defer.
 def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
@@ -67,10 +68,6 @@ def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
   -- pure: precision/width adjustment
   | .prec verb  => some ({ v with precAdj := v.precAdj + verbDelta verb }, .none)
   | .width verb => some ({ v with widthAdj := v.widthAdj + verbDelta verb }, .none)
-  -- effect: column delete (runner will execute and rebuild view)
-  | .colSel .del =>
-    let sels := n.col.sels.filterMap names.idxOf?
-    some (v, .query (.del curCol sels n.grp))
   -- effect: sort (runner will execute and rebuild view)
   | .colSel .inc =>
     let selIdxs := n.col.sels.filterMap names.idxOf?

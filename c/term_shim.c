@@ -338,6 +338,7 @@ lean_obj_res lean_render_table(
     int64_t moveDir,          // -1 = left, 0 = none, 1 = right
     b_lean_obj_arg selCols,
     b_lean_obj_arg selRows,
+    b_lean_obj_arg hiddenCols,  // Array Nat - hidden column indices (width=1)
     b_lean_obj_arg styles,
     int64_t precAdj,          // precision adjustment for floats
     int64_t widthAdj,         // column width offset
@@ -364,20 +365,27 @@ lean_obj_res lean_render_table(
     build_sel_bits(selCols, lean_array_size(selCols), colBits);
     build_sel_bits(selRows, lean_array_size(selRows), rowBits);
 
+    // build hidden column bitset
+    uint64_t hidBits[4] = {0};
+    build_sel_bits(hiddenCols, lean_array_size(hiddenCols), hidBits);
+
     // compute or use widths for ALL columns (+2 for leading space + type char)
     // use max(data_width, MIN_HDR_WIDTH) + 2 for minimum header visibility
     // apply widthAdj offset (clamped to min 3)
+    // hidden columns get width 1 (just a separator marker)
     // NOTE: only scan visible rows [r0,r1) for width - scanning all rows kills perf
     int* allWidths = malloc(nCols * sizeof(int));
-    int needCompute = lean_array_size(inWidths) == 0;
+    size_t nInWidths = lean_array_size(inWidths);
     for (size_t c = 0; c < nCols; c++) {
+        if (IS_SEL(hidBits, c)) { allWidths[c] = 1; continue; }
         int w;
-        if (needCompute) {
+        int cached = (c < nInWidths) ? lean_unbox(lean_array_get_core(inWidths, c)) : 0;
+        if (cached == 0) {  // no cache or was hidden → recompute
             lean_obj_arg col = lean_array_get_core(allCols, c);
             int dw = compute_data_width(col, r0, r1, (int)precAdj);  // visible rows only
             w = (dw > MIN_HDR_WIDTH ? dw : MIN_HDR_WIDTH) + 2;
         } else {
-            w = lean_unbox(lean_array_get_core(inWidths, c));
+            w = cached;
         }
         w += (int)widthAdj;
         if (w < 3) w = 3;  // minimum width
@@ -522,10 +530,11 @@ lean_obj_res lean_render_table(
         break;
     }
 
-    // build return Array Nat for widths
+    // build return Array Nat for widths (hidden cols return 0 so they recompute when unhidden)
     lean_object* outWidths = lean_alloc_array(nCols, nCols);
     for (size_t c = 0; c < nCols; c++) {
-        lean_array_set_core(outWidths, c, lean_box(allWidths[c]));
+        int w = IS_SEL(hidBits, c) ? 0 : allWidths[c];
+        lean_array_set_core(outWidths, c, lean_box(w));
     }
 
     free(dispIdxs);

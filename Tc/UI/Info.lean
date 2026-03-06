@@ -39,7 +39,7 @@ def commonHints : Array (String × String) := #[
   ("^D/^U", "page"), ("[/]", "sort"),
   ("/", "search"), ("n/N", "next/prev"),
   ("\\", "filter"), ("!", "key col"),
-  ("t/T", "sel"), ("d", "delete"),
+  ("t/T", "sel"), ("H", "hide"),
   ("s", "col jump"), (".", "line plot"),
   ("P,", "bar plot"), ("S", "swap"),
   ("I", "info"), ("q", "pop"), ("Q", "quit")

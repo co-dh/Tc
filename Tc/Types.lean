@@ -131,6 +131,7 @@ structure RenderCtx where
   moveDir    : Int
   selColIdxs : Array Nat
   rowSels    : Array Nat
+  hiddenIdxs : Array Nat
   styles     : Array UInt32
   precAdj    : Int
   widthAdj   : Int

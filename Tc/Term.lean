@@ -119,7 +119,7 @@ opaque printPadC : UInt32 → UInt32 → UInt32 → UInt32 → UInt32 → @& Str
 @[extern "lean_render_table"]
 opaque renderTable : @& Array Column → @& Array String → @& Array Char → @& Array Nat
                    → @& Array Nat → UInt64 → UInt64 → UInt64 → UInt64 → UInt64 → UInt64 → UInt64
-                   → Int64 → @& Array Nat → @& Array Nat → @& Array UInt32
+                   → Int64 → @& Array Nat → @& Array Nat → @& Array Nat → @& Array UInt32
                    → Int64 → Int64 → IO (Array Nat)
 
 -- | Print string at position (for backwards compat)

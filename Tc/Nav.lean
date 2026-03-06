@@ -88,6 +88,7 @@ structure NavState (nRows nCols : Nat) (t : Type) [TblOps t] where
   row      : RowNav nRows
   col      : ColNav nCols
   grp      : Array String := #[]                            -- grouped column names (stable)
+  hidden   : Array String := #[]                            -- hidden column names (width=1)
   dispIdxs : Array Nat := dispOrder grp (TblOps.colNames tbl)  -- cached display order
 
 namespace NavState
@@ -106,10 +107,13 @@ def curColName (nav : NavState nRows nCols t) : String := nav.colNames.getD nav.
 -- | Selected column indices
 def selColIdxs (nav : NavState nRows nCols t) : Array Nat := nav.col.sels.filterMap nav.colNames.idxOf?
 
+-- | Hidden column indices (for C render)
+def hiddenIdxs (nav : NavState nRows nCols t) : Array Nat := nav.hidden.filterMap nav.colNames.idxOf?
+
 -- Constructor for external use
 def new (tbl : t) (hRows : TblOps.nRows tbl = nRows) (hCols : (TblOps.colNames tbl).size = nCols)
     (hr : nRows > 0) (hc : nCols > 0) : NavState nRows nCols t :=
-  ⟨tbl, hRows, hCols, NavAxis.default hr, NavAxis.default hc, #[], dispOrder #[] (TblOps.colNames tbl)⟩
+  ⟨tbl, hRows, hCols, NavAxis.default hr, NavAxis.default hc, #[], #[], dispOrder #[] (TblOps.colNames tbl)⟩
 
 -- Constructor with initial row/col cursor and group (clamped to valid range)
 def newAt (tbl : t) (hRows : TblOps.nRows tbl = nRows) (hCols : (TblOps.colNames tbl).size = nCols)
@@ -119,7 +123,7 @@ def newAt (tbl : t) (hRows : TblOps.nRows tbl = nRows) (hCols : (TblOps.colNames
   let r := min row (nRows - 1)
   have hltc : c < nCols := Nat.lt_of_le_of_lt (Nat.min_le_right ..) (Nat.sub_lt hc Nat.one_pos)
   have hltr : r < nRows := Nat.lt_of_le_of_lt (Nat.min_le_right ..) (Nat.sub_lt hr Nat.one_pos)
-  ⟨tbl, hRows, hCols, ⟨⟨r, hltr⟩, #[]⟩, ⟨⟨c, hltc⟩, #[]⟩, grp, dispOrder grp (TblOps.colNames tbl)⟩
+  ⟨tbl, hRows, hCols, ⟨⟨r, hltr⟩, #[]⟩, ⟨⟨c, hltc⟩, #[]⟩, grp, #[], dispOrder grp (TblOps.colNames tbl)⟩
 
 -- Execute Cmd, returns Option NavState (always some for nav commands)
 def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option (NavState nRows nCols t) :=
@@ -137,6 +141,8 @@ def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option
   | .grp .ent    =>
     let newGrp := nav.grp.toggle nav.curColName
     some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames }
+  | .colSel .dup =>
+    some { nav with hidden := nav.hidden.toggle nav.curColName }
   | _ => none  -- unhandled: .col .del, .colSel .sort*, .prec, .width, etc.
 
 -- | Pure update: wrap exec to return Effect
