@@ -666,6 +666,12 @@ def test_search_prev : IO Unit := do
   log "search_prev"
   assert (contains (footer (← run "l/N" "data/basic.csv")).2 "r0/") "N finds prev x (wraps to row 0)"
 
+def test_search_after_sort : IO Unit := do
+  log "search_after_sort"
+  -- sort desc on a (]) then move to col b (l) then search (/)
+  -- sorted: 5,x 4,z 3,x 2,y 1,x → cursor at r0, search starts from r1, finds x at r2
+  assert (contains (footer (← run "]l/" "data/basic.csv")).2 "r2/") "/ search after sort finds row 2"
+
 def test_col_search : IO Unit := do
   log "col_search"
   assert (contains (footer (← run "s" "data/basic.csv")).2 "c0/") "s col search jumps to column"
@@ -880,49 +886,74 @@ def test_enter_no_quit_parquet : IO Unit := do
 
 -- === Run all tests ===
 
-def main (_args : List String) : IO Unit := do
+-- | All tests as (name, action) pairs
+def tests : Array (String × IO Unit) := #[
+  -- CSV tests
+  ("nav_down", test_nav_down), ("nav_right", test_nav_right),
+  ("nav_up", test_nav_up), ("nav_left", test_nav_left),
+  ("key_toggle", test_key_toggle), ("key_remove", test_key_remove),
+  ("key_reorder", test_key_reorder), ("del_col", test_del_col),
+  ("sort_asc", test_sort_asc), ("sort_desc", test_sort_desc),
+  ("meta_shows", test_meta_shows), ("meta_col_info", test_meta_col_info),
+  ("meta_no_garbage", test_meta_no_garbage),
+  ("freq_shows", test_freq_shows), ("freq_after_meta", test_freq_after_meta),
+  ("freq_by_key", test_freq_by_key), ("freq_multi_key", test_freq_multi_key),
+  ("freq_keeps_grp", test_freq_keeps_grp),
+  ("row_select", test_row_select), ("multi_select", test_multi_select),
+  ("stack_swap", test_stack_swap), ("meta_quit", test_meta_quit),
+  ("freq_quit", test_freq_quit), ("info", test_info),
+  ("prec_inc", test_prec_inc), ("prec_dec", test_prec_dec),
+  ("meta_0", test_meta_0), ("meta_1", test_meta_1),
+  ("meta_0_enter", test_meta_0_enter), ("meta_1_enter", test_meta_1_enter),
+  ("meta_0_del", test_meta_0_del), ("freq_enter", test_freq_enter),
+  ("spaced_header", test_spaced_header), ("key_cursor", test_key_cursor),
+  ("no_stderr", test_no_stderr),
+  ("search_jump", test_search_jump), ("search_next", test_search_next),
+  ("search_prev", test_search_prev), ("search_after_sort", test_search_after_sort),
+  ("col_search", test_col_search),
+  ("q_quit", test_q_quit),
+  ("folder_no_args", test_folder_no_args), ("folder_D", test_folder_D),
+  ("folder_tab", test_folder_tab), ("folder_enter", test_folder_enter),
+  ("folder_relative", test_folder_relative), ("folder_pop", test_folder_pop),
+  ("folder_prefix", test_folder_prefix), ("folder_del", test_folder_del),
+  -- Parquet tests
+  ("page_down", test_page_down), ("page_up", test_page_up),
+  ("page_down_scrolls", test_page_down_scrolls),
+  ("last_col_visible", test_last_col_visible),
+  ("delete_twice", test_delete_twice),
+  ("delete_then_key_then_freq", test_delete_then_key_then_freq),
+  ("parquet_sort_asc", test_parquet_sort_asc),
+  ("parquet_sort_desc", test_parquet_sort_desc),
+  ("sort_excludes_key", test_sort_excludes_key),
+  ("sort_selected_not_key", test_sort_selected_not_key),
+  ("parquet_meta", test_parquet_meta),
+  ("freq_parquet", test_freq_parquet),
+  ("freq_enter_parquet", test_freq_enter_parquet),
+  ("freq_parquet_key_values", test_freq_parquet_key_values),
+  ("freq_total_count", test_freq_total_count),
+  ("freq_sort_preserves_total", test_freq_sort_preserves_total),
+  ("freq_sort_asc_parquet", test_freq_sort_asc_parquet),
+  ("parquet_meta_0_null_cols", test_parquet_meta_0_null_cols),
+  ("parquet_meta_0_enter_groups", test_parquet_meta_0_enter_groups),
+  ("filter_parquet_full_db", test_filter_parquet_full_db),
+  ("scroll_fetches_more", test_scroll_fetches_more),
+  ("numeric_right_align", test_numeric_right_align),
+  ("enter_no_quit_parquet", test_enter_no_quit_parquet)
+]
+
+def main (args : List String) : IO Unit := do
   IO.FS.writeFile "test.log" ""
-  IO.println "Running Tc tests...\n"
   let ok ← Tc.AdbcTable.init
   if !ok then throw (IO.userError "Backend init failed")
-
-  IO.println "--- CSV tests ---"
-  test_nav_down; test_nav_right; test_nav_up; test_nav_left
-  test_key_toggle; test_key_remove; test_key_reorder
-  test_del_col
-  test_sort_asc; test_sort_desc
-  test_meta_shows; test_meta_col_info; test_meta_no_garbage
-  test_freq_shows; test_freq_after_meta; test_freq_by_key
-  test_freq_multi_key; test_freq_keeps_grp
-  test_row_select; test_multi_select
-  test_stack_swap; test_meta_quit; test_freq_quit
-  test_info
-  test_prec_inc; test_prec_dec
-  test_meta_0; test_meta_1; test_meta_0_enter; test_meta_1_enter; test_meta_0_del
-  test_freq_enter
-  test_spaced_header
-  test_key_cursor
-  test_no_stderr
-  test_search_jump; test_search_next; test_search_prev; test_col_search
-  test_q_quit
-  test_folder_no_args; test_folder_D; test_folder_tab
-  test_folder_enter; test_folder_relative; test_folder_pop
-  test_folder_prefix; test_folder_del
-
-  IO.println "\n--- Parquet tests ---"
-  test_page_down; test_page_up; test_page_down_scrolls; test_last_col_visible
-  test_delete_twice; test_delete_then_key_then_freq
-  test_parquet_sort_asc; test_parquet_sort_desc
-  test_sort_excludes_key; test_sort_selected_not_key
-  test_parquet_meta
-  test_freq_parquet; test_freq_enter_parquet; test_freq_parquet_key_values
-  test_freq_total_count; test_freq_sort_preserves_total; test_freq_sort_asc_parquet
-  test_parquet_meta_0_null_cols; test_parquet_meta_0_enter_groups
-  test_filter_parquet_full_db
-  test_scroll_fetches_more
-  test_numeric_right_align
-  test_enter_no_quit_parquet
-
+  let filter := args.head?
+  let selected := match filter with
+    | none => tests
+    | some f => tests.filter fun (name, _) => (name.splitOn f).length > 1
+  if selected.isEmpty then
+    IO.eprintln s!"No tests matching '{filter.getD ""}'"
+    return
+  IO.println s!"Running {selected.size} test(s)...\n"
+  for (_, action) in selected do action
   Tc.AdbcTable.shutdown
   IO.println "\nAll tests passed!"
 

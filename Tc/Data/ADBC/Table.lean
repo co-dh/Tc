@@ -255,11 +255,11 @@ def distinct (t : AdbcTable) (col : Nat) : IO (Array String) := do
   pure result
 
 -- | Find row from starting position, forward or backward (with wrap).
---   Single SQL query with ROW_NUMBER instead of O(n) FFI calls.
+--   Uses PRQL row_number (sort-aware) instead of raw SQL ROW_NUMBER.
 def findRow (t : AdbcTable) (col : Nat) (val : String) (start : Nat) (fwd : Bool) : IO (Option Nat) := do
   let colName := Prql.quote (t.colNames.getD col "")
   let esc := val.replace "'" "''"
-  let prql := s!"{t.query.render} | derive \{_rn = s\"ROW_NUMBER() OVER () - 1\"} | filter ({colName} == '{esc}') | select \{_rn}"
+  let prql := s!"{t.query.render} | derive \{_rn0 = row_number this} | derive \{_rn = _rn0 - 1} | filter ({colName} == '{esc}') | select \{_rn}"
   let some sql ← Prql.compile prql | return none
   let qr ← Adbc.query sql
   let nr ← Adbc.nrows qr
