@@ -186,6 +186,7 @@ lean_obj_res lean_tb_render_col(uint32_t x, uint32_t w, uint32_t y0,
 
 // | Minimum header text width (chars shown before truncation)
 #define MIN_HDR_WIDTH 3
+#define MAX_DISP_WIDTH 50
 
 // | VisiData-style type chars from Arrow format
 // # int, % float, ? bool, @ date, space string
@@ -387,8 +388,9 @@ lean_obj_res lean_render_table(
         } else {
             base = cached;
         }
-        baseWidths[c] = base;
-        int w = base + (int)widthAdj;
+        baseWidths[c] = base;  // uncapped, for cache
+        int disp = base > MAX_DISP_WIDTH ? MAX_DISP_WIDTH : base;  // cap for display
+        int w = disp + (int)widthAdj;
         if (w < 3) w = 3;  // minimum width
         allWidths[c] = w;
     }

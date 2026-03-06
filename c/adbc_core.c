@@ -661,6 +661,12 @@ lean_obj_res lean_qr_cell_str(b_lean_obj_arg qr_obj, uint64_t row, uint64_t col,
     QueryResult* qr = (QueryResult*)lean_get_external_data(qr_obj);
     CellInfo c = get_cell(qr, row, col);
     if (!c.view || !c.view->array) return lean_io_result_mk_ok(lean_mk_string(""));
+    // For string/large_string types, return Arrow string directly (no buffer truncation)
+    if (c.sv->type == NANOARROW_TYPE_STRING || c.sv->type == NANOARROW_TYPE_LARGE_STRING) {
+        if (ArrowArrayViewIsNull(c.view, c.lr)) return lean_io_result_mk_ok(lean_mk_string(""));
+        struct ArrowStringView sv2 = ArrowArrayViewGetStringUnsafe(c.view, c.lr);
+        return lean_io_result_mk_ok(lean_mk_string_from_bytes(sv2.data, sv2.size_bytes));
+    }
     char buf[CELL_BUF_SIZE];
     if (c.sv->type == NANOARROW_TYPE_STRUCT)
         format_struct_cell(c.view, qr->schema.children[col], c.lr, buf, sizeof(buf), 3);
