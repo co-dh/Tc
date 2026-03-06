@@ -8,29 +8,6 @@ import Tc.Error
 
 open Tc
 
--- | Pure model of the bug: C render adds widthAdj to widths, we store them,
--- next render adds widthAdj again → accumulation
-def applyWidthAdj (w : Nat) (adj : Int) : Nat := Int.toNat (w + adj)
-
--- | BUG TEST: This theorem is FALSE, proving the bug exists.
--- If we store width after applying adj, then apply adj again, it accumulates.
--- Expected: apply(apply(10, 1), 1) = apply(10, 1) = 11  (idempotent)
--- Actual:   apply(apply(10, 1), 1) = apply(11, 1) = 12  (accumulates!)
-theorem widthAdj_accumulates : applyWidthAdj (applyWidthAdj 10 1) 1 = 12 := rfl
-
--- | What we WANT: stored width should not include adj, so re-applying gives same result
-def storedWidth (rendered : Nat) (adj : Int) : Nat := Int.toNat (rendered - adj)
-
--- | FIX TEST: subtract adj before storing, then re-apply → same as original
-theorem widthAdj_no_accumulate_example :
-    applyWidthAdj (storedWidth (applyWidthAdj 10 1) 1) 1 = applyWidthAdj 10 1 := rfl
-
--- | General roundtrip: store(apply(w, adj), adj) then re-apply gives same result
-theorem widthAdj_roundtrip (w : Nat) (adj : Int) :
-    applyWidthAdj (storedWidth (applyWidthAdj w adj) adj) adj = applyWidthAdj w adj := by
-  simp only [applyWidthAdj, storedWidth]
-  omega
-
 -- ViewState: scroll offsets (widths moved to View for type safety)
 structure ViewState where
   rowOff   : Nat := 0           -- first visible row
@@ -39,9 +16,6 @@ structure ViewState where
 
 -- Default ViewState
 def ViewState.default : ViewState := ⟨0, 0, 0⟩
-
--- Max column width cap
-def maxColWidth : Nat := 50
 
 -- Reserved lines: 1 header + 1 footer + 1 tab + 1 status
 def reservedLines : Nat := 4
@@ -64,7 +38,7 @@ def defaultRowPg : Nat := 20
 -- Returns x position where column i starts (sum of widths 0..i-1)
 def cumWidthDisp (widths : Array Nat) (dispIdxs : Array Nat) (i : Nat) : Nat :=
   (Array.range i).foldl (init := 0) fun acc d =>
-    acc + min (widths.getD (dispIdxs.getD d 0) 0) maxColWidth + 1
+    acc + (widths.getD (dispIdxs.getD d 0) 0) + 1
 
 -- Helper: cumWidthDisp increases by at least 1 per column
 private theorem cumWidthDisp_step (widths dispIdxs : Array Nat) (i : Nat) :
@@ -107,7 +81,7 @@ def adjColOff (cur colOff : Nat) (widths : Array Nat) (dispIdxs : Array Nat) (sc
 def cumWidthArr (widths : Array Nat) (dispIdxs : Array Nat) (n : Nat) : Array Nat :=
   (Array.range n).foldl (init := #[0]) fun acc d =>
     let prev := acc.getD (acc.size - 1) 0
-    acc.push (prev + min (widths.getD (dispIdxs.getD d 0) 0) maxColWidth + 1)
+    acc.push (prev + (widths.getD (dispIdxs.getD d 0) 0) + 1)
 
 -- Theorem: cumWidthArr always has exactly n+1 elements
 -- Proof strategy: foldl over (Array.range n) starting from #[0] (size 1),
@@ -119,7 +93,7 @@ theorem cumWidthArr_size (widths dispIdxs : Array Nat) (n : Nat) :
   have : ∀ (init : Array Nat),
       ((Array.range n).foldl (init := init) fun acc d =>
         let prev := acc.getD (acc.size - 1) 0
-        acc.push (prev + min (widths.getD (dispIdxs.getD d 0) 0) maxColWidth + 1)).size
+        acc.push (prev + (widths.getD (dispIdxs.getD d 0) 0) + 1)).size
       = init.size + n := by
     intro init
     induction n generalizing init with
@@ -183,7 +157,7 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
     selColIdxs := nav.selColIdxs, rowSels := nav.row.sels,
     hiddenIdxs := nav.hiddenIdxs, styles, precAdj, widthAdj }
   let outWidths ← TblOps.render nav.tbl ctx
-  let widths := outWidths.map fun x => min maxColWidth (storedWidth x widthAdj)
+  let widths := outWidths  -- C returns base widths (no widthAdj), store as-is
   -- status line: colName left, stats right
   -- freqV shows total distinct groups, others show table totalRows
   let total := match vkind with

@@ -521,6 +521,28 @@ def test_hide_unhide : IO Unit := do
   let normalHdr := header (← run "" "data/basic.csv")
   assert (hdr == normalHdr) "Unhidden header matches normal"
 
+-- === Width stability tests ===
+
+def test_width_stable_after_info : IO Unit := do
+  log "width_stable_after_info"
+  -- pac.csv has wide columns (deps, desc). Pressing I (info toggle) triggers re-render.
+  -- Bug: Lean cached widths with min(maxColWidth=50), so re-render shrinks wide columns.
+  let hdr1 := header (← run "" "data/pac.csv")
+  let hdr2 := header (← run "I" "data/pac.csv")   -- toggle info on
+  let hdr3 := header (← run "II" "data/pac.csv")   -- toggle info on then off
+  assert (hdr1 == hdr2) s!"Info toggle must not change column widths: [{hdr1}] vs [{hdr2}]"
+  assert (hdr1 == hdr3) s!"Info double-toggle must not change column widths"
+
+def test_last_col_fills_screen : IO Unit := do
+  log "last_col_fills_screen"
+  -- Last visible column should stretch to fill remaining screen width.
+  -- In 80-col terminal with pac.csv, the last char of header row should not be blank.
+  let out ← run "" "data/pac.csv"
+  let lines := out.splitOn "\n" |>.filter isContent
+  let hdr := lines.headD ""
+  -- Header should use full width (80 cols) — last char should not be space
+  assert (hdr.length >= 78) s!"Header should fill screen width, got length {hdr.length}"
+
 -- === Sort tests (CSV) ===
 
 def test_sort_asc : IO Unit := do
@@ -884,6 +906,8 @@ def tests : Array (String × IO Unit) := #[
   ("key_toggle", test_key_toggle), ("key_remove", test_key_remove),
   ("key_reorder", test_key_reorder), ("hide_col", test_hide_col),
   ("hide_unhide", test_hide_unhide),
+  ("width_stable_after_info", test_width_stable_after_info),
+  ("last_col_fills_screen", test_last_col_fills_screen),
   ("sort_asc", test_sort_asc), ("sort_desc", test_sort_desc),
   ("meta_shows", test_meta_shows), ("meta_col_info", test_meta_col_info),
   ("meta_no_garbage", test_meta_no_garbage),

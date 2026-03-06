@@ -369,25 +369,26 @@ lean_obj_res lean_render_table(
     uint64_t hidBits[4] = {0};
     build_sel_bits(hiddenCols, lean_array_size(hiddenCols), hidBits);
 
-    // compute or use widths for ALL columns (+2 for leading space + type char)
-    // use max(data_width, MIN_HDR_WIDTH) + 2 for minimum header visibility
-    // apply widthAdj offset (clamped to min 3)
+    // compute base widths for ALL columns (before widthAdj)
+    // C owns all width logic: compute, cap, cache. Lean stores base widths opaquely.
     // hidden columns get width 1 (just a separator marker)
     // NOTE: only scan visible rows [r0,r1) for width - scanning all rows kills perf
-    int* allWidths = malloc(nCols * sizeof(int));
+    int* baseWidths = malloc(nCols * sizeof(int));  // base width (no widthAdj)
+    int* allWidths = malloc(nCols * sizeof(int));    // render width (with widthAdj)
     size_t nInWidths = lean_array_size(inWidths);
     for (size_t c = 0; c < nCols; c++) {
-        if (IS_SEL(hidBits, c)) { allWidths[c] = 1; continue; }
-        int w;
+        if (IS_SEL(hidBits, c)) { baseWidths[c] = 0; allWidths[c] = 1; continue; }
+        int base;
         int cached = (c < nInWidths) ? lean_unbox(lean_array_get_core(inWidths, c)) : 0;
         if (cached == 0) {  // no cache or was hidden → recompute
             lean_obj_arg col = lean_array_get_core(allCols, c);
             int dw = compute_data_width(col, r0, r1, (int)precAdj);  // visible rows only
-            w = (dw > MIN_HDR_WIDTH ? dw : MIN_HDR_WIDTH) + 2;
+            base = (dw > MIN_HDR_WIDTH ? dw : MIN_HDR_WIDTH) + 2;
         } else {
-            w = cached;
+            base = cached;
         }
-        w += (int)widthAdj;
+        baseWidths[c] = base;
+        int w = base + (int)widthAdj;
         if (w < 3) w = 3;  // minimum width
         allWidths[c] = w;
     }
@@ -424,6 +425,13 @@ lean_obj_res lean_render_table(
         ws[nVisCols] = w;
         nVisCols++;
         x += w + 1;
+    }
+
+    // stretch last visible column to fill remaining screen width
+    if (nVisCols > 0) {
+        size_t last = nVisCols - 1;
+        int remaining = screenW - xs[last];
+        if (remaining > ws[last]) ws[last] = remaining;
     }
 
     // header/footer (+ separators and type chars)
@@ -530,16 +538,16 @@ lean_obj_res lean_render_table(
         break;
     }
 
-    // build return Array Nat for widths (hidden cols return 0 so they recompute when unhidden)
+    // return base widths (no widthAdj, 0 for hidden → recompute when unhidden)
     lean_object* outWidths = lean_alloc_array(nCols, nCols);
     for (size_t c = 0; c < nCols; c++) {
-        int w = IS_SEL(hidBits, c) ? 0 : allWidths[c];
-        lean_array_set_core(outWidths, c, lean_box(w));
+        lean_array_set_core(outWidths, c, lean_box(baseWidths[c]));
     }
 
     free(dispIdxs);
     free(xs);
     free(ws);
+    free(baseWidths);
     free(allWidths);
     return lean_io_result_mk_ok(outWidths);
 }
