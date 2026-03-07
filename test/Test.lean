@@ -858,7 +858,7 @@ def test_osquery_list : IO Unit := do
   unless (← hasOsquery) do log "  skip (no osqueryi)"; return
   let output ← run "" "osquery://"
   assert (contains output "name") "osquery:// shows name column"
-  assert (contains output "cols") "osquery:// shows cols column"
+  assert (contains output "safety") "osquery:// shows safety column"
 
 def test_osquery_enter : IO Unit := do
   log "osquery_enter"
@@ -870,17 +870,17 @@ def test_osquery_enter : IO Unit := do
 def test_osquery_scroll_no_hide : IO Unit := do
   log "osquery_scroll_no_hide"
   unless (← hasOsquery) do log "  skip (no osqueryi)"; return
-  -- All 4 columns fit on 80-col screen; moving right should not hide first column
+  -- name column (keyed) should stay visible when scrolling right
   let output0 ← run "" "osquery://"
-  assert (contains output0 "cols") "col 0: cols visible"
+  assert (contains output0 "name") "col 0: name visible"
   let output1 ← run "l" "osquery://"
-  assert (contains output1 "cols") "col 1: cols still visible after moving right"
+  assert (contains output1 "name") "col 1: name still visible after moving right"
 
 def test_osquery_back : IO Unit := do
   log "osquery_back"
   unless (← hasOsquery) do log "  skip (no osqueryi)"; return
   let output ← run "<ret>q" "osquery://"
-  assert (contains output "cols") "q pops back to osquery table list"
+  assert (contains output "name") "q pops back to osquery table list"
 
 def test_osquery_meta_description : IO Unit := do
   log "osquery_meta_description"

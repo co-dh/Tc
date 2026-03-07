@@ -126,15 +126,15 @@ private def mkViewFromTsv (tsv : String) (path : String) (depth : Nat) (disp : S
 
 -- | Build folder view from an AdbcTable directly
 private def mkViewFromAdbc (adbc : AdbcTable) (path : String) (depth : Nat) (disp : String)
-    : Option (View Table) :=
-  View.fromTbl (Table.adbc adbc) path |>.map fun v =>
+    (grp : Array String := #[]) : Option (View Table) :=
+  View.fromTbl (Table.adbc adbc) path (grp := grp) |>.map fun v =>
     { v with vkind := .fld path depth, disp }
 
 -- | Create folder view
 def mkView (path : String) (depth : Nat) : IO (Option (View Table)) := do
   if Osquery.isOsquery path then
     match ← Osquery.list path with
-    | some adbc => pure (mkViewFromAdbc adbc path depth (Remote.dispName path))
+    | some adbc => pure (mkViewFromAdbc adbc path depth (Remote.dispName path) (grp := #["name"]))
     | none => pure none
   else match backend? path with
   | some b =>

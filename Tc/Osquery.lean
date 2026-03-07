@@ -129,9 +129,7 @@ def list (_path : String) : IO (Option AdbcTable) := do
   statusMsg "Loading osquery tables ..."
   ensureSchema
   let json ← osqueryi
-    ("SELECT t.name, COUNT(c.name) as columns, GROUP_CONCAT(c.name) as cols " ++
-     "FROM osquery_registry t LEFT JOIN pragma_table_info(t.name) c ON 1=1 " ++
-     "WHERE t.registry='table' GROUP BY t.name ORDER BY t.name")
+    "SELECT name FROM osquery_registry WHERE registry='table' ORDER BY name"
   if json.trimAscii.toString == "[]" || json.isEmpty then return none
   let n ← memTblCounter.modifyGet fun n => (n, n + 1)
   let tmpFile ← Tc.tmpPath s!"osq-{n}.json"
