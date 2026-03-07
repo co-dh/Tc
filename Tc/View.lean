@@ -31,7 +31,7 @@ def new {nr nc : Nat} (nav : NavState nr nc T) (path : String) : View T :=
 -- | Tab display name: custom disp or filename from path
 @[inline] def tabName (v : View T) : String :=
   match v.vkind with
-  | .fld p _ => if v.disp.isEmpty then p else v.disp
+  | .fld p _ => if v.disp.isEmpty || p.startsWith "/" then p else v.disp
   | _ => if v.disp.isEmpty then v.path.splitOn "/" |>.getLast? |>.getD v.path else v.disp
 
 -- | Render the view, returns (ViewState, updated View with new widths)

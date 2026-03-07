@@ -42,14 +42,14 @@ private def runQuery (s : ViewStack Table) : QueryEffect → IO (ViewStack Table
     | .freqV _ _, some s' => do
       let expr ← Freq.filterExprIO s.tbl cols row
       match ← TblOps.filter s'.tbl expr with
-      | some tbl' => match View.fromTbl tbl' s'.cur.path 0 s'.cur.nav.grp 0 with
+      | some tbl' => match s'.cur.rebuild tbl' (row := 0) with
         | some v => pure (s'.push v)
         | none => pure s
       | none => pure s
     | _, _ => pure s
   | .filter expr => do
     match ← TblOps.filter s.tbl expr with
-    | some tbl' => match View.fromTbl tbl' s.cur.path s.cur.nav.col.cur.val s.cur.nav.grp 0 with
+    | some tbl' => match s.cur.rebuild tbl' (row := 0) with
       | some v => pure (s.push { v with disp := s!"\\filter" })
       | none => pure s
     | none => pure s

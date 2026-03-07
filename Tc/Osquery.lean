@@ -60,7 +60,7 @@ private def typedSelect (cols : Array (String × String)) : String :=
   else
     let parts := cols.map fun (name, typ) =>
       match duckdbType typ with
-      | some dt => s!"CAST(\"{name}\" AS {dt}) AS \"{name}\""
+      | some dt => s!"TRY_CAST(\"{name}\" AS {dt}) AS \"{name}\""
       | none => s!"\"{name}\""
     ", ".intercalate parts.toList
 
@@ -82,6 +82,7 @@ private def osqueryToTable (sql : String) (extraSql : String := "") (castSelect 
   catch e =>
     try IO.FS.removeFile tmpFile catch _ => pure ()
     Log.write "osqueryToTable" s!"error: {e.toString}"
+    errorPopup e.toString
     return none
 
 /-! ## Schema: persistent DuckDB with table/column descriptions from osquery.io -/
