@@ -99,7 +99,6 @@ inductive QueryEffect where
   | freqFilter (cols : Array String) (row : Nat)
   | filter (expr : String)
   | sort (colIdx : Nat) (sels : Array Nat) (grp : Array Nat) (asc : Bool)
-  | del (colIdx : Nat) (sels : Array Nat) (grp : Array String)
   deriving Repr, BEq
 inductive FolderEffect where | push | enter | del | depth (delta : Int) deriving Repr, BEq
 inductive SearchEffect where | next | prev deriving Repr, BEq

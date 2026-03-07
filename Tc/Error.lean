@@ -29,10 +29,3 @@ def run (tag cmd : String) (args : Array String) : IO IO.Process.Output := do
   pure r
 
 end Log
-
-namespace Error
-
--- | Set error (logs to file)
-def set (msg : String) : IO Unit := Log.error msg
-
-end Error

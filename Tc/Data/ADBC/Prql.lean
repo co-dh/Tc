@@ -82,6 +82,6 @@ def compile (prql : String) : IO (Option String) := do
   let stderr ← child'.stderr.readToEnd
   let code ← child'.wait
   if code == 0 then return some stdout
-  else Error.set s!"prqlc: {stderr}"; return none
+  else Log.error s!"prqlc: {stderr}"; return none
 
 end Prql

@@ -12,10 +12,8 @@ import Tc.Plot
 namespace Tc.Runner
 
 -- | Helper: run IO (Option ViewStack), default to original on none
-def runOpt (s : ViewStack Table) (io : IO (Option (ViewStack Table))) : IO (ViewStack Table) := do
-  match ← io with
-  | some s' => pure s'
-  | none => pure s
+def runOpt (s : ViewStack Table) (io : IO (Option (ViewStack Table))) : IO (ViewStack Table) :=
+  (·.getD s) <$> io
 
 -- | Fzf effects: column/row search, filter
 private def runFzf (s : ViewStack Table) : FzfEffect → IO (ViewStack Table)
@@ -58,7 +56,6 @@ private def runQuery (s : ViewStack Table) : QueryEffect → IO (ViewStack Table
     match s.cur.rebuild tbl' (col := colIdx) (row := s.cur.nav.row.cur.val) with
     | some v => pure (s.setCur v)
     | none => pure s
-  | .del _ _ _ => pure s  -- delete removed (replaced by hide)
 
 -- | Folder effects: push, enter, delete, depth
 private def runFolder (s : ViewStack Table) : FolderEffect → IO (ViewStack Table)
