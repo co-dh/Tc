@@ -86,6 +86,21 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles
   let a := { a with stk := a.stk.setCur v', vs := vs' }
   renderTabLine a.stk.tabNames 0
+  -- Show osquery column description on status line
+  if a.stk.cur.path.startsWith "osquery://" then do
+    let raw := (a.stk.cur.path.drop 10).toString
+    let tableName := if raw.startsWith "schema:" then (raw.drop 7).toString else raw
+    if !tableName.isEmpty then
+      let colName := a.stk.cur.nav.colNames.getD a.stk.cur.nav.curColIdx ""
+      let desc ← Osquery.colDesc tableName colName
+      if !desc.isEmpty then
+        let h ← Term.height; let w ← Term.width
+        -- Rewrite status line: colName  desc  ...  right_stats
+        -- We only overwrite the left portion with "colName  desc"
+        let label := colName ++ ": " ++ desc
+        let maxLen := w.toNat * 2 / 3  -- leave room for right-aligned stats
+        let label := if label.length > maxLen then (label.take maxLen).toString ++ "…" else label
+        Term.print 0 (h - 1) Term.cyan Term.default label
   if a.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat a.stk.cur.vkind
   Term.present
   if test && ks.isEmpty then IO.print (← Term.bufferStr); return a

@@ -324,4 +324,15 @@ def enrichMeta (metaTblName tableName : String) : IO Unit := do
   catch e =>
     Log.write "enrichMeta" s!"error: {e}"
 
+-- | Look up column description for a given osquery table and column name.
+-- Returns empty string if schema not available or column not found.
+def colDesc (tableName colName : String) : IO String := do
+  if !(← schemaAvail.get) then return ""
+  try
+    let esc_t := tableName.replace "'" "''"
+    let esc_c := colName.replace "'" "''"
+    let qr ← Adbc.query s!"SELECT col_desc FROM osq.columns WHERE table_name = '{esc_t}' AND col_name = '{esc_c}' LIMIT 1"
+    Adbc.cellStr qr 0 0
+  catch _ => pure ""
+
 end Tc.Osquery
