@@ -909,6 +909,16 @@ def test_osquery_typed_columns : IO Unit := do
   let hdr2 := header output2
   assert (contains hdr2 "#") "osquery enter table has numeric columns"
 
+def test_osquery_sort_enter : IO Unit := do
+  log "osquery_sort_enter"
+  unless (← hasOsquery) do log "  skip (no osqueryi)"; return
+  -- Sort by rows (col 3) desc, then enter top row → should open a table, not crash
+  let output ← run "lll]<ret>" "osquery://"
+  let (tab, _) := footer output
+  -- After enter, tab bar should show both osquery listing and the opened table
+  assert (contains tab "osquery://") "sort+enter: osquery tab still visible"
+  assert (!(contains output "safety")) "sort+enter: opened table, not listing"
+
 -- === Run all tests ===
 
 -- | All tests as (name, action) pairs
@@ -970,7 +980,8 @@ def tests : Array (String × IO Unit) := #[
   ("osquery_back", test_osquery_back),
   ("osquery_meta_description", test_osquery_meta_description),
   ("osquery_direct_table", test_osquery_direct_table),
-  ("osquery_typed_columns", test_osquery_typed_columns)
+  ("osquery_typed_columns", test_osquery_typed_columns),
+  ("osquery_sort_enter", test_osquery_sort_enter)
 ]
 
 def main (args : List String) : IO Unit := do

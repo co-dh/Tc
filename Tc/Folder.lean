@@ -134,7 +134,7 @@ private def mkViewFromAdbc (adbc : AdbcTable) (path : String) (depth : Nat) (dis
 def mkView (path : String) (depth : Nat) : IO (Option (View Table)) := do
   if Osquery.isOsquery path then
     match ← Osquery.list path with
-    | some adbc => pure (mkViewFromAdbc adbc path depth (Remote.dispName path) (grp := #["name"]))
+    | some (adbc, disp) => pure (mkViewFromAdbc adbc path depth disp (grp := #["name"]))
     | none => pure none
   else match backend? path with
   | some b =>

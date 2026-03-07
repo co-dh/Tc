@@ -180,18 +180,67 @@ private def countAllTables (names : Array String) : IO (Array (String × Nat)) :
     | _ => pure ()
   pure results
 
+-- | Load cached row counts from osq.row_counts. Returns (counts, updated_at) or empty.
+private def loadCachedCounts : IO (Array (String × Nat) × String) := do
+  if !(← schemaAvail.get) then return (#[], "")
+  try
+    let qr ← Adbc.query "SELECT max(updated_at) as ts FROM osq.row_counts"
+    let ts ← Adbc.cellStr qr 0 0
+    -- Check age: invalidate if > 24h
+    let ageQr ← Adbc.query "SELECT CASE WHEN max(updated_at)::TIMESTAMP > (CURRENT_TIMESTAMP::TIMESTAMP - INTERVAL '24 hours') THEN 1 ELSE 0 END FROM osq.row_counts"
+    let fresh ← Adbc.cellInt ageQr 0 0
+    if fresh.toNat == 0 then return (#[], "")
+    let allQr ← Adbc.query "SELECT name, rows FROM osq.row_counts"
+    let cnt ← Adbc.cellInt (← Adbc.query "SELECT count(*) FROM osq.row_counts") 0 0
+    let mut results := #[]
+    for i in [:cnt.toNat] do
+      let name ← Adbc.cellStr allQr i.toUInt64 0
+      let rows ← Adbc.cellInt allQr i.toUInt64 1
+      results := results.push (name, rows.toNat)
+    pure (results, ts)
+  catch e => Log.write "osquery" s!"loadCache error: {e}"; pure (#[], "")
+
+-- | Save row counts to persistent osq.row_counts
+private def saveCounts (counts : Array (String × Nat)) : IO Unit := do
+  if !(← schemaAvail.get) then return
+  try
+    let _ ← Adbc.query "DROP TABLE IF EXISTS osq.row_counts"
+    let _ ← Adbc.query "CREATE TABLE osq.row_counts (name VARCHAR, rows INTEGER, updated_at VARCHAR)"
+    if !counts.isEmpty then
+      -- Get local time string from OS
+      let now ← IO.Process.output { cmd := "date", args := #["+%Y-%m-%d %H:%M"] }
+      let ts := now.stdout.trimAscii.toString
+      let values := counts.map fun (name, cnt) =>
+        s!"('{name.replace "'" "''"}', {cnt}, '{ts}')"
+      let _ ← Adbc.query s!"INSERT INTO osq.row_counts (name, rows, updated_at) VALUES {", ".intercalate values.toList}"
+    Log.write "osquery" s!"Cached {counts.size} row counts"
+  catch e => Log.write "osquery" s!"saveCounts error: {e}"
+
+-- | Format cache label: "2026-03-07 13:05" → "osquery:// (cached 13:05)"
+private def cacheLabel (ts : String) : String :=
+  let hm := (ts.splitOn " " |>.getD 1 "").take 5 |>.toString
+  if hm.isEmpty then "osquery://" else s!"osquery:// (cached {hm})"
+
 /-! ## Public API -/
 
--- | List all osquery tables with metadata and description. Returns AdbcTable for folder view.
-def list (_path : String) : IO (Option AdbcTable) := do
+-- | List all osquery tables with metadata and description. Returns (AdbcTable, dispName).
+def list (_path : String) : IO (Option (AdbcTable × String)) := do
   statusMsg "Loading osquery tables ..."
   ensureSchema
   let json ← osqueryi
     "SELECT name FROM osquery_registry WHERE registry='table' ORDER BY name"
   if json.trimAscii.toString == "[]" || json.isEmpty then return none
   let names := parseNames json
-  statusMsg "Counting rows ..."
-  let counts ← countAllTables names
+  -- Try cache first, fall back to live counting
+  let (counts, cacheLabel) ← do
+    let (cached, ts) ← loadCachedCounts
+    if !cached.isEmpty then
+      pure (cached, cacheLabel ts)
+    else
+      statusMsg "Counting rows ..."
+      let live ← countAllTables names
+      saveCounts live
+      pure (live, "osquery://")
   let n ← memTblCounter.modifyGet fun n => (n, n + 1)
   let tmpFile ← Tc.tmpPath s!"osq-{n}.json"
   IO.FS.writeFile tmpFile json
@@ -218,7 +267,8 @@ def list (_path : String) : IO (Option AdbcTable) := do
       let _ ← Adbc.query s!"UPDATE {tblName} SET rows = {caseExpr} WHERE name IN ({inList})"
     let query : Prql.Query := { base := s!"from {tblName}" }
     let total ← AdbcTable.queryCount query
-    AdbcTable.requery query total
+    let tbl ← AdbcTable.requery query total
+    pure <| tbl.map (·, cacheLabel)
   catch e =>
     try IO.FS.removeFile tmpFile catch _ => pure ()
     Log.write "osqueryList" s!"error: {e.toString}"
