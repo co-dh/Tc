@@ -5,6 +5,7 @@
 -/
 import Tc.View
 import Tc.Table
+import Tc.Osquery
 
 namespace Tc.Meta
 
@@ -23,6 +24,18 @@ def push (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
       let (headers, cols) ← KdbTable.queryMeta t
       AdbcTable.fromArrays headers cols
   let some adbc := adbc? | return none
+  -- Enrich osquery meta with column descriptions
+  if Osquery.isOsquery s.cur.path then
+    let tableName := (s.cur.path.drop 10).toString  -- drop "osquery://"
+    let metaBase := (adbc.query.base.drop 5).trimAscii.toString
+    Osquery.enrichMeta metaBase tableName
+    -- Re-query to pick up the new column
+    match ← AdbcTable.requery adbc.query with
+    | some adbc' => match View.fromTbl (Table.adbc adbc') s.cur.path with
+      | some v => return some (s.push { v with vkind := .colMeta, disp := "meta" })
+      | none => return none
+    | none => return none
+  else
   match View.fromTbl (Table.adbc adbc) s.cur.path with
   | some v => return some (s.push { v with vkind := .colMeta, disp := "meta" })
   | none => return none

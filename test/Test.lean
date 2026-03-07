@@ -882,6 +882,13 @@ def test_osquery_back : IO Unit := do
   let output ← run "<ret>q" "osquery://"
   assert (contains output "cols") "q pops back to osquery table list"
 
+def test_osquery_meta_description : IO Unit := do
+  log "osquery_meta_description"
+  unless (← hasOsquery) do log "  skip (no osqueryi)"; return
+  -- Enter first safe table, then press M for meta view
+  let output ← run "<ret>M" "osquery://"
+  assert (contains output "description") "Meta view on osquery table shows description column"
+
 -- === Run all tests ===
 
 -- | All tests as (name, action) pairs
@@ -940,7 +947,8 @@ def tests : Array (String × IO Unit) := #[
   -- Osquery tests
   ("osquery_list", test_osquery_list), ("osquery_enter", test_osquery_enter),
   ("osquery_scroll_no_hide", test_osquery_scroll_no_hide),
-  ("osquery_back", test_osquery_back)
+  ("osquery_back", test_osquery_back),
+  ("osquery_meta_description", test_osquery_meta_description)
 ]
 
 def main (args : List String) : IO Unit := do
