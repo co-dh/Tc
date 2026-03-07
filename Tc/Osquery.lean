@@ -33,8 +33,39 @@ private def osqueryi (sql : String) : IO String := do
     throw <| IO.userError s!"osqueryi failed: {r.stderr.trimAscii.toString}"
   pure r.stdout
 
+-- | Map osquery type to DuckDB type for CAST
+private def duckdbType (osqType : String) : Option String :=
+  match osqType.toLower with
+  | "bigint" | "integer" | "int" => some "BIGINT"
+  | "double" => some "DOUBLE"
+  | _ => none
+
+-- | Get column schema from pragma table_info, returns (name, osqueryType) pairs
+private def tableColumns (table : String) : IO (Array (String × String)) := do
+  let json ← osqueryi s!"pragma table_info('{table}')"
+  if json.trimAscii.toString == "[]" || json.isEmpty then return #[]
+  -- Parse name/type pairs from JSON using simple string splits
+  let entries := json.splitOn "{" |>.drop 1
+  let cols := entries.filterMap fun entry =>
+    let getName := entry.splitOn "\"name\":\"" |>.getD 1 "" |>.splitOn "\"" |>.head?
+    let getType := entry.splitOn "\"type\":\"" |>.getD 1 "" |>.splitOn "\"" |>.head?
+    match getName, getType with
+    | some n, some t => if !n.isEmpty then some (n, t) else none
+    | _, _ => none
+  pure cols.toArray
+
+-- | Build typed SELECT: CAST columns to proper types based on pragma schema
+private def typedSelect (cols : Array (String × String)) : String :=
+  if cols.isEmpty then "*"
+  else
+    let parts := cols.map fun (name, typ) =>
+      match duckdbType typ with
+      | some dt => s!"CAST(\"{name}\" AS {dt}) AS \"{name}\""
+      | none => s!"\"{name}\""
+    ", ".intercalate parts.toList
+
 -- | Run osqueryi, write JSON to tmp, load into DuckDB temp table, return AdbcTable
-private def osqueryToTable (sql : String) (extraSql : String := "") : IO (Option AdbcTable) := do
+private def osqueryToTable (sql : String) (extraSql : String := "") (castSelect : String := "*") : IO (Option AdbcTable) := do
   let json ← osqueryi sql
   if json.trimAscii.toString == "[]" || json.isEmpty then return none
   let n ← memTblCounter.modifyGet fun n => (n, n + 1)
@@ -42,7 +73,7 @@ private def osqueryToTable (sql : String) (extraSql : String := "") : IO (Option
   IO.FS.writeFile tmpFile json
   let tblName := s!"tc_osq_{n}"
   try
-    let selectPart := if extraSql.isEmpty then "*" else s!"*, {extraSql}"
+    let selectPart := if extraSql.isEmpty then castSelect else s!"{castSelect}, {extraSql}"
     let _ ← Adbc.query s!"CREATE TEMP TABLE {tblName} AS SELECT {selectPart} FROM read_json_auto('{tmpFile}')"
     try IO.FS.removeFile tmpFile catch _ => pure ()
     let query : Prql.Query := { base := s!"from {tblName}" }
@@ -122,6 +153,33 @@ def ensureSchema : IO Unit := do
     Log.write "osquery" s!"Schema build failed: {e}"
   try IO.FS.removeFile tmpFile catch _ => pure ()
 
+-- | Parse table names from osquery JSON: [{"name":"foo"},...]
+private def parseNames (json : String) : Array String :=
+  let entries := json.splitOn "\"name\":\"" |>.drop 1
+  entries.filterMap (fun e => let n := e.splitOn "\"" |>.head?; n.filter (!·.isEmpty)) |>.toArray
+
+-- | Count rows for a single table with timeout
+private def countTable (name : String) : IO (Option (String × Nat)) := do
+  let r ← IO.Process.output { cmd := "timeout", args := #["-k", "1", "2", "osqueryi", "--json",
+    s!"SELECT count(*) as n FROM {name}"] }
+  if r.exitCode != 0 then return none
+  let nStr := ((r.stdout.splitOn "\"n\":\"" |>.getD 1 "").splitOn "\"" |>.head?).getD ""
+  match nStr.toNat? with
+  | some n => pure (some (name, n))
+  | none => pure none
+
+-- | Count rows for all safe tables concurrently via BaseIO tasks.
+private def countAllTables (names : Array String) : IO (Array (String × Nat)) := do
+  let safeNames := names.filter (!dangerousTables.contains ·)
+  let tasks ← safeNames.mapM fun name =>
+    IO.asTask (prio := .dedicated) (countTable name)
+  let mut results := #[]
+  for task in tasks do
+    match ← IO.wait task with
+    | .ok (some r) => results := results.push r
+    | _ => pure ()
+  pure results
+
 /-! ## Public API -/
 
 -- | List all osquery tables with metadata and description. Returns AdbcTable for folder view.
@@ -131,6 +189,9 @@ def list (_path : String) : IO (Option AdbcTable) := do
   let json ← osqueryi
     "SELECT name FROM osquery_registry WHERE registry='table' ORDER BY name"
   if json.trimAscii.toString == "[]" || json.isEmpty then return none
+  let names := parseNames json
+  statusMsg "Counting rows ..."
+  let counts ← countAllTables names
   let n ← memTblCounter.modifyGet fun n => (n, n + 1)
   let tmpFile ← Tc.tmpPath s!"osq-{n}.json"
   IO.FS.writeFile tmpFile json
@@ -146,6 +207,15 @@ def list (_path : String) : IO (Option AdbcTable) := do
        s!"CASE WHEN j.name IN {dangerousIn} THEN 'input-required' ELSE 'safe' END as safety" ++
        descJoin)
     try IO.FS.removeFile tmpFile catch _ => pure ()
+    -- Add rows column via single CASE UPDATE
+    let _ ← Adbc.query s!"ALTER TABLE {tblName} ADD COLUMN rows INTEGER DEFAULT NULL"
+    if !counts.isEmpty then
+      let cases := counts.map fun (name, cnt) =>
+        s!"WHEN '{name.replace "'" "''"}' THEN {cnt}"
+      let caseExpr := "CASE name " ++ " ".intercalate cases.toList ++ " END"
+      let nameList := counts.map fun (name, _) => s!"'{name.replace "'" "''"}'"
+      let inList := ", ".intercalate nameList.toList
+      let _ ← Adbc.query s!"UPDATE {tblName} SET rows = {caseExpr} WHERE name IN ({inList})"
     let query : Prql.Query := { base := s!"from {tblName}" }
     let total ← AdbcTable.queryCount query
     AdbcTable.requery query total
@@ -188,7 +258,8 @@ def enterTable (table : String) : IO (Option (AdbcTable × String)) := do
       return none
   else
     statusMsg s!"Querying {table} ..."
-    let tbl ← osqueryToTable s!"SELECT * FROM {table}"
+    let cols ← tableColumns table
+    let tbl ← osqueryToTable s!"SELECT * FROM {table}" (castSelect := typedSelect cols)
     pure <| tbl.map (·, table)
 
 -- | Enrich a meta temp table with column descriptions from the schema DB.

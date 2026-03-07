@@ -897,6 +897,18 @@ def test_osquery_direct_table : IO Unit := do
   assert (contains output "gid") "osquery://groups shows gid column"
   assert (!(contains output "safety")) "osquery://groups is not the listing"
 
+def test_osquery_typed_columns : IO Unit := do
+  log "osquery_typed_columns"
+  unless (← hasOsquery) do log "  skip (no osqueryi)"; return
+  -- Direct table: gid should be numeric (# in header)
+  let output ← run "" "osquery://groups"
+  let hdr := header output
+  assert (contains hdr "#") "osquery://groups gid is numeric (direct)"
+  -- Via folder enter: first safe table should also have typed columns
+  let output2 ← run "<ret>" "osquery://"
+  let hdr2 := header output2
+  assert (contains hdr2 "#") "osquery enter table has numeric columns"
+
 -- === Run all tests ===
 
 -- | All tests as (name, action) pairs
@@ -957,7 +969,8 @@ def tests : Array (String × IO Unit) := #[
   ("osquery_scroll_no_hide", test_osquery_scroll_no_hide),
   ("osquery_back", test_osquery_back),
   ("osquery_meta_description", test_osquery_meta_description),
-  ("osquery_direct_table", test_osquery_direct_table)
+  ("osquery_direct_table", test_osquery_direct_table),
+  ("osquery_typed_columns", test_osquery_typed_columns)
 ]
 
 def main (args : List String) : IO Unit := do
