@@ -919,6 +919,15 @@ def test_osquery_sort_enter : IO Unit := do
   assert (contains tab "osquery://") "sort+enter: osquery tab still visible"
   assert (!(contains output "safety")) "sort+enter: opened table, not listing"
 
+def test_last_col_no_stretch : IO Unit := do
+  log "last_col_no_stretch"
+  let output ← run "" "data/basic.csv"
+  let hdr := header output
+  -- basic.csv has 2 narrow columns (a, b); header should be short, not padded to 80
+  assert (hdr.length < 30) s!"last col should not stretch to 80: got {hdr.length} chars"
+  -- trailing separator marks the end of the table
+  assert (contains hdr "│") "last col should have trailing separator"
+
 -- === Run all tests ===
 
 -- | All tests as (name, action) pairs
@@ -981,7 +990,9 @@ def tests : Array (String × IO Unit) := #[
   ("osquery_meta_description", test_osquery_meta_description),
   ("osquery_direct_table", test_osquery_direct_table),
   ("osquery_typed_columns", test_osquery_typed_columns),
-  ("osquery_sort_enter", test_osquery_sort_enter)
+  ("osquery_sort_enter", test_osquery_sort_enter),
+  -- Rendering tests
+  ("last_col_no_stretch", test_last_col_no_stretch)
 ]
 
 def main (args : List String) : IO Unit := do

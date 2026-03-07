@@ -556,11 +556,16 @@ lean_obj_res lean_render_table(
         x += w + 1;
     }
 
-    // stretch last visible column to fill remaining screen width
+    // expand last visible column: uncap MAX_DISP_WIDTH, use remaining screen
     if (nVisCols > 0) {
         size_t last = nVisCols - 1;
+        size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, dispIdxs[last]));
+        int base = baseWidths[origIdx] + (int)widthAdj;
+        if (base < 3) base = 3;
         int remaining = screenW - xs[last];
-        if (remaining > ws[last]) ws[last] = remaining;
+        if (remaining > ws[last]) {
+            ws[last] = base < remaining ? base : remaining;
+        }
     }
 
     // header/footer (+ separators and type chars)
@@ -593,9 +598,9 @@ lean_obj_res lean_render_table(
             : type_char_col(col);
         tb_set_cell(xs[c] + ws[c] - 1, 0, tc, fg, bg);
         tb_set_cell(xs[c] + ws[c] - 1, yFoot, tc, fg, bg);
-        // separator after each column except last
-        if (c + 1 < nVisCols) {
-            int sX = xs[c] + ws[c];  // x after column content
+        // separator after each column
+        int sX = xs[c] + ws[c];
+        if (sX < screenW) {
             uint32_t sc = (c + 1 == visKeys) ? 0x2551 : 0x2502;  // ║ after keys, │ otherwise
             uint32_t sf = (c + 1 == visKeys) ? stFg[STYLE_GROUP] : stFg[STYLE_DEFAULT];
             tb_set_cell(sX, 0, sc, sf, stBg[STYLE_DEFAULT]);
@@ -629,11 +634,13 @@ lean_obj_res lean_render_table(
             if (cw > 0) print_pad(xs[c] + 1, y, cw, stFg[si], bg, buf, col_is_num(col));
             // trailing space
             tb_set_cell(xs[c] + ws[c] - 1, y, ' ', stFg[si], bg);
-            // separator after each column except last
-            if (c + 1 < nVisCols) {
+            // separator after each column
+            {
                 int sX = xs[c] + ws[c];
-                uint32_t sc = (c + 1 == visKeys) ? 0x2551 : 0x2502;  // ║ after keys, │ otherwise
-                tb_set_cell(sX, y, sc, stFg[STYLE_DEFAULT], stBg[STYLE_DEFAULT]);
+                if (sX < screenW) {
+                    uint32_t sc = (c + 1 == visKeys) ? 0x2551 : 0x2502;  // ║ after keys, │ otherwise
+                    tb_set_cell(sX, y, sc, stFg[STYLE_DEFAULT], stBg[STYLE_DEFAULT]);
+                }
             }
         }
     }
