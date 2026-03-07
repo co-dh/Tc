@@ -199,7 +199,7 @@ private def loadCachedCounts : IO (Array (String × Nat) × String) := do
       let rows ← Adbc.cellInt allQr i.toUInt64 1
       results := results.push (name, rows.toNat)
     pure (results, ts)
-  catch e => Log.write "osquery" s!"loadCache error: {e}"; pure (#[], "")
+  catch _ => pure (#[], "")
 
 -- | Save row counts to persistent osq.row_counts
 private def saveCounts (counts : Array (String × Nat)) : IO Unit := do
