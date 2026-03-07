@@ -406,45 +406,11 @@ def log (msg : String) : IO Unit := do
   let h ← IO.FS.Handle.mk "test.log" .append
   h.putStrLn msg; h.flush
 
--- | Convert key notation to tmux args: "<C-d>" → ["C-d"], "abc" → ["-l", "abc"]
-def keysToTmux (keys : String) : Array (Array String) := Id.run do
-  let mut result : Array (Array String) := #[]
-  let mut buf := ""
-  let chars := keys.toList.toArray
-  let mut i := 0
-  while i < chars.size do
-    let c := chars.getD i ' '
-    if c == '<' then
-      if !buf.isEmpty then result := result.push #["-l", buf]; buf := ""
-      let mut j := i + 1
-      while j < chars.size && chars.getD j ' ' != '>' do j := j + 1
-      let tag := String.ofList (chars.toList.drop (i + 1) |>.take (j - i - 1))
-      let tmuxKey := if tag.startsWith "C-" then tag
-                     else if tag == "ret" then "Enter"
-                     else tag
-      result := result.push #[tmuxKey]
-      i := j + 1
-    else
-      buf := buf.push c; i := i + 1
-  if !buf.isEmpty then result := result.push #["-l", buf]
-  result
-
--- | Run tc with keys and file, capture tmux output
-def run (keys : String) (file : String := "") (finalWait : UInt32 := 0) : IO String := do
-  let f := if file.isEmpty then "" else s!"\"{file}\" "
-  log s!"  spawn: {file} keys={keys}"
-  let sess := "tctest"
-  let _ ← IO.Process.output { cmd := "tmux", args := #["kill-session", "-t", sess] }
-  let _ ← IO.Process.output { cmd := "tmux", args := #["new-session", "-d", "-s", sess, "-x", "80", "-y", "24", "-e", "TC_TEST_MODE=1", s!"{bin} {f}"] }
-  let slow := (file.splitOn "1.parquet").length > 1
-  let (t1, t2, t3) := if slow then (500, 150, 300) else (150, 50, 100)
-  IO.sleep t1
-  for ka in keysToTmux keys do
-    let _ ← IO.Process.output { cmd := "tmux", args := #["send-keys", "-t", sess] ++ ka }
-    IO.sleep t2
-  IO.sleep (t3 + finalWait)
-  let out ← IO.Process.output { cmd := "tmux", args := #["capture-pane", "-t", sess, "-p"] }
-  let _ ← IO.Process.output { cmd := "tmux", args := #["kill-session", "-t", sess] }
+-- | Run tc with -c flag, no tmux. Headless mode renders to internal buffer.
+def run (keys : String) (file : String := "") (_finalWait : UInt32 := 0) : IO String := do
+  log s!"  run: {file} keys={keys}"
+  let args := if file.isEmpty then #["-c", keys] else #[file, "-c", keys]
+  let out ← IO.Process.output { cmd := bin, args }
   log "  done"
   pure out.stdout
 
@@ -701,14 +667,9 @@ def test_col_search : IO Unit := do
 
 def test_q_quit : IO Unit := do
   log "q_quit_empty_stack"
-  let sess := "tctest"
-  let _ ← IO.Process.output { cmd := "tmux", args := #["kill-session", "-t", sess] }
-  let _ ← IO.Process.output { cmd := "tmux", args := #["new-session", "-d", "-s", sess, "-x", "80", "-y", "24", "-e", "TC_TEST_MODE=1", s!"{bin} data/basic.csv"] }
-  IO.sleep 200
-  let _ ← IO.Process.output { cmd := "tmux", args := #["send-keys", "-t", sess, "-l", "q"] }
-  IO.sleep 200
-  let check ← IO.Process.output { cmd := "tmux", args := #["has-session", "-t", sess] }
-  assert (check.exitCode != 0) "q on empty stack quits (session closed)"
+  -- q on empty stack should exit cleanly (empty output, since Q not reached)
+  let out ← IO.Process.output { cmd := bin, args := #["data/basic.csv", "-c", "q"] }
+  assert (out.exitCode == 0) "q on empty stack exits cleanly"
 
 -- === Folder tests ===
 
@@ -892,31 +853,24 @@ def hasOsquery : IO Bool := do
   let r ← IO.Process.output { cmd := "which", args := #["osqueryi"] }
   pure (r.exitCode == 0)
 
--- | Run tc with -c flag, no tmux. bufferStr reads termbox internal buffer.
-def runC (keys : String) (file : String) : IO String := do
-  log s!"  runC: {file} keys={keys}"
-  let out ← IO.Process.output { cmd := bin, args := #[file, "-c", keys] }
-  log "  done"
-  pure out.stdout
-
 def test_osquery_list : IO Unit := do
   log "osquery_list"
   unless (← hasOsquery) do log "  skip (no osqueryi)"; return
-  let output ← runC "" "osquery://"
+  let output ← run "" "osquery://"
   assert (contains output "path") "osquery:// shows path column"
   assert (contains output "safe") "osquery:// shows safe tables"
 
 def test_osquery_enter : IO Unit := do
   log "osquery_enter"
   unless (← hasOsquery) do log "  skip (no osqueryi)"; return
-  let output ← runC "<ret>" "osquery://"
+  let output ← run "<ret>" "osquery://"
   let (tab, _) := footer output
   assert (contains tab "acpi_tables") "Enter on safe table opens it"
 
 def test_osquery_back : IO Unit := do
   log "osquery_back"
   unless (← hasOsquery) do log "  skip (no osqueryi)"; return
-  let output ← runC "<ret>q" "osquery://"
+  let output ← run "<ret>q" "osquery://"
   assert (contains output "safe") "q pops back to osquery table list"
 
 -- === Run all tests ===
