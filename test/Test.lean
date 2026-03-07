@@ -857,8 +857,8 @@ def test_osquery_list : IO Unit := do
   log "osquery_list"
   unless (← hasOsquery) do log "  skip (no osqueryi)"; return
   let output ← run "" "osquery://"
-  assert (contains output "path") "osquery:// shows path column"
-  assert (contains output "safe") "osquery:// shows safe tables"
+  assert (contains output "name") "osquery:// shows name column"
+  assert (contains output "cols") "osquery:// shows cols column"
 
 def test_osquery_enter : IO Unit := do
   log "osquery_enter"
@@ -871,7 +871,7 @@ def test_osquery_back : IO Unit := do
   log "osquery_back"
   unless (← hasOsquery) do log "  skip (no osqueryi)"; return
   let output ← run "<ret>q" "osquery://"
-  assert (contains output "safe") "q pops back to osquery table list"
+  assert (contains output "cols") "q pops back to osquery table list"
 
 -- === Run all tests ===
 

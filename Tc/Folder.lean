@@ -32,16 +32,9 @@ private def hfBack : Backend where
   resolve  := HF.resolve
   download := HF.download
 
-private def osqueryBack : Backend where
-  list     := Osquery.list
-  parent   := Osquery.parent
-  resolve  := fun p => pure p
-  download := fun p => pure p
-
 private def backend? (path : String) : Option Backend :=
   if S3.isS3 path then some s3Back
   else if HF.isHF path then some hfBack
-  else if Osquery.isOsquery path then some osqueryBack
   else none
 
 -- | Strip base path prefix to get relative entry name
@@ -131,9 +124,19 @@ private def mkViewFromTsv (tsv : String) (path : String) (depth : Nat) (disp : S
       { v with vkind := .fld path depth, disp }
   | none => pure none
 
+-- | Build folder view from an AdbcTable directly
+private def mkViewFromAdbc (adbc : AdbcTable) (path : String) (depth : Nat) (disp : String)
+    : Option (View Table) :=
+  View.fromTbl (Table.adbc adbc) path |>.map fun v =>
+    { v with vkind := .fld path depth, disp }
+
 -- | Create folder view
 def mkView (path : String) (depth : Nat) : IO (Option (View Table)) := do
-  match backend? path with
+  if Osquery.isOsquery path then
+    match ← Osquery.list path with
+    | some adbc => pure (mkViewFromAdbc adbc path depth (Remote.dispName path))
+    | none => pure none
+  else match backend? path with
   | some b =>
     mkViewFromTsv (← b.list path) path depth (Remote.dispName path)
   | none =>
@@ -172,9 +175,8 @@ private def curDepth (s : ViewStack Table) : Nat :=
 
 -- | Open osquery table: query safe tables, show schema for dangerous ones
 private def openOsqueryTable (s : ViewStack Table) (table : String) : IO (Option (ViewStack Table)) := do
-  let (json, label) ← Osquery.enterTable table
-  match ← AdbcTable.fromJson json with
-  | some adbc => match View.fromTbl (Table.adbc adbc) s!"osquery://{label}" with
+  match ← Osquery.enterTable table with
+  | some (adbc, label) => match View.fromTbl (Table.adbc adbc) s!"osquery://{label}" with
     | some v => pure (some (s.push v))
     | none => pure none
   | none => pure none

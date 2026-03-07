@@ -21,12 +21,8 @@ instance : TblOps AdbcTable where
   plotExport := AdbcTable.plotExport
   fetchMore := AdbcTable.fetchMore
   render t ctx := do
-    if ctx.inWidths.isEmpty then
-      let cols ← (Array.range t.nCols).mapM fun i => t.getCol i 0 t.nRows
-      renderCols cols t.colNames t.colFmts t.nRows ctx 0 t.nRows
-    else
-      let cols ← (Array.range t.nCols).mapM fun i => t.getCol i ctx.r0 ctx.r1
-      renderCols cols t.colNames t.colFmts t.nRows ctx ctx.r0 (ctx.r1 - ctx.r0)
+    let cols ← (Array.range t.nCols).mapM fun i => t.getCol i ctx.r0 ctx.r1
+    renderCols cols t.colNames t.colFmts t.nRows ctx ctx.r0 (ctx.r1 - ctx.r0)
 
 -- | ModifyTable instance for AdbcTable
 instance : ModifyTable AdbcTable where

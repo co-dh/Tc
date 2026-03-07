@@ -1,6 +1,7 @@
 /-
   Osquery: browse osquery tables via osqueryi CLI + DuckDB read_json_auto
 -/
+import Tc.Data.ADBC.Table
 import Tc.Error
 import Tc.Render
 import Tc.TmpDir
@@ -11,7 +12,6 @@ namespace Tc.Osquery
 def isOsquery (path : String) : Bool := path.startsWith "osquery://"
 
 -- | Tables that require specific input columns and should not be auto-queried.
--- These scan filesystem/network on demand or require event logging configuration.
 private def dangerousTables : Array String := #[
   "hash", "file", "augeas", "yara", "curl", "curl_certificate",
   "magic", "device_file", "carves", "suid_bin",
@@ -20,6 +20,11 @@ private def dangerousTables : Array String := #[
   "user_events", "apparmor_events"
 ]
 
+-- | SQL IN list from dangerous tables
+private def dangerousIn : String :=
+  let quoted := dangerousTables.map fun t => s!"'{t}'"
+  "(" ++ ", ".intercalate quoted.toList ++ ")"
+
 -- | Run osqueryi with --json flag, return stdout
 private def osqueryi (sql : String) : IO String := do
   let r ← Log.run "osquery" "osqueryi" #["--json", sql]
@@ -27,48 +32,49 @@ private def osqueryi (sql : String) : IO String := do
     throw <| IO.userError s!"osqueryi failed: {r.stderr.trimAscii.toString}"
   pure r.stdout
 
--- | List all osquery tables, returns TSV with path/size/date/type columns.
--- Safe tables get type ' ' (file-like, enters query), dangerous get 'd'-like schema view.
-def list (_path : String) : IO String := do
+-- | Run osqueryi, write JSON to tmp, load into DuckDB with extra SQL, return AdbcTable
+private def osqueryToTable (sql : String) (extraSql : String := "") : IO (Option AdbcTable) := do
+  let json ← osqueryi sql
+  if json.trimAscii.toString == "[]" || json.isEmpty then return none
+  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
+  let tmpFile ← Tc.tmpPath s!"osq-{n}.json"
+  IO.FS.writeFile tmpFile json
+  let tblName := s!"tc_osq_{n}"
+  try
+    let selectPart := if extraSql.isEmpty then "*" else s!"*, {extraSql}"
+    let _ ← Adbc.query s!"CREATE TEMP TABLE {tblName} AS SELECT {selectPart} FROM read_json_auto('{tmpFile}')"
+    try IO.FS.removeFile tmpFile catch _ => pure ()
+    let query : Prql.Query := { base := s!"from {tblName}" }
+    let total ← AdbcTable.queryCount query
+    AdbcTable.requery query total
+  catch e =>
+    try IO.FS.removeFile tmpFile catch _ => pure ()
+    Log.write "osqueryToTable" s!"error: {e.toString}"
+    return none
+
+-- | List all osquery tables with metadata. Returns AdbcTable with path/type for folder view.
+def list (_path : String) : IO (Option AdbcTable) := do
   statusMsg "Loading osquery tables ..."
-  let json ← osqueryi "SELECT name FROM osquery_registry WHERE registry='table' ORDER BY name"
-  let names := extractNames (json.splitOn "\n" |>.foldl (· ++ ·) "")
-  let hdr := "path\tsize\tdate\ttype"
-  let body := names.map fun n =>
-    let kind := if dangerousTables.contains n then "input-required" else "safe"
-    s!"{n}\t{kind}\t\t "
-  pure (hdr ++ (if body.isEmpty then "" else "\n" ++ "\n".intercalate body.toList))
-where
-  extractNames (json : String) : Array String :=
-    -- parse [ {"name":"foo"}, ... ] by splitting on "name":"
-    let parts := json.splitOn "\"name\":\""
-    parts.drop 1 |>.foldl (fun acc part =>
-      match part.splitOn "\"" with
-      | name :: _ => acc.push name
-      | _ => acc
-    ) #[]
-
--- | Query a safe table, returns JSON string
-def queryTable (table : String) : IO String := do
-  statusMsg s!"Querying {table} ..."
-  osqueryi s!"SELECT * FROM {table}"
-
--- | Get schema for a dangerous/input-required table, returns JSON string
-def tableSchema (table : String) : IO String := do
-  statusMsg s!"Loading schema for {table} ..."
-  osqueryi s!"pragma table_info('{table}')"
+  osqueryToTable
+    ("SELECT t.name, COUNT(c.name) as columns, GROUP_CONCAT(c.name) as cols " ++
+     "FROM osquery_registry t LEFT JOIN pragma_table_info(t.name) c ON 1=1 " ++
+     "WHERE t.registry='table' GROUP BY t.name ORDER BY t.name")
+    (s!"CASE WHEN name IN {dangerousIn} THEN 'input-required' ELSE 'safe' END as safety, " ++
+     "name as path, ' ' as type")
 
 -- | osquery parent: only root level, no hierarchy
 def parent (_path : String) : Option String := none
 
 -- | Enter a table: safe → query it, dangerous → show schema.
--- Returns JSON content to be loaded via fromJson.
-def enterTable (table : String) : IO (String × String) := do
+-- Returns AdbcTable and display label.
+def enterTable (table : String) : IO (Option (AdbcTable × String)) := do
   if dangerousTables.contains table then
-    let json ← tableSchema table
-    pure (json, s!"schema:{table}")
+    statusMsg s!"Loading schema for {table} ..."
+    let tbl ← osqueryToTable s!"pragma table_info('{table}')"
+    pure <| tbl.map (·, s!"schema:{table}")
   else
-    let json ← queryTable table
-    pure (json, table)
+    statusMsg s!"Querying {table} ..."
+    let tbl ← osqueryToTable s!"SELECT * FROM {table}"
+    pure <| tbl.map (·, table)
 
 end Tc.Osquery
