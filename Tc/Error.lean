@@ -7,12 +7,11 @@ namespace Log
 -- | Log file path
 def path : String := "/tmp/tc.log"
 
--- | Format timestamp HH:MM:SS.mmm
-def timestamp : IO String := do
-  let ms ← IO.monoMsNow
-  let s := ms / 1000 % 86400
-  let d2 := fun n : Nat => s!"{Char.ofNat (48 + n / 10)}{Char.ofNat (48 + n % 10)}"
-  pure s!"{d2 (s / 3600)}:{d2 ((s % 3600) / 60)}:{d2 (s % 60)}.{ms % 1000}"
+@[extern "lean_local_timestamp"]
+opaque localTimestamp : IO String
+
+-- | Format timestamp HH:MM:SS.mmm (local time)
+def timestamp : IO String := localTimestamp
 
 -- | Write log entry
 def write (tag msg : String) : IO Unit := do

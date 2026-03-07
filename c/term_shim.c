@@ -6,7 +6,20 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 #include "termbox2.h"
+
+// | Local time as "HH:MM:SS.mmm"
+lean_obj_res lean_local_timestamp(lean_obj_arg world) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    struct tm tm;
+    localtime_r(&ts.tv_sec, &tm);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%02d:%02d:%02d.%03ld",
+             tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec / 1000000);
+    return lean_io_result_mk_ok(lean_mk_string(buf));
+}
 
 // Headless mode: fake cell buffer when tb_init fails (no tty)
 static struct tb_cell *fake_buf = NULL;
