@@ -74,7 +74,7 @@ def rowFilter (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun _curCol
   let expr := TblOps.buildFilter s.tbl curName vals result numeric
   if expr.isEmpty then return s
   let some tbl' ← TblOps.filter s.tbl expr | return s
-  let some v' := View.fromTbl tbl' s.cur.path s.cur.nav.col.cur.val s.cur.nav.grp 0 | return s
+  let some v' := s.cur.rebuild tbl' (row := 0) | return s
   return s.push { v' with disp := s!"\\{curName}" }
 
 end Tc.ViewStack

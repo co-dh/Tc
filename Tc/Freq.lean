@@ -24,7 +24,7 @@ def filter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   let expr ← filterExprIO s.tbl cols s.cur.nav.row.cur.val
   let some s' := s.pop | return some s
   let some tbl' ← TblOps.filter s'.tbl expr | return some s'
-  let some v := View.fromTbl tbl' s'.cur.path 0 s'.cur.nav.grp 0 | return some s'
+  let some v := s'.cur.rebuild tbl' (row := 0) | return some s'
   return some (s'.push v)
 
 -- | Pure update: returns Effect for IO operations
