@@ -100,7 +100,7 @@ private def isDataFile (p : String) : Bool :=
 def curPath (v : View Table) : IO (Option String) := do
   if !(v.vkind matches .fld _ _) then return none
   let names := TblOps.colNames v.nav.tbl
-  let some pathCol := names.idxOf? "path" | return none
+  let some pathCol := names.idxOf? "path" <|> names.idxOf? "name" | return none
   let cols ← TblOps.getCols v.nav.tbl #[pathCol] v.nav.row.cur.val (v.nav.row.cur.val + 1)
   let c := cols.getD 0 default
   return some (c.get 0).toRaw
@@ -109,7 +109,7 @@ def curPath (v : View Table) : IO (Option String) := do
 def curType (v : View Table) : IO (Option Char) := do
   if !(v.vkind matches .fld _ _) then return none
   let names := TblOps.colNames v.nav.tbl
-  let some typeCol := names.idxOf? "type" | return none
+  let some typeCol := names.idxOf? "type" | return some ' '
   let cols ← TblOps.getCols v.nav.tbl #[typeCol] v.nav.row.cur.val (v.nav.row.cur.val + 1)
   let c := cols.getD 0 default
   let t := (c.get 0).toRaw

@@ -52,15 +52,14 @@ private def osqueryToTable (sql : String) (extraSql : String := "") : IO (Option
     Log.write "osqueryToTable" s!"error: {e.toString}"
     return none
 
--- | List all osquery tables with metadata. Returns AdbcTable with path/type for folder view.
+-- | List all osquery tables with metadata. Returns AdbcTable for folder view.
 def list (_path : String) : IO (Option AdbcTable) := do
   statusMsg "Loading osquery tables ..."
   osqueryToTable
     ("SELECT t.name, COUNT(c.name) as columns, GROUP_CONCAT(c.name) as cols " ++
      "FROM osquery_registry t LEFT JOIN pragma_table_info(t.name) c ON 1=1 " ++
      "WHERE t.registry='table' GROUP BY t.name ORDER BY t.name")
-    (s!"CASE WHEN name IN {dangerousIn} THEN 'input-required' ELSE 'safe' END as safety, " ++
-     "name as path, ' ' as type")
+    (s!"CASE WHEN name IN {dangerousIn} THEN 'input-required' ELSE 'safe' END as safety")
 
 -- | osquery parent: only root level, no hierarchy
 def parent (_path : String) : Option String := none
