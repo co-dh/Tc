@@ -59,8 +59,17 @@ instance : Update (AppState) where update := update
 
 end AppState
 
--- run effect, recurse on fzfCmd
-partial def runEffect (a : AppState) (e : Effect) : IO AppState := match e with
+-- run effect, recurse on fzfCmd; errors are logged and shown as popup, never crash
+partial def runEffect (a : AppState) (e : Effect) : IO AppState := do
+  match ← (runEffectCore a e |>.toBaseIO) with
+  | .ok a' => pure a'
+  | .error err => do
+    let msg := err.toString
+    Log.error msg
+    errorPopup msg
+    pure a
+where
+  runEffectCore (a : AppState) (e : Effect) : IO AppState := match e with
   | .none | .quit => pure a
   | .fzf .cmd => do match ← Fzf.cmdMode a.stk.cur.vkind with
     | some c => match a.update c with
@@ -68,7 +77,9 @@ partial def runEffect (a : AppState) (e : Effect) : IO AppState := match e with
       | none => pure a
     | none => pure a
   | .themeLoad d => do let th ← a.theme.runEffect d; pure { a with theme := th }
-  | _ => do let s ← Runner.runStackEffect a.stk e; pure { a with stk := s, vs := if e.isNone then a.vs else .default }
+  | _ => do
+    let s ← Runner.runStackEffect a.stk e
+    pure { a with stk := s, vs := if e.isNone then a.vs else .default }
 
 -- main loop: render → input → update → effect → loop
 partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppState := do

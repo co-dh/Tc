@@ -475,13 +475,10 @@ lean_obj_res lean_render_table(
         if (IS_SEL(hidBits, c)) { baseWidths[c] = 0; allWidths[c] = 1; continue; }
         int base;
         int cached = (c < nInWidths) ? lean_unbox(lean_array_get_core(inWidths, c)) : 0;
-        if (cached == 0) {  // no cache or was hidden → recompute
-            lean_obj_arg col = lean_array_get_core(allCols, c);
-            int dw = compute_data_width(col, r0, r1, (int)precAdj);  // visible rows only
-            base = (dw > MIN_HDR_WIDTH ? dw : MIN_HDR_WIDTH) + 2;
-        } else {
-            base = cached;
-        }
+        lean_obj_arg col = lean_array_get_core(allCols, c);
+        int dw = compute_data_width(col, r0, r1, (int)precAdj);  // visible rows only
+        base = (dw > MIN_HDR_WIDTH ? dw : MIN_HDR_WIDTH) + 2;
+        if (cached > base) base = cached;  // keep max of cached and current
         baseWidths[c] = base;  // uncapped, for cache
         int disp = base > MAX_DISP_WIDTH ? MAX_DISP_WIDTH : base;  // cap for display
         int w = disp + (int)widthAdj;

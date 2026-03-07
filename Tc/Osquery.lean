@@ -248,14 +248,10 @@ def list (_path : String) : IO (Option (AdbcTable × String)) := do
   let tblName := s!"tc_osq_{n}"
   let hasSchema ← schemaAvail.get
   try
-    let descJoin := if hasSchema
-      then ", COALESCE(s.description, '') as description FROM read_json_auto('" ++
-           tmpFile ++ "') j LEFT JOIN osq.tables s ON s.name = j.name"
-      else " FROM read_json_auto('" ++ tmpFile ++ "') j"
     let _ ← Adbc.query
       (s!"CREATE TEMP TABLE {tblName} AS SELECT j.*, " ++
        s!"CASE WHEN j.name IN {dangerousIn} THEN 'input-required' ELSE 'safe' END as safety" ++
-       descJoin)
+       s!" FROM read_json_auto('{tmpFile}') j")
     try IO.FS.removeFile tmpFile catch _ => pure ()
     -- Add rows column via single CASE UPDATE
     let _ ← Adbc.query s!"ALTER TABLE {tblName} ADD COLUMN rows INTEGER DEFAULT NULL"
@@ -266,6 +262,10 @@ def list (_path : String) : IO (Option (AdbcTable × String)) := do
       let nameList := counts.map fun (name, _) => s!"'{name.replace "'" "''"}'"
       let inList := ", ".intercalate nameList.toList
       let _ ← Adbc.query s!"UPDATE {tblName} SET rows = {caseExpr} WHERE name IN ({inList})"
+    -- Add description as last column (after rows)
+    if hasSchema then
+      let _ ← Adbc.query s!"ALTER TABLE {tblName} ADD COLUMN description VARCHAR DEFAULT ''"
+      let _ ← Adbc.query s!"UPDATE {tblName} SET description = COALESCE((SELECT s.description FROM osq.tables s WHERE s.name = {tblName}.name), '')"
     let query : Prql.Query := { base := s!"from {tblName}" }
     let total ← AdbcTable.queryCount query
     let tbl ← AdbcTable.requery query total

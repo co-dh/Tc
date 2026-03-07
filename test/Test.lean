@@ -928,6 +928,15 @@ def test_last_col_no_stretch : IO Unit := do
   -- trailing separator marks the end of the table
   assert (contains hdr "│") "last col should have trailing separator"
 
+def test_width_grows_on_scroll : IO Unit := do
+  log "width_grows_on_scroll"
+  -- wide_scroll.csv: first 22 rows have status=ok, last 5 have status=input-required
+  -- Scroll down with many j presses so "input-required" rows are visible
+  let keys := String.mk (List.replicate 26 'j')
+  let output ← run keys "data/wide_scroll.csv"
+  let lines := dataLines output
+  assert (lines.any (contains · "input-required")) "scrolled data should show full 'input-required'"
+
 -- === Run all tests ===
 
 -- | All tests as (name, action) pairs
@@ -992,7 +1001,8 @@ def tests : Array (String × IO Unit) := #[
   ("osquery_typed_columns", test_osquery_typed_columns),
   ("osquery_sort_enter", test_osquery_sort_enter),
   -- Rendering tests
-  ("last_col_no_stretch", test_last_col_no_stretch)
+  ("last_col_no_stretch", test_last_col_no_stretch),
+  ("width_grows_on_scroll", test_width_grows_on_scroll)
 ]
 
 def main (args : List String) : IO Unit := do

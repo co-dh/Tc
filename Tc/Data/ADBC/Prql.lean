@@ -70,7 +70,7 @@ def compile (prql : String) : IO (Option String) := do
   let full := funcs ++ "\n" ++ prql
   let child ← IO.Process.spawn {
     cmd := "prqlc"
-    args := #["compile", "--hide-signature-comment"]
+    args := #["compile", "--hide-signature-comment", "-t", "sql.duckdb"]
     stdin := .piped
     stdout := .piped
     stderr := .piped
