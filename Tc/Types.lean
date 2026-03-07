@@ -123,7 +123,6 @@ structure RenderCtx where
   inWidths   : Array Nat
   dispIdxs   : Array Nat
   nGrp       : Nat
-  colOff     : Nat
   r0         : Nat
   r1         : Nat
   curRow     : Nat

@@ -867,6 +867,15 @@ def test_osquery_enter : IO Unit := do
   let (tab, _) := footer output
   assert (contains tab "acpi_tables") "Enter on safe table opens it"
 
+def test_osquery_scroll_no_hide : IO Unit := do
+  log "osquery_scroll_no_hide"
+  unless (← hasOsquery) do log "  skip (no osqueryi)"; return
+  -- All 4 columns fit on 80-col screen; moving right should not hide first column
+  let output0 ← run "" "osquery://"
+  assert (contains output0 "cols") "col 0: cols visible"
+  let output1 ← run "l" "osquery://"
+  assert (contains output1 "cols") "col 1: cols still visible after moving right"
+
 def test_osquery_back : IO Unit := do
   log "osquery_back"
   unless (← hasOsquery) do log "  skip (no osqueryi)"; return
@@ -930,6 +939,7 @@ def tests : Array (String × IO Unit) := #[
   ("enter_no_quit_parquet", test_enter_no_quit_parquet),
   -- Osquery tests
   ("osquery_list", test_osquery_list), ("osquery_enter", test_osquery_enter),
+  ("osquery_scroll_no_hide", test_osquery_scroll_no_hide),
   ("osquery_back", test_osquery_back)
 ]
 

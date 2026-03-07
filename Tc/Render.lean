@@ -11,11 +11,10 @@ open Tc
 -- ViewState: scroll offsets (widths moved to View for type safety)
 structure ViewState where
   rowOff   : Nat := 0           -- first visible row
-  colOff   : Nat := 0           -- first visible column (display index)
   lastCol  : Nat := 0           -- last cursor column (for tooltip direction)
 
 -- Default ViewState
-def ViewState.default : ViewState := ⟨0, 0, 0⟩
+def ViewState.default : ViewState := ⟨0, 0⟩
 
 -- Reserved lines: 1 header + 1 footer + 1 tab + 1 status
 def reservedLines : Nat := 4
@@ -34,98 +33,6 @@ def defaultRowPg : Nat := 20
 
 -- RenderTable removed: render method now in Table class (Types.lean)
 
--- Cumulative width in display order (dispIdxs maps display->original)
--- Returns x position where column i starts (sum of widths 0..i-1)
-def cumWidthDisp (widths : Array Nat) (dispIdxs : Array Nat) (i : Nat) : Nat :=
-  (Array.range i).foldl (init := 0) fun acc d =>
-    acc + (widths.getD (dispIdxs.getD d 0) 0) + 1
-
--- Helper: cumWidthDisp increases by at least 1 per column
-private theorem cumWidthDisp_step (widths dispIdxs : Array Nat) (i : Nat) :
-    cumWidthDisp widths dispIdxs i ≤ cumWidthDisp widths dispIdxs (i + 1) := by
-  simp only [cumWidthDisp]
-  rw [Array.range_succ, Array.foldl_append]
-  rw [show (#[i] : Array Nat) = (#[]).push i from rfl, Array.foldl_push, Array.foldl_empty]
-  omega
-
--- Theorem: cumulative width is monotonically increasing
-theorem cumWidthDisp_monotone (widths dispIdxs : Array Nat) (i j : Nat) (h : i ≤ j) :
-    cumWidthDisp widths dispIdxs i ≤ cumWidthDisp widths dispIdxs j := by
-  induction j with
-  | zero =>
-    have hi : i = 0 := by omega
-    subst hi; exact Nat.le_refl _
-  | succ k ih =>
-    if hik : i ≤ k then
-      exact Nat.le_trans (ih hik) (cumWidthDisp_step widths dispIdxs k)
-    else
-      have hi : i = k + 1 := by omega
-      subst hi; exact Nat.le_refl _
-
--- Adjust column offset so cursor is visible
--- cur = cursor display index, colOff = first visible display index
-def adjColOff (cur colOff : Nat) (widths : Array Nat) (dispIdxs : Array Nat) (screenW : Nat) : Nat :=
-  let cumW := cumWidthDisp widths dispIdxs
-  let curEnd := cumW (cur + 1)  -- right edge of cursor column
-  let offX := cumW colOff       -- left edge of visible area
-  -- scroll right: cursor's right edge past screen
-  if curEnd > offX + screenW then
-    -- find smallest offset where cursor fits: cumW(off) + screenW >= curEnd
-    (List.range (cur + 1)).find? (fun i => cumW i + screenW >= curEnd) |>.getD cur
-  -- scroll left: cursor's left edge before visible area
-  else if cumW cur < offX then cur
-  else colOff
-
--- Precomputed cumulative width array (O(n) build, O(1) lookup)
--- cumWidthArr[i] == cumWidthDisp widths dispIdxs i for i ≤ n
-def cumWidthArr (widths : Array Nat) (dispIdxs : Array Nat) (n : Nat) : Array Nat :=
-  (Array.range n).foldl (init := #[0]) fun acc d =>
-    let prev := acc.getD (acc.size - 1) 0
-    acc.push (prev + (widths.getD (dispIdxs.getD d 0) 0) + 1)
-
--- Theorem: cumWidthArr always has exactly n+1 elements
--- Proof strategy: foldl over (Array.range n) starting from #[0] (size 1),
--- pushing exactly one element per step → size = 1 + n = n + 1.
-theorem cumWidthArr_size (widths dispIdxs : Array Nat) (n : Nat) :
-    (cumWidthArr widths dispIdxs n).size = n + 1 := by
-  simp only [cumWidthArr]
-  -- The core: foldl over range n, init size 1, each step pushes once → size = 1 + n
-  have : ∀ (init : Array Nat),
-      ((Array.range n).foldl (init := init) fun acc d =>
-        let prev := acc.getD (acc.size - 1) 0
-        acc.push (prev + (widths.getD (dispIdxs.getD d 0) 0) + 1)).size
-      = init.size + n := by
-    intro init
-    induction n generalizing init with
-    | zero => simp [Array.range]
-    | succ k ih =>
-      rw [Array.range_succ, Array.foldl_append]
-      rw [show (#[k] : Array Nat) = (#[]).push k from rfl, Array.foldl_push, Array.foldl_empty]
-      simp only [Array.size_push]
-      rw [ih]
-      omega
-  rw [this]
-  simp [Array.size]; omega
-
--- Fast adjColOff using precomputed cumulative widths (O(n) total instead of O(n²))
-def adjColOffFast (cur colOff : Nat) (widths : Array Nat) (dispIdxs : Array Nat) (screenW : Nat) : Nat :=
-  let n := max (cur + 1) colOff  -- cover both cur+1 and colOff
-  let arr := cumWidthArr widths dispIdxs n
-  let cumW := fun i => arr.getD i 0
-  let curEnd := cumW (cur + 1)  -- right edge of cursor column
-  let offX := cumW colOff       -- left edge of visible area
-  -- scroll right: cursor's right edge past screen
-  if curEnd > offX + screenW then
-    -- find smallest offset where cursor fits: cumW(off) + screenW >= curEnd
-    (List.range (cur + 1)).find? (fun i => cumW i + screenW >= curEnd) |>.getD cur
-  -- scroll left: cursor's left edge before visible area
-  else if cumW cur < offX then cur
-  else colOff
-
--- NOTE: adjColOffFast is equivalent to adjColOff by construction.
--- Proof requires showing: ∀ i ≤ n, (cumWidthArr w d n).getD i 0 = cumWidthDisp w d i
--- (foldl intermediate state reasoning — nontrivial, omitted for now).
-
 -- | Shared render helper: adjusts cursor/selections for window, calls C FFI
 def renderCols (cols : Array Column) (names : Array String) (fmts : Array Char)
     (totalRows : Nat) (ctx : RenderCtx) (r0 nVisible : Nat) : IO (Array Nat) :=
@@ -133,7 +40,7 @@ def renderCols (cols : Array Column) (names : Array String) (fmts : Array Char)
   let adjSel := ctx.rowSels.filterMap fun r =>
     if r >= r0 && r < r0 + nVisible then some (r - r0) else none
   Term.renderTable cols names fmts ctx.inWidths ctx.dispIdxs
-    totalRows.toUInt64 ctx.nGrp.toUInt64 ctx.colOff.toUInt64
+    totalRows.toUInt64 ctx.nGrp.toUInt64 0
     0 nVisible.toUInt64 adjCur.toUInt64 ctx.curCol.toUInt64
     ctx.moveDir.toInt64 ctx.selColIdxs adjSel ctx.hiddenIdxs
     ctx.styles ctx.precAdj.toInt64 ctx.widthAdj.toInt64
@@ -147,11 +54,9 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
   let h ← Term.height; let w ← Term.width
   let visRows := min maxVisRows (h.toNat - reservedLines)
   let rowOff := adjOff nav.row.cur.val view.rowOff visRows
-  let colOff := if inWidths.isEmpty then 0
-                else adjColOffFast nav.col.cur.val view.colOff inWidths nav.dispIdxs w.toNat
   let moveDir := if nav.curColIdx > view.lastCol then 1 else if nav.curColIdx < view.lastCol then -1 else 0
   let ctx : RenderCtx := {
-    inWidths, dispIdxs := nav.dispIdxs, nGrp := nav.grp.size, colOff,
+    inWidths, dispIdxs := nav.dispIdxs, nGrp := nav.grp.size,
     r0 := rowOff, r1 := min nRows (rowOff + visRows),
     curRow := nav.row.cur.val, curCol := nav.curColIdx, moveDir,
     selColIdxs := nav.selColIdxs, rowSels := nav.row.sels,
@@ -168,7 +73,7 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
   let right := s!"c{nav.curColIdx}/{nCols} grp={nav.grp.size} sel={nav.row.sels.size}{adj} r{nav.row.cur.val}/{total}"
   let pad := w.toNat - colName.length - right.length
   Term.print 0 (h - 1) Term.cyan Term.default (colName ++ "".pushn ' ' (max 1 pad) ++ right)
-  pure (⟨rowOff, colOff, nav.curColIdx⟩, widths)
+  pure (⟨rowOff, nav.curColIdx⟩, widths)
 
 -- | Render tab line: parent2 │ parent1 │ [current] (stack top on right)
 def renderTabLine (tabs : Array String) (curIdx : Nat) : IO Unit := do
@@ -210,4 +115,3 @@ def statusMsg (msg : String) : IO Unit := do
   let padLen := if w.toNat > msg.length then w.toNat - msg.length else 0
   Term.print 0 (h - 1) Term.cyan Term.default (msg ++ "".pushn ' ' padLen)
   Term.present
-

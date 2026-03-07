@@ -482,9 +482,42 @@ lean_obj_res lean_render_table(
     int* xs = malloc(nDispCols * sizeof(int));
     int* ws = malloc(nDispCols * sizeof(int));
     size_t nVisCols = 0;
-    int x = 0;
+
+    // compute pinned key width
+    int keyWidth = 0;
+    for (size_t c = 0; c < nKeys && c < nDispCols; c++) {
+        size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, c));
+        keyWidth += allWidths[origIdx] + 1;  // width + separator
+    }
+
+    // find cursor's display index (position in colIdxs, relative to non-key columns)
+    size_t curDispIdx = 0;
+    for (size_t c = nKeys; c < nDispCols; c++) {
+        size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, c));
+        if (origIdx == curCol) { curDispIdx = c - nKeys; break; }
+    }
+
+    // adjust colOff so cursor column is visible (using actual display widths)
+    int scrollW = screenW - keyWidth;  // available width for non-key columns
+    if (scrollW < 1) scrollW = 1;
+
+    // if cursor is before current offset, snap offset to cursor
+    if (curDispIdx < colOff) colOff = curDispIdx;
+
+    // if cursor's right edge is past visible area, increase offset
+    // compute cumulative width from colOff to cursor (inclusive)
+    for (;;) {
+        int cumX = 0;
+        for (size_t c = colOff; c <= curDispIdx && (nKeys + c) < nDispCols; c++) {
+            size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, nKeys + c));
+            cumX += allWidths[origIdx] + 1;
+        }
+        if (cumX <= scrollW || colOff >= curDispIdx) break;
+        colOff++;
+    }
 
     // 1. Always render key columns first (pinned)
+    int x = 0;
     for (size_t c = 0; c < nKeys && c < nDispCols && x < screenW; c++) {
         size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, c));
         int w = allWidths[origIdx];
