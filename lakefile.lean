@@ -39,3 +39,17 @@ lean_exe test where
 lean_exe testkdb where
   root := `test.TestKdb
 
+-- | Build test + tc, then run tests (test shells out to tc binary)
+script runtest args do
+  let build ← IO.Process.spawn {
+    cmd := "lake", args := #["build", "test", "tc"]
+    stdin := .inherit, stdout := .inherit, stderr := .inherit
+  }
+  if (← build.wait) != 0 then return 1
+  let child ← IO.Process.spawn {
+    cmd := ".lake/build/bin/test"
+    args := args.toArray
+    stdin := .inherit, stdout := .inherit, stderr := .inherit
+  }
+  return ← child.wait
+

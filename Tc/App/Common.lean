@@ -144,7 +144,14 @@ def appMain (toText : Table → IO String) (init : IO Bool) (shutdown : IO Unit)
   try
     if path.isEmpty || path.startsWith "s3://" || path.startsWith "hf://" || path.startsWith "osquery://" then
       let p := if path.isEmpty then "." else path
-      match ← Folder.mkView p 1 with
+      let tableName := if p.startsWith "osquery://" then (p.drop 10).toString else ""
+      if !tableName.isEmpty then
+        match ← Osquery.enterTable tableName with
+        | some (adbc, label) => match View.fromTbl (Table.adbc adbc) s!"osquery://{label}" with
+          | some v => let _ ← runApp v pipeMode testMode theme keys
+          | none => IO.eprintln s!"Empty osquery table: {tableName}"
+        | none => IO.eprintln s!"Cannot query osquery table: {tableName}"
+      else match ← Folder.mkView p 1 with
       | some v => let _ ← runApp v pipeMode testMode theme keys
       | none => IO.eprintln s!"Cannot browse: {p}"
     else if path.startsWith "kdb://" then
@@ -167,3 +174,4 @@ def appMain (toText : Table → IO String) (init : IO Bool) (shutdown : IO Unit)
 def main (args : List String) : IO Unit := do
   try appMain Table.toText Backend.init Backend.shutdown args
   catch e => IO.eprintln s!"Error: {e}"
+
