@@ -3,8 +3,15 @@
  */
 #include <lean/lean.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include "termbox2.h"
+
+// Headless mode: fake cell buffer when tb_init fails (no tty)
+static struct tb_cell *fake_buf = NULL;
+static int fake_w = 80, fake_h = 24;
+static int headless = 0;
 
 // | Check if stdin is a tty (false = piped input)
 lean_obj_res lean_isatty_stdin(lean_obj_arg world) {
@@ -22,49 +29,65 @@ lean_obj_res lean_reopen_tty(lean_obj_arg world) {
 // tb_init() -> Int32
 lean_obj_res lean_tb_init(lean_obj_arg world) {
     int r = tb_init();
-    tb_set_output_mode(TB_OUTPUT_256);  // enable 256-color mode
-    // Drain any pending escape sequence responses (cursor position, etc)
-    struct tb_event ev;
-    while (tb_peek_event(&ev, 50) > 0) { /* discard */ }
+    if (r != 0) {
+        // No terminal — headless mode (for -c tests)
+        headless = 1;
+        fake_buf = calloc(fake_w * fake_h, sizeof(struct tb_cell));
+    } else {
+        tb_set_output_mode(TB_OUTPUT_256);  // enable 256-color mode
+        // Drain any pending escape sequence responses (cursor position, etc)
+        struct tb_event ev;
+        while (tb_peek_event(&ev, 50) > 0) { /* discard */ }
+    }
     return lean_io_result_mk_ok(lean_box((uint32_t)(int32_t)r));
 }
 
 // tb_shutdown() -> Unit
 lean_obj_res lean_tb_shutdown(lean_obj_arg world) {
-    tb_shutdown();
+    if (headless) { free(fake_buf); fake_buf = NULL; }
+    else tb_shutdown();
     return lean_io_result_mk_ok(lean_box(0));
 }
 
 // tb_width() -> UInt32
 lean_obj_res lean_tb_width(lean_obj_arg world) {
+    if (headless) return lean_io_result_mk_ok(lean_box_uint32((uint32_t)fake_w));
     int w = tb_width();
-    if (w < 0) w = 80;  // fallback if not initialized
+    if (w < 0) w = 80;
     return lean_io_result_mk_ok(lean_box_uint32((uint32_t)w));
 }
 
 // tb_height() -> UInt32
 lean_obj_res lean_tb_height(lean_obj_arg world) {
+    if (headless) return lean_io_result_mk_ok(lean_box_uint32((uint32_t)fake_h));
     int h = tb_height();
-    if (h < 0) h = 24;  // fallback if not initialized
+    if (h < 0) h = 24;
     return lean_io_result_mk_ok(lean_box_uint32((uint32_t)h));
 }
 
 // tb_clear() -> Unit
 lean_obj_res lean_tb_clear(lean_obj_arg world) {
-    tb_clear();
+    if (headless) { if (fake_buf) memset(fake_buf, 0, fake_w * fake_h * sizeof(struct tb_cell)); }
+    else tb_clear();
     return lean_io_result_mk_ok(lean_box(0));
 }
 
 // tb_present() -> Unit
 lean_obj_res lean_tb_present(lean_obj_arg world) {
-    tb_present();
+    if (!headless) tb_present();
     return lean_io_result_mk_ok(lean_box(0));
 }
 
 // tb_set_cell(x, y, ch, fg, bg) -> Unit
 lean_obj_res lean_tb_set_cell(uint32_t x, uint32_t y, uint32_t ch,
                                uint32_t fg, uint32_t bg, lean_obj_arg world) {
-    tb_set_cell((int)x, (int)y, ch, fg, bg);
+    if (headless && fake_buf && (int)x < fake_w && (int)y < fake_h) {
+        fake_buf[y * fake_w + x].ch = ch;
+        fake_buf[y * fake_w + x].fg = fg;
+        fake_buf[y * fake_w + x].bg = bg;
+    } else if (!headless) {
+        tb_set_cell((int)x, (int)y, ch, fg, bg);
+    }
     return lean_io_result_mk_ok(lean_box(0));
 }
 
@@ -90,6 +113,64 @@ lean_obj_res lean_tb_poll_event(lean_obj_arg world) {
     data[15] = ev.mod;                        // mod: 2nd UInt8
     return lean_io_result_mk_ok(obj);
 }
+
+// | Read termbox internal cell buffer as a string (rows separated by newlines)
+lean_obj_res lean_tb_buffer_str(lean_obj_arg world) {
+    int w, h;
+    struct tb_cell *buf;
+    if (headless) {
+        w = fake_w; h = fake_h; buf = fake_buf;
+    } else {
+        w = tb_width(); h = tb_height();
+        if (w < 1) w = 80;
+        if (h < 1) h = 24;
+        buf = tb_cell_buffer();
+    }
+    if (!buf) return lean_io_result_mk_ok(lean_mk_string(""));
+    // worst case: 4 bytes per char + newline per row
+    size_t cap = (size_t)w * h * 4 + h + 1;
+    char *out = malloc(cap);
+    size_t pos = 0;
+    for (int y = 0; y < h; y++) {
+        // find last non-space char in row for trimming
+        int last = -1;
+        for (int x = w - 1; x >= 0; x--) {
+            uint32_t ch = buf[y * w + x].ch;
+            if (ch != 0 && ch != ' ') { last = x; break; }
+        }
+        for (int x = 0; x <= last; x++) {
+            uint32_t ch = buf[y * w + x].ch;
+            if (ch == 0) ch = ' ';
+            // encode as UTF-8
+            if (ch < 0x80) { out[pos++] = (char)ch; }
+            else if (ch < 0x800) { out[pos++] = 0xC0 | (ch >> 6); out[pos++] = 0x80 | (ch & 0x3F); }
+            else if (ch < 0x10000) { out[pos++] = 0xE0 | (ch >> 12); out[pos++] = 0x80 | ((ch >> 6) & 0x3F); out[pos++] = 0x80 | (ch & 0x3F); }
+            else { out[pos++] = 0xF0 | (ch >> 18); out[pos++] = 0x80 | ((ch >> 12) & 0x3F); out[pos++] = 0x80 | ((ch >> 6) & 0x3F); out[pos++] = 0x80 | (ch & 0x3F); }
+        }
+        out[pos++] = '\n';
+    }
+    out[pos] = '\0';
+    lean_obj_res s = lean_mk_string_from_bytes(out, pos);
+    free(out);
+    return lean_io_result_mk_ok(s);
+}
+
+// | Headless-aware tb_set_cell wrapper (used by internal C rendering)
+static void hd_set_cell(int x, int y, uint32_t ch, uint32_t fg, uint32_t bg) {
+    if (headless) {
+        if (fake_buf && x >= 0 && x < fake_w && y >= 0 && y < fake_h) {
+            fake_buf[y * fake_w + x].ch = ch;
+            fake_buf[y * fake_w + x].fg = fg;
+            fake_buf[y * fake_w + x].bg = bg;
+        }
+    } else {
+        tb_set_cell(x, y, ch, fg, bg);
+    }
+}
+
+// Redirect all tb_set_cell after this point to headless-aware version
+#undef tb_set_cell
+#define tb_set_cell(x, y, ch, fg, bg) hd_set_cell(x, y, ch, fg, bg)
 
 // | Decode UTF-8 codepoint, advance pointer, return codepoint
 static uint32_t utf8_decode(const char **pp) {
@@ -345,8 +426,8 @@ lean_obj_res lean_render_table(
     int64_t widthAdj,         // column width offset
     lean_obj_arg world)
 {
-    int screenW = tb_width();
-    int screenH = tb_height();
+    int screenW = headless ? fake_w : tb_width();
+    int screenH = headless ? fake_h : tb_height();
     if (screenW < 1) screenW = 80;
     if (screenH < 1) screenH = 24;
     size_t nCols = lean_array_size(allCols);

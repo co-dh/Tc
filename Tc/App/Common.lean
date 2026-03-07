@@ -106,7 +106,8 @@ def runApp (v : View Table) (pipe test : Bool) (th : Theme.State) (ks : Array Ch
   if pipe then let _ ← Term.reopenTty
   let _ ← Term.init
   let a' ← mainLoop ⟨⟨v, []⟩, .default, th, {}⟩ test ks
-  Term.shutdown; pure a'
+  if !test then Term.shutdown
+  pure a'
 
 -- run from TSV string result
 def runTsv (r : Except String String) (nm : String) (pipe test : Bool)
@@ -141,7 +142,7 @@ def appMain (toText : Table → IO String) (init : IO Bool) (shutdown : IO Unit)
     return
   let path := path?.getD ""
   try
-    if path.isEmpty || path.startsWith "s3://" || path.startsWith "hf://" then
+    if path.isEmpty || path.startsWith "s3://" || path.startsWith "hf://" || path.startsWith "osquery://" then
       let p := if path.isEmpty then "." else path
       match ← Folder.mkView p 1 with
       | some v => let _ ← runApp v pipeMode testMode theme keys

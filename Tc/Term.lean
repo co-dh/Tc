@@ -100,10 +100,9 @@ opaque present : IO Unit
 @[extern "lean_tb_poll_event"]
 opaque pollEvent : IO Event
 
--- | Capture screen via tmux capture-pane
-def bufferStr : IO String := do
-  let out ← Log.run "tmux" "tmux" #["capture-pane", "-p"]
-  pure out.stdout
+-- | Read termbox internal cell buffer as string (rows separated by newlines)
+@[extern "lean_tb_buffer_str"]
+opaque bufferStr : IO String
 
 -- | Batch print with padding (C FFI - fast)
 @[extern "lean_tb_print_pad"]

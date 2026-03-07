@@ -203,6 +203,24 @@ def fromTsv (content : String) : IO (Option AdbcTable) := do
     Log.write "fromTsv" s!"error: {e.toString}"
     return none
 
+-- | Create AdbcTable from JSON content via DuckDB read_json_auto
+def fromJson (content : String) : IO (Option AdbcTable) := do
+  if content.isEmpty || content.trimAscii.toString == "[]" then return none
+  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
+  let tmpFile ← Tc.tmpPath s!"json-{n}.json"
+  IO.FS.writeFile tmpFile content
+  let tblName := s!"tc_json_{n}"
+  try
+    let _ ← Adbc.query s!"CREATE TEMP TABLE {tblName} AS SELECT * FROM read_json_auto('{tmpFile}')"
+    try IO.FS.removeFile tmpFile catch _ => pure ()
+    let query : Prql.Query := { base := s!"from {tblName}" }
+    let total ← queryCount query
+    requery query total
+  catch e =>
+    try IO.FS.removeFile tmpFile catch _ => pure ()
+    Log.write "fromJson" s!"error: {e.toString}"
+    return none
+
 end AdbcTable
 
 -- NOTE: TblOps/ModifyTable instances for AdbcTable are in ADBC/Ops.lean

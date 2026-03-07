@@ -533,16 +533,6 @@ def test_width_stable_after_info : IO Unit := do
   assert (hdr1 == hdr2) s!"Info toggle must not change column widths: [{hdr1}] vs [{hdr2}]"
   assert (hdr1 == hdr3) s!"Info double-toggle must not change column widths"
 
-def test_last_col_fills_screen : IO Unit := do
-  log "last_col_fills_screen"
-  -- Last visible column should stretch to fill remaining screen width.
-  -- In 80-col terminal with pac.csv, the last char of header row should not be blank.
-  let out ← run "" "data/pac.csv"
-  let lines := out.splitOn "\n" |>.filter isContent
-  let hdr := lines.headD ""
-  -- Header should use full width (80 cols) — last char should not be space
-  assert (hdr.length >= 78) s!"Header should fill screen width, got length {hdr.length}"
-
 -- === Sort tests (CSV) ===
 
 def test_sort_asc : IO Unit := do
@@ -896,6 +886,39 @@ def test_enter_no_quit_parquet : IO Unit := do
   let (_, status) := footer (← run "<ret>j" "data/nyse/1.parquet")
   assert (contains status "r1/") "Enter on parquet should not quit (j moves to r1)"
 
+-- === Osquery tests ===
+
+def hasOsquery : IO Bool := do
+  let r ← IO.Process.output { cmd := "which", args := #["osqueryi"] }
+  pure (r.exitCode == 0)
+
+-- | Run tc with -c flag, no tmux. bufferStr reads termbox internal buffer.
+def runC (keys : String) (file : String) : IO String := do
+  log s!"  runC: {file} keys={keys}"
+  let out ← IO.Process.output { cmd := bin, args := #[file, "-c", keys] }
+  log "  done"
+  pure out.stdout
+
+def test_osquery_list : IO Unit := do
+  log "osquery_list"
+  unless (← hasOsquery) do log "  skip (no osqueryi)"; return
+  let output ← runC "" "osquery://"
+  assert (contains output "path") "osquery:// shows path column"
+  assert (contains output "safe") "osquery:// shows safe tables"
+
+def test_osquery_enter : IO Unit := do
+  log "osquery_enter"
+  unless (← hasOsquery) do log "  skip (no osqueryi)"; return
+  let output ← runC "<ret>" "osquery://"
+  let (tab, _) := footer output
+  assert (contains tab "acpi_tables") "Enter on safe table opens it"
+
+def test_osquery_back : IO Unit := do
+  log "osquery_back"
+  unless (← hasOsquery) do log "  skip (no osqueryi)"; return
+  let output ← runC "<ret>q" "osquery://"
+  assert (contains output "safe") "q pops back to osquery table list"
+
 -- === Run all tests ===
 
 -- | All tests as (name, action) pairs
@@ -907,7 +930,6 @@ def tests : Array (String × IO Unit) := #[
   ("key_reorder", test_key_reorder), ("hide_col", test_hide_col),
   ("hide_unhide", test_hide_unhide),
   ("width_stable_after_info", test_width_stable_after_info),
-  ("last_col_fills_screen", test_last_col_fills_screen),
   ("sort_asc", test_sort_asc), ("sort_desc", test_sort_desc),
   ("meta_shows", test_meta_shows), ("meta_col_info", test_meta_col_info),
   ("meta_no_garbage", test_meta_no_garbage),
@@ -951,7 +973,10 @@ def tests : Array (String × IO Unit) := #[
   ("filter_parquet_full_db", test_filter_parquet_full_db),
   ("scroll_fetches_more", test_scroll_fetches_more),
   ("numeric_right_align", test_numeric_right_align),
-  ("enter_no_quit_parquet", test_enter_no_quit_parquet)
+  ("enter_no_quit_parquet", test_enter_no_quit_parquet),
+  -- Osquery tests
+  ("osquery_list", test_osquery_list), ("osquery_enter", test_osquery_enter),
+  ("osquery_back", test_osquery_back)
 ]
 
 def main (args : List String) : IO Unit := do

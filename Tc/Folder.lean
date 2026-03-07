@@ -8,6 +8,7 @@ import Tc.Term
 import Tc.S3
 import Tc.Table
 import Tc.HF
+import Tc.Osquery
 import Tc.Remote
 
 namespace Tc.Folder
@@ -31,9 +32,16 @@ private def hfBack : Backend where
   resolve  := HF.resolve
   download := HF.download
 
+private def osqueryBack : Backend where
+  list     := Osquery.list
+  parent   := Osquery.parent
+  resolve  := fun p => pure p
+  download := fun p => pure p
+
 private def backend? (path : String) : Option Backend :=
   if S3.isS3 path then some s3Back
   else if HF.isHF path then some hfBack
+  else if Osquery.isOsquery path then some osqueryBack
   else none
 
 -- | Strip base path prefix to get relative entry name
@@ -162,6 +170,15 @@ private def tryView (s : ViewStack Table) (path : String) (depth : Nat) (push? :
 private def curDepth (s : ViewStack Table) : Nat :=
   match s.cur.vkind with | .fld _ d => d | _ => 1
 
+-- | Open osquery table: query safe tables, show schema for dangerous ones
+private def openOsqueryTable (s : ViewStack Table) (table : String) : IO (Option (ViewStack Table)) := do
+  let (json, label) ← Osquery.enterTable table
+  match ← AdbcTable.fromJson json with
+  | some adbc => match View.fromTbl (Table.adbc adbc) s!"osquery://{label}" with
+    | some v => pure (some (s.push v))
+    | none => pure none
+  | none => pure none
+
 -- | Enter directory or view file based on current row
 def enter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
@@ -182,15 +199,20 @@ def enter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
       let fullPath := joinPath curDir (if back.isSome then p ++ "/" else p)
       tryView s fullPath (curDepth s) true
   | some ' ', some p =>
-    let fullPath := joinPath curDir p
-    if isDataFile p then
-      let openPath ← match back with | some b => b.resolve fullPath | none => pure fullPath
-      match ← openDataFile s openPath with
+    if Osquery.isOsquery curDir then
+      match ← openOsqueryTable s p with
       | some s' => pure (some s')
-      | none => if back.isNone then viewFile fullPath; pure (some s) else pure (some s)
+      | none => pure (some s)
     else
-      let viewPath ← match back with | some b => b.download fullPath | none => pure fullPath
-      viewFile viewPath; pure (some s)
+      let fullPath := joinPath curDir p
+      if isDataFile p then
+        let openPath ← match back with | some b => b.resolve fullPath | none => pure fullPath
+        match ← openDataFile s openPath with
+        | some s' => pure (some s')
+        | none => if back.isNone then viewFile fullPath; pure (some s) else pure (some s)
+      else
+        let viewPath ← match back with | some b => b.download fullPath | none => pure fullPath
+        viewFile viewPath; pure (some s)
   | some 'l', some p =>
     if back.isSome then pure (some s) else
     let fullPath := joinPath curDir p
