@@ -212,24 +212,21 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
   let q := Prql.quote
   -- time-like: use PRQL ds_trunc; non-time: hand-write SQL (PRQL miscompiles ROW_NUMBER + select)
   let sql' ← do
-    if xIsTime then
-      let prql := match catName? with
+    let prql := if xIsTime then
+        match catName? with
         | some cn => s!"{t.query.render} | ds_trunc_cat {q xName} {q yName} {q cn} {truncLen}"
         | none    => s!"{t.query.render} | ds_trunc {q xName} {q yName} {truncLen}"
-      Log.write "plot-prql" prql
-      let some sql ← Prql.compile prql | return none
-      pure (stripSemi sql)
-    else
-      let selCols := match catName? with
-        | some cn => s!"{q xName}, {q yName}, {q cn}"
-        | none    => s!"{q xName}, {q yName}"
-      let dsFn := match catName? with
-        | some cn => s!"ds_nth_cat {q yName} {q cn} {step}"
-        | none    => s!"ds_nth {q yName} {step}"
-      let prql := s!"{t.query.render} | {dsFn} | select \{{selCols}}"
-      Log.write "plot-prql" prql
-      let some sql ← Prql.compile prql | return none
-      pure (stripSemi sql)
+      else
+        let selCols := match catName? with
+          | some cn => s!"{q xName}, {q yName}, {q cn}"
+          | none    => s!"{q xName}, {q yName}"
+        let dsFn := match catName? with
+          | some cn => s!"ds_nth_cat {q yName} {q cn} {step}"
+          | none    => s!"ds_nth {q yName} {step}"
+        s!"{t.query.render} | {dsFn} | select \{{selCols}}"
+    Log.write "plot-prql" prql
+    let some sql ← Prql.compile prql | return none
+    pure (stripSemi sql)
   let datPath ← Tc.tmpPath "plot.dat"
   let copySql := s!"COPY ({sql'}) TO '{datPath}' (FORMAT CSV, DELIMITER '\\t', HEADER false)"
   Log.write "plot-sql" copySql
