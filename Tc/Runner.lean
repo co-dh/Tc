@@ -12,27 +12,27 @@ import Tc.Plot
 namespace Tc.Runner
 
 -- | Helper: run IO (Option ViewStack), default to original on none
-def runOpt (s : ViewStack Table) (io : IO (Option (ViewStack Table))) : IO (ViewStack Table) :=
+def runOpt (s : ViewStack AdbcTable) (io : IO (Option (ViewStack AdbcTable))) : IO (ViewStack AdbcTable) :=
   (·.getD s) <$> io
 
 -- | Fzf effects: column/row search, filter
-private def runFzf (s : ViewStack Table) : FzfEffect → IO (ViewStack Table)
+private def runFzf (s : ViewStack AdbcTable) : FzfEffect → IO (ViewStack AdbcTable)
   | .col => s.colSearch
   | .row => s.rowSearch
   | .filter => s.rowFilter
   | .cmd => pure s
 
 -- | Search effects: next/prev
-private def runSearch (s : ViewStack Table) : SearchEffect → IO (ViewStack Table)
+private def runSearch (s : ViewStack AdbcTable) : SearchEffect → IO (ViewStack AdbcTable)
   | .next => s.searchNext
   | .prev => s.searchPrev
 
 -- | Query effects: meta, freq, filter, sort, delete
-private def runQuery (s : ViewStack Table) : QueryEffect → IO (ViewStack Table)
+private def runQuery (s : ViewStack AdbcTable) : QueryEffect → IO (ViewStack AdbcTable)
   | .«meta» => runOpt s (Meta.push s)
   | .freq colNames => do
-    let some (adbc, totalGroups) ← Table.freqTable s.tbl colNames | pure s
-    match View.fromTbl (.adbc adbc) s.cur.path 0 colNames with
+    let some (adbc, totalGroups) ← AdbcTable.freqTable s.tbl colNames | pure s
+    match View.fromTbl adbc s.cur.path 0 colNames with
     | some v => pure (s.push { v with vkind := .freqV colNames totalGroups, disp := s!"freq {",".intercalate colNames.toList}" })
     | none => pure s
   | .freqFilter cols row => do
@@ -58,25 +58,25 @@ private def runQuery (s : ViewStack Table) : QueryEffect → IO (ViewStack Table
     | none => pure s
 
 -- | Folder effects: push, enter, delete, depth
-private def runFolder (s : ViewStack Table) : FolderEffect → IO (ViewStack Table)
+private def runFolder (s : ViewStack AdbcTable) : FolderEffect → IO (ViewStack AdbcTable)
   | .push => runOpt s (Folder.push s)
   | .enter => runOpt s (Folder.enter s)
   | .del => runOpt s (Folder.del s)
   | .depth delta => runOpt s (Folder.setDepth s delta)
 
 -- | Plot effects: line, bar
-private def runPlot (s : ViewStack Table) : PlotEffect → IO (ViewStack Table)
+private def runPlot (s : ViewStack AdbcTable) : PlotEffect → IO (ViewStack AdbcTable)
   | .line => runOpt s (Plot.run s false)
   | .bar  => runOpt s (Plot.run s true)
 
 -- | Meta effects: select nulls, select singles, set key
-private def runMeta (s : ViewStack Table) : MetaEffect → IO (ViewStack Table)
+private def runMeta (s : ViewStack AdbcTable) : MetaEffect → IO (ViewStack AdbcTable)
   | .selNull => Meta.selNull s
   | .selSingle => Meta.selSingle s
   | .setKey => runOpt s (Meta.setKey s)
 
 -- | Run effect on ViewStack, return updated stack
-def runStackEffect (s : ViewStack Table) (eff : Effect) : IO (ViewStack Table) :=
+def runStackEffect (s : ViewStack AdbcTable) (eff : Effect) : IO (ViewStack AdbcTable) :=
   match eff with
   | .none => pure s
   | .fzf e => runFzf s e

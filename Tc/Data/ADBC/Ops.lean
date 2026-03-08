@@ -20,6 +20,7 @@ instance : TblOps AdbcTable where
   colType t col := t.colTypes.getD col "?"
   plotExport := AdbcTable.plotExport
   fetchMore := AdbcTable.fetchMore
+  fromFile := AdbcTable.fromFile
   render t ctx := do
     let cols ← (Array.range t.nCols).mapM fun i => t.getCol i ctx.r0 ctx.r1
     renderCols cols t.colNames t.colFmts t.nRows ctx ctx.r0 (ctx.r1 - ctx.r0)
@@ -28,5 +29,9 @@ instance : TblOps AdbcTable where
 instance : ModifyTable AdbcTable where
   delCols := fun delIdxs t => AdbcTable.delCols t delIdxs
   sortBy  := fun idxs asc t => AdbcTable.sortBy t idxs asc
+
+-- | Format table as plain text
+def AdbcTable.toText (t : AdbcTable) : IO String := do
+  pure (colsToText t.colNames (← (Array.range t.nCols).mapM (t.getCol · 0 t.nRows)) t.nRows)
 
 end Tc

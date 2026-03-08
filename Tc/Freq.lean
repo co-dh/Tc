@@ -4,12 +4,12 @@
   Pure update returns Effect; Runner executes IO.
 -/
 import Tc.View
-import Tc.Table
+import Tc.Data.ADBC.Ops
 
 namespace Tc.Freq
 
 -- | Build filter expression from freq view row (IO: fetches cells from table)
-def filterExprIO (tbl : Table) (cols : Array String) (row : Nat) : IO String := do
+def filterExprIO (tbl : AdbcTable) (cols : Array String) (row : Nat) : IO String := do
   let names := TblOps.colNames tbl
   let idxs := cols.filterMap names.idxOf?
   let fetchedCols ← TblOps.getCols tbl idxs row (row + 1)
@@ -18,7 +18,7 @@ def filterExprIO (tbl : Table) (cols : Array String) (row : Nat) : IO String := 
   pure (" && ".intercalate exprs.toList)
 
 -- | Filter parent by selected freq row, pop freq and push filtered view
-def filter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
+def filter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let .freqV cols _ := s.cur.vkind | return some s
   if !s.hasParent then return some s
   let expr ← filterExprIO s.tbl cols s.cur.nav.row.cur.val
@@ -28,7 +28,7 @@ def filter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   return some (s'.push v)
 
 -- | Pure update: returns Effect for IO operations
-def update (s : ViewStack Table) (cmd : Cmd) : Option (ViewStack Table × Effect) :=
+def update (s : ViewStack AdbcTable) (cmd : Cmd) : Option (ViewStack AdbcTable × Effect) :=
   let n := s.cur.nav; let names := TblOps.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   let curName := names.getD curCol ""

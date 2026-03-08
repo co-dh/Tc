@@ -6,7 +6,7 @@ import Tc.Fzf
 import Tc.View
 import Tc.Term
 import Tc.S3
-import Tc.Table
+import Tc.Data.ADBC.Ops
 import Tc.HF
 import Tc.Osquery
 import Tc.Remote
@@ -97,22 +97,22 @@ def isDataFile (p : String) : Bool :=
   p.endsWith ".csv" || p.endsWith ".parquet" || isDuckDB p
 
 -- | Open any supported data file as a View
-def openFile (path : String) : IO (Option (View Table)) := do
+def openFile (path : String) : IO (Option (View AdbcTable)) := do
   if isDuckDB path then
     match ← AdbcTable.listDuckDBTables path with
-    | some adbc => match View.fromTbl (Table.adbc adbc) s!"duckdb://{path}" with
+    | some adbc => match View.fromTbl (adbc) s!"duckdb://{path}" with
       | some v =>
         let disp := path.splitOn "/" |>.getLast?.getD path
         pure (some { v with vkind := .fld s!"duckdb://{path}" 1, disp })
       | none => pure none
     | none => pure none
   else
-    match ← TblOps.fromFile (α := Table) path with
+    match ← TblOps.fromFile path with
     | some tbl => pure (View.fromTbl tbl path)
     | none => pure none
 
 -- | Get path column value from current row
-def curPath (v : View Table) : IO (Option String) := do
+def curPath (v : View AdbcTable) : IO (Option String) := do
   if !(v.vkind matches .fld _ _) then return none
   let names := TblOps.colNames v.nav.tbl
   let some pathCol := names.idxOf? "path" <|> names.idxOf? "name" | return none
@@ -121,7 +121,7 @@ def curPath (v : View Table) : IO (Option String) := do
   return some (c.get 0).toRaw
 
 -- | Get type column value from current row
-def curType (v : View Table) : IO (Option Char) := do
+def curType (v : View AdbcTable) : IO (Option Char) := do
   if !(v.vkind matches .fld _ _) then return none
   let names := TblOps.colNames v.nav.tbl
   let some typeCol := names.idxOf? "type" | return some 'f'
@@ -132,21 +132,21 @@ def curType (v : View Table) : IO (Option Char) := do
 
 -- | Build folder view from TSV content
 private def mkViewFromTsv (tsv : String) (path : String) (depth : Nat) (disp : String)
-    : IO (Option (View Table)) := do
+    : IO (Option (View AdbcTable)) := do
   match ← AdbcTable.fromTsv tsv with
   | some adbc =>
-    pure <| View.fromTbl (Table.adbc adbc) path |>.map fun v =>
+    pure <| View.fromTbl (adbc) path |>.map fun v =>
       { v with vkind := .fld path depth, disp }
   | none => pure none
 
 -- | Build folder view from an AdbcTable directly
 private def mkViewFromAdbc (adbc : AdbcTable) (path : String) (depth : Nat) (disp : String)
-    (grp : Array String := #[]) : Option (View Table) :=
-  View.fromTbl (Table.adbc adbc) path (grp := grp) |>.map fun v =>
+    (grp : Array String := #[]) : Option (View AdbcTable) :=
+  View.fromTbl (adbc) path (grp := grp) |>.map fun v =>
     { v with vkind := .fld path depth, disp }
 
 -- | Create folder view
-def mkView (path : String) (depth : Nat) : IO (Option (View Table)) := do
+def mkView (path : String) (depth : Nat) : IO (Option (View AdbcTable)) := do
   if Osquery.isOsquery path then
     match ← Osquery.list path with
     | some (adbc, disp) => pure (mkViewFromAdbc adbc path depth disp (grp := #["name"]))
@@ -161,7 +161,7 @@ def mkView (path : String) (depth : Nat) : IO (Option (View Table)) := do
     mkViewFromTsv (← listDir path depth) absPath depth disp
 
 -- | Push new folder view onto stack
-def push (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
+def push (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let path ← do
     match ← curPath s.cur with
     | some p => pure p
@@ -178,32 +178,32 @@ private def joinPath (parent entry : String) : String :=
   else Remote.join parent entry
 
 -- | Try to create a view; push or setCur, fallback to original stack
-private def tryView (s : ViewStack Table) (path : String) (depth : Nat) (push? : Bool)
-    : IO (Option (ViewStack Table)) := do
+private def tryView (s : ViewStack AdbcTable) (path : String) (depth : Nat) (push? : Bool)
+    : IO (Option (ViewStack AdbcTable)) := do
   match ← mkView path depth with
   | some v => pure (some (if push? then s.push v else s.setCur v))
   | none => pure (some s)
 
 -- | Get current folder depth
-private def curDepth (s : ViewStack Table) : Nat :=
+private def curDepth (s : ViewStack AdbcTable) : Nat :=
   match s.cur.vkind with | .fld _ d => d | _ => 1
 
 -- | Open osquery table: query safe tables, show schema for dangerous ones
-private def openOsqueryTable (s : ViewStack Table) (table : String) : IO (Option (ViewStack Table)) := do
+private def openOsqueryTable (s : ViewStack AdbcTable) (table : String) : IO (Option (ViewStack AdbcTable)) := do
   match ← Osquery.enterTable table with
-  | some (adbc, label) => match View.fromTbl (Table.adbc adbc) s!"osquery://{label}" with
+  | some (adbc, label) => match View.fromTbl (adbc) s!"osquery://{label}" with
     | some v => pure (some (s.push v))
     | none => pure none
   | none => pure none
 
 -- | Enter directory or view file based on current row
-def enter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
+def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
   -- DuckDB: enter opens a table from the attached database
   if curDir.startsWith "duckdb://" then do
     let some tableName ← curPath s.cur | return some s
     let some (adbc, keys) ← AdbcTable.fromDuckDBTable tableName | return some s
-    let some v := View.fromTbl (Table.adbc adbc) s!"duckdb://{tableName}" (grp := keys) | return some s
+    let some v := View.fromTbl (adbc) s!"duckdb://{tableName}" (grp := keys) | return some s
     return some (s.push v)
   let back := backend? curDir
   match ← curType s.cur, ← curPath s.cur with
@@ -257,7 +257,7 @@ def trashCmd : IO (Option (String × Array String)) := do
   return none
 
 -- | Get full paths of selected rows, or current row if none selected
-def selPaths (v : View Table) : IO (Array String) := do
+def selPaths (v : View AdbcTable) : IO (Array String) := do
   match v.vkind with
   | .fld curDir _ =>
     let names := TblOps.colNames v.nav.tbl
@@ -324,7 +324,7 @@ def trashFiles (paths : Array String) : IO Bool := do
   pure ok
 
 -- | Delete selected files and refresh view (no-op for remote)
-def del (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
+def del (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   if !(s.cur.vkind matches .fld _ _) then return none
   let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => ""
   if (backend? curDir).isSome then return some s
@@ -344,7 +344,7 @@ def del (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   | _ => pure (some s)
 
 -- | Adjust find depth (+1 or -1, min 1). No-op for remote.
-def setDepth (s : ViewStack Table) (delta : Int) : IO (Option (ViewStack Table)) := do
+def setDepth (s : ViewStack AdbcTable) (delta : Int) : IO (Option (ViewStack AdbcTable)) := do
   match s.cur.vkind with
   | .fld path depth =>
     if (backend? path).isSome then return some s
@@ -360,7 +360,7 @@ def setDepth (s : ViewStack Table) (delta : Int) : IO (Option (ViewStack Table))
   | _ => pure none
 
 -- | Pure update: returns Effect for IO operations
-def update (s : ViewStack Table) (cmd : Cmd) : Option (ViewStack Table × Effect) :=
+def update (s : ViewStack AdbcTable) (cmd : Cmd) : Option (ViewStack AdbcTable × Effect) :=
   match cmd with
   | .fld .dup => some (s, .folder .push)
   | .fld .inc => some (s, .folder (.depth 1))

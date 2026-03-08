@@ -9,7 +9,6 @@ import Tc.Fzf
 import Tc.Key
 import Tc.Render
 import Tc.Runner
-import Tc.Table
 import Tc.Term
 import Tc.Theme
 import Tc.UI.Info
@@ -20,7 +19,7 @@ open Tc
 
 -- | App state: view stack + render state + theme + info
 structure AppState where
-  stk   : ViewStack Table
+  stk   : ViewStack AdbcTable
   vs    : ViewState
   theme : Theme.State
   info  : UI.Info.State
@@ -33,11 +32,11 @@ def resetsVS (cmd : Cmd) : Bool :=
     | .col .ent | .rowSel .inc | .rowSel .dec
 
 -- | Update stk, reset vs if needed
-def withStk (a : AppState) (cmd : Cmd) (s' : ViewStack Table) : AppState :=
+def withStk (a : AppState) (cmd : Cmd) (s' : ViewStack AdbcTable) : AppState :=
   { a with stk := s', vs := if resetsVS cmd then .default else a.vs }
 
 -- | Lift stack update to AppState (Kleisli helper for <|> chain)
-private def liftStk (a : AppState) (cmd : Cmd) (r : Option (ViewStack Table × Effect)) : Option (AppState × Effect) :=
+private def liftStk (a : AppState) (cmd : Cmd) (r : Option (ViewStack AdbcTable × Effect)) : Option (AppState × Effect) :=
   r.map fun (s', eff) => (withStk a cmd s', eff)
 
 -- | Route by Cmd discriminant, fallback to view for nav/selection
@@ -128,7 +127,7 @@ def parseArgs (args : List String) : Option String × Array Char × Bool × Bool
   | [] => (none, #[], false, noSign)
 
 -- run app with view
-def runApp (v : View Table) (pipe test : Bool) (th : Theme.State) (ks : Array Char) : IO AppState := do
+def runApp (v : View AdbcTable) (pipe test : Bool) (th : Theme.State) (ks : Array Char) : IO AppState := do
   if pipe then let _ ← Term.reopenTty
   let _ ← Term.init
   let a' ← mainLoop ⟨⟨v, []⟩, .default, th, {}⟩ test ks
@@ -143,16 +142,16 @@ def runTsv (r : Except String String) (nm : String) (pipe test : Bool)
   | .ok tsv =>
     match ← AdbcTable.fromTsv tsv with
     | none => IO.eprintln "Empty table"; return none
-    | some adbc => match View.fromTbl (Table.adbc adbc) nm with
+    | some adbc => match View.fromTbl adbc nm with
       | none => IO.eprintln "Empty table"; return none
       | some v => some <$> runApp v pipe test th ks
 
 -- output table as plain text
-def outputTable (toText : Table → IO String) (a : AppState) : IO Unit := do
-  IO.println (← toText a.stk.tbl)
+def outputTable (a : AppState) : IO Unit := do
+  IO.println (← AdbcTable.toText a.stk.tbl)
 
 -- main entry point: init backend, parse args, run app
-def appMain (toText : Table → IO String) (init : IO Bool) (shutdown : IO Unit) (args : List String) : IO Unit := do
+def appMain (args : List String) : IO Unit := do
   let (path?, keys, testMode, noSign) := parseArgs args
   let envTest := (← IO.getEnv "TC_TEST_MODE").isSome
   Fzf.setTestMode (testMode || envTest)
@@ -162,11 +161,11 @@ def appMain (toText : Table → IO String) (init : IO Bool) (shutdown : IO Unit)
   try Term.loadExtColors (← IO.FS.readFile "ext_colors.csv")
   catch _ => pure ()  -- use C defaults if CSV not found
   Log.write "init" s!"tmpdir={← Tc.tmpDir.get}"
-  let ok ← try init catch e => IO.eprintln s!"Backend init error: {e}"; return
+  let ok ← try AdbcTable.init catch e => IO.eprintln s!"Backend init error: {e}"; return
   if !ok then IO.eprintln "Backend init failed"; return
   if pipeMode && path?.isNone then
     if let some a ← runTsv (← Tc.TextParse.fromStdin) "stdin" true testMode theme keys then
-      outputTable toText a
+      outputTable a
     return
   let path := path?.getD ""
   try
@@ -176,7 +175,7 @@ def appMain (toText : Table → IO String) (init : IO Bool) (shutdown : IO Unit)
         let table := (p.drop 10).toString
         if !table.isEmpty then
           match ← Osquery.enterTable table with
-          | some (adbc, label) => match View.fromTbl (Table.adbc adbc) s!"osquery://{label}" with
+          | some (adbc, label) => match View.fromTbl adbc s!"osquery://{label}" with
             | some v => let _ ← runApp v pipeMode testMode theme keys
             | none => IO.eprintln s!"Empty osquery table: {table}"
           | none => IO.eprintln s!"Cannot query osquery table: {table}"
@@ -184,12 +183,6 @@ def appMain (toText : Table → IO String) (init : IO Bool) (shutdown : IO Unit)
       match ← Folder.mkView p 1 with
       | some v => let _ ← runApp v pipeMode testMode theme keys
       | none => IO.eprintln s!"Cannot browse: {p}"
-    else if path.startsWith "kdb://" then
-      match ← TblOps.fromUrl (α := Table) path with
-      | some tbl => match View.fromTbl tbl path with
-        | some v => let _ ← runApp v pipeMode testMode theme keys
-        | none => IO.eprintln "Empty kdb table"
-      | none => IO.eprintln "Cannot open kdb table"
     else if path.endsWith ".txt" then
       let _ ← runTsv (Tc.TextParse.fromText (← IO.FS.readFile path)) path pipeMode testMode theme keys
     else
@@ -197,10 +190,9 @@ def appMain (toText : Table → IO String) (init : IO Bool) (shutdown : IO Unit)
       | some v => let _ ← runApp v pipeMode testMode theme keys
       | none => IO.eprintln s!"Cannot open file: {path}"
   finally
-    shutdown
+    AdbcTable.shutdown
     Tc.cleanupTmp
 
 def main (args : List String) : IO Unit := do
-  try appMain Table.toText Backend.init Backend.shutdown args
+  try appMain args
   catch e => IO.eprintln s!"Error: {e}"
-
