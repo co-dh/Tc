@@ -13,12 +13,12 @@
 | P  | Group     | Operators                        || P  | Group    | Operators                    |
 |--- |---------- |-----------                       |--|--- |--------- |-----------                   |
 | 0  | parens    | `()`                             || 6  | add      | `+` `-`                      |
-| 1  | dot       | `.`                              || 7  | compare  | `==` `!=` `~=` `<` `>` `<=` `>=` |
+| 1  | dot       | `.`                              || 7  | compare  | `==` `!=` `~=` `<` `>` `<=` `>=` `~=`|
 | 2  | unary     | `-` `+` `!` `==`                 || 8  | coalesce | `??`                         |
 | 3  | range     | `..`                             || 9  | and      | `&&`                         |
 | 4  | pow       | `**` (right-to-left)             || 10 | or       | `\|\|`                       |
 | 5  | mul       | `*` `/` `//` `%`                 || 11 | func call|                              |
-`/` float div, `//` integer div, `~=` regex match.
+
 ## Literals
 ```
 42  5_000_000  3.14  5e9  0xff  0b1010  0o77     # numbers
