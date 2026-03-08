@@ -66,7 +66,7 @@ def queryMeta (t : AdbcTable) : IO (Option AdbcTable) := do
 
 -- | Query row indices matching PRQL filter on meta table
 def queryMetaIndices (tblName : String) (flt : String) : IO (Array Nat) := do
-  let prql := "from " ++ tblName ++ " | derive {idx = row_number this - 1} | filter " ++ flt ++ " | select {idx}"
+  let prql := "from " ++ tblName ++ " | rowidx | filter " ++ flt ++ " | select {idx}"
   let some sql ← Prql.compile prql | return #[]
   let qr ← Adbc.query sql
   let nr ← Adbc.nrows qr
@@ -76,7 +76,7 @@ def queryMetaIndices (tblName : String) (flt : String) : IO (Array Nat) := do
 def queryMetaColNames (tblName : String) (rows : Array Nat) : IO (Array String) := do
   if rows.isEmpty then return #[]
   let idxs := ", ".intercalate (rows.map (s!"{·}") |>.toList)
-  let prql := "from " ++ tblName ++ " | derive {idx = row_number this - 1} | filter (idx | in [" ++ idxs ++ "]) | select {column, idx}"
+  let prql := "from " ++ tblName ++ " | rowidx | filter (idx | in [" ++ idxs ++ "]) | select {column, idx}"
   let some sql ← Prql.compile prql | return #[]
   let qr ← Adbc.query sql
   let nr ← Adbc.nrows qr

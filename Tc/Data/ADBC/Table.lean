@@ -183,7 +183,10 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
       let selCols := match catName? with
         | some cn => s!"{q xName}, {q yName}, {q cn}"
         | none    => s!"{q xName}, {q yName}"
-      let prql := s!"{t.query.render} | filter ({q yName} != null && {q yName} != 0) | derive \{_rn = row_number this} | filter (_rn - 1) % {step} == 0 | select \{{selCols}}"
+      let dsFn := match catName? with
+        | some cn => s!"ds_nth_cat {q yName} {q cn} {step}"
+        | none    => s!"ds_nth {q yName} {step}"
+      let prql := s!"{t.query.render} | {dsFn} | select \{{selCols}}"
       Log.write "plot-prql" prql
       let some sql ← Prql.compile prql | return none
       let s := sql.trimAscii.toString
@@ -199,7 +202,7 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
   -- get distinct categories if needed
   match catName? with
   | some cn =>
-    let catPrql := s!"{t.query.render} | group \{{q cn}} (take 1) | select \{{q cn}}"
+    let catPrql := s!"{t.query.render} | uniq {q cn}"
     let some catSql ← Prql.compile catPrql | return some #[]
     let catQr ← Adbc.query catSql
     let nr ← Adbc.nrows catQr
@@ -286,7 +289,7 @@ def filter (t : AdbcTable) (expr : String) : IO (Option AdbcTable) := do
 -- | Distinct: use SQL DISTINCT
 def distinct (t : AdbcTable) (col : Nat) : IO (Array String) := do
   let colName := t.colNames.getD col ""
-  let prql := s!"{t.query.render} | group \{{Prql.quote colName}} (take 1) | select \{{Prql.quote colName}}"
+  let prql := s!"{t.query.render} | uniq {Prql.quote colName}"
   Log.write "prql" prql
   let some sql ← Prql.compile prql | return #[]
   let qr ← Adbc.query sql
