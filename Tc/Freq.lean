@@ -17,16 +17,6 @@ def filterExprIO (tbl : AdbcTable) (cols : Array String) (row : Nat) : IO String
   let exprs := cols.zip vals |>.map fun (c, v) => s!"{c} == {v}"
   pure (" && ".intercalate exprs.toList)
 
--- | Filter parent by selected freq row, pop freq and push filtered view
-def filter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
-  let .freqV cols _ := s.cur.vkind | return some s
-  if !s.hasParent then return some s
-  let expr ← filterExprIO s.tbl cols s.cur.nav.row.cur.val
-  let some s' := s.pop | return some s
-  let some tbl' ← TblOps.filter s'.tbl expr | return some s'
-  let some v := s'.cur.rebuild tbl' (row := 0) | return some s'
-  return some (s'.push v)
-
 -- | Pure update: returns Effect for IO operations
 def update (s : ViewStack AdbcTable) (cmd : Cmd) : Option (ViewStack AdbcTable × Effect) :=
   let n := s.cur.nav; let names := TblOps.colNames n.tbl

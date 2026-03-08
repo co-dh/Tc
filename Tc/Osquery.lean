@@ -2,6 +2,7 @@
   Osquery: browse osquery tables via osqueryi CLI + DuckDB read_json_auto
   Schema descriptions fetched from osquery-site GitHub, cached in persistent DuckDB.
 -/
+import Std.Data.HashMap
 import Tc.Data.ADBC.Table
 import Tc.Error
 import Tc.Render
@@ -199,7 +200,7 @@ private def saveCounts (counts : Array (String × Nat)) : IO Unit := do
     if !counts.isEmpty then
       let ts ← Log.localTimestamp
       let values := counts.map fun (name, cnt) =>
-        s!"('{name.replace "'" "''"}', {cnt}, '{ts}')"
+        s!"('{escSql name}', {cnt}, '{ts}')"
       let _ ← Adbc.query s!"INSERT INTO osq.row_counts (name, rows, updated_at) VALUES {", ".intercalate values.toList}"
     Log.write "osquery" s!"Cached {counts.size} row counts"
   catch e => Log.write "osquery" s!"saveCounts error: {e}"
@@ -228,8 +229,8 @@ def list (_path : String) : IO (Option (AdbcTable × String)) := do
   let tblName := tbl.query.base.drop 5  -- "from tc_osq_N" → "tc_osq_N"
   let _ ← Adbc.query s!"ALTER TABLE {tblName} ADD COLUMN rows INTEGER DEFAULT NULL"
   if !counts.isEmpty then
-    let cases := counts.map fun (name, cnt) => s!"WHEN '{name.replace "'" "''"}' THEN {cnt}"
-    let nameList := counts.map fun (name, _) => s!"'{name.replace "'" "''"}'"
+    let cases := counts.map fun (name, cnt) => s!"WHEN '{escSql name}' THEN {cnt}"
+    let nameList := counts.map fun (name, _) => s!"'{escSql name}'"
     let _ ← Adbc.query s!"UPDATE {tblName} SET rows = CASE name {" ".intercalate cases.toList} END WHERE name IN ({", ".intercalate nameList.toList})"
   if hasSchema then
     let _ ← Adbc.query s!"ALTER TABLE {tblName} ADD COLUMN description VARCHAR DEFAULT ''"
@@ -249,8 +250,7 @@ def enterTable (table : String) : IO (Option (AdbcTable × String)) := do
     let hasSchema ← schemaAvail
     let json ← osqueryi s!"pragma table_info('{table}')"
     if json.trimAscii.toString == "[]" || json.isEmpty then return none
-    let esc := table.replace "'" "''"
-    let join := if hasSchema then s!" LEFT JOIN osq.columns c ON c.table_name = '{esc}' AND c.col_name = j.name" else ""
+    let join := if hasSchema then s!" LEFT JOIN osq.columns c ON c.table_name = '{escSql table}' AND c.col_name = j.name" else ""
     let desc := if hasSchema then ", COALESCE(c.col_desc, '') as description" else ""
     let some tbl ← jsonToTableSql json s!"SELECT j.*{desc} FROM read_json_auto('__TMP__') j{join}" | return none
     pure <| some (tbl, s!"schema:{table}")
@@ -263,18 +263,25 @@ def enterTable (table : String) : IO (Option (AdbcTable × String)) := do
 -- | Enrich a meta temp table with column descriptions from the schema DB
 def enrichMeta (metaTblName tableName : String) : IO Unit := do
   if !(← schemaAvail) then return
-  let esc := tableName.replace "'" "''"
   try
     let _ ← Adbc.query s!"ALTER TABLE {metaTblName} ADD COLUMN description VARCHAR DEFAULT ''"
-    let _ ← Adbc.query s!"UPDATE {metaTblName} SET description = COALESCE((SELECT col_desc FROM osq.columns WHERE table_name = '{esc}' AND col_name = {metaTblName}.\"column\"), '')"
+    let _ ← Adbc.query s!"UPDATE {metaTblName} SET description = COALESCE((SELECT col_desc FROM osq.columns WHERE table_name = '{escSql tableName}' AND col_name = {metaTblName}.\"column\"), '')"
   catch e => Log.write "enrichMeta" s!"error: {e}"
+
+-- | Cache for column descriptions (avoids per-frame SQL query)
+initialize colDescCache : IO.Ref (Std.HashMap (String × String) String) ← IO.mkRef {}
 
 -- | Look up column description for a given osquery table and column name
 def colDesc (tableName colName : String) : IO String := do
   if !(← schemaAvail) then return ""
-  try
-    let qr ← Adbc.query s!"SELECT col_desc FROM osq.columns WHERE table_name = '{tableName.replace "'" "''"}' AND col_name = '{colName.replace "'" "''"}' LIMIT 1"
-    Adbc.cellStr qr 0 0
-  catch _ => pure ""
+  let cache ← colDescCache.get
+  match cache[(tableName, colName)]? with
+  | some v => return v
+  | none =>
+    let v ← try
+      Adbc.cellStr (← Adbc.query s!"SELECT col_desc FROM osq.columns WHERE table_name = '{escSql tableName}' AND col_name = '{escSql colName}' LIMIT 1") 0 0
+    catch _ => pure ""
+    colDescCache.modify (·.insert (tableName, colName) v)
+    return v
 
 end Tc.Osquery

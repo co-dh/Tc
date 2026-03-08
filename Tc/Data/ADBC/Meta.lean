@@ -10,9 +10,6 @@ import Tc.Data.ADBC.Prql
 namespace Tc
 namespace AdbcTable
 
--- | Escape single quotes for SQL string literals
-private def escSql (s : String) : String := s.replace "'" "''"
-
 -- | Double-quote identifier for DuckDB
 private def quoteId (s : String) : String :=
   "\"" ++ s.replace "\"" "\"\"" ++ "\""

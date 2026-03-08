@@ -18,7 +18,7 @@ extern_lib adbcshim pkg := mkCLib pkg "adbcshim" "adbc_core.c"
 lean_lib Tc where
   roots := #[`Tc.Cmd, `Tc.Nav, `Tc.Render, `Tc.Key, `Tc.App.Common,
              `Tc.Term, `Tc.Types, `Tc.Error, `Tc.TmpDir, `Tc.View,
-             `Tc.Meta, `Tc.Freq, `Tc.Fzf, `Tc.Search, `Tc.Filter, `Tc.Folder,
+             `Tc.Meta, `Tc.Freq, `Tc.Fzf, `Tc.Filter, `Tc.Folder,
              `Tc.Theme, `Tc.Plot, `Tc.UI.Info, `Tc.Runner, `Tc.Remote, `Tc.S3, `Tc.HF, `Tc.Osquery,
              `Tc.Data.Text, `Tc.Data.ADBC.FFI, `Tc.Data.ADBC.Prql,
              `Tc.Data.ADBC.Table, `Tc.Data.ADBC.Meta, `Tc.Data.ADBC.Ops]

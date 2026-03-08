@@ -408,7 +408,7 @@ def log (msg : String) : IO Unit := do
   h.putStrLn msg; h.flush
 
 -- | Run tc with -c flag, no tmux. Headless mode renders to internal buffer.
-def run (keys : String) (file : String := "") (_finalWait : UInt32 := 0) : IO String := do
+def run (keys : String) (file : String := "") : IO String := do
   log s!"  run: {file} keys={keys}"
   let args := if file.isEmpty then #["-c", keys] else #[file, "-c", keys]
   let out ← IO.Process.output { cmd := bin, args }
@@ -722,17 +722,17 @@ def test_freq_parquet_key_values : IO Unit := do
 
 def test_freq_total_count : IO Unit := do
   log "freq_total_count"
-  let (_, status) := footer (← run "l!l!hF" "data/nyse/1.parquet" 8000)
+  let (_, status) := footer (← run "l!l!hF" "data/nyse/1.parquet")
   assert (contains status "/128974") "Freq shows total group count (128974)"
 
 def test_freq_sort_preserves_total : IO Unit := do
   log "freq_sort_total"
-  let (_, status) := footer (← run "llFll[" "data/nyse/1.parquet" 8000)
+  let (_, status) := footer (← run "llFll[" "data/nyse/1.parquet")
   assert (contains status "/") "Freq sort preserves total count in status"
 
 def test_freq_sort_asc_parquet : IO Unit := do
   log "freq_sort_asc"
-  let first := (dataLines (← run "llFll[" "data/nyse/1.parquet" 8000)).headD ""
+  let first := (dataLines (← run "llFll[" "data/nyse/1.parquet")).headD ""
   assert (contains first "│") "Freq sort asc shows data"
 
 -- === Meta selection tests (parquet) ===
@@ -763,7 +763,7 @@ def test_filter_parquet_full_db : IO Unit := do
 def test_scroll_fetches_more : IO Unit := do
   log "scroll_fetches_more"
   let keys := String.join (List.replicate 105 "<C-d>")
-  let (_, status) := footer (← run keys "data/nyse10k.parquet" 1000)
+  let (_, status) := footer (← run keys "data/nyse10k.parquet")
   let rpart := (status.splitOn " r" |>.getD 1 "").takeWhile (· != ' ')
   let cursor := ((rpart.toString.splitOn "/").headD "").toNat?.getD 0
   assert (cursor > 999) s!"Scroll fetches more: cursor={cursor}, expected > 999"

@@ -106,8 +106,7 @@ private def remoteTblName (path : String) : String :=
 def fromFile (path : String) : IO (Option AdbcTable) := do
   let query ← if path.startsWith "hf://" then do
     let tbl := remoteTblName path
-    let esc := path.replace "'" "''"
-    let _ ← Adbc.query s!"CREATE OR REPLACE TEMP TABLE \"{tbl}\" AS (SELECT * FROM '{esc}')"
+    let _ ← Adbc.query s!"CREATE OR REPLACE TEMP TABLE \"{tbl}\" AS (SELECT * FROM '{escSql path}')"
     pure { base := s!"from {tbl}" : Prql.Query }
   else
     pure { base := s!"from `{path}`" : Prql.Query }
@@ -116,8 +115,7 @@ def fromFile (path : String) : IO (Option AdbcTable) := do
 
 -- | Attach a .duckdb file and list its tables as TSV (for folder-like view)
 def listDuckDBTables (path : String) : IO (Option AdbcTable) := do
-  let esc := path.replace "'" "''"
-  let _ ← Adbc.query s!"ATTACH '{esc}' AS extdb (READ_ONLY)"
+  let _ ← Adbc.query s!"ATTACH '{escSql path}' AS extdb (READ_ONLY)"
   let qr ← Adbc.query "SELECT table_name as name, estimated_size as size, column_count as columns FROM duckdb_tables() WHERE database_name = 'extdb'"
   let total ← Adbc.nrows qr
   if total.toNat == 0 then return none
@@ -126,7 +124,7 @@ def listDuckDBTables (path : String) : IO (Option AdbcTable) := do
 -- | Get primary key columns for a table in the attached extdb
 def duckDBPrimaryKeys (table : String) : IO (Array String) := do
   try
-    let qr ← Adbc.query s!"SELECT unnest(constraint_column_names) as col FROM duckdb_constraints() WHERE database_name = 'extdb' AND table_name = '{table.replace "'" "''"}' AND constraint_type = 'PRIMARY KEY'"
+    let qr ← Adbc.query s!"SELECT unnest(constraint_column_names) as col FROM duckdb_constraints() WHERE database_name = 'extdb' AND table_name = '{escSql table}' AND constraint_type = 'PRIMARY KEY'"
     let nr ← Adbc.nrows qr
     let mut keys : Array String := #[]
     for i in [:nr.toNat] do
@@ -303,8 +301,7 @@ def distinct (t : AdbcTable) (col : Nat) : IO (Array String) := do
 --   Uses PRQL row_number (sort-aware) instead of raw SQL ROW_NUMBER.
 def findRow (t : AdbcTable) (col : Nat) (val : String) (start : Nat) (fwd : Bool) : IO (Option Nat) := do
   let colName := Prql.quote (t.colNames.getD col "")
-  let esc := val.replace "'" "''"
-  let prql := s!"{t.query.render} | derive \{_rn0 = row_number this} | derive \{_rn = _rn0 - 1} | filter ({colName} == '{esc}') | select \{_rn}"
+  let prql := s!"{t.query.render} | derive \{_rn0 = row_number this} | derive \{_rn = _rn0 - 1} | filter ({colName} == '{escSql val}') | select \{_rn}"
   let some sql ← Prql.compile prql | return none
   let qr ← Adbc.query sql
   let nr ← Adbc.nrows qr
@@ -323,10 +320,8 @@ def fromArrays (names : Array String) (cols : Array Column) : IO (Option AdbcTab
   if names.isEmpty || cols.isEmpty then return none
   let nRows := (cols.getD 0 default).size
   if nRows == 0 then return none
-  -- escape SQL string: single quotes doubled
-  let esc (s : String) := s.replace "'" "''"
   -- build column aliases
-  let colAliases := names.map fun n => s!"\"{esc n}\""
+  let colAliases := names.map fun n => s!"\"{escSql n}\""
   -- build VALUES rows
   let mut rows : Array String := #[]
   for r in [:nRows] do
@@ -335,7 +330,7 @@ def fromArrays (names : Array String) (cols : Array Column) : IO (Option AdbcTab
       let v := match c with
         | .ints data   => s!"{data.getD r 0}"
         | .floats data => s!"{data.getD r 0}"
-        | .strs data   => s!"'{esc (data.getD r "")}'"
+        | .strs data   => s!"'{escSql (data.getD r "")}'"
       vals := vals.push v
     rows := rows.push s!"({", ".intercalate vals.toList})"
   let valuesSql := ", ".intercalate rows.toList

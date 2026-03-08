@@ -55,23 +55,6 @@ def fzfIdx (opts : Array String) (items : Array String) : IO (Option Nat) := do
     | some n => return some n
     | none => return none
 
--- | Quote value for PRQL based on column type
-def quoteVal (v : String) (numeric : Bool) : String :=
-  if numeric then v else s!"'{v}'"
-
--- | Build filter expression from fzf result
--- With --print-query: line 0 = query, lines 1+ = selections
-def buildFilterExpr (col : String) (vals : Array String) (result : String) (numeric : Bool) : String :=
-  let lines := result.splitOn "\n" |>.filter (!·.isEmpty) |>.toArray
-  let input := lines.getD 0 ""
-  let fromHints := (lines.extract 1 lines.size).filter vals.contains
-  let selected := if vals.contains input && !fromHints.contains input
-                  then #[input] ++ fromHints else fromHints
-  if selected.size == 1 then s!"{col} == {quoteVal (selected.getD 0 "") numeric}"
-  else if selected.size > 1 then "(" ++ " || ".intercalate (selected.map fun v => s!"{col} == {quoteVal v numeric}").toList ++ ")"
-  else if !input.isEmpty then input
-  else ""
-
 -- | Build fzf args for 1-char selection using jump mode
 -- jump-labels shows keys as labels, load:jump enters jump mode when list ready, jump:accept selects
 private def jumpArgs (keys : Array Char) : Array String :=

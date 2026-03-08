@@ -109,7 +109,10 @@ end Cell
 
 namespace Tc
 
--- | Compute pct and bar from count data (for Kdb/Mem freq → fromArrays).
+-- | Escape single quotes for SQL string literals
+def escSql (s : String) : String := s.replace "'" "''"
+
+-- | Compute pct and bar from count data (for freq → fromArrays).
 def freqPctBar (cntData : Array Int64) : Array Float × Array String :=
   let total := cntData.foldl (init := 0) (· + ·)
   let pct := cntData.map fun c => if total > 0 then c.toFloat * 100 / total.toFloat else 0
