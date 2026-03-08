@@ -1,7 +1,7 @@
 /-
   ADBC backend: AdbcTable with PRQL query support
+  Includes ADBC FFI declarations (DuckDB via Arrow Database Connectivity).
 -/
-import Tc.Data.ADBC.FFI
 import Tc.Data.ADBC.Prql
 import Tc.Error
 import Tc.Render
@@ -9,10 +9,54 @@ import Tc.Term
 import Tc.TmpDir
 import Tc.Types
 
+namespace Adbc
+
+opaque QueryResult : Type
+
+@[extern "lean_adbc_init"]
+opaque init : IO Bool
+
+@[extern "lean_adbc_shutdown"]
+opaque shutdown : IO Unit
+
+@[extern "lean_adbc_query"]
+opaque query : @& String → IO QueryResult
+
+@[extern "lean_qr_ncols"]
+opaque ncols : @& QueryResult → IO UInt64
+
+@[extern "lean_qr_nrows"]
+opaque nrows : @& QueryResult → IO UInt64
+
+@[extern "lean_qr_col_name"]
+opaque colName : @& QueryResult → UInt64 → IO String
+
+@[extern "lean_qr_col_fmt"]
+opaque colFmt : @& QueryResult → UInt64 → IO String
+
+@[extern "lean_qr_cell_str"]
+opaque cellStr : @& QueryResult → UInt64 → UInt64 → IO String
+
+@[extern "lean_qr_cell_int"]
+opaque cellInt : @& QueryResult → UInt64 → UInt64 → IO Int
+
+@[extern "lean_qr_cell_float"]
+opaque cellFloat : @& QueryResult → UInt64 → UInt64 → IO Float
+
+@[extern "lean_qr_col_type"]
+opaque colType : @& QueryResult → UInt64 → IO String
+
+end Adbc
+
 namespace Tc
 
 -- | Default row limit for PRQL queries
 def prqlLimit : Nat := 1000
+
+-- | Trim whitespace and trailing semicolon from compiled SQL
+def stripSemi (s : String) : String :=
+  let t := s.trimAscii.toString
+  if t.endsWith ";" then (t.take (t.length - 1)).toString else t
 
 -- | Zero-copy table with PRQL query for re-query on modification
 structure AdbcTable where
@@ -21,7 +65,6 @@ structure AdbcTable where
   colFmts   : Array Char        -- cached format chars per column
   colTypes  : Array String      -- cached type names (via nanoarrow)
   nRows     : Nat               -- rows in current result (≤ prqlLimit)
-  nCols     : Nat
   query     : Prql.Query        -- PRQL query (base + ops)
   totalRows : Nat               -- total rows in underlying data
 
@@ -55,7 +98,7 @@ def ofQueryResult (qr : Adbc.QueryResult) (query : Prql.Query := default) (total
     fmts := fmts.push (if h : fmt.length > 0 then fmt.toList[0] else '?')
     let typ ← Adbc.colType qr i.toUInt64
     types := types.push typ
-  pure ⟨qr, names, fmts, types, nr.toNat, nc.toNat, query, total⟩
+  pure ⟨qr, names, fmts, types, nr.toNat, query, total⟩
 
 -- | Extract column slice [r0, r1) as typed Column
 def getCol (t : AdbcTable) (col r0 r1 : Nat) : IO Column := do
@@ -149,7 +192,7 @@ def sortBy (t : AdbcTable) (idxs : Array Nat) (asc : Bool) : IO AdbcTable := do
 
 -- | Delete columns: append select op and re-query
 def delCols (t : AdbcTable) (delIdxs : Array Nat) : IO AdbcTable := do
-  match ← requery (t.query.pipe (.sel (keepCols t.nCols delIdxs t.colNames))) t.totalRows with
+  match ← requery (t.query.pipe (.sel (keepCols t.colNames.size delIdxs t.colNames))) t.totalRows with
   | some t' => pure t' | none => pure t
 
 -- | Fetch more rows (increase limit by prqlLimit)
@@ -175,8 +218,7 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
         | none    => s!"{t.query.render} | ds_trunc {q xName} {q yName} {truncLen}"
       Log.write "plot-prql" prql
       let some sql ← Prql.compile prql | return none
-      let s := sql.trimAscii.toString
-      pure (if s.endsWith ";" then (s.take (s.length - 1)).toString else s)
+      pure (stripSemi sql)
     else
       let selCols := match catName? with
         | some cn => s!"{q xName}, {q yName}, {q cn}"
@@ -187,8 +229,7 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
       let prql := s!"{t.query.render} | {dsFn} | select \{{selCols}}"
       Log.write "plot-prql" prql
       let some sql ← Prql.compile prql | return none
-      let s := sql.trimAscii.toString
-      pure (if s.endsWith ";" then (s.take (s.length - 1)).toString else s)
+      pure (stripSemi sql)
   let datPath ← Tc.tmpPath "plot.dat"
   let copySql := s!"COPY ({sql'}) TO '{datPath}' (FORMAT CSV, DELIMITER '\\t', HEADER false)"
   Log.write "plot-sql" copySql
@@ -210,41 +251,25 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
     return some cats
   | none => return some #[]
 
--- | Create AdbcTable from TSV content via DuckDB read_csv_auto
-def fromTsv (content : String) : IO (Option AdbcTable) := do
-  if content.isEmpty then return none
-  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
-  let tmpFile ← Tc.tmpPath s!"tsv-{n}.tsv"
-  IO.FS.writeFile tmpFile content
-  let tblName := s!"tc_tsv_{n}"
-  try
-    let _ ← Adbc.query s!"CREATE TEMP TABLE {tblName} AS SELECT * FROM read_csv_auto('{tmpFile}')"
-    try IO.FS.removeFile tmpFile catch _ => pure ()
-    let query : Prql.Query := { base := s!"from {tblName}" }
-    let total ← queryCount query
-    requery query total
-  catch e =>
-    try IO.FS.removeFile tmpFile catch _ => pure ()
-    Log.write "fromTsv" s!"error: {e.toString}"
-    return none
-
--- | Create AdbcTable from JSON content via DuckDB read_json_auto
-def fromJson (content : String) : IO (Option AdbcTable) := do
+-- | Ingest content via DuckDB reader into a temp table
+private def fromIngest (content label reader : String) : IO (Option AdbcTable) := do
   if content.isEmpty || content.trimAscii.toString == "[]" then return none
   let n ← memTblCounter.modifyGet fun n => (n, n + 1)
-  let tmpFile ← Tc.tmpPath s!"json-{n}.json"
-  IO.FS.writeFile tmpFile content
-  let tblName := s!"tc_json_{n}"
+  let tmp ← Tc.tmpPath s!"{label}-{n}.{label}"
+  IO.FS.writeFile tmp content
+  let tbl := s!"tc_{label}_{n}"
   try
-    let _ ← Adbc.query s!"CREATE TEMP TABLE {tblName} AS SELECT * FROM read_json_auto('{tmpFile}')"
-    try IO.FS.removeFile tmpFile catch _ => pure ()
-    let query : Prql.Query := { base := s!"from {tblName}" }
-    let total ← queryCount query
-    requery query total
+    let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS SELECT * FROM {reader}('{tmp}')"
+    try IO.FS.removeFile tmp catch _ => pure ()
+    let q : Prql.Query := { base := s!"from {tbl}" }
+    requery q (← queryCount q)
   catch e =>
-    try IO.FS.removeFile tmpFile catch _ => pure ()
-    Log.write "fromJson" s!"error: {e.toString}"
+    try IO.FS.removeFile tmp catch _ => pure ()
+    Log.write label s!"error: {e.toString}"
     return none
+
+def fromTsv (content : String) := fromIngest content "tsv" "read_csv_auto"
+def fromJson (content : String) := fromIngest content "json" "read_json_auto"
 
 end AdbcTable
 
@@ -270,9 +295,7 @@ def freqTable (t : AdbcTable) (colNames : Array String) : IO (Option (AdbcTable 
   let prql := s!"{t.query.render} | freq \{{cols}} | take 1000"
   Log.write "prql-freq" prql
   let some sql ← Prql.compile prql | return none
-  -- strip trailing semicolon for CREATE TABLE subquery
-  let sql := sql.trimAscii.toString
-  let sql := if sql.endsWith ";" then (sql.take (sql.length - 1)).toString else sql
+  let sql := stripSemi sql
   let _ ← Adbc.query s!"CREATE TEMP TABLE {tblName} AS {sql}"
   match ← requery { base := s!"from {tblName}" } with
   | some t' => return some (t', totalGroups)

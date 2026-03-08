@@ -63,33 +63,16 @@ private def typedSelect (cols : Array (String × String)) : String :=
     | some dt => s!"TRY_CAST(\"{name}\" AS {dt}) AS \"{name}\""
     | none => s!"\"{name}\"").toList
 
--- | Write JSON to tmpfile, load into DuckDB temp table, return (tblName, tmpFile cleaned up)
-private def jsonToTable (json : String) (select : String := "*") : IO (Option AdbcTable) := do
+-- | Write JSON to tmpfile, load into DuckDB temp table via SQL builder
+private def jsonToTable (json : String) (mkSql : String → String → String :=
+    fun tbl tmp => s!"CREATE TEMP TABLE {tbl} AS SELECT * FROM read_json_auto('{tmp}') j") : IO (Option AdbcTable) := do
   if json.trimAscii.toString == "[]" || json.isEmpty then return none
   let n ← memTblCounter.modifyGet fun n => (n, n + 1)
   let tmp ← Tc.tmpPath s!"osq-{n}.json"
   IO.FS.writeFile tmp json
   let tbl := s!"tc_osq_{n}"
   try
-    let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS SELECT {select} FROM read_json_auto('{tmp}') j"
-    try IO.FS.removeFile tmp catch _ => pure ()
-    let q : Prql.Query := { base := s!"from {tbl}" }
-    AdbcTable.requery q (← AdbcTable.queryCount q)
-  catch e =>
-    try IO.FS.removeFile tmp catch _ => pure ()
-    Log.write "osquery" s!"error: {e}"
-    errorPopup e.toString
-    return none
-
--- | Like jsonToTable but takes a full SQL query with __TMP__ placeholder for tmpfile path
-private def jsonToTableSql (json : String) (sql : String) : IO (Option AdbcTable) := do
-  if json.trimAscii.toString == "[]" || json.isEmpty then return none
-  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
-  let tmp ← Tc.tmpPath s!"osq-{n}.json"
-  IO.FS.writeFile tmp json
-  let tbl := s!"tc_osq_{n}"
-  try
-    let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {sql.replace "__TMP__" tmp}"
+    let _ ← Adbc.query (mkSql tbl tmp)
     try IO.FS.removeFile tmp catch _ => pure ()
     let q : Prql.Query := { base := s!"from {tbl}" }
     AdbcTable.requery q (← AdbcTable.queryCount q)
@@ -224,7 +207,7 @@ def list (_path : String) : IO (Option (AdbcTable × String)) := do
     else statusMsg "Counting rows ..."; let live ← countAllTables names; saveCounts live; pure (live, "osquery://")
   let hasSchema ← schemaAvail
   let some tbl ← jsonToTable json
-    (s!"j.*, CASE WHEN j.name IN {dangerousIn} THEN 'input-required' ELSE 'safe' END as safety") | return none
+    (fun tbl tmp => s!"CREATE TEMP TABLE {tbl} AS SELECT j.*, CASE WHEN j.name IN {dangerousIn} THEN 'input-required' ELSE 'safe' END as safety FROM read_json_auto('{tmp}') j") | return none
   -- Add rows and description as extra columns
   let tblName := tbl.query.base.drop 5  -- "from tc_osq_N" → "tc_osq_N"
   let _ ← Adbc.query s!"ALTER TABLE {tblName} ADD COLUMN rows INTEGER DEFAULT NULL"
@@ -252,13 +235,16 @@ def enterTable (table : String) : IO (Option (AdbcTable × String)) := do
     if json.trimAscii.toString == "[]" || json.isEmpty then return none
     let join := if hasSchema then s!" LEFT JOIN osq.columns c ON c.table_name = '{escSql table}' AND c.col_name = j.name" else ""
     let desc := if hasSchema then ", COALESCE(c.col_desc, '') as description" else ""
-    let some tbl ← jsonToTableSql json s!"SELECT j.*{desc} FROM read_json_auto('__TMP__') j{join}" | return none
+    let some tbl ← jsonToTable json
+      (fun tbl tmp => s!"CREATE TEMP TABLE {tbl} AS SELECT j.*{desc} FROM read_json_auto('{tmp}') j{join}") | return none
     pure <| some (tbl, s!"schema:{table}")
   else
     statusMsg s!"Querying {table} ..."
     ensureSchema
     let cols ← tableColumns table
-    pure <| (← jsonToTable (← osqueryi s!"SELECT * FROM {table}") (typedSelect cols)).map (·, table)
+    let sel := typedSelect cols
+    pure <| (← jsonToTable (← osqueryi s!"SELECT * FROM {table}")
+      (fun tbl tmp => s!"CREATE TEMP TABLE {tbl} AS SELECT {sel} FROM read_json_auto('{tmp}') j")).map (·, table)
 
 -- | Enrich a meta temp table with column descriptions from the schema DB
 def enrichMeta (metaTblName tableName : String) : IO Unit := do

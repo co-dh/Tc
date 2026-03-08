@@ -3,7 +3,6 @@ import Tc.Filter
 import Tc.Folder
 import Tc.TmpDir
 import Tc.Meta
-import Tc.Freq
 import Tc.Plot
 import Tc.Fzf
 import Tc.Key

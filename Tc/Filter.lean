@@ -48,20 +48,12 @@ def rowSearch (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun curCol 
   let some rowIdx ← TblOps.findRow s.tbl curCol result start true | return s
   return moveRowTo s rowIdx (some (curCol, result))
 
--- | search next (n): repeat last search forward (IO)
-def searchNext (s : ViewStack T) : IO (ViewStack T) := do
+-- | search in direction: fwd=true (n), bwd=false (N)
+def searchDir (s : ViewStack T) (fwd : Bool) : IO (ViewStack T) := do
   let v := s.cur
   let some (col, val) := v.search | return s
-  let start := v.nav.row.cur.val + 1
-  let some rowIdx ← TblOps.findRow v.nav.tbl col val start true | return s
-  return moveRowTo s rowIdx
-
--- | search prev (N): repeat last search backward (IO)
-def searchPrev (s : ViewStack T) : IO (ViewStack T) := do
-  let v := s.cur
-  let some (col, val) := v.search | return s
-  let start := v.nav.row.cur.val
-  let some rowIdx ← TblOps.findRow v.nav.tbl col val start false | return s
+  let start := if fwd then v.nav.row.cur.val + 1 else v.nav.row.cur.val
+  let some rowIdx ← TblOps.findRow v.nav.tbl col val start fwd | return s
   return moveRowTo s rowIdx
 
 -- | row filter (\): filter rows by expression, push filtered view (IO)
