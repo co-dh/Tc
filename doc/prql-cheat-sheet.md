@@ -1,24 +1,24 @@
 # PRQL Cheat Sheet
 `from t | filter x > 0 | select {a, b} | sort {-a} | take 10` — pipe `|` chains transforms; newlines also work.
 ## Transforms
-| Transform   | Syntax                            | Transform   | Syntax                           |
-|------------ |--------                           |------------ |--------                          |
-| `from`      | `from table`                      | `join`      | `join side:left t (==col)`       |
-| `select`    | `select {col1, new = expr}`       | `group`     | `group {col} (aggregate {...})`  |
-| `filter`    | `filter condition`                | `window`    | `window rows:-2..0 (derive ..)`  |
-| `derive`    | `derive {new_col = expr}`         | `aggregate` | `aggregate {sum val, count x}`   |
-| `sort`      | `sort {+col1, -col2}`             | `append`    | `append other` (UNION ALL)       |
-| `take`      | `take 10` / `take 5..10`          | `remove`    | `remove other` (set difference)  |
+| Transform   | Syntax                            || Transform   | Syntax                           |
+|------------ |--------                           |--|------------ |--------                          |
+| `from`      | `from table`                      || `join`      | `join side:left t (==col)`       |
+| `select`    | `select {col1, new = expr}`       || `group`     | `group {col} (aggregate {...})`  |
+| `filter`    | `filter condition`                || `window`    | `window rows:-2..0 (derive ..)`  |
+| `derive`    | `derive {new_col = expr}`         || `aggregate` | `aggregate {sum val, count x}`   |
+| `sort`      | `sort {+col1, -col2}`             || `append`    | `append other` (UNION ALL)       |
+| `take`      | `take 10` / `take 5..10`          || `remove`    | `remove other` (set difference)  |
 ## Operators (by precedence, tightest first)
-| P  | Group     | Operators                   | P  | Group    | Operators                    |
-|--- |---------- |-----------                  |--- |--------- |-----------                   |
-| 0  | parens    | `()`                        | 6  | add      | `+` `-`                      |
-| 1  | dot       | `.`                         | 7  | compare  | `==` `!=` `<` `>` `<=` `>=` |
-| 2  | unary     | `-` `+` `!` `==`            | 8  | coalesce | `??`                         |
-| 3  | range     | `..`                        | 9  | and      | `&&`                         |
-| 4  | pow       | `**` (right-to-left)        | 10 | or       | `\|\|`                       |
-| 5  | mul       | `*` `/` `//` `%`            | 11 | func call|                              |
-Also: `~=` regex match. `/` float div, `//` integer div.
+| P  | Group     | Operators                        || P  | Group    | Operators                    |
+|--- |---------- |-----------                       |--|--- |--------- |-----------                   |
+| 0  | parens    | `()`                             || 6  | add      | `+` `-`                      |
+| 1  | dot       | `.`                              || 7  | compare  | `==` `!=` `~=` `<` `>` `<=` `>=` |
+| 2  | unary     | `-` `+` `!` `==`                 || 8  | coalesce | `??`                         |
+| 3  | range     | `..`                             || 9  | and      | `&&`                         |
+| 4  | pow       | `**` (right-to-left)             || 10 | or       | `\|\|`                       |
+| 5  | mul       | `*` `/` `//` `%`                 || 11 | func call|                              |
+`/` float div, `//` integer div, `~=` regex match.
 ## Literals
 ```
 42  5_000_000  3.14  5e9  0xff  0b1010  0o77     # numbers
