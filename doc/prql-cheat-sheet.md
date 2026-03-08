@@ -76,3 +76,41 @@ select `column with spaces`                                  # quoted identifier
 | `%B` | July       | `%D` | 07/08/01  | `%+` | 2001-07-08T00:34:60Z |
 
 DuckDB: `prqlc compile -t sql.duckdb` (`~=` → `REGEXP_MATCHES`).
+
+## Grammar (from prqlc-parser, chumsky)
+```ebnf
+source        = [ query_def ] { statement } ;
+query_def     = "prql" ( "version" ":" string | "target" ":" ident )+ ;
+
+statement     = { annotation } { doc_comment } ( var_def | type_def | import_def | module_def ) ;
+var_def       = "let" IDENT [ "<" type ">" ] "=" expr_call | pipeline [ "into" IDENT ] ;
+type_def      = "type" IDENT "=" type ;
+import_def    = "import" [ IDENT "=" ] ident ;
+module_def    = "module" IDENT "{" { statement } "}" ;
+annotation    = "@" IDENT [ expr ] ;
+
+expr_call     = lambda | func_call | pipeline ;
+pipeline      = expr ( "|" expr )+ | expr ;
+func_call     = IDENT { expr } { IDENT ":" expr } ;    (* positional then named args *)
+lambda        = param { param } "->" expr_call ;
+param         = IDENT [ "<" type ">" ] [ ":" expr ] ;
+
+expr          = unary | binary | atom ;
+unary         = ( "+" | "-" | "!" | "==" ) expr ;
+binary        = expr bin_op expr ;
+atom          = literal | ident | tuple | array | case | interpolation | range | "(" expr ")" ;
+tuple         = "{" [ aliased { "," aliased } ] "}" ;
+array         = "[" [ expr { "," expr } ] "]" ;
+case          = "case" "[" { expr "=>" expr "," } "]" ;
+range         = [ expr ] ".." [ expr ] ;
+interpolation = ("s" | "f") QUOTED_STRING ;          (* {expr} inside *)
+aliased       = [ IDENT "=" ] expr ;
+
+(* precedence high→low: **  * / // %  + -  == != < > <= >= ~=  ??  &&  || *)
+bin_op        = "**" | "*" | "/" | "//" | "%" | "+" | "-"
+              | "==" | "!=" | "<" | ">" | "<=" | ">=" | "~="
+              | "??" | "&&" | "||" ;
+
+ident         = IDENT { "." IDENT } ;
+literal       = NUMBER | STRING | BOOL | NULL | DATE | TIME | TIMESTAMP | DURATION ;
+```
