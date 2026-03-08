@@ -256,6 +256,7 @@ def enterTable (table : String) : IO (Option (AdbcTable × String)) := do
     pure <| some (tbl, s!"schema:{table}")
   else
     statusMsg s!"Querying {table} ..."
+    ensureSchema
     let cols ← tableColumns table
     pure <| (← jsonToTable (← osqueryi s!"SELECT * FROM {table}") (typedSelect cols)).map (·, table)
 
