@@ -21,12 +21,12 @@
 
 ## Literals
 ```
-42  5_000_000  3.14  5e9  0xff  0b1010  0o77     # numbers
+42  5_000_000  3.14  5e9  0xff  0b1010  0o77      # numbers
 true  false  null                                 # bool/null
 'single'  "double"  """triple "quoted" """        # strings
 f"Hello {name}"  s"SQL({col})"  r"\raw"           # f/s/r-strings
 @2024-01-15  @14:30  @2024-01-15T14:30-08:00      # date/time/timestamp
-3days  2years  1hours                              # duration
+3days  2years  1hours                             # duration
 ```
 s-string tips: `{{`/`}}` for literal braces, `s"({x}) / 365"` for precedence.
 ## Joins
@@ -46,8 +46,8 @@ window expanding:true (derive {cum = sum val})    # = rows:..0
 ```
 ## Case, Functions, Declarations
 ```
-derive x = case [a > 0 => "pos", true => "other"]           # case
-let f = lo:0 hi x -> (x - lo) / (hi - lo)                   # func (lo default 0)
+derive x = case [a > 0 => "pos", true => "other"]            # case
+let f = lo:0 hi x -> (x - lo) / (hi - lo)                    # func (lo default 0)
 x | f 100                                                    # pipe into last arg
 let t = (from employees | filter active)                     # named relation
 into mid                                                     # name mid-pipeline
