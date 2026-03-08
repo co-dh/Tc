@@ -190,6 +190,12 @@ def appMain (toText : Table → IO String) (init : IO Bool) (shutdown : IO Unit)
         | some v => let _ ← runApp v pipeMode testMode theme keys
         | none => IO.eprintln "Empty kdb table"
       | none => IO.eprintln "Cannot open kdb table"
+    else if path.endsWith ".duckdb" || path.endsWith ".db" then
+      match ← AdbcTable.listDuckDBTables path with
+      | some adbc => match View.fromTbl (Table.adbc adbc) s!"duckdb://{path}" with
+        | some v => let _ ← runApp { v with vkind := .fld s!"duckdb://{path}" 1, disp := path.splitOn "/" |>.getLast?.getD path } pipeMode testMode theme keys
+        | none => IO.eprintln "No tables in database"
+      | none => IO.eprintln "Cannot open DuckDB file"
     else if path.endsWith ".txt" then
       let _ ← runTsv (Tc.TextParse.fromText (← IO.FS.readFile path)) path pipeMode testMode theme keys
     else match ← TblOps.fromFile (α := Table) path with

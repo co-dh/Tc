@@ -711,6 +711,27 @@ def test_folder_enter_symlink : IO Unit := do
   let (_, status) := footer output
   assert (contains status "r0/") "Entered symlink dir has rows"
 
+def test_duckdb_list : IO Unit := do
+  log "duckdb_list"
+  let output ← run "" "data/nu_help.duckdb"
+  assert (contains output "commands") "DuckDB file lists tables"
+  assert (contains output "params") "DuckDB file lists params table"
+  let (_, status) := footer output
+  assert (contains status "r0/3") "DuckDB has 3 tables"
+
+def test_duckdb_enter : IO Unit := do
+  log "duckdb_enter"
+  let output ← run "<ret>" "data/nu_help.duckdb"
+  let (_, status) := footer output
+  assert (contains status "r0/") "Enter on DuckDB table opens it"
+  assert (not (contains status "r0/3")) "Entered table has different row count"
+
+def test_duckdb_primary_key : IO Unit := do
+  log "duckdb_primary_key"
+  let output ← run "<ret>" "data/nu_help.duckdb"
+  let (_, status) := footer output
+  assert (contains status "grp=1") "DuckDB primary key is keyed (grp=1)"
+
 def test_folder_prefix : IO Unit := do
   log "folder_prefix"
   let (_, s1) := footer (← run "")
@@ -979,6 +1000,8 @@ def tests : Array (String × IO Unit) := #[
   ("folder_tab", test_folder_tab), ("folder_enter", test_folder_enter),
   ("folder_relative", test_folder_relative), ("folder_pop", test_folder_pop),
   ("folder_enter_symlink", test_folder_enter_symlink),
+  ("duckdb_list", test_duckdb_list), ("duckdb_enter", test_duckdb_enter),
+  ("duckdb_primary_key", test_duckdb_primary_key),
   ("folder_prefix", test_folder_prefix),
   -- Parquet tests
   ("page_down", test_page_down), ("page_up", test_page_up),

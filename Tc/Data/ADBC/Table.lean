@@ -114,6 +114,33 @@ def fromFile (path : String) : IO (Option AdbcTable) := do
   let total ← queryCount query
   requery query total
 
+-- | Attach a .duckdb file and list its tables as TSV (for folder-like view)
+def listDuckDBTables (path : String) : IO (Option AdbcTable) := do
+  let esc := path.replace "'" "''"
+  let _ ← Adbc.query s!"ATTACH '{esc}' AS extdb (READ_ONLY)"
+  let qr ← Adbc.query "SELECT table_name as name, estimated_size as size, column_count as columns FROM duckdb_tables() WHERE database_name = 'extdb'"
+  let total ← Adbc.nrows qr
+  if total.toNat == 0 then return none
+  some <$> ofQueryResult qr { base := "from duckdb_tables() | filter database_name == 'extdb' | select {name, estimated_size, column_count}" } total.toNat
+
+-- | Get primary key columns for a table in the attached extdb
+def duckDBPrimaryKeys (table : String) : IO (Array String) := do
+  try
+    let qr ← Adbc.query s!"SELECT unnest(constraint_column_names) as col FROM duckdb_constraints() WHERE database_name = 'extdb' AND table_name = '{table.replace "'" "''"}' AND constraint_type = 'PRIMARY KEY'"
+    let nr ← Adbc.nrows qr
+    let mut keys : Array String := #[]
+    for i in [:nr.toNat] do
+      keys := keys.push (← Adbc.cellStr qr i.toUInt64 0)
+    pure keys
+  catch _ => pure #[]
+
+-- | Open a table from an attached .duckdb file
+def fromDuckDBTable (table : String) : IO (Option (AdbcTable × Array String)) := do
+  let keys ← duckDBPrimaryKeys table
+  let query : Prql.Query := { base := s!"from extdb.{table}" }
+  let total ← queryCount query
+  (·.map (·, keys)) <$> requery query total
+
 -- | Sort: append sort op and re-query (all columns use given direction)
 def sortBy (t : AdbcTable) (idxs : Array Nat) (asc : Bool) : IO AdbcTable := do
   let sortCols := idxs.map fun idx => (t.colNames.getD idx "", asc)

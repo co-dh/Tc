@@ -188,6 +188,12 @@ private def openOsqueryTable (s : ViewStack Table) (table : String) : IO (Option
 -- | Enter directory or view file based on current row
 def enter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
   let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
+  -- DuckDB: enter opens a table from the attached database
+  if curDir.startsWith "duckdb://" then do
+    let some tableName ← curPath s.cur | return some s
+    let some (adbc, keys) ← AdbcTable.fromDuckDBTable tableName | return some s
+    let some v := View.fromTbl (Table.adbc adbc) s!"duckdb://{tableName}" (grp := keys) | return some s
+    return some (s.push v)
   let back := backend? curDir
   match ← curType s.cur, ← curPath s.cur with
   | some 'd', some p =>
