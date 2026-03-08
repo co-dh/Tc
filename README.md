@@ -4,18 +4,19 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 
 ## Features
 
-- CSV, Parquet, JSON support (via DuckDB)
+- CSV, Parquet, JSON, DuckDB file support (via DuckDB)
 - S3 bucket browsing (`s3://bucket/path`)
-- Kdb+ table access (`kdb://host:port/table`)
+- HuggingFace Hub datasets (`hf://datasets/user/dataset`)
+- Osquery table browser (`osquery://`)
 - Folder browser with recursive depth control
 - Frequency view (group by + count/pct/bar)
 - Column metadata view (type, count, distinct, null%, min, max)
-- Filter expressions (`col == val && col2 > 10`)
+- Filter expressions via PRQL (`col == val && col2 > 10`)
 - Fuzzy search via fzf (columns, rows, filter, commands)
 - Multi-column sorting (asc/desc)
 - Column grouping (key columns pinned left)
-- Row/column selection
-- Line/bar plot export (via gnuplot)
+- Row/column selection, hidden columns
+- Line/bar plot export with downsampling (via gnuplot)
 - Theme support
 - Stdin pipe mode (`cat data.csv | tc`)
 - Zero-copy rendering via C FFI (termbox2)
@@ -29,14 +30,17 @@ lake build tc
 ## Run
 
 ```bash
-tc data.csv                   # CSV file
-tc data.parquet               # Parquet file
-tc .                          # Browse current directory
-tc s3://bucket/prefix         # Browse S3 bucket
-tc s3://bucket/path/file.csv  # Open S3 file directly
-tc s3://bucket/prefix +n      # S3 public bucket (no credentials)
-tc kdb://localhost:5001/trade  # Kdb+ table
-cat data.csv | tc             # Pipe mode (stdin)
+tc data.csv                        # CSV file
+tc data.parquet                    # Parquet file
+tc data.duckdb                     # DuckDB file (list tables)
+tc .                               # Browse current directory
+tc s3://bucket/prefix              # Browse S3 bucket
+tc s3://bucket/path/file.csv       # Open S3 file directly
+tc s3://bucket/prefix +n           # S3 public bucket (no credentials)
+tc hf://datasets/user/dataset      # HuggingFace Hub dataset
+tc osquery://                      # Browse osquery tables
+tc osquery://processes             # Query osquery table directly
+cat data.csv | tc                  # Pipe mode (stdin)
 ```
 
 ## Keybindings
@@ -76,6 +80,7 @@ cat data.csv | tc             # Pipe mode (stdin)
 | `t` | Toggle column selection |
 | `T` | Toggle row selection |
 | `!` | Toggle key column (group) |
+| `H` | Toggle hide column |
 
 ### Sorting and Editing
 
@@ -92,7 +97,7 @@ cat data.csv | tc             # Pipe mode (stdin)
 | `/` | Search (fzf) |
 | `n` | Next match |
 | `N` | Previous match |
-| `\` | Filter expression |
+| `\` | Filter expression (PRQL) |
 | `s` | Column jump (fzf) |
 | `Space` | Command palette (fzf) |
 
@@ -110,6 +115,7 @@ cat data.csv | tc             # Pipe mode (stdin)
 |-----|--------|
 | `Space p .`/`,` | Increase/decrease decimal precision |
 | `Space w .`/`,` | Widen/narrow columns |
+| `Space T .`/`,` | Cycle themes |
 | `I` | Toggle info overlay |
 
 ### Plot
@@ -148,10 +154,11 @@ Optional (feature-specific):
 | `trash-put` | Move files to trash (folder view) | `gio trash` |
 | `gio` | Move files to trash (GNOME) | none |
 | `stty` | Terminal raw mode for plot interaction | — |
+| `osqueryi` | Osquery table browsing & queries | osquery disabled |
+| `python3` | Osquery table metadata setup | osquery disabled |
 | `realpath` | Resolve folder paths | — |
 | `tmux` | fzf popup mode (`--tmux`) | fullscreen fzf |
 
 ## Known Limitations
 
 - Duration columns display as raw int64 (DuckDB ADBC limitation)
-- Kdb+ requires `c.so` (kdb C library) at link time

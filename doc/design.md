@@ -11,13 +11,7 @@
 │    getCols, colType, plotExport, fetchMore              │
 │    fromFile, fromUrl                                    │
 └───────────────────────────┬─────────────────────────────┘
-                            │ instance
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│  Table = AdbcTable | KdbTable  (closed sum type)        │
-│    lift/liftM/liftW/liftIO combinators                  │
-└───────────────────────────┬─────────────────────────────┘
-                            │ wrapped by
+                            │ instance (AdbcTable)
                             ▼
 ┌─────────────────────────────────────────────────────────┐
 │  View + ViewStack (View.lean)                           │
@@ -27,7 +21,7 @@
                             │ composed by
                             ▼
 ┌─────────────────────────────────────────────────────────┐
-│  AppState (Dispatch.lean)                               │
+│  AppState (App/Common.lean)                             │
 │    stk : ViewStack, vs : ViewState                      │
 │    theme : Theme.State, info : UI.Info.State            │
 │    update chains: theme → info → stk → fld → meta → ...│
@@ -36,13 +30,14 @@
                             ▼
 ┌─────────────────────────────────────────────────────────┐
 │  Effect (Cmd.lean)                                      │
-│    none | quit | fzf* | query* | folder* | theme* | ...│
+│    none | quit | fzf _ | query _ | folder _ | ...      │
 └───────────────────────────┬─────────────────────────────┘
                             │ interpreted by
                             ▼
 ┌─────────────────────────────────────────────────────────┐
 │  Runner (Runner.lean)                                   │
-│    runStackEffect : ViewStack → Effect → IO ViewStack   │
+│    runStackEffect : ViewStack AdbcTable → Effect        │
+│                   → IO (ViewStack AdbcTable)            │
 └───────────────────────────┬─────────────────────────────┘
                             │
                             ▼
@@ -65,7 +60,7 @@ The architecture separates pure state logic from IO effects:
 │  - Info.update (toggle visibility)                      │
 │  - View.update (prec/width, returns query effects)      │
 │  - Filter.update (returns fzf effects)                  │
-│  - Meta/Freq.update (returns query effects)             │
+│  - Meta.update (returns query effects)                  │
 │  - Folder.update (returns folder effects)               │
 │  - Plot.update (returns plotLine/plotBar effects)       │
 └─────────────────────────────────────────────────────────┘
@@ -95,29 +90,17 @@ The architecture separates pure state logic from IO effects:
 | ModifyTable | delCols, sortBy                      | Table mutations            |
 | Update      | update                               | Pure: Cmd → (State, Effect)|
 
-## Backends
+## Backend
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Table = AdbcTable | KdbTable                           │
-└───────────────────────────┬─────────────────────────────┘
-                            │
-          ┌─────────────────┴─────────────────┐
-          ▼                                   ▼
-┌─────────────────────┐             ┌─────────────────────┐
-│ AdbcTable           │             │ KdbTable             │
-│ DuckDB via ADBC/C   │             │ kdb+ via C FFI       │
-│ PRQL → SQL queries  │             │ q expressions        │
-│ nanoarrow types     │             │ char type codes      │
-│ parquet, CSV, S3,   │             │ remote kdb server    │
-│ HF datasets         │             │                      │
-└─────────────────────┘             └─────────────────────┘
+│  AdbcTable                                               │
+│  DuckDB via ADBC/C FFI                                   │
+│  PRQL → SQL queries (prqlc compile -t sql.duckdb)        │
+│  nanoarrow typed column accessors                        │
+│  parquet, CSV, JSON, DuckDB files, S3, HF, osquery       │
+└─────────────────────────────────────────────────────────┘
 ```
-
-| Backend | Query Language | File Formats | Type System |
-|---------|---------------|--------------|-------------|
-| ADBC    | PRQL → SQL    | parquet, CSV, S3, HF | nanoarrow (string names) |
-| Kdb     | q             | kdb server   | char codes (j, f, s, ...) |
 
 ## Remote Browsing
 
@@ -125,12 +108,13 @@ The architecture separates pure state logic from IO effects:
 ┌─────────────────────────────────────────────────────────┐
 │  Remote.lean (shared URI path operations)               │
 │    join, parent, dispName                               │
-├─────────────────────────────────────────────────────────┤
-│  S3.lean              │  HF.lean                        │
-│  s3:// via aws CLI    │  hf:// via HF Hub API           │
-│  --no-sign-request    │  curl + jq for listing          │
-│  for public buckets   │  ~/.cache/tc/hf/ disk cache     │
-└─────────────────────────────────────────────────────────┘
+├──────────────┬──────────────────┬───────────────────────┤
+│  S3.lean     │  HF.lean         │  Osquery.lean          │
+│  s3:// via   │  hf:// via HF    │  osquery:// via        │
+│  aws CLI     │  Hub API         │  osqueryi --json       │
+│  +n = public │  curl + jq       │  python3 metadata      │
+│  buckets     │  disk cache      │  row count cache       │
+└──────────────┴──────────────────┴───────────────────────┘
 ```
 
 ## Cmd System (Cmd.lean)
@@ -212,32 +196,30 @@ Char │ Obj       │  ,  │  .  │     │     │     │ Description
 
 ## Effect DSL (Cmd.lean)
 
-Effect describes IO operations without executing them:
+Effect describes IO operations without executing them. Sub-effects are grouped by domain:
 
 ```lean
+inductive FzfEffect where | cmd | col | row | filter
+inductive QueryEffect where
+  | colMeta | freq (colNames : Array String)
+  | freqFilter (cols : Array String) (row : Nat)
+  | filter (expr : String)
+  | sort (colIdx : Nat) (sels : Array Nat) (grp : Array Nat) (asc : Bool)
+inductive FolderEffect where | push | enter | del | depth (delta : Int)
+inductive SearchEffect where | next | prev
+inductive PlotEffect where | line | bar
+inductive MetaEffect where | selNull | selSingle | setKey
+
 inductive Effect where
   | none | quit
-  -- fzf (user selection)
-  | fzfCmd | fzfCol
-  | fzfRow (colIdx : Nat) (colName : String)
-  | fzfFilter (colIdx : Nat) (colName : String)
-  -- query (database/table ops)
-  | queryMeta | queryFreq (colNames : Array String)
-  | freqFilter (cols : Array String) (row : Nat)
-  | queryFilter (expr : String)
-  | querySort (colIdx : Nat) (sels : Array Nat) (grp : Array Nat) (asc : Bool)
-  | queryDel (colIdx : Nat) (sels : Array Nat) (grp : Array String)
-  -- folder (filesystem)
-  | folderPush | folderEnter | folderDel
-  | folderDepth (delta : Int)
-  -- search
-  | findNext | findPrev
-  -- theme
+  | fzf : FzfEffect → Effect
+  | query : QueryEffect → Effect
+  | folder : FolderEffect → Effect
+  | search : SearchEffect → Effect
+  | plot : PlotEffect → Effect
+  | colMeta : MetaEffect → Effect
   | themeLoad (delta : Int)
-  -- plot
-  | plotLine | plotBar
-  -- misc
-  | fetchMore | metaSelNull | metaSelSingle | metaSetKey
+  | fetchMore
 ```
 
 **Functor pattern**: `update` maps `Cmd → Effect`:
@@ -290,7 +272,7 @@ Interactive plot with interval control. After display, `+`/`-` cycles intervals:
 | NavState     | Table + row/col cursors + selections + group |
 | NavAxis      | Generic axis: cur (Fin n) + sels (Array)     |
 | View         | Existential wrapper hiding table type        |
-| ViewKind     | View type: tbl, colMeta, freqV, fld          |
+| ViewKind     | View type: tbl, colMeta, freqV, fld path depth |
 | ViewStack    | Non-empty stack of Views (cur + parents)     |
 | ViewState    | Scroll offsets for rendering                 |
 | AppState     | Top-level: stk + vs + theme + info           |
@@ -300,32 +282,30 @@ Interactive plot with interval control. After display, `+`/`-` cycles intervals:
 
 ## Testing (Test.lean)
 
-Tests use tmux for screen capture instead of custom C FFI:
+Tests use headless `-c` mode with `IO.Process.output` (no tmux dependency):
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Test Harness                                           │
-│  1. tmux new-session -d -s tctest -e TC_TEST_MODE=1     │
-│  2. tmux send-keys (with key notation conversion)       │
-│  3. tmux capture-pane -p                                │
-│  4. tmux kill-session                                   │
+│  1. IO.Process.output { cmd := bin, args := #[file, "-c", keys] } │
+│  2. -c injects keystrokes, headless C shim provides 80×24 buffer  │
+│  3. On key exhaustion, mainLoop prints buffer to stdout and exits  │
+│  4. Tests compare stdout against expected strings                  │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Key Notation Conversion
+### Key Notation
 
-| Test notation | tmux send-keys |
-|---------------|----------------|
-| `<C-d>`       | `C-d`          |
-| `<C-u>`       | `C-u`          |
-| `<ret>`       | `Enter`        |
-| `abc`         | `-l abc`       |
+| Test notation | Mapped to |
+|---------------|-----------|
+| `<ret>`       | Enter (`\r`) |
+| `<esc>`       | Escape (`\x1b`) |
+| `<C-d>`       | Ctrl-D (`\x04`) |
+| `<C-u>`       | Ctrl-U (`\x15`) |
+| `<backslash>` | `\` |
+| `abc`         | literal chars |
 
-### Test Mode
-
-`TC_TEST_MODE=1` env var enables test mode (Fzf.lean):
-- fzf auto-selects first item without spawning
-- Folder delete auto-declines confirmation
+Do NOT use `$` in key strings (shell interprets it). Do NOT include `Q` (causes quit before buffer read).
 
 ### Render Performance
 
@@ -335,21 +315,16 @@ This prevents CPU burn on large tables (e.g., 300M row parquet).
 ## Module Dependency Graph
 
 ```
-LAYER 1: FOUNDATION (35 files)
+LAYER 1: FOUNDATION
 ┌─────────────────────────────────────────────────────────────────┐
 │ Types (Cell,Column,TblOps,ModifyTable,Agg,Op)                  │
-│ Cmd (Verb,Cmd,Effect,Update)   Error   Term                    │
+│ Cmd (Verb,Cmd,Effect,Update)   Error   Term   TmpDir           │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 LAYER 2: DATA
 ┌─────────────────────────────────────────────────────────────────┐
-│ Data/CSV   Data/Text                                            │
-│                                                                 │
-│ Data/ADBC/FFI ──→ Data/ADBC/Table ──→ Data/ADBC/{Meta,Ops}     │
+│ Data/ADBC/Table ──→ Data/ADBC/Ops                              │
 │              └──→ Data/ADBC/Prql (+ funcs.prql)                │
-│                                                                 │
-│ Data/Kdb/FFI ──→ Data/Kdb/Table ──→ Data/Kdb/Ops               │
-│             └──→ Data/Kdb/Q                                     │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 LAYER 3: VIEW
@@ -360,38 +335,28 @@ LAYER 3: VIEW
                               ↓
 LAYER 4: FEATURES
 ┌─────────────────────────────────────────────────────────────────┐
-│ Meta  Freq  Filter  Folder  Theme  Fzf  Plot  UI/Info          │
-│ Remote  S3  HF  Validity                                       │
+│ Meta  Filter  Folder  Theme  Fzf  Plot  UI/Info                │
+│ Remote  S3  HF  Osquery                                        │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
-LAYER 5: TABLE ABSTRACTION
+LAYER 5: STATE & DISPATCH
 ┌─────────────────────────────────────────────────────────────────┐
-│ Table.lean ──→ AdbcTable | KdbTable (closed sum + lift)        │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-LAYER 6: STATE & DISPATCH
-┌─────────────────────────────────────────────────────────────────┐
-│ Dispatch (AppState, update) ──→ Runner (runEffect)             │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-LAYER 7: ENTRY POINT
-┌─────────────────────────────────────────────────────────────────┐
-│ App/Common.lean ──→ appMain                                    │
-│ App.lean        ──→ imports Table (tc executable)              │
+│ App/Common (AppState, update) ──→ Runner (runStackEffect)      │
 └─────────────────────────────────────────────────────────────────┘
 
 TESTS
 ┌─────────────────────────────────────────────────────────────────┐
-│ test/Test.lean (tmux-based integration tests)                  │
-│ Validity.lean (compile-time #guard tests)                      │
+│ test/Test.lean (headless -c integration tests)                 │
+│ test/TestPure.lean (pure #guard tests)                         │
+│ test/TestScreen.lean (screen buffer tests)                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Build
 
-| Executable | Backends | Use case |
-|------------|----------|----------|
-| `tc`       | ADBC + Kdb | Full (CSV, parquet, S3, HF, kdb) |
-| `test`     | ADBC | Integration tests via tmux |
+| Executable | Use case |
+|------------|----------|
+| `tc`       | Full (CSV, parquet, JSON, DuckDB, S3, HF, osquery) |
+| `test`     | Integration tests (headless `-c` mode) |
 
-Generic code (View, Meta, Freq, etc.) uses typeclasses (`TblOps`, `ModifyTable`) so it works with any backend wrapped in the `Table` sum type.
+Generic code (View, Meta, etc.) uses typeclasses (`TblOps`, `ModifyTable`).
