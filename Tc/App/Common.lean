@@ -11,17 +11,19 @@ import Tc.Runner
 import Tc.Term
 import Tc.Theme
 import Tc.UI.Info
+import Tc.UI.Preview
 import Tc.Data.Text
 import Tc.View
 
 open Tc
 
--- | App state: view stack + render state + theme + info
+-- | App state: view stack + render state + theme + info + preview scroll
 structure AppState where
   stk   : ViewStack AdbcTable
   vs    : ViewState
   theme : Theme.State
   info  : UI.Info.State
+  prevScroll : Nat := 0
 
 namespace AppState
 
@@ -100,11 +102,23 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
         let label := if label.length > maxLen then (label.take maxLen).toString ++ "…" else label
         Term.print 0 (h - 1) Term.cyan Term.default label
   if a.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat a.stk.cur.vkind
+  -- Preview box for truncated cell text (skip in test mode)
+  if !test then do
+    let h ← Term.height; let w ← Term.width
+    let nav := a.stk.cur.nav
+    let curCol := nav.curColIdx
+    let cellText ← TblOps.cellStr nav.tbl nav.row.cur.val curCol
+    -- Show preview if cell text wider than column display width
+    let colW := min (a.stk.cur.widths.getD nav.col.cur.val 10) 50
+    if cellText.length + 2 > colW then
+      UI.Preview.render h.toNat w.toNat cellText a.prevScroll
   Term.present
   if test && ks.isEmpty then IO.print (← Term.bufferStr); return a
   let (ev, ks') ← nextEvent ks
   if isKey ev 'Q' then return a
   if isKey ev ' ' then mainLoop (← runEffect a (.fzf .cmd)) test ks'
+  else if isKey ev '{' then mainLoop { a with prevScroll := a.prevScroll - min a.prevScroll 5 } test ks'
+  else if isKey ev '}' then mainLoop { a with prevScroll := a.prevScroll + 5 } test ks'
   else match evToCmd ev a.stk.cur.vkind with
     | none => mainLoop a test ks'
     | some c => match a.update c with
@@ -112,7 +126,7 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
       | some (a', e) =>
         if e == .quit then pure a'
         else let a'' ← if e.isNone then pure a' else runEffect a' e
-             mainLoop a'' test ks'
+             mainLoop { a'' with prevScroll := 0 } test ks'
 
 -- parse args: path?, -c keys?, test mode, +n (S3 no-sign-request)
 def parseArgs (args : List String) : Option String × Array Char × Bool × Bool :=
@@ -129,7 +143,7 @@ def parseArgs (args : List String) : Option String × Array Char × Bool × Bool
 def runApp (v : View AdbcTable) (pipe test : Bool) (th : Theme.State) (ks : Array Char) : IO AppState := do
   if pipe then let _ ← Term.reopenTty
   let _ ← Term.init
-  let a' ← mainLoop ⟨⟨v, []⟩, .default, th, {}⟩ test ks
+  let a' ← mainLoop ⟨⟨v, []⟩, .default, th, {}, 0⟩ test ks
   if !test then Term.shutdown
   pure a'
 

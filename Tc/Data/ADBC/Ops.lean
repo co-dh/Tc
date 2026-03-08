@@ -18,6 +18,7 @@ instance : TblOps AdbcTable where
   findRow   := AdbcTable.findRow
   getCols t idxs r0 r1 := idxs.mapM fun i => t.getCol i r0 r1
   colType t col := t.colTypes.getD col "?"
+  cellStr t row col := Adbc.cellStr t.qr row.toUInt64 col.toUInt64
   plotExport := AdbcTable.plotExport
   fetchMore := AdbcTable.fetchMore
   fromFile := AdbcTable.fromFile
