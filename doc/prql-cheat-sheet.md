@@ -1,288 +1,81 @@
 # PRQL Cheat Sheet
-
-## Pipeline
-
-```
-from employees | filter age > 30 | select {name, age} | sort age | take 10
-```
-
-Pipe `|` chains transforms. Newlines work too (no `|` needed between transforms on separate lines).
-
+`from t | filter x > 0 | select {a, b} | sort {-a} | take 10` — pipe `|` chains transforms; newlines also work.
 ## Transforms
-
-| Transform   | Syntax                            | Notes                       |
-|-----------  |--------                           |-------                      |
-| `from`      | `from table`                      | Source table                |
-| `select`    | `select {col1, col2, new = expr}` | Pick/rename columns         |
-| `filter`    | `filter condition`                | Keep matching rows          |
-| `derive`    | `derive {new_col = expr}`         | Add computed columns        |
-| `sort`      | `sort {+col1, -col2}`             | `+` asc (default), `-` desc |
-| `take`      | `take 10` or `take 5..10`         | Limit rows or range         |
-| `join`      | `join side:left t (==col)`        | See Joins below             |
-| `group`     | `group {col} (pipeline)`          | See Group below             |
-| `window`    | `window rows:-2..0 (pipeline)`    | See Windows below           |
-| `aggregate` | `aggregate {sum val, count col}`  | Collapse to one row         |
-| `append`    | `append other_table`              | UNION ALL                   |
-| `intersect` | `intersect other_table`           | Set intersection            |
-| `remove`    | `remove other_table`              | Set difference              |
-
+| Transform   | Syntax                            | Transform   | Syntax                           |
+|------------ |--------                           |------------ |--------                          |
+| `from`      | `from table`                      | `join`      | `join side:left t (==col)`       |
+| `select`    | `select {col1, new = expr}`       | `group`     | `group {col} (aggregate {...})`  |
+| `filter`    | `filter condition`                | `window`    | `window rows:-2..0 (derive ..)`  |
+| `derive`    | `derive {new_col = expr}`         | `aggregate` | `aggregate {sum val, count x}`   |
+| `sort`      | `sort {+col1, -col2}`             | `append`    | `append other` (UNION ALL)       |
+| `take`      | `take 10` / `take 5..10`          | `remove`    | `remove other` (set difference)  |
 ## Operators (by precedence, tightest first)
-
-| Prec | Group       | Operators                    | Associativity |
-|----- |------------ |----------                    |-------------- |
-| 0    | parentheses | `()`                         |               |
-| 1    | dot         | `.`                          |               |
-| 2    | unary       | `-` `+` `!` `==`             |               |
-| 3    | range       | `..`                         |               |
-| 4    | pow         | `**`                         | right-to-left |
-| 5    | mul         | `*` `/` `//` `%`             | left-to-right |
-| 6    | add         | `+` `-`                      | left-to-right |
-| 7    | compare     | `==` `!=` `<=` `>=` `<` `>`  | left-to-right |
-| 8    | coalesce    | `??`                         | left-to-right |
-| 9    | and         | `&&`                         | left-to-right |
-| 10   | or          | `\|\|`                       | left-to-right |
-| 11   | func call   |                              |               |
-
-Also: `~=` regex match, `/` float division, `//` integer division.
-
+| P  | Group     | Operators                   | P  | Group    | Operators                    |
+|--- |---------- |-----------                  |--- |--------- |-----------                   |
+| 0  | parens    | `()`                        | 6  | add      | `+` `-`                      |
+| 1  | dot       | `.`                         | 7  | compare  | `==` `!=` `<` `>` `<=` `>=` |
+| 2  | unary     | `-` `+` `!` `==`            | 8  | coalesce | `??`                         |
+| 3  | range     | `..`                        | 9  | and      | `&&`                         |
+| 4  | pow       | `**` (right-to-left)        | 10 | or       | `\|\|`                       |
+| 5  | mul       | `*` `/` `//` `%`            | 11 | func call|                              |
+Also: `~=` regex match. `/` float div, `//` integer div.
 ## Literals
-
 ```
-42                  # int
-5_000_000           # int with separators
-3.14    5e9         # float
-0xff  0b1010  0o77  # hex, binary, octal
-true  false  null   # boolean, null
-'hello'  "world"   # strings (single or double quotes)
-@2024-01-15         # date
-@14:30:00           # time
-@2024-01-15T14:30   # timestamp
-@2024-01-15T14:30:00-08:00  # timestamp with tz
-3days  2years  1hours       # duration
+42  5_000_000  3.14  5e9  0xff  0b1010  0o77     # numbers
+true  false  null                                 # bool/null
+'single'  "double"  """triple "quoted" """        # strings
+f"Hello {name}"  s"SQL({col})"  r"\raw"           # f/s/r-strings
+@2024-01-15  @14:30  @2024-01-15T14:30-08:00      # date/time/timestamp
+3days  2years  1hours                              # duration
 ```
-
-## Strings
-
-```
-'basic string'
-"also basic"
-"""triple-quoted "contains quotes" inside"""
-
-f"Hello {first_name} {last_name}"    # f-string: interpolate columns (names only, no exprs)
-s"REGEXP_MATCHES({col}, 'pat')"      # s-string: raw SQL escape hatch
-r"\no\escaping\here"                 # r-string: raw, no escape processing
-```
-
-**s-string tips**: `{{` `}}` for literal braces. Wrap interpolated vars in parens for precedence: `s"({x}) / 365"`.
-
+s-string tips: `{{`/`}}` for literal braces, `s"({x}) / 365"` for precedence.
 ## Joins
-
 ```
-join side:inner other (==id)                         # self-equality shorthand
-join side:left p=positions (this.id == that.emp_id)  # alias + explicit condition
-join side:left t (this.id == that.id && that.country == 'UK')  # compound
-join side:full other (true)                          # cross join
+join side:left t (==id)                                    # shorthand
+join side:left p=positions (this.id == that.emp_id)        # alias
+join side:full other (true)                                # cross join
 ```
-
-Sides: `inner` (default), `left`, `right`, `full`.
-
-## Group + Aggregate
-
+Sides: `inner` (default), `left`, `right`, `full`. Use `this`/`that` for table refs.
+## Group, Aggregate, Window
 ```
-from employees
-group {department} (
-  aggregate {
-    avg_sal = average salary,
-    n = count this,
-  }
-)
+group {dept} (aggregate {avg_sal = average salary, n = count this})
+group role (sort date | take 1)                   # first per group
+window rows:-2..0 (derive {ma = average val})     # sliding window
+window rolling:3 (...)                            # = rows:-2..0
+window expanding:true (derive {cum = sum val})    # = rows:..0
 ```
-
-Any pipeline works inside group — not just aggregate:
-
+## Case, Functions, Declarations
 ```
-from employees
-group role (
-  sort join_date
-  take 1
-)
-# → first-hired per role
+derive x = case [a > 0 => "pos", true => "other"]           # case
+let f = lo:0 hi x -> (x - lo) / (hi - lo)                   # func (lo default 0)
+x | f 100                                                    # pipe into last arg
+let t = (from employees | filter active)                     # named relation
+into mid                                                     # name mid-pipeline
+derive y = (col | as int)                                    # cast
+filter (status | in ["a", "b"])                              # membership
+select `column with spaces`                                  # quoted identifier
 ```
-
-## Window Functions
-
-```
-window rows:0..2 (derive {next2 = sum val})     # current + 2 following
-window rows:-2..0 (derive {prev2 = sum val})     # 2 preceding + current
-window rolling:3 (derive {ma = average val})     # alias for rows:-2..0
-window expanding:true (derive {cumsum = sum val}) # alias for rows:..0
-```
-
-Window functions: `lag offset col`, `lead offset col`, `first`, `last`, `rank`, `rank_dense`, `row_number`.
-
-## Aggregate Functions
-
-`min` `max` `sum` `average` `stddev` `count` `any` `all` `concat_array`
-
-## Case
-
-```
-derive category = case [
-  score > 90 => "A",
-  score > 80 => "B",
-  score > 70 => "C",
-  true => "F",            # default (else)
-]
-```
-
-## Functions
-
-```
-let double = x -> x * 2
-let clamp = lo:0 hi:100 x -> max lo (min hi x)   # named params with defaults
-
-from t | derive {y = double x, z = clamp hi:50 x}
-from t | derive {y = (x | double)}                # pipe into last positional arg
-```
-
-## Variables & Declarations
-
-```
-let t = from employees                # named relation
-let result = (                        # multi-line
-  from employees
-  filter department == "Engineering"
-)
-into mid_result                       # name intermediate result in pipeline
-```
-
-## Type Casting
-
-```
-derive x = (col | as int)
-derive y = (col | as text)
-```
-
-## Membership
-
-```
-filter (status | in ["active", "pending"])
-```
-
-## Identifiers
-
-```
-select `column with spaces`          # backtick-quoted
-this.col                             # current table ref
-that.col                             # joined table ref
-```
-
-## stdlib: text
-
-| Function      | Params            | Description                                      |
-|-------------- |--------           |--------------                                    |
-| `lower`       | `col`             | Convert to lower case                            |
-| `upper`       | `col`             | Convert to upper case                            |
-| `trim`        | `col`             | Remove whitespace from both sides                |
-| `ltrim`       | `col`             | Remove whitespace from left                      |
-| `rtrim`       | `col`             | Remove whitespace from right                     |
-| `length`      | `col`             | Number of characters                             |
-| `contains`    | `sub col`         | True if col contains sub                         |
-| `starts_with` | `sub col`         | True if col starts with sub                      |
-| `ends_with`   | `sub col`         | True if col ends with sub                        |
-| `extract`     | `idx len col`     | Substring at index idx (1-based) with length len |
-| `replace`     | `before after col` | Replace occurrences of before with after         |
-
-## stdlib: math
-
-| Function  | Params    | Description            |
-|---------- |--------   |-----------             |
-| `abs`     | `col`     | Absolute value         |
-| `floor`   | `col`     | Round down             |
-| `ceil`    | `col`     | Round up               |
-| `round`   | `n col`   | Round to n decimals    |
-| `sqrt`    | `col`     | Square root            |
-| `pow`     | `b col`   | col to the power b     |
-| `exp`     | `col`     | e^col                  |
-| `ln`      | `col`     | Natural logarithm      |
-| `log10`   | `col`     | Base-10 logarithm      |
-| `log`     | `b col`   | Base-b logarithm       |
-| `pi`      |           | The constant π         |
-| `sin`     | `col`     | Sine                   |
-| `cos`     | `col`     | Cosine                 |
-| `tan`     | `col`     | Tangent                |
-| `asin`    | `col`     | Arcsine                |
-| `acos`    | `col`     | Arccosine              |
-| `atan`    | `col`     | Arctangent             |
-| `degrees` | `col`     | Radians to degrees     |
-| `radians` | `col`     | Degrees to radians     |
-
-## stdlib: date
-
-`date.to_text format col` — format a date/timestamp as text.
-
-| Spec | Example          | Description                     |
-|----- |--------          |-----------                      |
-| `%Y` | 2001             | Year (4 digits)                 |
-| `%y` | 01               | Year (2 digits)                 |
-| `%m` | 07               | Month (01–12)                   |
-| `%-m`| 7                | Month (1–12)                    |
-| `%b` | Jul              | Month abbreviated               |
-| `%B` | July             | Month full name                 |
-| `%d` | 08               | Day (01–31)                     |
-| `%-d`| 8                | Day (1–31)                      |
-| `%a` | Sun              | Weekday abbreviated             |
-| `%A` | Sunday           | Weekday full name               |
-| `%F` | 2001-07-08       | ISO date (`%Y-%m-%d`)           |
-| `%D` | 07/08/01         | US date (`%m/%d/%y`)            |
-| `%H` | 00               | Hour (00–23)                    |
-| `%I` | 12               | Hour 12h (01–12)                |
-| `%p` | AM               | AM/PM                           |
-| `%M` | 34               | Minute (00–59)                  |
-| `%S` | 60               | Second (00–59)                  |
-| `%f` | 264900           | Microseconds                    |
-| `%T` | 00:34:60         | Time (`%H:%M:%S`)              |
-| `%R` | 00:34            | Time (`%H:%M`)                 |
-| `%+` | 2001-07-08T00:34:60.026490Z | ISO 8601 date+time  |
-| `%%` |                  | Literal `%`                     |
-
-## stdlib: aggregation
-
-| Function       | Params     | Description              |
-|--------------- |--------    |-----------               |
-| `min`          | `col`      | Minimum value            |
-| `max`          | `col`      | Maximum value            |
-| `sum`          | `col`      | Sum                      |
-| `average`      | `col`      | Mean                     |
-| `stddev`       | `col`      | Standard deviation       |
-| `count`        | `col`      | Count items              |
-| `count_distinct`| `col`     | Count distinct values    |
-| `any`          | `col`      | True if any true         |
-| `all`          | `col`      | True if all true         |
-| `concat_array` | `col`      | Concatenate as string    |
-
-## stdlib: window
-
-| Function     | Params         | Description                  |
-|------------- |--------        |-----------                   |
-| `lag`        | `offset col`   | Value from previous row      |
-| `lead`       | `offset col`   | Value from next row          |
-| `first`      | `col`          | First value in window        |
-| `last`       | `col`          | Last value in window         |
-| `rank`       | `col`          | Rank (with gaps for ties)    |
-| `rank_dense` | `col`          | Rank (no gaps)               |
-| `row_number` | `col`          | Sequential row number        |
-
-## stdlib: file
-
-| Function       | Params  | Description       |
-|--------------- |-------- |-----------        |
-| `read_parquet` | `path`  | Read parquet file |
-| `read_csv`     | `path`  | Read CSV file     |
-| `read_json`    | `path`  | Read JSON file    |
-
-## DuckDB target
-
-Compile with: `prqlc compile -t sql.duckdb`
-
-This ensures `~=` compiles to `REGEXP_MATCHES()` instead of generic `REGEXP()`.
+## stdlib
+| Params             | Functions                                                                                                 |
+|---------           |----------                                                                                                 |
+| **text** `col`     | `lower` `upper` `trim` `ltrim` `rtrim` `length`                                                           |
+| **text** `sub col` | `contains` `starts_with` `ends_with`                                                                      |
+| **text** other     | `extract idx len col` · `replace before after col`                                                        |
+| **math** `col`     | `abs` `floor` `ceil` `sqrt` `exp` `ln` `log10` `sin` `cos` `tan` `asin` `acos` `atan` `degrees` `radians` |
+| **math** `n col`   | `round n col` · `pow b col` · `log b col`                                                                 |
+| **math**           | `pi`                                                                                                      |
+| **agg** `col`      | `min` `max` `sum` `average` `stddev` `count` `count_distinct` `any` `all` `concat_array`                  |
+| **window** `col`   | `first` `last` `rank` `rank_dense` `row_number`                                                           |
+| **window** `n col` | `lag` `lead`                                                                                              |
+| **file** `path`    | `read_parquet` `read_csv` `read_json`                                                                     |
+| **date**           | `date.to_text fmt col`                                                                                    |
+## date format (`date.to_text fmt col`)
+| Spec | Example    | Spec | Example   | Spec | Example              |
+|----- |--------    |----- |---------  |----- |---------             |
+| `%Y` | 2001       | `%d` | 08        | `%H` | 00                   |
+| `%y` | 01         | `%-d`| 8         | `%M` | 34                   |
+| `%m` | 07         | `%a` | Sun       | `%S` | 60                   |
+| `%-m`| 7          | `%A` | Sunday    | `%f` | 264900               |
+| `%b` | Jul        | `%F` | 2001-07-08| `%T` | 00:34:60             |
+| `%B` | July       | `%D` | 07/08/01  | `%+` | 2001-07-08T00:34:60Z |
+DuckDB target: `prqlc compile -t sql.duckdb` (makes `~=` use `REGEXP_MATCHES`).
