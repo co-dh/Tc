@@ -180,17 +180,14 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
       let s := sql.trimAscii.toString
       pure (if s.endsWith ";" then (s.take (s.length - 1)).toString else s)
     else
-      -- compile base query to SQL, then wrap with ROW_NUMBER sampling
-      let basePrql := t.query.render
-      Log.write "plot-prql" s!"{basePrql} (non-time, step={step})"
-      let some baseSql ← Prql.compile basePrql | return none
-      let bs := baseSql.trimAscii.toString
-      let bs := if bs.endsWith ";" then (bs.take (bs.length - 1)).toString else bs
-      let cols := match catName? with
-        | some cn => s!"\"{xName}\", \"{yName}\", \"{cn}\""
-        | none    => s!"\"{xName}\", \"{yName}\""
-      let yFilt := s!"\"{yName}\" IS NOT NULL AND CAST(\"{yName}\" AS VARCHAR) NOT IN ('0','0.0','0.000000')"
-      pure s!"SELECT {cols} FROM (SELECT *, ROW_NUMBER() OVER () AS _rn FROM ({bs}) WHERE {yFilt}) WHERE (_rn - 1) % {step} = 0"
+      let selCols := match catName? with
+        | some cn => s!"{q xName}, {q yName}, {q cn}"
+        | none    => s!"{q xName}, {q yName}"
+      let prql := s!"{t.query.render} | filter ({q yName} != null && {q yName} != 0) | derive \{_rn = row_number this} | filter (_rn - 1) % {step} == 0 | select \{{selCols}}"
+      Log.write "plot-prql" prql
+      let some sql ← Prql.compile prql | return none
+      let s := sql.trimAscii.toString
+      pure (if s.endsWith ";" then (s.take (s.length - 1)).toString else s)
   let datPath ← Tc.tmpPath "plot.dat"
   let copySql := s!"COPY ({sql'}) TO '{datPath}' (FORMAT CSV, DELIMITER '\\t', HEADER false)"
   Log.write "plot-sql" copySql
