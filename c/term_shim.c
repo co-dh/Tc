@@ -549,7 +549,7 @@ lean_obj_res lean_render_table(
     int* allWidths = malloc(nCols * sizeof(int));    // render width (with widthAdj)
     size_t nInWidths = lean_array_size(inWidths);
     for (size_t c = 0; c < nCols; c++) {
-        if (IS_SEL(hidBits, c)) { baseWidths[c] = 0; allWidths[c] = 1; continue; }
+        if (IS_SEL(hidBits, c)) { baseWidths[c] = 0; allWidths[c] = 3; continue; }
         int base;
         int cached = (c < nInWidths) ? lean_unbox(lean_array_get_core(inWidths, c)) : 0;
         lean_obj_arg col = lean_array_get_core(allCols, c);
