@@ -2,10 +2,11 @@
 """
 Populate ~/.cache/tc/osquery.duckdb with osquery table metadata.
 
-Creates three tables:
-  - listing (name, safety, rows, description) — full table list for tc folder view
-  - tables  (name, description, platforms)    — from osquery-site schema JSON
-  - columns (table_name, col_name, col_type, col_desc) — column-level descriptions
+Creates:
+  - listing table (name, safety, rows, description) — for tc folder view
+  - one view per osquery table in osq schema with COMMENT ON COLUMN for descriptions
+
+Column descriptions are queryable via: duckdb_columns() WHERE schema_name='osq'
 
 Dependencies: python3 (stdlib only), duckdb CLI, osqueryi, curl
 """
@@ -14,7 +15,6 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -38,12 +38,23 @@ DUCKDB_PATH = CACHE_DIR / "osquery.duckdb"
 CACHE_MAX_AGE = 24 * 3600  # 24 hours for row counts
 SCHEMA_MAX_AGE = 30 * 24 * 3600  # 30 days for schema
 
+# osquery type → DuckDB type
+TYPE_MAP = {
+    "TEXT": "VARCHAR", "INTEGER": "BIGINT", "BIGINT": "BIGINT",
+    "DOUBLE": "DOUBLE", "BLOB": "BLOB", "UNSIGNED_BIGINT": "UBIGINT",
+}
+
+
+def esc(s):
+    """Escape single quotes for SQL."""
+    return s.replace("'", "''")
+
 
 def duckdb_exec(sql):
     """Run SQL against the persistent DuckDB via CLI."""
     r = subprocess.run(
         ["duckdb", str(DUCKDB_PATH), "-c", sql],
-        capture_output=True, text=True, timeout=30,
+        capture_output=True, text=True, timeout=60,
     )
     if r.returncode != 0:
         print(f"duckdb error: {r.stderr.strip()}", file=sys.stderr)
@@ -62,16 +73,6 @@ def duckdb_json(sql):
         return json.loads(r.stdout)
     except Exception:
         return None
-
-
-def duckdb_load_json(tmp_path, sql):
-    """Write JSON to temp file, run SQL referencing it, clean up."""
-    r = duckdb_exec(sql.replace("__TMP__", str(tmp_path)))
-    try:
-        os.unlink(tmp_path)
-    except OSError:
-        pass
-    return r
 
 
 def osqueryi_json(sql, timeout_sec=5):
@@ -163,36 +164,44 @@ def count_all_tables(names):
     return counts
 
 
-def populate_schema(schema):
-    """Create tables/columns from osquery schema JSON via read_json_auto."""
-    # Flatten columns with table_name for the columns table
-    columns = []
-    for entry in schema:
-        name = entry.get("name", "")
-        for col in entry.get("columns", []):
-            columns.append({
-                "table_name": name,
-                "col_name": col.get("name", ""),
-                "col_type": col.get("type", ""),
-                "col_desc": col.get("description", ""),
-            })
-    # Write temp files and load via read_json_auto (single duckdb call each)
-    tables_json = [{"name": e.get("name", ""), "description": e.get("description", ""),
-                     "platforms": ", ".join(e.get("platforms", []))} for e in schema]
-    tmp_t = CACHE_DIR / "tmp_tables.json"
-    tmp_c = CACHE_DIR / "tmp_columns.json"
-    tmp_t.write_text(json.dumps(tables_json))
-    tmp_c.write_text(json.dumps(columns))
-    duckdb_exec(
-        f"DROP TABLE IF EXISTS tables; DROP TABLE IF EXISTS columns;"
-        f"CREATE TABLE tables AS SELECT * FROM read_json_auto('{tmp_t}');"
-        f"CREATE TABLE columns AS SELECT * FROM read_json_auto('{tmp_c}')"
+def populate_views(schema):
+    """Create a view per osquery table with COMMENT ON COLUMN for descriptions."""
+    # Build all SQL in one batch: DROP old views, CREATE new ones, add comments
+    stmts = ["CREATE SCHEMA IF NOT EXISTS osq"]
+    # Drop existing views first
+    existing = duckdb_json(
+        "SELECT table_name FROM duckdb_views() WHERE schema_name='osq'"
     )
-    try:
-        tmp_t.unlink()
-        tmp_c.unlink()
-    except OSError:
-        pass
+    if existing:
+        for row in existing:
+            stmts.append(f"DROP VIEW IF EXISTS osq.\"{row['table_name']}\"")
+
+    comments = []
+    for entry in schema:
+        tname = entry.get("name", "")
+        cols = entry.get("columns", [])
+        if not tname or not cols:
+            continue
+        # Build: CREATE VIEW osq."tname" AS SELECT NULL::TYPE AS "col1", ...
+        col_defs = []
+        for col in cols:
+            cn = col.get("name", "")
+            ct = TYPE_MAP.get(col.get("type", "TEXT").upper(), "VARCHAR")
+            col_defs.append(f'NULL::{ct} AS "{cn}"')
+        stmts.append(f'CREATE VIEW osq."{tname}" AS SELECT {", ".join(col_defs)}')
+        # Collect COMMENT statements
+        for col in cols:
+            cn = col.get("name", "")
+            cd = col.get("description", "")
+            if cd:
+                comments.append(f"COMMENT ON COLUMN osq.\"{tname}\".\"{cn}\" IS '{esc(cd)}'")
+
+    # Execute in chunks (views first, then comments)
+    chunk_size = 100
+    for i in range(0, len(stmts), chunk_size):
+        duckdb_exec("; ".join(stmts[i:i + chunk_size]))
+    for i in range(0, len(comments), chunk_size):
+        duckdb_exec("; ".join(comments[i:i + chunk_size]))
 
 
 def check_cached_counts():
@@ -216,13 +225,13 @@ def main():
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Schema: download and populate tables/columns
+    # Schema: download and create views with column comments
     version = get_osquery_version()
     schema = download_schema(version)
     desc_map = {}
     if schema:
         desc_map = {e["name"]: e.get("description", "") for e in schema if "name" in e}
-        populate_schema(schema)
+        populate_views(schema)
 
     # Row counts: check if existing listing is fresh enough
     counts = check_cached_counts()

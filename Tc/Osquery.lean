@@ -151,9 +151,9 @@ def enterTable (table : String) : IO (Option (AdbcTable × String)) := do
     statusMsg s!"Loading schema for {table} ..."
     let json ← osqueryi s!"pragma table_info('{table}')"
     if json.trimAscii.toString == "[]" || json.isEmpty then return none
-    -- isDangerous succeeded → schema DB is available, so JOIN with osq.columns
-    let join := s!" LEFT JOIN osq.columns c ON c.table_name = '{escSql table}' AND c.col_name = j.name"
-    let some tbl ← jsonToTable json (sel := "j.*, COALESCE(c.col_desc, '') as description") (suffix := join) | return none
+    -- isDangerous succeeded → schema DB is available, so JOIN with duckdb_columns()
+    let join := s!" LEFT JOIN duckdb_columns() c ON c.schema_name = 'osq' AND c.table_name = '{escSql table}' AND c.column_name = j.name"
+    let some tbl ← jsonToTable json (sel := "j.*, COALESCE(c.comment, '') as description") (suffix := join) | return none
     pure <| some (tbl, s!"schema:{table}")
   else
     statusMsg s!"Querying {table} ..."
@@ -166,14 +166,14 @@ def enrichMeta (metaTblName tableName : String) : IO Unit := do
   if !(← schemaAvail) then return
   try
     let _ ← Adbc.query s!"ALTER TABLE {metaTblName} ADD COLUMN description VARCHAR DEFAULT ''"
-    let _ ← Adbc.query s!"UPDATE {metaTblName} SET description = COALESCE((SELECT col_desc FROM osq.columns WHERE table_name = '{escSql tableName}' AND col_name = {metaTblName}.\"column\"), '')"
+    let _ ← Adbc.query s!"UPDATE {metaTblName} SET description = COALESCE((SELECT comment FROM duckdb_columns() WHERE schema_name = 'osq' AND table_name = '{escSql tableName}' AND column_name = {metaTblName}.\"column\"), '')"
   catch e => Log.write "enrichMeta" s!"error: {e}"
 
 -- | Look up column description for a given osquery table and column name
 def colDesc (tableName colName : String) : IO String := do
   if !(← schemaAvail) then return ""
   try
-    Adbc.cellStr (← Adbc.query s!"SELECT col_desc FROM osq.columns WHERE table_name = '{escSql tableName}' AND col_name = '{escSql colName}' LIMIT 1") 0 0
+    Adbc.cellStr (← Adbc.query s!"SELECT comment FROM duckdb_columns() WHERE schema_name = 'osq' AND table_name = '{escSql tableName}' AND column_name = '{escSql colName}' LIMIT 1") 0 0
   catch _ => pure ""
 
 end Tc.Osquery
