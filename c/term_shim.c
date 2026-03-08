@@ -630,15 +630,34 @@ lean_obj_res lean_render_table(
         x += w + 1;
     }
 
-    // expand last visible column: uncap MAX_DISP_WIDTH, use remaining screen
+    // expand cursor column to absorb trailing screen whitespace
+    // all columns keep their normal positions; cursor col gets wider, cols after shift right
     if (nVisCols > 0) {
+        // compute trailing whitespace after last visible column
         size_t last = nVisCols - 1;
-        size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, dispIdxs[last]));
-        int base = baseWidths[origIdx] + (int)widthAdj;
-        if (base < 3) base = 3;
-        int remaining = screenW - xs[last];
-        if (remaining > ws[last]) {
-            ws[last] = base < remaining ? base : remaining;
+        int usedW = xs[last] + ws[last] + 1;  // +1 for separator
+        int slack = screenW - usedW;
+        if (slack > 0) {
+            // find cursor among visible columns
+            size_t curVisIdx = nVisCols;
+            for (size_t c = 0; c < nVisCols; c++) {
+                size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, dispIdxs[c]));
+                if (origIdx == curCol) { curVisIdx = c; break; }
+            }
+            if (curVisIdx < nVisCols) {
+                // cap expansion by column's uncapped base width
+                size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, dispIdxs[curVisIdx]));
+                int base = baseWidths[origIdx] + (int)widthAdj;
+                if (base < 3) base = 3;
+                int expand = base - ws[curVisIdx];  // how much wider it wants to be
+                if (expand > slack) expand = slack;
+                if (expand > 0) {
+                    ws[curVisIdx] += expand;
+                    // shift columns after cursor right by expand
+                    for (size_t c = curVisIdx + 1; c < nVisCols; c++)
+                        xs[c] += expand;
+                }
+            }
         }
     }
 
