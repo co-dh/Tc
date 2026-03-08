@@ -20,21 +20,9 @@ private structure Backend where
   resolve  : String → IO String  -- resolve data file path (S3: download; HF: cache+download)
   download : String → IO String  -- download for non-data viewing
 
-private def s3Back : Backend where
-  list     := S3.list
-  parent   := S3.parent
-  resolve  := S3.download
-  download := S3.download
-
-private def hfBack : Backend where
-  list     := HF.list
-  parent   := HF.parent
-  resolve  := HF.resolve
-  download := HF.download
-
 private def backend? (path : String) : Option Backend :=
-  if S3.isS3 path then some s3Back
-  else if HF.isHF path then some hfBack
+  if S3.isS3 path then some ⟨S3.list, S3.parent, S3.download, S3.download⟩
+  else if HF.isHF path then some ⟨HF.list, HF.parent, HF.resolve, HF.download⟩
   else none
 
 -- | Strip base path prefix to get relative entry name
