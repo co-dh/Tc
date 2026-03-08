@@ -3,7 +3,12 @@
 *.a
 *.hash
 *.trace
-data
+data/sample.csv
+data/sample.parquet
+data/sample.parquet.tv.meta.parquet
+data/nyse10k.parquet
+data/pac.csv
+data/nyse
 perf.data*
 tc.log
 test.log
