@@ -335,9 +335,12 @@ section HFTests
 #guard HF.parent "hf://datasets/user/ds/a/b/" == some "hf://datasets/user/ds/a/"
 #guard HF.parent "hf://datasets/user/ds/a/" == some "hf://datasets/user/ds/"
 
--- | parent returns none at dataset root
-#guard HF.parent "hf://datasets/user/ds" == none
-#guard HF.parent "hf://datasets/user/ds/" == none
+-- | parent returns hf:// at dataset root (back to listing)
+#guard HF.parent "hf://datasets/user/ds" == some "hf://"
+#guard HF.parent "hf://datasets/user/ds/" == some "hf://"
+
+-- | parent returns none at hf:// root
+#guard HF.parent "hf://" == none
 
 -- | apiUrl builds correct HF Hub API URL
 #guard HF.apiUrl "hf://datasets/user/ds" == some "https://huggingface.co/api/datasets/user/ds/tree/main"
@@ -870,6 +873,23 @@ def test_width_grows_on_scroll : IO Unit := do
   let lines := dataLines output
   assert (lines.any (contains · "input-required")) "scrolled data should show full 'input-required'"
 
+-- === HF tests ===
+
+def test_hf_readme : IO Unit := do
+  log "hf_readme"
+  -- Enter README.md from openai/gsm8k (row 5: .., main, socratic, .gitattributes, README.md)
+  let output ← run "jjjjj<ret>" "hf://datasets/openai/gsm8k/"
+  assert (contains output "GSM8K") "HF README shows dataset name"
+  assert (contains output "math" || contains output "arithmetic" || contains output "word problems")
+    "HF README shows description content"
+
+def test_hf_enter_parquet : IO Unit := do
+  log "hf_enter_parquet"
+  -- Enter main/ dir then first parquet file
+  let output ← run "jj<ret>j<ret>" "hf://datasets/openai/gsm8k/"
+  assert (contains output "question") "HF parquet has question column"
+  assert (contains output "answer") "HF parquet has answer column"
+
 -- === Run all tests ===
 
 -- | All tests as (name, action) pairs
@@ -927,6 +947,9 @@ def tests : Array (String × IO Unit) := #[
   ("osquery_direct_table", test_osquery_direct_table),
   ("osquery_typed_columns", test_osquery_typed_columns),
   ("osquery_sort_enter", test_osquery_sort_enter),
+  -- HF tests
+  ("hf_readme", test_hf_readme),
+  ("hf_enter_parquet", test_hf_enter_parquet),
   -- Rendering tests
   ("last_col_no_stretch", test_last_col_no_stretch),
   ("width_grows_on_scroll", test_width_grows_on_scroll)

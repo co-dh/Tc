@@ -107,7 +107,7 @@ static FILE* g_log = NULL;
 
 /* === Logging === */
 static void log_msg(const char* fmt, ...) {
-    if (!g_log) g_log = fopen("/tmp/tv.log", "a");
+    if (!g_log) g_log = fopen("/tmp/tc.log", "a");
     if (!g_log) return;
     struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
     struct tm* t = localtime(&ts.tv_sec);
@@ -453,6 +453,24 @@ static CellInfo get_cell(QueryResult* qr, int64_t row, int64_t col) {
 
 /* === Cell Formatting === */
 
+// | Decimal bitwidth from ArrowType
+static int decimal_bitwidth(enum ArrowType t) {
+    return t == NANOARROW_TYPE_DECIMAL32 ? 32
+         : t == NANOARROW_TYPE_DECIMAL64 ? 64
+         : t == NANOARROW_TYPE_DECIMAL128 ? 128 : 256;
+}
+
+// | Divisor for time unit → seconds
+static int64_t time_unit_divisor(enum ArrowTimeUnit u) {
+    switch (u) {
+    case NANOARROW_TIME_UNIT_SECOND: return 1;
+    case NANOARROW_TIME_UNIT_MILLI:  return 1000;
+    case NANOARROW_TIME_UNIT_MICRO:  return 1000000;
+    case NANOARROW_TIME_UNIT_NANO:   return 1000000000;
+    default: return 1;
+    }
+}
+
 // | Format a cell value using nanoarrow typed accessors
 // | Convert ArrowDecimal to double using its scale
 static double decimal_to_double(const struct ArrowDecimal* d) {
@@ -522,27 +540,13 @@ static size_t format_cell_view(const struct ArrowArrayView* view,
 
     case NANOARROW_TYPE_TIME32: case NANOARROW_TYPE_TIME64: {
         int64_t raw = ArrowArrayViewGetIntUnsafe(view, lr);
-        int64_t s;
-        switch (sv->time_unit) {
-        case NANOARROW_TIME_UNIT_SECOND: s = raw; break;
-        case NANOARROW_TIME_UNIT_MILLI:  s = raw / 1000; break;
-        case NANOARROW_TIME_UNIT_MICRO:  s = raw / 1000000; break;
-        case NANOARROW_TIME_UNIT_NANO:   s = raw / 1000000000; break;
-        default: s = raw; break;
-        }
+        int64_t s = raw / time_unit_divisor(sv->time_unit);
         return snprintf(buf, buflen, "%02d:%02d:%02d", (int)((s/3600)%24), (int)((s/60)%60), (int)(s%60));
     }
 
     case NANOARROW_TYPE_TIMESTAMP: {
         int64_t raw = ArrowArrayViewGetIntUnsafe(view, lr);
-        time_t secs;
-        switch (sv->time_unit) {
-        case NANOARROW_TIME_UNIT_SECOND: secs = raw; break;
-        case NANOARROW_TIME_UNIT_MILLI:  secs = raw / 1000; break;
-        case NANOARROW_TIME_UNIT_MICRO:  secs = raw / 1000000; break;
-        case NANOARROW_TIME_UNIT_NANO:   secs = raw / 1000000000; break;
-        default: secs = raw; break;
-        }
+        time_t secs = raw / time_unit_divisor(sv->time_unit);
         struct tm* tm = gmtime(&secs);
         return snprintf(buf, buflen, "%04d-%02d-%02d %02d:%02d:%02d",
                  tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec);
@@ -551,24 +555,16 @@ static size_t format_cell_view(const struct ArrowArrayView* view,
     case NANOARROW_TYPE_DURATION: {
         int64_t raw = ArrowArrayViewGetIntUnsafe(view, lr);
         int neg = raw < 0; if (neg) raw = -raw;
-        int64_t s, ms;
-        switch (sv->time_unit) {
-        case NANOARROW_TIME_UNIT_NANO:   s = raw / 1000000000; ms = (raw % 1000000000) / 1000000; break;
-        case NANOARROW_TIME_UNIT_MICRO:  s = raw / 1000000; ms = (raw % 1000000) / 1000; break;
-        case NANOARROW_TIME_UNIT_MILLI:  s = raw / 1000; ms = raw % 1000; break;
-        case NANOARROW_TIME_UNIT_SECOND: s = raw; ms = 0; break;
-        default: s = raw; ms = 0; break;
-        }
+        int64_t div = time_unit_divisor(sv->time_unit);
+        int64_t s = raw / div;
+        int64_t ms = div >= 1000 ? (raw % div) / (div / 1000) : 0;
         return snprintf(buf, buflen, "%s%ld.%03ld s", neg ? "-" : "", (long)s, (long)ms);
     }
 
     case NANOARROW_TYPE_DECIMAL128: case NANOARROW_TYPE_DECIMAL256:
     case NANOARROW_TYPE_DECIMAL32: case NANOARROW_TYPE_DECIMAL64: {
-        int bw = sv->type == NANOARROW_TYPE_DECIMAL32 ? 32
-               : sv->type == NANOARROW_TYPE_DECIMAL64 ? 64
-               : sv->type == NANOARROW_TYPE_DECIMAL128 ? 128 : 256;
         struct ArrowDecimal dec;
-        ArrowDecimalInit(&dec, bw, sv->decimal_precision, sv->decimal_scale);
+        ArrowDecimalInit(&dec, decimal_bitwidth(sv->type), sv->decimal_precision, sv->decimal_scale);
         ArrowArrayViewGetDecimalUnsafe(view, lr, &dec);
         double val = decimal_to_double(&dec);
         int dp = sv->decimal_scale > 0 ? sv->decimal_scale : decimals;
@@ -695,11 +691,8 @@ lean_obj_res lean_qr_cell_float(b_lean_obj_arg qr_obj, uint64_t row, uint64_t co
     enum ArrowType t = c.sv->type;
     if (t == NANOARROW_TYPE_DECIMAL32 || t == NANOARROW_TYPE_DECIMAL64 ||
         t == NANOARROW_TYPE_DECIMAL128 || t == NANOARROW_TYPE_DECIMAL256) {
-        int bw = t == NANOARROW_TYPE_DECIMAL32 ? 32
-               : t == NANOARROW_TYPE_DECIMAL64 ? 64
-               : t == NANOARROW_TYPE_DECIMAL128 ? 128 : 256;
         struct ArrowDecimal dec;
-        ArrowDecimalInit(&dec, bw, c.sv->decimal_precision, c.sv->decimal_scale);
+        ArrowDecimalInit(&dec, decimal_bitwidth(t), c.sv->decimal_precision, c.sv->decimal_scale);
         ArrowArrayViewGetDecimalUnsafe(c.view, c.lr, &dec);
         val = decimal_to_double(&dec);
     } else {

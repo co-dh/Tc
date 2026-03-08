@@ -1,7 +1,9 @@
 /-
   HF: helpers for browsing Hugging Face datasets via DuckDB's hf:// protocol
   Uses HF Hub API for directory listing, DuckDB httpfs for file reading.
+  Dataset discovery (hf://) uses a pre-populated DuckDB from scripts/hf_datasets.py.
 -/
+import Tc.Data.ADBC.Table
 import Tc.Render
 import Tc.Remote
 import Tc.Error
@@ -11,6 +13,10 @@ namespace Tc.HF
 
 -- | Check if path is a Hugging Face URI
 def isHF (path : String) : Bool := path.startsWith "hf://"
+
+-- | Is this the HF root listing? (bare "hf://" or "hf://datasets")
+def isRoot (path : String) : Bool :=
+  path == "hf://" || path == "hf://datasets" || path == "hf://datasets/"
 
 -- | Parse HF path into (user/dataset, subpath)
 -- "hf://datasets/user/dataset/sub/path" → ("user/dataset", "sub/path")
@@ -27,8 +33,12 @@ def parsePath (path : String) : Option (String × String) :=
     let sub := "/".intercalate (parts.drop 3)
     some (s!"{user}/{dataset}", sub)
 
--- | HF parent: none at dataset root ("hf://datasets/user/ds" = 5 parts)
-def parent (path : String) : Option String := Remote.parent path 5
+-- | HF parent: dataset root → "hf://" (listing), inside dataset → strip last component
+def parent (path : String) : Option String :=
+  if isRoot path then none  -- already at root listing
+  else match Remote.parent path 5 with
+    | some p => some p
+    | none => some "hf://"  -- at dataset root → back to listing
 
 -- | Build HF Hub API URL for listing
 def apiUrl (path : String) : Option String := do
@@ -90,5 +100,70 @@ def download (hfPath : String) : IO String := do
     Log.write "hf" s!"download failed: {url}"
     return hfPath
   return tmp
+
+/-! ## Dataset Listing (from pre-populated DuckDB) -/
+
+-- | DB state: none=not tried, some false=tried+failed, some true=available
+initialize hfDbState : IO.Ref (Option Bool) ← IO.mkRef none
+
+private def dbAvail : IO Bool := (·.getD false) <$> hfDbState.get
+
+-- | Find and run the Python script
+private def runPythonSetup : IO Bool := do
+  let exe ← IO.appPath
+  let exeDir := exe.parent.getD "."
+  let candidates := #[
+    s!"{exeDir}/scripts/hf_datasets.py",
+    s!"{exeDir}/../scripts/hf_datasets.py",
+    s!"{exeDir}/../../scripts/hf_datasets.py"
+  ]
+  let mut script := "scripts/hf_datasets.py"
+  for c in candidates do
+    if ← (c : System.FilePath).pathExists then script := c; break
+  let r ← IO.Process.output { cmd := "python3", args := #[script] }
+  if r.exitCode != 0 then
+    Log.write "hf" s!"Python script failed: {r.stderr.trimAscii.toString}"
+    errorPopup s!"HF listing failed: {r.stderr.trimAscii.toString}"
+    return false
+  return true
+
+-- | Attach the HF DB (created by scripts/hf_datasets.py). Runs once per session.
+private def ensureDb : IO Unit := do
+  if (← hfDbState.get).isSome then return
+  hfDbState.set (some false)
+  let homeDir := (← IO.getEnv "HOME").getD "/tmp"
+  let dbPath := s!"{homeDir}/.cache/tc/hf_datasets.duckdb"
+  try
+    let _ ← Adbc.query s!"ATTACH '{dbPath}' AS hf (READ_ONLY)"
+  catch _ =>
+    try let _ ← Adbc.query s!"ATTACH '{dbPath}' AS hf (READ_ONLY)"
+    catch e => Log.write "hf" s!"ATTACH failed: {e}"; return
+  let populated : Bool ← try
+    let qr ← Adbc.query "SELECT count(*) FROM hf.listing"
+    pure (decide ((← Adbc.cellInt qr 0 0).toNat > 0))
+  catch _ => pure false
+  if populated then
+    hfDbState.set (some true)
+    Log.write "hf" s!"HF DB attached ({dbPath})"
+  else
+    Log.write "hf" s!"HF DB empty or missing ({dbPath})"
+
+-- | List all HF datasets from the pre-populated DB
+def listAll : IO (Option (AdbcTable × String)) := do
+  statusMsg "Loading HF datasets ..."
+  if !(← runPythonSetup) then return none
+  ensureDb
+  if !(← dbAvail) then return none
+  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
+  let tbl := s!"tc_hf_{n}"
+  try
+    let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS SELECT id, downloads, likes, description, license, task, language, created, modified FROM hf.listing ORDER BY downloads DESC"
+    let q : Prql.Query := { base := s!"from {tbl}" }
+    let total ← AdbcTable.queryCount q
+    (·.map (·, "hf://")) <$> AdbcTable.requery q total
+  catch e =>
+    Log.write "hf" s!"list error: {e}"
+    errorPopup e.toString
+    return none
 
 end Tc.HF

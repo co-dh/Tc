@@ -67,7 +67,12 @@ def listDir (path : String) (depth : Nat) : IO String := do
 
 -- | View file with bat (if available) or less
 def viewFile (path : String) : IO Unit := do
-  if ← Fzf.getTestMode then return
+  if ← Fzf.getTestMode then
+    -- Test mode: cat with bat (no paging) to stdout
+    let r ← IO.Process.output { cmd := "bat", args := #["--paging=never", "--plain", path] }
+    if r.exitCode == 0 then IO.print r.stdout
+    else IO.print (← IO.FS.readFile path)
+    return
   Term.shutdown
   let hasBat ← IO.Process.output { cmd := "which", args := #["bat"] }
   if hasBat.exitCode == 0 then
@@ -103,12 +108,13 @@ def openFile (path : String) : IO (Option (View AdbcTable)) := do
 def curPath (v : View AdbcTable) : IO (Option String) := do
   if !(v.vkind matches .fld _ _) then return none
   let names := TblOps.colNames v.nav.tbl
-  let some pathCol := names.idxOf? "path" <|> names.idxOf? "name" | return none
+  let some pathCol := names.idxOf? "path" <|> names.idxOf? "name" <|> names.idxOf? "id" | return none
   let cols ← TblOps.getCols v.nav.tbl #[pathCol] v.nav.row.cur.val (v.nav.row.cur.val + 1)
   let c := cols.getD 0 default
   return some (c.get 0).toRaw
 
 -- | Get type column value from current row
+-- Normalizes: 'f'/"file" → 'f', 'd'/"dir" → 'd', ' ' (HF/S3 file) → 'f'
 def curType (v : View AdbcTable) : IO (Option Char) := do
   if !(v.vkind matches .fld _ _) then return none
   let names := TblOps.colNames v.nav.tbl
@@ -116,7 +122,9 @@ def curType (v : View AdbcTable) : IO (Option Char) := do
   let cols ← TblOps.getCols v.nav.tbl #[typeCol] v.nav.row.cur.val (v.nav.row.cur.val + 1)
   let c := cols.getD 0 default
   let t := (c.get 0).toRaw
-  return t.toList.head?
+  match t.toList.head? with
+  | some ' ' => return some 'f'  -- HF/S3 space = file
+  | other => return other
 
 -- | Build folder view from TSV content
 private def mkViewFromTsv (tsv : String) (path : String) (depth : Nat) (disp : String)
@@ -138,6 +146,10 @@ def mkView (path : String) (depth : Nat) : IO (Option (View AdbcTable)) := do
   if Osquery.isOsquery path then
     match ← Osquery.list path with
     | some (adbc, disp) => pure (mkViewFromAdbc adbc path depth disp (grp := #["name"]))
+    | none => pure none
+  else if HF.isRoot path then
+    match ← HF.listAll with
+    | some (adbc, disp) => pure (mkViewFromAdbc adbc path depth disp (grp := #["id"]))
     | none => pure none
   else match backend? path with
   | some b =>
@@ -214,6 +226,9 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
       match ← openOsqueryTable s p with
       | some s' => pure (some s')
       | none => pure (some s)
+    else if HF.isRoot curDir then
+      -- Enter dataset from HF listing: id="user/dataset" → browse "hf://datasets/user/dataset/"
+      tryView s s!"hf://datasets/{p}/" (curDepth s) true
     else
       let fullPath := joinPath curDir p
       if isDataFile p then

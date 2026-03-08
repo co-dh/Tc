@@ -129,20 +129,28 @@ lean_obj_res lean_tb_shutdown(lean_obj_arg world) {
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+// | Get screen width (headless-aware)
+static int screen_w(void) {
+    if (headless) return fake_w;
+    int w = tb_width();
+    return w < 1 ? 80 : w;
+}
+
+// | Get screen height (headless-aware)
+static int screen_h(void) {
+    if (headless) return fake_h;
+    int h = tb_height();
+    return h < 1 ? 24 : h;
+}
+
 // tb_width() -> UInt32
 lean_obj_res lean_tb_width(lean_obj_arg world) {
-    if (headless) return lean_io_result_mk_ok(lean_box_uint32((uint32_t)fake_w));
-    int w = tb_width();
-    if (w < 0) w = 80;
-    return lean_io_result_mk_ok(lean_box_uint32((uint32_t)w));
+    return lean_io_result_mk_ok(lean_box_uint32((uint32_t)screen_w()));
 }
 
 // tb_height() -> UInt32
 lean_obj_res lean_tb_height(lean_obj_arg world) {
-    if (headless) return lean_io_result_mk_ok(lean_box_uint32((uint32_t)fake_h));
-    int h = tb_height();
-    if (h < 0) h = 24;
-    return lean_io_result_mk_ok(lean_box_uint32((uint32_t)h));
+    return lean_io_result_mk_ok(lean_box_uint32((uint32_t)screen_h()));
 }
 
 // tb_clear() -> Unit
@@ -196,16 +204,8 @@ lean_obj_res lean_tb_poll_event(lean_obj_arg world) {
 
 // | Read termbox internal cell buffer as a string (rows separated by newlines)
 lean_obj_res lean_tb_buffer_str(lean_obj_arg world) {
-    int w, h;
-    struct tb_cell *buf;
-    if (headless) {
-        w = fake_w; h = fake_h; buf = fake_buf;
-    } else {
-        w = tb_width(); h = tb_height();
-        if (w < 1) w = 80;
-        if (h < 1) h = 24;
-        buf = tb_cell_buffer();
-    }
+    int w = screen_w(), h = screen_h();
+    struct tb_cell *buf = headless ? fake_buf : tb_cell_buffer();
     if (!buf) return lean_io_result_mk_ok(lean_mk_string(""));
     // worst case: 4 bytes per char + newline per row
     size_t cap = (size_t)w * h * 4 + h + 1;
@@ -447,13 +447,17 @@ static int compute_data_width(lean_obj_arg col, size_t r0, size_t r1, int precAd
     return w;
 }
 
-// | Print padded string
+// | Print padded string (UTF-8 aware)
 static void print_pad(int x, int y, int w, uint32_t fg, uint32_t bg, const char* s, int right) {
-    int len = strlen(s);
+    int len = (int)utf8_len(s, w);
     if (len > w) len = w;
     int pad = w - len, cx = x;
     if (right) for (int i = 0; i < pad; i++) tb_set_cell(cx++, y, ' ', fg, bg);
-    for (int i = 0; i < len; i++) tb_set_cell(cx++, y, (uint32_t)(unsigned char)s[i], fg, bg);
+    const char *p = s;
+    for (int i = 0; i < len && *p; i++) {
+        uint32_t ch = utf8_decode(&p);
+        tb_set_cell(cx++, y, ch, fg, bg);
+    }
     if (!right) for (int i = 0; i < pad; i++) tb_set_cell(cx++, y, ' ', fg, bg);
 }
 
@@ -506,10 +510,8 @@ lean_obj_res lean_render_table(
     int64_t widthAdj,         // column width offset
     lean_obj_arg world)
 {
-    int screenW = headless ? fake_w : tb_width();
-    int screenH = headless ? fake_h : tb_height();
-    if (screenW < 1) screenW = 80;
-    if (screenH < 1) screenH = 24;
+    int screenW = screen_w();
+    int screenH = screen_h();
     size_t nCols = lean_array_size(allCols);
     size_t nRows = r1 - r0;  // visible row count
     size_t nFmts = lean_array_size(fmts);  // format chars available?
@@ -710,12 +712,20 @@ lean_obj_res lean_render_table(
 
         // folder view: read type column to color name (dir=cyan, symlink=red)
         char typeChar = 0;
+        const char* pathStr = NULL;
         if (typeColIdx >= 0) {
-            char tbuf[16];
-            int tlen = format_col_cell(lean_array_get_core(allCols, typeColIdx), row, tbuf, sizeof(tbuf), 0);
-            tbuf[tlen] = 0;
-            if (strcmp(tbuf, "dir") == 0) typeChar = 'd';
-            else if (strcmp(tbuf, "symlink") == 0) typeChar = 'l';
+            // read type string directly from Column data (COL_STRS)
+            lean_obj_arg typeCol = lean_array_get_core(allCols, typeColIdx);
+            lean_obj_arg typeData = lean_ctor_get(typeCol, 0);
+            const char* ts = lean_string_cstr(lean_array_get_core(typeData, row));
+            if (ts[0] == 'd') typeChar = 'd';
+            else if (ts[0] == 's') typeChar = 'l';  // "symlink"
+            else if (pathColIdx >= 0) {
+                // cache path string to avoid re-formatting for ext color lookup
+                lean_obj_arg pathCol = lean_array_get_core(allCols, pathColIdx);
+                lean_obj_arg pathData = lean_ctor_get(pathCol, 0);
+                pathStr = lean_string_cstr(lean_array_get_core(pathData, row));
+            }
         }
 
         for (size_t c = 0; c < nVisCols; c++) {
@@ -735,11 +745,8 @@ lean_obj_res lean_render_table(
                 if ((int)origIdx == pathColIdx && pathColIdx >= 0) {
                     if (typeChar == 'd') fg = dir_fg;
                     else if (typeChar == 'l') fg = link_fg;
-                    else {
-                        char pbuf[256];
-                        int plen = format_col_cell(lean_array_get_core(allCols, pathColIdx), row, pbuf, sizeof(pbuf), 0);
-                        pbuf[plen] = 0;
-                        uint32_t efg = ext_fg_color(pbuf);
+                    else if (pathStr) {
+                        uint32_t efg = ext_fg_color(pathStr);
                         if (efg) fg = efg;
                     }
                 } else if ((int)origIdx == sizeColIdx) {
@@ -772,28 +779,32 @@ lean_obj_res lean_render_table(
     // tooltip: show full header name if truncated (overlay on header row)
     // moveDir > 0 (moved right): tooltip extends left; moveDir < 0: extends right
     for (size_t c = 0; c < nVisCols; c++) {
-        size_t dispIdx = colOff + c;
+        size_t dispIdx = dispIdxs[c];  // correct for both key and non-key columns
         size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, dispIdx));
         if (origIdx != curCol) continue;  // only for focused column
         const char* name = lean_string_cstr(lean_array_get_core(names, origIdx));
-        int nameLen = strlen(name);
+        int nameLen = (int)utf8_len(name, 256);
         int colW = ws[c] - 2;  // available width for name (minus leading space + type char)
         if (nameLen <= colW) break;  // fits, no tooltip needed
         uint32_t fg = stFg[STYLE_CURSOR] | TB_BOLD | TB_UNDERLINE;
+        const char* p = name;
         if (moveDir > 0) {
             // moved right: tooltip extends left (so it doesn't cover next column)
             int endX = xs[c] + ws[c] - 1;  // last char position (type char spot)
             int startX = endX - nameLen;
             if (startX < 0) startX = 0;
             int tipW = endX - startX;
-            for (int i = 0; i < tipW; i++)
-                tb_set_cell(startX + i, 0, (uint32_t)(unsigned char)name[nameLen - tipW + i], fg, stBg[STYLE_CURSOR]);
+            // skip to the right portion of name
+            int skip = nameLen - tipW;
+            for (int i = 0; i < skip && *p; i++) utf8_decode(&p);
+            for (int i = 0; i < tipW && *p; i++)
+                tb_set_cell(startX + i, 0, utf8_decode(&p), fg, stBg[STYLE_CURSOR]);
         } else {
             // moved left or no move: tooltip extends right
             int maxW = screenW - xs[c] - 1;
             int tipW = nameLen < maxW ? nameLen : maxW;
-            for (int i = 0; i < tipW; i++)
-                tb_set_cell(xs[c] + 1 + i, 0, (uint32_t)(unsigned char)name[i], fg, stBg[STYLE_CURSOR]);
+            for (int i = 0; i < tipW && *p; i++)
+                tb_set_cell(xs[c] + 1 + i, 0, utf8_decode(&p), fg, stBg[STYLE_CURSOR]);
         }
         break;
     }
