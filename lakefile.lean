@@ -31,9 +31,13 @@ lean_lib Tc where
 lean_exe tc where
   root := `Tc.App.Common
 
--- | Test library (pure + runtime tests)
+-- | Test library (pure + runtime + screen backup tests)
 lean_lib TcTest where
-  roots := #[`test.TestPure, `test.Test]
+  roots := #[`test.TestPure, `test.Test, `test.TestScreen]
+
+-- | Screen backup tests (logic covered by pure theorems, kept for rendering validation)
+lean_exe testscreen where
+  root := `test.TestScreen
 
 -- | Test executable (DuckDB backend tests)
 lean_exe test where
@@ -44,6 +48,19 @@ lean_exe testkdb where
   root := `test.TestKdb
 
 -- | Build test + tc, then run tests (test shells out to tc binary)
+script runscreen args do
+  let build ← IO.Process.spawn {
+    cmd := "lake", args := #["build", "testscreen", "tc"]
+    stdin := .inherit, stdout := .inherit, stderr := .inherit
+  }
+  if (← build.wait) != 0 then return 1
+  let child ← IO.Process.spawn {
+    cmd := ".lake/build/bin/testscreen"
+    args := args.toArray
+    stdin := .inherit, stdout := .inherit, stderr := .inherit
+  }
+  return ← child.wait
+
 script runtest args do
   let build ← IO.Process.spawn {
     cmd := "lake", args := #["build", "test", "tc"]

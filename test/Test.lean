@@ -436,58 +436,6 @@ def dataLines (output : String) : List String :=
 def assert (cond : Bool) (msg : String) : IO Unit :=
   unless cond do throw (IO.userError msg)
 
--- === Navigation tests (CSV) ===
-
-def test_nav_down : IO Unit := do
-  log "nav_down"
-  assert (contains (footer (← run "j" "data/basic.csv")).2 "r1/") "j moves to row 1"
-
-def test_nav_right : IO Unit := do
-  log "nav_right"
-  assert (contains (footer (← run "l" "data/basic.csv")).2 "c1/") "l moves to col 1"
-
-def test_nav_up : IO Unit := do
-  log "nav_up"
-  assert (contains (footer (← run "jk" "data/basic.csv")).2 "r0/") "jk returns to row 0"
-
-def test_nav_left : IO Unit := do
-  log "nav_left"
-  assert (contains (footer (← run "lh" "data/basic.csv")).2 "c0/") "lh returns to col 0"
-
--- === Key column tests ===
-
-def test_key_toggle : IO Unit := do
-  log "key_col"
-  assert (contains (header (← run "!" "data/basic.csv")) "║") "! adds key separator"
-
-def test_key_remove : IO Unit := do
-  log "key_remove"
-  assert (!contains (header (← run "!!" "data/basic.csv")) "║") "!! removes key separator"
-
-def test_key_reorder : IO Unit := do
-  log "key_reorder"
-  assert ((header (← run "l!" "data/basic.csv")).take 5 |>.any (· == 'b')) "Key col moves to front"
-
--- === Hide tests (CSV) ===
-
-def test_hide_col : IO Unit := do
-  log "hide_col"
-  -- H hides current column (a). Status should show c0/ (cursor still on col 0)
-  let out ← run "H" "data/basic.csv"
-  let (_, status) := footer out
-  assert (contains status "c0/") "Cursor still on hidden col"
-  -- Hidden col a should NOT show full name in header (width=1, truncated)
-  let hdr := header out
-  let normalHdr := header (← run "" "data/basic.csv")
-  assert (hdr != normalHdr) "Header changes when column hidden"
-
-def test_hide_unhide : IO Unit := do
-  log "hide_unhide"
-  -- HH toggles hide off, header should match normal
-  let hdr := header (← run "HH" "data/basic.csv")
-  let normalHdr := header (← run "" "data/basic.csv")
-  assert (hdr == normalHdr) "Unhidden header matches normal"
-
 -- === Width stability tests ===
 
 def test_width_stable_after_info : IO Unit := do
@@ -548,37 +496,6 @@ def test_freq_keeps_grp : IO Unit := do
   log "freq_keeps_grp"
   assert (contains (footer (← run "!F" "data/basic.csv")).2 "grp=1") "Freq view keeps grp columns"
 
--- === Selection tests ===
-
-def test_row_select : IO Unit := do
-  log "row_select"
-  assert (contains (footer (← run "T" "data/basic.csv")).2 "sel=1") "T selects row"
-
-def test_multi_select : IO Unit := do
-  log "multi_row_select"
-  assert (contains (footer (← run "TjT" "data/full.csv")).2 "sel=2") "TjT selects 2 rows"
-
--- === Stack tests ===
-
-def test_stack_swap : IO Unit := do
-  log "stack_swap"
-  assert (contains (footer (← run "S" "data/basic.csv")).1 "basic.csv") "S swaps/dups view"
-
-def test_meta_quit : IO Unit := do
-  log "meta_quit"
-  assert (!contains (footer (← run "Mq" "data/basic.csv")).1 "meta") "Mq returns from meta"
-
-def test_freq_quit : IO Unit := do
-  log "freq_quit"
-  assert (!contains (footer (← run "Fq" "data/basic.csv")).1 "freq") "Fq returns from freq"
-
--- === Info overlay ===
-
-def test_info : IO Unit := do
-  log "info"
-  let output ← run "" "data/basic.csv"
-  assert (contains output "quit" || contains output "up/down") "Info overlay shown by default"
-
 -- === Precision/Width adjustment ===
 
 def test_prec_inc : IO Unit := do
@@ -627,12 +544,6 @@ def test_freq_enter : IO Unit := do
   assert (contains tab "multi_freq") "F<ret> pops to parent"
   assert (contains status "r0/3") "F<ret> filters to 3 rows"
 
--- === Cursor tracking ===
-
-def test_key_cursor : IO Unit := do
-  log "key_cursor"
-  assert (contains (footer (← run "l!" "data/basic.csv")).2 "c0/") "Cursor tracks after key toggle"
-
 -- === No stderr ===
 
 def test_no_stderr : IO Unit := do
@@ -663,14 +574,6 @@ def test_search_after_sort : IO Unit := do
 def test_col_search : IO Unit := do
   log "col_search"
   assert (contains (footer (← run "s" "data/basic.csv")).2 "c0/") "s col search jumps to column"
-
--- === Enter/Quit key tests ===
-
-def test_q_quit : IO Unit := do
-  log "q_quit_empty_stack"
-  -- q on empty stack should exit cleanly (empty output, since Q not reached)
-  let out ← IO.Process.output { cmd := bin, args := #["data/basic.csv", "-c", "q"] }
-  assert (out.exitCode == 0) "q on empty stack exits cleanly"
 
 -- === Folder tests ===
 
@@ -971,12 +874,7 @@ def test_width_grows_on_scroll : IO Unit := do
 
 -- | All tests as (name, action) pairs
 def tests : Array (String × IO Unit) := #[
-  -- CSV tests
-  ("nav_down", test_nav_down), ("nav_right", test_nav_right),
-  ("nav_up", test_nav_up), ("nav_left", test_nav_left),
-  ("key_toggle", test_key_toggle), ("key_remove", test_key_remove),
-  ("key_reorder", test_key_reorder), ("hide_col", test_hide_col),
-  ("hide_unhide", test_hide_unhide),
+  -- CSV tests (nav/key/hide/select/stack/info/quit moved to TestScreen.lean)
   ("width_stable_after_info", test_width_stable_after_info),
   ("sort_asc", test_sort_asc), ("sort_desc", test_sort_desc),
   ("meta_shows", test_meta_shows), ("meta_col_info", test_meta_col_info),
@@ -984,19 +882,15 @@ def tests : Array (String × IO Unit) := #[
   ("freq_shows", test_freq_shows), ("freq_after_meta", test_freq_after_meta),
   ("freq_by_key", test_freq_by_key), ("freq_multi_key", test_freq_multi_key),
   ("freq_keeps_grp", test_freq_keeps_grp),
-  ("row_select", test_row_select), ("multi_select", test_multi_select),
-  ("stack_swap", test_stack_swap), ("meta_quit", test_meta_quit),
-  ("freq_quit", test_freq_quit), ("info", test_info),
   ("prec_inc", test_prec_inc), ("prec_dec", test_prec_dec),
   ("meta_0", test_meta_0), ("meta_1", test_meta_1),
   ("meta_0_enter", test_meta_0_enter), ("meta_1_enter", test_meta_1_enter),
   ("freq_enter", test_freq_enter),
-  ("spaced_header", test_spaced_header), ("key_cursor", test_key_cursor),
+  ("spaced_header", test_spaced_header),
   ("no_stderr", test_no_stderr),
   ("search_jump", test_search_jump), ("search_next", test_search_next),
   ("search_prev", test_search_prev), ("search_after_sort", test_search_after_sort),
   ("col_search", test_col_search),
-  ("q_quit", test_q_quit),
   ("folder_no_args", test_folder_no_args), ("folder_D", test_folder_D),
   ("folder_tab", test_folder_tab), ("folder_enter", test_folder_enter),
   ("folder_relative", test_folder_relative), ("folder_pop", test_folder_pop),
