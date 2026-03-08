@@ -703,6 +703,14 @@ def test_folder_pop : IO Unit := do
   log "folder_pop"
   assert (contains (← run "jjj<ret>q") "[/") "q pops back to parent folder"
 
+def test_folder_enter_symlink : IO Unit := do
+  log "folder_enter_symlink"
+  -- sort by name, navigate to 'data' symlink (row 10), enter it
+  let output ← run "[jjjjjjjjjj<ret>"
+  assert (contains output "sample") "Enter on symlink dir shows its contents"
+  let (_, status) := footer output
+  assert (contains status "r0/") "Entered symlink dir has rows"
+
 def test_folder_prefix : IO Unit := do
   log "folder_prefix"
   let (_, s1) := footer (← run "")
@@ -970,6 +978,7 @@ def tests : Array (String × IO Unit) := #[
   ("folder_no_args", test_folder_no_args), ("folder_D", test_folder_D),
   ("folder_tab", test_folder_tab), ("folder_enter", test_folder_enter),
   ("folder_relative", test_folder_relative), ("folder_pop", test_folder_pop),
+  ("folder_enter_symlink", test_folder_enter_symlink),
   ("folder_prefix", test_folder_prefix),
   -- Parquet tests
   ("page_down", test_page_down), ("page_up", test_page_up),

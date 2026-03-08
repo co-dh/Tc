@@ -56,6 +56,7 @@ def mint      : UInt32 := 158   -- soft mint green
 def peach     : UInt32 := 223   -- soft peach
 def lavender  : UInt32 := 183   -- soft purple
 def gray234   : UInt32 := 234   -- very dark gray
+def gray238   : UInt32 := 238   -- medium-dark gray
 def gray240   : UInt32 := 240   -- medium gray
 def gray252   : UInt32 := 252   -- very light gray
 
@@ -99,6 +100,10 @@ opaque present : IO Unit
 
 @[extern "lean_tb_poll_event"]
 opaque pollEvent : IO Event
+
+-- | Load extension color config (CSV string)
+@[extern "lean_load_ext_colors"]
+opaque loadExtColors : @& String → IO Unit
 
 -- | Read termbox internal cell buffer as string (rows separated by newlines)
 @[extern "lean_tb_buffer_str"]

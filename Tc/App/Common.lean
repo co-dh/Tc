@@ -159,6 +159,8 @@ def appMain (toText : Table → IO String) (init : IO Bool) (shutdown : IO Unit)
   S3.setNoSign noSign
   let pipeMode ← if testMode then pure false else (! ·) <$> Term.isattyStdin
   let theme ← Theme.State.init
+  try Term.loadExtColors (← IO.FS.readFile "ext_colors.csv")
+  catch _ => pure ()  -- use C defaults if CSV not found
   Log.write "init" s!"tmpdir={← Tc.tmpDir.get}"
   let ok ← try init catch e => IO.eprintln s!"Backend init error: {e}"; return
   if !ok then IO.eprintln "Backend init failed"; return

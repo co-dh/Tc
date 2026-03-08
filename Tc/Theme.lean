@@ -37,6 +37,7 @@ def colorMap : Array (String × UInt32) := #[
   ("peach", Term.peach),
   ("lavender", Term.lavender),
   ("gray234", Term.gray234),
+  ("gray238", Term.gray238),
   ("gray240", Term.gray240),
   ("gray252", Term.gray252)
 ]
@@ -61,9 +62,9 @@ def defaultDark : Array UInt32 := #[
   Term.black, Term.lavender,     -- selColCurRow
   Term.brMagenta, Term.default,  -- selCol
   Term.default, Term.gray234,    -- curRow
-  Term.brYellow, Term.default,   -- curCol
+  Term.default, Term.gray238,    -- curCol
   Term.default, Term.default,    -- default
-  Term.brWhite, Term.slate,      -- header
+  Term.green, Term.slate,        -- header
   Term.default, Term.sky         -- group
 ]
 

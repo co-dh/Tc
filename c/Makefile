@@ -26,7 +26,7 @@ libkdbshim.a: kdb_shim.o kdb/c.o
 	ar rcs $@ $^
 
 term_shim.o: term_shim.c termbox2.h
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) -std=c11 -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L $(CFLAGS) -c $< -o $@
 
 kdb_shim.o: kdb_shim.c kdb/k.h
 	$(CC) $(CFLAGS) -I. -c $< -o $@

@@ -51,17 +51,21 @@ private def fmtDate (s : String) : String :=
   let parts := s.splitOn "."
   ((parts.head?.getD "").take 19).toString
 
--- | Format type: f→space, d→d, l→l
+-- | Format type: f→file, d→dir, l→symlink
 private def fmtType (s : String) : String :=
-  if s == "f" then " " else s
+  match s with
+  | "f" => "file"
+  | "d" => "dir"
+  | "l" => "symlink"
+  | x => x
 
 -- | List directory with find command, returns tab-separated output
 def listDir (path : String) (depth : Nat) : IO String := do
   let p := if path.isEmpty then "." else path
-  let out ← Log.run "find" "find" #["-L", p, "-maxdepth", toString depth, "-printf", "%y\t%s\t%T+\t%p\n"]
+  let out ← Log.run "find" "find" #["-H", p, "-maxdepth", toString depth, "-printf", "%y\t%s\t%T+\t%p\n"]
   let lines := out.stdout.splitOn "\n" |>.filter (·.length > 0)
-  let hdr := "path\tsize\tdate\ttype"
-  let parentEntry := "..\t0\t\td"
+  let hdr := "name\tsize\tmodified\ttype"
+  let parentEntry := "..\t0\t\tdir"
   let body := lines.drop 1 |>.map fun line =>
     let parts := line.splitOn "\t"
     if parts.length >= 4 then
@@ -109,7 +113,7 @@ def curPath (v : View Table) : IO (Option String) := do
 def curType (v : View Table) : IO (Option Char) := do
   if !(v.vkind matches .fld _ _) then return none
   let names := TblOps.colNames v.nav.tbl
-  let some typeCol := names.idxOf? "type" | return some ' '
+  let some typeCol := names.idxOf? "type" | return some 'f'
   let cols ← TblOps.getCols v.nav.tbl #[typeCol] v.nav.row.cur.val (v.nav.row.cur.val + 1)
   let c := cols.getD 0 default
   let t := (c.get 0).toRaw
@@ -200,7 +204,7 @@ def enter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
       -- enter child directory
       let fullPath := joinPath curDir (if back.isSome then p ++ "/" else p)
       tryView s fullPath (curDepth s) true
-  | some ' ', some p =>
+  | some 'f', some p =>
     if Osquery.isOsquery curDir then
       match ← openOsqueryTable s p with
       | some s' => pure (some s')
@@ -215,7 +219,7 @@ def enter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
       else
         let viewPath ← match back with | some b => b.download fullPath | none => pure fullPath
         viewFile viewPath; pure (some s)
-  | some 'l', some p =>
+  | some 's', some p =>
     if back.isSome then pure (some s) else
     let fullPath := joinPath curDir p
     let stat ← IO.Process.output { cmd := "test", args := #["-d", fullPath] }
@@ -240,7 +244,7 @@ def selPaths (v : View Table) : IO (Array String) := do
   match v.vkind with
   | .fld curDir _ =>
     let names := TblOps.colNames v.nav.tbl
-    let some pathCol := names.idxOf? "path" | return #[]
+    let some pathCol := names.idxOf? "path" <|> names.idxOf? "name" | return #[]
     let cols ← TblOps.getCols v.nav.tbl #[pathCol] 0 v.nRows
     let c := cols.getD 0 default
     let rows := if v.nav.row.sels.isEmpty then #[v.nav.row.cur.val] else v.nav.row.sels
