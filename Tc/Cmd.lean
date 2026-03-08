@@ -95,7 +95,7 @@ end Cmd
 -- | Effect sub-types (grouped by domain)
 inductive FzfEffect where | cmd | col | row | filter deriving Repr, BEq
 inductive QueryEffect where
-  | «meta» | freq (colNames : Array String)
+  | colMeta | freq (colNames : Array String)
   | freqFilter (cols : Array String) (row : Nat)
   | filter (expr : String)
   | sort (colIdx : Nat) (sels : Array Nat) (grp : Array Nat) (asc : Bool)
@@ -113,7 +113,7 @@ inductive Effect where
   | folder : FolderEffect → Effect
   | search : SearchEffect → Effect
   | plot : PlotEffect → Effect
-  | «meta» : MetaEffect → Effect
+  | colMeta : MetaEffect → Effect
   | themeLoad (delta : Int)
   | fetchMore
   deriving Repr, BEq

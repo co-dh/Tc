@@ -59,10 +59,10 @@ def setKey (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
 -- | Pure update: returns Effect for IO operations
 def update (s : ViewStack AdbcTable) (cmd : Cmd) : Option (ViewStack AdbcTable × Effect) :=
   match cmd with
-  | .metaV .dup => some (s, .query .«meta»)
-  | .metaV .dec => some (s, .«meta» .selNull)
-  | .metaV .inc => some (s, .«meta» .selSingle)
-  | .metaV .ent => if s.cur.vkind matches .colMeta then some (s, .«meta» .setKey) else none
+  | .metaV .dup => some (s, .query .colMeta)
+  | .metaV .dec => some (s, .colMeta .selNull)
+  | .metaV .inc => some (s, .colMeta .selSingle)
+  | .metaV .ent => if s.cur.vkind matches .colMeta then some (s, .colMeta .setKey) else none
   | _ => none
 
 end Tc.Meta
