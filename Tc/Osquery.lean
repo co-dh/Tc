@@ -12,15 +12,12 @@ namespace Tc.Osquery
 
 def isOsquery (path : String) : Bool := path.startsWith "osquery://"
 
--- | Tables that require specific input and should not be auto-queried
--- NOTE: duplicated in scripts/osquery_tables.py — keep in sync
-private def dangerousTables : Array String := #[
-  "hash", "file", "augeas", "yara", "curl", "curl_certificate",
-  "magic", "device_file", "carves", "suid_bin",
-  "file_events", "process_events", "process_file_events", "socket_events",
-  "hardware_events", "selinux_events", "seccomp_events", "syslog_events",
-  "user_events", "apparmor_events"
-]
+-- | Check if a table is dangerous (requires specific input) via osq.listing
+private def isDangerous (table : String) : IO Bool := do
+  try
+    let qr ← Adbc.query s!"SELECT safety FROM osq.listing WHERE name = '{escSql table}' LIMIT 1"
+    pure ((← Adbc.cellStr qr 0 0) == "input-required")
+  catch _ => pure false
 
 -- | Run osqueryi with --json flag, return stdout
 private def osqueryi (sql : String) : IO String := do
@@ -57,16 +54,16 @@ private def typedSelect (cols : Array (String × String)) : String :=
     | some dt => s!"TRY_CAST(\"{name}\" AS {dt}) AS \"{name}\""
     | none => s!"\"{name}\"").toList
 
--- | Write JSON to tmpfile, load into DuckDB temp table via read_json_auto
-private def jsonToTable (json : String) (mkSql : String → String → String :=
-    fun tbl tmp => s!"CREATE TEMP TABLE {tbl} AS SELECT * FROM read_json_auto('{tmp}') j") : IO (Option AdbcTable) := do
+-- | Write JSON to tmpfile, load into DuckDB temp table via read_json_auto.
+--   `sel` is the SELECT clause, `suffix` appended after the FROM (e.g. JOINs).
+private def jsonToTable (json : String) (sel := "*") (suffix := "") : IO (Option AdbcTable) := do
   if json.trimAscii.toString == "[]" || json.isEmpty then return none
   let n ← memTblCounter.modifyGet fun n => (n, n + 1)
   let tmp ← Tc.tmpPath s!"osq-{n}.json"
   IO.FS.writeFile tmp json
   let tbl := s!"tc_osq_{n}"
   try
-    let _ ← Adbc.query (mkSql tbl tmp)
+    let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS SELECT {sel} FROM read_json_auto('{tmp}') j{suffix}"
     try IO.FS.removeFile tmp catch _ => pure ()
     let q : Prql.Query := { base := s!"from {tbl}" }
     AdbcTable.requery q (← AdbcTable.queryCount q)
@@ -149,24 +146,20 @@ def parent (_path : String) : Option String := none
 
 -- | Enter a table: safe → query it, dangerous → show schema
 def enterTable (table : String) : IO (Option (AdbcTable × String)) := do
-  if dangerousTables.contains table then
+  if !(← schemaAvail) then let _ ← runPythonSetup; ensureSchema
+  if ← isDangerous table then
     statusMsg s!"Loading schema for {table} ..."
-    ensureSchema
-    let hasSchema ← schemaAvail
     let json ← osqueryi s!"pragma table_info('{table}')"
     if json.trimAscii.toString == "[]" || json.isEmpty then return none
-    let join := if hasSchema then s!" LEFT JOIN osq.columns c ON c.table_name = '{escSql table}' AND c.col_name = j.name" else ""
-    let desc := if hasSchema then ", COALESCE(c.col_desc, '') as description" else ""
-    let some tbl ← jsonToTable json
-      (fun tbl tmp => s!"CREATE TEMP TABLE {tbl} AS SELECT j.*{desc} FROM read_json_auto('{tmp}') j{join}") | return none
+    -- isDangerous succeeded → schema DB is available, so JOIN with osq.columns
+    let join := s!" LEFT JOIN osq.columns c ON c.table_name = '{escSql table}' AND c.col_name = j.name"
+    let some tbl ← jsonToTable json (sel := "j.*, COALESCE(c.col_desc, '') as description") (suffix := join) | return none
     pure <| some (tbl, s!"schema:{table}")
   else
     statusMsg s!"Querying {table} ..."
-    ensureSchema
     let cols ← tableColumns table
     let sel := typedSelect cols
-    pure <| (← jsonToTable (← osqueryi s!"SELECT * FROM {table}")
-      (fun tbl tmp => s!"CREATE TEMP TABLE {tbl} AS SELECT {sel} FROM read_json_auto('{tmp}') j")).map (·, table)
+    pure <| (← jsonToTable (← osqueryi s!"SELECT * FROM {table}") (sel := sel)).map (·, table)
 
 -- | Enrich a meta temp table with column descriptions from the schema DB
 def enrichMeta (metaTblName tableName : String) : IO Unit := do

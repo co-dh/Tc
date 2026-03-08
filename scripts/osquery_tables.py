@@ -7,22 +7,17 @@ Creates three tables:
   - tables  (name, description, platforms)    — from osquery-site schema JSON
   - columns (table_name, col_name, col_type, col_desc) — column-level descriptions
 
-Dependencies: python3, duckdb (pip install duckdb)
+Dependencies: python3 (stdlib only), duckdb CLI, osqueryi, curl
 """
 
 import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-
-try:
-    import duckdb
-except ImportError:
-    print("Error: duckdb python package required (pip install duckdb)", file=sys.stderr)
-    sys.exit(1)
 
 DANGEROUS_TABLES = [
     "hash", "file", "augeas", "yara", "curl", "curl_certificate",
@@ -42,6 +37,41 @@ SCHEMA_CACHE = CACHE_DIR / "osquery_schema.json"
 DUCKDB_PATH = CACHE_DIR / "osquery.duckdb"
 CACHE_MAX_AGE = 24 * 3600  # 24 hours for row counts
 SCHEMA_MAX_AGE = 30 * 24 * 3600  # 30 days for schema
+
+
+def duckdb_exec(sql):
+    """Run SQL against the persistent DuckDB via CLI."""
+    r = subprocess.run(
+        ["duckdb", str(DUCKDB_PATH), "-c", sql],
+        capture_output=True, text=True, timeout=30,
+    )
+    if r.returncode != 0:
+        print(f"duckdb error: {r.stderr.strip()}", file=sys.stderr)
+    return r
+
+
+def duckdb_json(sql):
+    """Run SQL and return parsed JSON output, or None on failure."""
+    try:
+        r = subprocess.run(
+            ["duckdb", str(DUCKDB_PATH), "-json", "-c", sql],
+            capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode != 0:
+            return None
+        return json.loads(r.stdout)
+    except Exception:
+        return None
+
+
+def duckdb_load_json(tmp_path, sql):
+    """Write JSON to temp file, run SQL referencing it, clean up."""
+    r = duckdb_exec(sql.replace("__TMP__", str(tmp_path)))
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass
+    return r
 
 
 def osqueryi_json(sql, timeout_sec=5):
@@ -133,6 +163,51 @@ def count_all_tables(names):
     return counts
 
 
+def populate_schema(schema):
+    """Create tables/columns from osquery schema JSON via read_json_auto."""
+    # Flatten columns with table_name for the columns table
+    columns = []
+    for entry in schema:
+        name = entry.get("name", "")
+        for col in entry.get("columns", []):
+            columns.append({
+                "table_name": name,
+                "col_name": col.get("name", ""),
+                "col_type": col.get("type", ""),
+                "col_desc": col.get("description", ""),
+            })
+    # Write temp files and load via read_json_auto (single duckdb call each)
+    tables_json = [{"name": e.get("name", ""), "description": e.get("description", ""),
+                     "platforms": ", ".join(e.get("platforms", []))} for e in schema]
+    tmp_t = CACHE_DIR / "tmp_tables.json"
+    tmp_c = CACHE_DIR / "tmp_columns.json"
+    tmp_t.write_text(json.dumps(tables_json))
+    tmp_c.write_text(json.dumps(columns))
+    duckdb_exec(
+        f"DROP TABLE IF EXISTS tables; DROP TABLE IF EXISTS columns;"
+        f"CREATE TABLE tables AS SELECT * FROM read_json_auto('{tmp_t}');"
+        f"CREATE TABLE columns AS SELECT * FROM read_json_auto('{tmp_c}')"
+    )
+    try:
+        tmp_t.unlink()
+        tmp_c.unlink()
+    except OSError:
+        pass
+
+
+def check_cached_counts():
+    """Check if existing listing row counts are fresh enough. Return dict or None."""
+    rows = duckdb_json(
+        "SELECT name, rows, updated_at FROM listing WHERE rows IS NOT NULL"
+    )
+    if not rows:
+        return None
+    ts = rows[0].get("updated_at", 0)
+    if (time.time() - float(ts)) > CACHE_MAX_AGE:
+        return None
+    return {r["name"]: int(r["rows"]) for r in rows}
+
+
 def main():
     names = get_table_names()
     if not names:
@@ -140,7 +215,6 @@ def main():
         sys.exit(1)
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    con = duckdb.connect(str(DUCKDB_PATH))
 
     # Schema: download and populate tables/columns
     version = get_osquery_version()
@@ -148,46 +222,35 @@ def main():
     desc_map = {}
     if schema:
         desc_map = {e["name"]: e.get("description", "") for e in schema if "name" in e}
-        con.execute("DROP TABLE IF EXISTS tables")
-        con.execute("DROP TABLE IF EXISTS columns")
-        con.execute("CREATE TABLE tables (name VARCHAR, description VARCHAR, platforms VARCHAR)")
-        con.execute("CREATE TABLE columns (table_name VARCHAR, col_name VARCHAR, col_type VARCHAR, col_desc VARCHAR)")
-        for entry in schema:
-            name = entry.get("name", "")
-            desc = entry.get("description", "")
-            platforms = ", ".join(entry.get("platforms", []))
-            con.execute("INSERT INTO tables VALUES (?, ?, ?)", [name, desc, platforms])
-            for col in entry.get("columns", []):
-                con.execute("INSERT INTO columns VALUES (?, ?, ?, ?)",
-                            [name, col.get("name", ""), col.get("type", ""),
-                             col.get("description", "")])
+        populate_schema(schema)
 
     # Row counts: check if existing listing is fresh enough
-    counts = None
-    try:
-        ts = con.execute("SELECT updated_at FROM listing LIMIT 1").fetchone()
-        if ts and (time.time() - ts[0]) < CACHE_MAX_AGE:
-            # Existing counts are fresh, reuse them
-            rows = con.execute("SELECT name, rows FROM listing WHERE rows IS NOT NULL").fetchall()
-            counts = {r[0]: r[1] for r in rows}
-    except Exception:
-        pass
-
+    counts = check_cached_counts()
     if counts is None:
         counts = count_all_tables(names)
 
-    # Build listing table
+    # Build listing table via temp JSON + read_json_auto
     now = time.time()
-    con.execute("DROP TABLE IF EXISTS listing")
-    con.execute("CREATE TABLE listing (name VARCHAR, safety VARCHAR, rows INTEGER, description VARCHAR, updated_at DOUBLE)")
+    listing = []
     for name in names:
-        safety = "input-required" if name in DANGEROUS_TABLES else "safe"
-        row_count = counts.get(name)
-        desc = desc_map.get(name, "")
-        con.execute("INSERT INTO listing VALUES (?, ?, ?, ?, ?)",
-                    [name, safety, row_count, desc, now])
+        listing.append({
+            "name": name,
+            "safety": "input-required" if name in DANGEROUS_TABLES else "safe",
+            "rows": counts.get(name),
+            "description": desc_map.get(name, ""),
+            "updated_at": now,
+        })
+    tmp = CACHE_DIR / "tmp_listing.json"
+    tmp.write_text(json.dumps(listing))
+    duckdb_exec(
+        f"DROP TABLE IF EXISTS listing;"
+        f"CREATE TABLE listing AS SELECT * FROM read_json_auto('{tmp}')"
+    )
+    try:
+        tmp.unlink()
+    except OSError:
+        pass
 
-    con.close()
     print(f"Populated {DUCKDB_PATH}: {len(names)} tables", file=sys.stderr)
 
 
