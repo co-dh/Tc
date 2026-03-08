@@ -88,17 +88,28 @@ def viewFile (path : String) : IO Unit := do
     let _ ← IO.Process.spawn { cmd := "less", args := #[path], stdin := .inherit, stdout := .inherit, stderr := .inherit } >>= (·.wait)
   let _ ← Term.init
 
--- | Open data file (csv/parquet) as table view
-def openDataFile (s : ViewStack Table) (path : String) : IO (Option (ViewStack Table)) := do
-  match ← TblOps.fromFile (α := Table) path with
-  | some tbl => match View.fromTbl tbl path with
-    | some v => pure (some (s.push v))
-    | none => pure none
-  | none => pure none
+-- | Is file a DuckDB database?
+def isDuckDB (p : String) : Bool :=
+  p.endsWith ".duckdb" || p.endsWith ".db"
 
 -- | Is file a data format we can open as a table?
-private def isDataFile (p : String) : Bool :=
-  p.endsWith ".csv" || p.endsWith ".parquet"
+def isDataFile (p : String) : Bool :=
+  p.endsWith ".csv" || p.endsWith ".parquet" || isDuckDB p
+
+-- | Open any supported data file as a View
+def openFile (path : String) : IO (Option (View Table)) := do
+  if isDuckDB path then
+    match ← AdbcTable.listDuckDBTables path with
+    | some adbc => match View.fromTbl (Table.adbc adbc) s!"duckdb://{path}" with
+      | some v =>
+        let disp := path.splitOn "/" |>.getLast?.getD path
+        pure (some { v with vkind := .fld s!"duckdb://{path}" 1, disp })
+      | none => pure none
+    | none => pure none
+  else
+    match ← TblOps.fromFile (α := Table) path with
+    | some tbl => pure (View.fromTbl tbl path)
+    | none => pure none
 
 -- | Get path column value from current row
 def curPath (v : View Table) : IO (Option String) := do
@@ -219,8 +230,8 @@ def enter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
       let fullPath := joinPath curDir p
       if isDataFile p then
         let openPath ← match back with | some b => b.resolve fullPath | none => pure fullPath
-        match ← openDataFile s openPath with
-        | some s' => pure (some s')
+        match ← openFile openPath with
+        | some v => pure (some (s.push v))
         | none => if back.isNone then viewFile fullPath; pure (some s) else pure (some s)
       else
         let viewPath ← match back with | some b => b.download fullPath | none => pure fullPath
@@ -231,8 +242,8 @@ def enter (s : ViewStack Table) : IO (Option (ViewStack Table)) := do
     let stat ← IO.Process.output { cmd := "test", args := #["-d", fullPath] }
     if stat.exitCode == 0 then tryView s fullPath (curDepth s) true
     else if isDataFile fullPath then
-      match ← openDataFile s fullPath with
-      | some s' => pure (some s')
+      match ← openFile fullPath with
+      | some v => pure (some (s.push v))
       | none => viewFile fullPath; pure (some s)
     else viewFile fullPath; pure (some s)
   | _, _ => pure none
