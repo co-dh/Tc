@@ -12,6 +12,7 @@ import Tc.Remote
 import Tc.S3
 import Tc.HF
 import Tc.Data.Text
+import test.TestPure
 
 -- ============================================================================
 -- Pure tests (compile-time #guard checks — no runtime cost)

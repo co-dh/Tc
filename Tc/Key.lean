@@ -132,6 +132,16 @@ def enterCmd (vk : ViewKind) : Option Cmd :=
   | .fld _ _  => some (.fld .ent)    -- enter dir/file
   | .tbl      => none                -- no action in table view
 
+theorem enterCmd_tbl_none : enterCmd .tbl = none := by rfl
+
+theorem enterCmd_freq : ∀ cols total, enterCmd (.freqV cols total) = some (.freq .ent) := by
+  intros; rfl
+
+theorem enterCmd_meta : enterCmd .colMeta = some (.metaV .ent) := by rfl
+
+theorem enterCmd_fld : ∀ p d, enterCmd (.fld p d) = some (.fld .ent) := by
+  intros; rfl
+
 -- | Convert Term.Event to Cmd (view-aware for Enter key)
 def evToCmd (ev : Term.Event) (vk : ViewKind) : Option Cmd :=
   if ev.type != Term.eventKey then none else

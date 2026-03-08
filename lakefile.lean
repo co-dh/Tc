@@ -31,6 +31,10 @@ lean_lib Tc where
 lean_exe tc where
   root := `Tc.App.Common
 
+-- | Test library (pure + runtime tests)
+lean_lib TcTest where
+  roots := #[`test.TestPure, `test.Test]
+
 -- | Test executable (DuckDB backend tests)
 lean_exe test where
   root := `test.Test

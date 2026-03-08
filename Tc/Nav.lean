@@ -73,6 +73,10 @@ theorem dispOrder_size (group : Array String) (names : Array String) :
   rw [s1, s2]
   exact list_filter_partition isGrp (List.range names.size) |>.symm ▸ by simp [List.length_range]
 
+-- When a column is grouped, its index appears first in dispOrder
+theorem dispOrder_grp_first :
+    (dispOrder #["c1"] #["c0", "c1", "c2"]).getD 0 999 = 1 := by native_decide
+
 -- Get column index at display position
 def colIdxAt (group : Array String) (names : Array String) (i : Nat) : Nat :=
   (dispOrder group names).getD i 0
