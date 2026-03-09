@@ -1,0 +1,10 @@
+.lake/
+.git/
+.claude/
+doc/
+*.o
+*.a
+*.hash
+*.trace
+test.log
+/tmp/
