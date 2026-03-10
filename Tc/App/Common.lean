@@ -168,7 +168,7 @@ def appMain (args : List String) : IO Unit := do
   let (path?, keys, testMode, noSign) := parseArgs args
   let envTest := (← IO.getEnv "TC_TEST_MODE").isSome
   Fzf.setTestMode (testMode || envTest)
-  S3.setNoSign noSign
+  SourceConfig.setNoSign noSign
   let pipeMode ← if testMode then pure false else (! ·) <$> Term.isattyStdin
   let theme ← Theme.State.init
   try Term.loadExtColors (← IO.FS.readFile "ext_colors.csv")

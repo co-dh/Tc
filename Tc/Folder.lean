@@ -5,7 +5,7 @@
 import Tc.Fzf
 import Tc.View
 import Tc.Term
-import Tc.S3
+import Tc.SourceConfig
 import Tc.Data.ADBC.Ops
 import Tc.HF
 import Tc.Osquery
@@ -13,17 +13,9 @@ import Tc.Remote
 
 namespace Tc.Folder
 
--- | Remote backend: list, parent, resolve data path, download for viewing
-private structure Backend where
-  list     : String → IO String
-  parent   : String → Option String
-  resolve  : String → IO String  -- resolve data file path (S3: download; HF: cache+download)
-  download : String → IO String  -- download for non-data viewing
-
-private def backend? (path : String) : Option Backend :=
-  if S3.isS3 path then some ⟨S3.list, S3.parent, S3.download, S3.download⟩
-  else if HF.isHF path then some ⟨HF.list, HF.parent, HF.resolve, HF.download⟩
-  else none
+-- | Look up remote source config for a path
+private def sourceConfig? (path : String) : Option SourceConfig.Config :=
+  SourceConfig.findSource path
 
 -- | Strip base path prefix to get relative entry name
 private def stripBase (base path : String) : String :=
@@ -151,9 +143,11 @@ def mkView (path : String) (depth : Nat) : IO (Option (View AdbcTable)) := do
     match ← HF.listAll with
     | some (adbc, disp) => pure (mkViewFromAdbc adbc path depth disp (grp := #["id"]))
     | none => pure none
-  else match backend? path with
-  | some b =>
-    mkViewFromTsv (← b.list path) path depth (Remote.dispName path)
+  else match sourceConfig? path with
+  | some cfg =>
+    match ← cfg.runList path with
+    | some adbc => pure (mkViewFromAdbc adbc path depth (Remote.dispName path))
+    | none => pure none
   | none =>
     let rp ← IO.Process.output { cmd := "realpath", args := #[path] }
     let absPath := if rp.exitCode == 0 then rp.stdout.trimAscii.toString else path
@@ -205,13 +199,13 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
     let some (adbc, keys) ← AdbcTable.fromDuckDBTable tableName | return some s
     let some v := View.fromTbl (adbc) s!"duckdb://{tableName}" (grp := keys) | return some s
     return some (s.push v)
-  let back := backend? curDir
+  let cfg := sourceConfig? curDir
   match ← curType s.cur, ← curPath s.cur with
   | some 'd', some p =>
     if p == ".." || p.endsWith "/.." then
       -- navigate to parent
-      match back with
-      | some b => match b.parent curDir with
+      match cfg with
+      | some c => match c.parent curDir with
         | some par => tryView s par 1 false
         | none => pure (some s)
       | none => match s.pop with
@@ -219,7 +213,9 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
         | none => tryView s ".." (curDepth s) false
     else
       -- enter child directory
-      let fullPath := joinPath curDir (if back.isSome then p ++ "/" else p)
+      let fullPath := match cfg with
+        | some c => joinPath curDir (if c.dirSuffix then p ++ "/" else p)
+        | none => joinPath curDir p
       tryView s fullPath (curDepth s) true
   | some 'f', some p =>
     if Osquery.isOsquery curDir then
@@ -232,15 +228,15 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
     else
       let fullPath := joinPath curDir p
       if isDataFile p then
-        let openPath ← match back with | some b => b.resolve fullPath | none => pure fullPath
+        let openPath ← match cfg with | some c => c.resolve fullPath | none => pure fullPath
         match ← openFile openPath with
         | some v => pure (some (s.push v))
-        | none => if back.isNone then viewFile fullPath; pure (some s) else pure (some s)
+        | none => if cfg.isNone then viewFile fullPath; pure (some s) else pure (some s)
       else
-        let viewPath ← match back with | some b => b.download fullPath | none => pure fullPath
+        let viewPath ← match cfg with | some c => c.runDownload fullPath | none => pure fullPath
         viewFile viewPath; pure (some s)
   | some 's', some p =>
-    if back.isSome then pure (some s) else
+    if cfg.isSome then pure (some s) else
     let fullPath := joinPath curDir p
     let stat ← IO.Process.output { cmd := "test", args := #["-d", fullPath] }
     if stat.exitCode == 0 then tryView s fullPath (curDepth s) true
@@ -330,7 +326,7 @@ def trashFiles (paths : Array String) : IO Bool := do
 def del (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   if !(s.cur.vkind matches .fld _ _) then return none
   let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => ""
-  if (backend? curDir).isSome then return some s
+  if (sourceConfig? curDir).isSome then return some s
   let paths ← selPaths s.cur
   if paths.isEmpty then return none
   if !(← confirmDel paths) then return some s
@@ -350,7 +346,7 @@ def del (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
 def setDepth (s : ViewStack AdbcTable) (delta : Int) : IO (Option (ViewStack AdbcTable)) := do
   match s.cur.vkind with
   | .fld path depth =>
-    if (backend? path).isSome then return some s
+    if (sourceConfig? path).isSome then return some s
     let newDepth := max 1 ((depth : Int) + delta).toNat
     if newDepth == depth then pure (some s)
     else match ← mkView path newDepth with
