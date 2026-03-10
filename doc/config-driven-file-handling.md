@@ -2,224 +2,159 @@
 
 ## Problem
 
-S3, HF, Osquery, and local files each have hardcoded logic in separate modules
-(`S3.lean`, `HF.lean`, `Osquery.lean`, `Folder.lean`). Adding a new source
-(GCS, Azure Blob, HTTP, SFTP, etc.) requires writing a new Lean module and
-wiring it into `Folder.backend?` with if/else chains.
+S3, HF, Osquery each have hardcoded logic in separate `.lean` modules.
+Adding a new source requires a new module + if/else wiring in `Folder.lean`.
 
 ## Goal
 
-A single config structure that defines, per prefix:
-1. **Is it a file or folder?** — how to list children, detect type
-2. **How to fetch?** — curl/shell commands to list and download
-3. **How to load into DuckDB?** — SQL to create a temp table
+A single **config table** — pure data, string templates — that drives all behavior.
+Each row is a source. Columns define: how to list, download, detect type, load into DuckDB.
 
-## Current State
+## Config Table
 
 ```
-Prefix       │ isX check     │ list cmd              │ download cmd          │ DuckDB load
-─────────────┼───────────────┼───────────────────────┼───────────────────────┼─────────────────────
-s3://        │ startsWith    │ aws s3 ls {path}      │ aws s3 cp {src} {dst} │ SELECT * FROM '{local}'
-hf://datasets│ startsWith    │ curl HF API + jq→TSV  │ curl -sfL -o {dst}    │ SELECT * FROM '{hf_url}'
-             │               │                       │   {resolve_url}       │   (httpfs, no download)
-osquery://   │ startsWith    │ python3 script → DB   │ osqueryi --json {sql} │ read_json_auto('{tmp}')
-(local)      │ fallthrough   │ find -H {p} -maxdepth │ (already local)       │ SELECT * FROM '{path}'
-duckdb://    │ startsWith    │ duckdb_tables()       │ n/a                   │ FROM extdb.{table}
+prefix     │ minParts │ listCmd                                          │ listParse  │ downloadCmd                             │ resolveSql
+───────────┼──────────┼──────────────────────────────────────────────────┼────────────┼─────────────────────────────────────────┼──────────────────────────────────────────
+s3://      │ 3        │ aws s3 ls {path}                                │ s3         │ aws s3 cp {path} {tmp}/{name}           │ SELECT * FROM '{local}'
+hf://      │ 5        │ curl -sf https://huggingface.co/api/datasets/{repo}/tree/main/{sub} │ hf_json    │ curl -sfL -o {tmp}/{name} https://huggingface.co/datasets/{repo}/resolve/main/{sub} │ SELECT * FROM '{path}'
+gs://      │ 3        │ gsutil ls -l {path}                             │ gs         │ gsutil cp {path} {tmp}/{name}           │ SELECT * FROM '{local}'
+az://      │ 3        │ az storage blob list --container {container}    │ az_json    │ az storage blob download -c {container} -n {blob} -f {tmp}/{name} │ SELECT * FROM '{local}'
 ```
 
-## Design
+### Column Definitions
 
-### SourceConfig structure
+| Column       | Type     | Description |
+|-------------|----------|-------------|
+| `prefix`    | String   | URI prefix to match (`s3://`, `hf://`, `gs://`). First match wins. |
+| `minParts`  | Nat      | Min `/`-separated parts before `parent` returns none (root threshold). |
+| `listCmd`   | Template | Shell command to list contents. Placeholders: `{path}`, `{repo}`, `{sub}`. |
+| `listParse` | Enum     | How to parse listing output into TSV: `s3` (PRE-based), `hf_json` (jq), `gs` (gsutil), `find` (local). |
+| `downloadCmd` | Template | Shell command to download a file. Placeholders: `{path}`, `{tmp}`, `{name}`, `{repo}`, `{sub}`. |
+| `resolveSql` | Template | SQL to create DuckDB temp table. `{path}` = original URI, `{local}` = downloaded file, `{tbl}` = table name. |
+
+### Template Placeholders
+
+| Placeholder | Meaning |
+|------------|---------|
+| `{path}`   | Full URI path (e.g. `s3://bucket/dir/file.csv`) |
+| `{name}`   | Last path component (filename) |
+| `{tmp}`    | Temp directory |
+| `{local}`  | Local file path after download |
+| `{repo}`   | Extracted repo identifier (HF: `user/dataset`) |
+| `{sub}`    | Sub-path within repo/container |
+| `{tbl}`    | DuckDB temp table name |
+| `{container}` | Container/bucket name |
+
+### Parse Modes (`listParse`)
+
+Each parse mode converts CLI output → standard TSV (`name\tsize\tdate\ttype`):
+
+| Mode      | Input format | Type detection |
+|-----------|-------------|----------------|
+| `s3`      | `aws s3 ls` text | `PRE ` prefix → dir, else file |
+| `hf_json` | HF API JSON array | `.type == "directory"` → dir |
+| `gs`      | `gsutil ls -l` text | trailing `/` → dir |
+| `az_json` | Azure CLI JSON | `isDirectory` field |
+| `find`    | `find -printf` output | `%y`: `d`/`f`/`l` |
+
+### Special Cases
+
+Some sources need behavior beyond the table:
+
+| Source | Special | How |
+|--------|---------|-----|
+| S3     | `--no-sign-request` flag | Append to `listCmd`/`downloadCmd` when flag set |
+| HF     | Root listing (`hf://`) | Separate `rootList` entry: loads from `hf_datasets.duckdb` |
+| HF     | No download for DuckDB | `resolveSql` uses `{path}` directly (httpfs), not `{local}` |
+| Osquery | Flat (no hierarchy) | `minParts = ∞`, parent always none |
+| Osquery | Table query | `enterCmd`: `osqueryi --json "SELECT * FROM {name}"` |
+
+### Lean Representation
 
 ```lean
 structure SourceConfig where
-  prefix      : String                          -- "s3://", "hf://datasets/", "file://", etc.
-  minParts    : Nat                             -- min URI parts before parent returns none
-  -- Listing
-  listCmd     : String → IO String             -- path → TSV (name\tsize\tdate\ttype)
-  -- Type detection: from TSV type column
-  -- "d" = directory, "f" or " " = file  (already standardized in TSV output)
-  -- Parent navigation
-  parentFn    : String → Option String         -- path → parent path (or none at root)
-  -- Data resolution: how to get a path DuckDB can read
-  resolveData : String → IO String             -- remote path → local or URL that DuckDB can read
-  -- Download for viewing (bat/less) — distinct from resolveData when DuckDB can read natively (e.g. hf://)
-  downloadView: String → IO String             -- remote path → local file path
-  -- DuckDB table creation
-  loadSql     : String → String → String       -- (resolved_path, table_name) → CREATE TABLE SQL
-  -- Optional: root listing (like HF dataset browser, osquery table browser)
-  rootList    : Option (IO (Option (AdbcTable × String)))
-  -- Optional: flags/state
-  extraArgs   : IO (Array String)              -- e.g. --no-sign-request for S3
-```
+  prefix      : String
+  minParts    : Nat
+  listCmd     : String       -- template string
+  listParse   : String       -- "s3" | "hf_json" | "gs" | "find" | ...
+  downloadCmd : String       -- template string
+  resolveSql  : String       -- template string
+  needsDownload : Bool       -- true: download first, use {local}. false: use {path} directly
+  rootList    : Option String -- optional: SQL/cmd to list root (e.g. HF datasets, osquery tables)
+  enterCmd    : Option String -- optional: cmd to "open" an entry (e.g. osqueryi for osquery)
 
-### Config Registry
-
-```lean
--- A flat array, checked in order (first prefix match wins)
-def sourceConfigs : Array SourceConfig := #[
-  s3Config,
-  hfConfig,
-  osqueryConfig,
-  duckdbConfig
-  -- add new sources here
+-- The config table: a plain Array, loaded at init or compiled in
+def sources : Array SourceConfig := #[
+  { prefix := "s3://",  minParts := 3, listCmd := "aws s3 ls {path}",
+    listParse := "s3", downloadCmd := "aws s3 cp {path} {tmp}/{name}",
+    resolveSql := "SELECT * FROM '{local}'", needsDownload := true,
+    rootList := none, enterCmd := none },
+  { prefix := "hf://",  minParts := 5,
+    listCmd := "curl -sf https://huggingface.co/api/datasets/{repo}/tree/main/{sub}",
+    listParse := "hf_json",
+    downloadCmd := "curl -sfL -o {tmp}/{name} https://huggingface.co/datasets/{repo}/resolve/main/{sub}",
+    resolveSql := "SELECT * FROM '{path}'", needsDownload := false,
+    rootList := some "hf_datasets", enterCmd := none },
+  { prefix := "gs://",  minParts := 3, listCmd := "gsutil ls -l {path}",
+    listParse := "gs", downloadCmd := "gsutil cp {path} {tmp}/{name}",
+    resolveSql := "SELECT * FROM '{local}'", needsDownload := true,
+    rootList := none, enterCmd := none },
 ]
 
-def findConfig (path : String) : Option SourceConfig :=
-  sourceConfigs.find? fun c => path.startsWith c.prefix
+def findSource (path : String) : Option SourceConfig :=
+  sources.find? fun c => path.startsWith c.prefix
 ```
 
-### Per-Source Configs
+### Template Expansion
 
-#### S3
-
-```
-prefix:       "s3://"
-minParts:     3
-listCmd:      aws s3 ls [--no-sign-request] {path}  → parse PRE/file → TSV
-parentFn:     Remote.parent path 3
-resolveData:  aws s3 cp {src} {tmpdir}/s3/{name}  → return local path
-downloadView: same as resolveData
-loadSql:      CREATE TEMP TABLE {tbl} AS SELECT * FROM '{local_path}'
-rootList:     none
-extraArgs:    ["--no-sign-request"] if noSign flag set
-```
-
-#### HuggingFace
-
-```
-prefix:       "hf://"
-minParts:     5
-listCmd:      curl -sf https://huggingface.co/api/datasets/{repo}/tree/main[/{sub}]
-              | jq → TSV
-parentFn:     Remote.parent path 5, fallback to "hf://"
-resolveData:  identity (return hf:// URL as-is — DuckDB reads via httpfs)
-downloadView: curl -sfL -o {tmp} https://huggingface.co/datasets/{repo}/resolve/main/{sub}
-loadSql:      CREATE TEMP TABLE {tbl} AS SELECT * FROM '{hf_url}'
-rootList:     some (listAll from hf.listing DB)
-extraArgs:    #[]
-```
-
-#### Osquery
-
-```
-prefix:       "osquery://"
-minParts:     n/a (flat)
-listCmd:      (from pre-populated DB: osq.listing)
-parentFn:     always none (flat)
-resolveData:  osqueryi --json "SELECT * FROM {table}" → write JSON → tmpfile
-downloadView: same as resolveData
-loadSql:      CREATE TEMP TABLE {tbl} AS SELECT * FROM read_json_auto('{tmp}')
-rootList:     some (list from osq.listing)
-extraArgs:    #[]
-```
-
-#### Local filesystem
-
-```
-prefix:       "" (fallthrough / default)
-minParts:     n/a
-listCmd:      find -H {path} -maxdepth {depth} -printf "%y\t%s\t%T+\t%p\n"
-parentFn:     pop stack or ".."
-resolveData:  identity (already local)
-downloadView: identity
-loadSql:      CREATE TEMP TABLE {tbl} AS SELECT * FROM '{path}'
-rootList:     none
-extraArgs:    #[]
-```
-
-### How It Fits Together
-
-#### Folder.lean changes
-
-Replace `backend?` with config lookup:
+One generic function replaces placeholders:
 
 ```lean
--- BEFORE (hardcoded)
-private def backend? (path : String) : Option Backend :=
-  if S3.isS3 path then some ⟨S3.list, S3.parent, S3.download, S3.download⟩
-  else if HF.isHF path then some ⟨HF.list, HF.parent, HF.resolve, HF.download⟩
-  else none
-
--- AFTER (config-driven)
-private def backend? (path : String) : Option SourceConfig :=
-  findConfig path
+def expand (tmpl : String) (vars : List (String × String)) : String :=
+  vars.foldl (fun s (k, v) => s.replace s!"\{{k}}" v) tmpl
 ```
 
-`mkView`, `enter`, `del`, `setDepth` all use the config's functions instead of
-calling `S3.list`, `HF.parent`, etc. directly.
+Usage:
+```lean
+let cmd := expand cfg.listCmd [("path", path), ("repo", repo), ("sub", sub)]
+let out ← Log.run "list" "sh" #["-c", cmd]
+```
 
-#### Adding a new source (example: GCS)
-
-Just add to the config array:
+### How Folder.lean Changes
 
 ```lean
-def gcsConfig : SourceConfig := {
-  prefix      := "gs://"
-  minParts    := 3
-  listCmd     := fun path => do
-    let out ← Log.run "gcs" "gsutil" #["ls", "-l", path]
-    parseGcsListing out.stdout  -- → TSV
-  parentFn    := Remote.parent · 3
-  resolveData := fun path => do
-    let tmp ← Tc.tmpPath "gcs"
-    let _ ← Log.run "gcs" "gsutil" #["cp", path, tmp]
-    pure tmp
-  downloadView := fun path => resolveData path
-  loadSql     := fun resolved tbl => s!"CREATE TEMP TABLE {tbl} AS SELECT * FROM '{resolved}'"
-  rootList    := none
-  extraArgs   := pure #[]
-}
+-- BEFORE: if S3.isS3 then ... else if HF.isHF then ...
+-- AFTER:
+match findSource curDir with
+| some cfg =>
+  let vars := extractVars cfg.prefix curDir  -- parse repo, sub, container, etc.
+  let cmd := expand cfg.listCmd vars
+  let raw ← Log.run "source" "sh" #["-c", cmd]
+  let tsv := parseListing cfg.listParse raw.stdout
+  mkViewFromTsv tsv curDir depth (Remote.dispName curDir)
+| none =>
+  -- local filesystem fallback
+  mkViewFromTsv (← listDir path depth) absPath depth disp
 ```
 
-No changes to `Folder.lean`, `Runner.lean`, or any other module.
+### Adding a New Source
 
-### TSV Contract
+Just add a row to the `sources` array. No new `.lean` file needed:
 
-All `listCmd` functions must return the same TSV schema:
-
+```lean
+{ prefix := "r2://", minParts := 3,
+  listCmd := "aws s3 ls --endpoint-url {endpoint} {path}",
+  listParse := "s3",  -- reuse S3 parser since R2 is S3-compatible
+  downloadCmd := "aws s3 cp --endpoint-url {endpoint} {path} {tmp}/{name}",
+  resolveSql := "SELECT * FROM '{local}'", needsDownload := true,
+  rootList := none, enterCmd := none }
 ```
-name\tsize\tdate\ttype
-..\t0\t\td                    ← optional parent entry
-file1.csv\t1024\t2024-01-05 12:00:00\tf
-subdir\t0\t\td
-```
-
-- **type** column: `d` = directory, `f` or ` ` = file, `s` = symlink
-- **name** column: relative to current path (no leading `/`)
-- **size**: bytes (0 for directories)
-- **date**: ISO-ish format or empty
-
-### loadSql patterns
-
-| Pattern | When to use | Example |
-|---------|------------|---------|
-| Direct read | DuckDB can read the format natively | `SELECT * FROM '{path}'` |
-| httpfs URL | Remote URL DuckDB can fetch | `SELECT * FROM 'hf://datasets/...'` |
-| read_json_auto | JSON data piped through tmpfile | `SELECT * FROM read_json_auto('{tmp}')` |
-| read_csv_auto | CSV/TSV via tmpfile | `SELECT * FROM read_csv_auto('{tmp}')` |
-| ATTACH + query | External DB file | `ATTACH '{path}'; SELECT * FROM ...` |
 
 ### Implementation Plan
 
-1. **Define `SourceConfig`** in a new `Tc/SourceConfig.lean`
-2. **Move per-source logic** from `S3.lean`, `HF.lean`, `Osquery.lean` into config constructors
-   - Keep the modules for helper functions (parsing, etc.)
-   - Export a `config : SourceConfig` from each
-3. **Registry** in `SourceConfig.lean`: `sourceConfigs` array
-4. **Refactor `Folder.lean`**: replace `Backend` struct + `backend?` with `findConfig`
-5. **Test**: existing test suite should pass unchanged (behavior is identical)
-
-### What Stays The Same
-
-- `Remote.lean` — generic URI ops, still used by configs
-- `Types.lean`, `Nav.lean`, `View.lean` — untouched
-- `Data/ADBC/Table.lean` — still handles `fromTsv`, `fromUrl`, etc.
-- TSV schema — already standardized across S3/HF/local
-- The rest of the app sees `SourceConfig` functions, not raw S3/HF calls
-
-### Migration Path
-
-Phase 1: Add `SourceConfig` + registry alongside existing code (both paths work)
-Phase 2: Switch `Folder.lean` to use configs
-Phase 3: Remove old `Backend` struct
+1. Add `SourceConfig` structure + `expand` + `parseListing` dispatcher in `Tc/SourceConfig.lean`
+2. Define `sources` table with S3 and HF entries
+3. Add `extractVars` to parse prefix-specific parts (repo/sub for HF, bucket for S3)
+4. Refactor `Folder.lean`: replace `Backend`/`backend?` with `findSource` + template expansion
+5. Keep `S3.lean`/`HF.lean` parse functions (reused by `listParse` dispatcher)
+6. Test: existing tests pass unchanged
