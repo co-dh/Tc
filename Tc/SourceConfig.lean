@@ -61,7 +61,7 @@ def mkVars (cfg : Config) (path tmp name extra : String) : Array (String × Stri
 
 -- | Whitelist of characters safe in shell arguments (rejects metacharacters like $, `, ;, &, etc.)
 private def isSafePathChar (c : Char) : Bool :=
-  c.isAlphaNum || c == '-' || c == '_' || c == '.' || c == '/' || c == ':'
+  c.isAlphanum || c == '-' || c == '_' || c == '.' || c == '/' || c == ':'
     || c == '+' || c == '@' || c == '~' || c == ' ' || c == '%' || c == ','
 
 -- | Validate that a user-supplied path contains no shell metacharacters before template expansion
