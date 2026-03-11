@@ -17,18 +17,17 @@ private def metaTblName (s : ViewStack AdbcTable) : String :=
 -- | Push column metadata view onto stack
 def push (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let some adbc ← AdbcTable.queryMeta s.tbl | return none
-  -- Enrich meta with handler-provided column descriptions (e.g. osquery)
+  -- Enrich meta with config-driven column descriptions (e.g. osquery)
   if let some cfg ← SourceConfig.findSource s.cur.path then
-    if !cfg.handler.isEmpty then
-      if let some h ← SourceConfig.findHandler cfg.handler then
-        let tableName := (s.cur.path.drop cfg.pfx.length).toString
-        let metaBase := (adbc.query.base.drop 5).trimAscii.toString
-        h.enrichMeta metaBase tableName
-        match ← AdbcTable.requery adbc.query with
-        | some adbc' => match View.fromTbl adbc' s.cur.path with
-          | some v => return some (s.push { v with vkind := .colMeta, disp := "meta" })
-          | none => return none
+    if !cfg.enrichSql.isEmpty then
+      let tableName := (s.cur.path.drop cfg.pfx.length).toString
+      let metaBase := (adbc.query.base.drop 5).trimAscii.toString
+      cfg.runEnrich metaBase tableName
+      match ← AdbcTable.requery adbc.query with
+      | some adbc' => match View.fromTbl adbc' s.cur.path with
+        | some v => return some (s.push { v with vkind := .colMeta, disp := "meta" })
         | none => return none
+      | none => return none
   match View.fromTbl adbc s.cur.path with
   | some v => return some (s.push { v with vkind := .colMeta, disp := "meta" })
   | none => return none

@@ -27,23 +27,11 @@ structure Config where
   setupSql       : String      -- SQL to run before first listing (e.g. ATTACH). Empty = skip.
   grp            : String      -- default group column name. Empty = none.
   enterUrl       : String      -- URL template for entering file rows. Empty = default.
-  handler        : String      -- Lean-side handler name. Empty = use listCmd/listSql.
-
--- | Handler for sources that need Lean-side logic beyond config (enter, status, enrichMeta).
---   Listing is always config-driven via listCmd/listSql.
-structure Handler where
-  enter      : String → String → IO (Option (AdbcTable × String)) := fun _ _ => pure none
-  statusInfo : String → String → IO String := fun _ _ => pure ""
-  enrichMeta : String → String → IO Unit := fun _ _ => pure ()
-
--- | Handler registry: name → Handler
-initialize handlers : IO.Ref (Array (String × Handler)) ← IO.mkRef #[]
-
-def registerHandler (name : String) (h : Handler) : IO Unit :=
-  handlers.modify (·.push (name, h))
-
-def findHandler (name : String) : IO (Option Handler) :=
-  (·.find? (·.1 == name) |>.map (·.2)) <$> handlers.get
+  enterCmd       : String      -- shell cmd template for entering items. Empty = no CLI enter.
+  enterSql       : String      -- SQL to transform enter cmd output (with {src}). Empty = skip.
+  enterTypesSql  : String      -- SQL returning (column_name, column_type) for TRY_CAST. Vars: {name}.
+  statusSql      : String      -- SQL template for column status info. Vars: {table}, {col}.
+  enrichSql      : String      -- SQL statements (;-separated) for meta enrichment. Vars: {meta}, {table}.
 
 -- | Global flag: use --no-sign-request for S3 (set via +n arg)
 initialize noSign : IO.Ref Bool ← IO.mkRef false
@@ -134,7 +122,11 @@ private def configFromRow (qr : Adbc.QueryResult) (row : Nat) : IO Config := do
     setupSql       := ← r.str "setup_sql"
     grp            := ← r.str "grp"
     enterUrl       := ← r.str "enter_url"
-    handler        := ← r.str "handler"
+    enterCmd       := ← r.str "enter_cmd"
+    enterSql       := ← r.str "enter_sql"
+    enterTypesSql  := ← r.str "enter_types_sql"
+    statusSql      := ← r.str "status_sql"
+    enrichSql      := ← r.str "enrich_sql"
   }
 
 -- | Find config for a path by prefix match (longest prefix wins)
@@ -157,11 +149,22 @@ def Config.parent (cfg : Config) (path : String) : Option String :=
 -- | Track which prefixes have completed setup
 initialize setupDone : IO.Ref (Array String) ← IO.mkRef #[]
 
--- | Run one-time setup for a config (setupCmd + setupSql), idempotent
+-- | Run one-time setup for a config (setupCmd + setupSql), idempotent.
+--   Tries setupSql first; if it fails (e.g. DB doesn't exist), runs setupCmd to create it.
 def runSetup (cfg : Config) : IO Unit := do
   let done ← setupDone.get
   if done.contains cfg.pfx then return
   let homeDir := (← IO.getEnv "HOME").getD "/tmp"
+  if !cfg.setupSql.isEmpty then
+    let sql := expand cfg.setupSql #[("home", homeDir)]
+    -- Try ATTACH first; if it succeeds, skip the expensive setupCmd
+    match ← (Adbc.query sql |>.toBaseIO) with
+    | .ok _ =>
+      Log.write "src" s!"setup sql ok (skipped cmd): {sql}"
+      setupDone.modify (·.push cfg.pfx)
+      return
+    | .error _ =>
+      Log.write "src" s!"setup sql failed, running cmd first"
   if !cfg.setupCmd.isEmpty then
     Log.write "src" s!"setup cmd: {cfg.setupCmd}"
     let cmd := expand cfg.setupCmd #[("home", homeDir)]
@@ -172,9 +175,9 @@ def runSetup (cfg : Config) : IO Unit := do
     let _ ← Adbc.query sql
   setupDone.modify (·.push cfg.pfx)
 
--- | Run listing: dispatch to handler if set, otherwise use listCmd/listSql
+-- | Run listing: CLI cmd → JSON → listSql, or direct SQL mode
 def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
-  Log.write "src" s!"runList: pfx={cfg.pfx} path={path} handler={cfg.handler} listCmd={cfg.listCmd}"
+  Log.write "src" s!"runList: pfx={cfg.pfx} path={path} listCmd={cfg.listCmd}"
   statusMsg s!"Loading {path} ..."
   runSetup cfg
   let n ← memTblCounter.modifyGet fun n => (n, n + 1)
@@ -233,5 +236,59 @@ def Config.runDownload (cfg : Config) (path : String) : IO String := do
 def Config.resolve (cfg : Config) (path : String) : IO String := do
   if cfg.needsDownload then cfg.runDownload path
   else pure path
+
+-- | Run enter command: CLI → JSON → enterSql → AdbcTable
+def Config.runEnter (cfg : Config) (name : String) : IO (Option AdbcTable) := do
+  if cfg.enterCmd.isEmpty then return none
+  runSetup cfg
+  let cmd := expand cfg.enterCmd #[("name", name)]
+  Log.write "src" s!"enter: {cmd}"
+  let out ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
+  if out.exitCode != 0 then
+    let errMsg := out.stderr.trimAscii.toString
+    Log.write "src" s!"enter failed (exit {out.exitCode}): {errMsg}"
+    return none
+  let json := out.stdout
+  if json.trimAscii.toString.isEmpty || json.trimAscii.toString == "[]" then return none
+  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
+  let tbl := s!"tc_src_{n}"
+  let tmpFile ← Tc.tmpPath s!"src-enter-{n}.json"
+  IO.FS.writeFile tmpFile json
+  let sql := expand cfg.enterSql #[("src", tmpFile)]
+  let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {sql}"
+  try IO.FS.removeFile tmpFile catch _ => pure ()
+  -- Apply TRY_CAST for columns if enterTypesSql is configured
+  if !cfg.enterTypesSql.isEmpty then
+    let typesSql := expand cfg.enterTypesSql #[("name", escSql name)]
+    let castCols : IO Unit := do
+      let qr ← Adbc.query typesSql
+      let nr ← Adbc.nrows qr
+      for i in [:nr.toNat] do
+        let colName ← Adbc.cellStr qr i.toUInt64 0
+        let colType ← Adbc.cellStr qr i.toUInt64 1
+        if colType != "VARCHAR" && !colName.isEmpty then
+          let alter := s!"ALTER TABLE {tbl} ALTER COLUMN \"{colName}\" TYPE {colType} USING TRY_CAST(\"{colName}\" AS {colType})"
+          try let _ ← Adbc.query alter catch _ => pure ()
+    try castCols catch e => Log.write "src" s!"enter types: {e}"
+  let q : Prql.Query := { base := s!"from {tbl}" }
+  AdbcTable.requery q (← AdbcTable.queryCount q)
+
+-- | Run status SQL: look up column description
+def Config.runStatus (cfg : Config) (path colName : String) : IO String := do
+  if cfg.statusSql.isEmpty then return ""
+  let table := (path.drop cfg.pfx.length).toString
+  if table.isEmpty then return ""
+  try
+    let sql := expand cfg.statusSql #[("table", escSql table), ("col", escSql colName)]
+    Adbc.cellStr (← Adbc.query sql) 0 0
+  catch _ => pure ""
+
+-- | Run enrich SQL: add column descriptions to meta table
+def Config.runEnrich (cfg : Config) (metaTblName tableName : String) : IO Unit := do
+  if cfg.enrichSql.isEmpty then return
+  let stmts := cfg.enrichSql.splitOn ";" |>.map (·.trimAscii.toString) |>.filter (!·.isEmpty)
+  for stmt in stmts do
+    let sql := expand stmt #[("meta", metaTblName), ("table", escSql tableName)]
+    try let _ ← Adbc.query sql catch e => Log.write "enrich" s!"error: {e}"
 
 end Tc.SourceConfig

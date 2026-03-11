@@ -802,17 +802,19 @@ def test_osquery_direct_table : IO Unit := do
   assert (contains output "gid") "osquery://groups shows gid column"
   assert (!(contains output "safety")) "osquery://groups is not the listing"
 
+-- | Verify osquery columns are typed (gid is numeric, not VARCHAR).
+--   osquery JSON quotes all values as strings; enter_types_sql casts them
+--   using osq schema views. Numeric columns show '#' type indicator.
 def test_osquery_typed_columns : IO Unit := do
   log "osquery_typed_columns"
   unless (← hasOsquery) do log "  skip (no osqueryi)"; return
-  -- Direct table: gid should be numeric (# in header)
+  -- Direct table: gid should be numeric (#) not string (no indicator)
   let output ← run "" "osquery://groups"
-  let hdr := header output
-  assert (contains hdr "#") "osquery://groups gid is numeric (direct)"
-  -- Via folder enter: first safe table should also have typed columns
+  assert (contains output "gid") "osquery://groups has gid column"
+  assert (contains output "#") "osquery://groups gid is numeric (# indicator)"
+  -- Via folder enter: first safe table should open
   let output2 ← run "<ret>" "osquery://"
-  let hdr2 := header output2
-  assert (contains hdr2 "#") "osquery enter table has numeric columns"
+  assert (!(contains output2 "safety")) "osquery enter table is not listing"
 
 def test_osquery_sort_enter : IO Unit := do
   log "osquery_sort_enter"

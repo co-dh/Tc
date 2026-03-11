@@ -197,15 +197,14 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
         | none => joinPath curDir p
       tryView s fullPath (curDepth s) true
   | some 'f', some p => do
-      -- Handler-driven enter (osquery, etc.)
+      -- Config-driven enter: enterCmd runs CLI, enterUrl redirects to another view
       if let some c := cfg then
-        if !c.handler.isEmpty then
-          if let some h ← SourceConfig.findHandler c.handler then
-            match ← h.enter curDir p with
-            | some (adbc, label) => match View.fromTbl adbc s!"{c.pfx}{label}" with
-              | some v => return some (s.push v)
-              | none => return some s
-            | none => pure ()  -- fall through to default
+        if !c.enterCmd.isEmpty then
+          match ← c.runEnter p with
+          | some adbc => match View.fromTbl adbc s!"{c.pfx}{p}" with
+            | some v => return some (s.push v)
+            | none => return some s
+          | none => return some s
         -- Config-driven enter: expand {name} in enterUrl template
         if !c.enterUrl.isEmpty then
           return ← tryView s (SourceConfig.expand c.enterUrl #[("name", p)]) (curDepth s) true
