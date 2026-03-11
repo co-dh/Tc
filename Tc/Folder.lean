@@ -7,7 +7,6 @@ import Tc.View
 import Tc.Term
 import Tc.SourceConfig
 import Tc.Data.ADBC.Ops
-import Tc.Osquery
 import Tc.Remote
 
 namespace Tc.Folder
@@ -128,13 +127,9 @@ private def mkViewFromAdbc (adbc : AdbcTable) (path : String) (depth : Nat) (dis
   View.fromTbl (adbc) path (grp := grp) |>.map fun v =>
     { v with vkind := .fld path depth, disp }
 
--- | Create folder view
+-- | Create folder view — config-driven listing, local fallback
 def mkView (path : String) (depth : Nat) : IO (Option (View AdbcTable)) := do
-  if Osquery.isOsquery path then
-    match ← Osquery.list path with
-    | some (adbc, disp) => pure (mkViewFromAdbc adbc path depth disp (grp := #["name"]))
-    | none => pure none
-  else match ← SourceConfig.findSource path with
+  match ← SourceConfig.findSource path with
   | some cfg =>
     match ← cfg.runList path with
     | some adbc =>
@@ -142,6 +137,7 @@ def mkView (path : String) (depth : Nat) : IO (Option (View AdbcTable)) := do
       pure (mkViewFromAdbc adbc path depth (Remote.dispName path) (grp := grp))
     | none => pure none
   | none =>
+    -- Local filesystem fallback
     let rp ← IO.Process.output { cmd := "realpath", args := #[path] }
     let absPath := if rp.exitCode == 0 then rp.stdout.trimAscii.toString else path
     let disp := absPath.splitOn "/" |>.getLast? |>.getD absPath
@@ -175,14 +171,6 @@ private def tryView (s : ViewStack AdbcTable) (path : String) (depth : Nat) (pus
 private def curDepth (s : ViewStack AdbcTable) : Nat :=
   match s.cur.vkind with | .fld _ d => d | _ => 1
 
--- | Open osquery table: query safe tables, show schema for dangerous ones
-private def openOsqueryTable (s : ViewStack AdbcTable) (table : String) : IO (Option (ViewStack AdbcTable)) := do
-  match ← Osquery.enterTable table with
-  | some (adbc, label) => match View.fromTbl (adbc) s!"osquery://{label}" with
-    | some v => pure (some (s.push v))
-    | none => pure none
-  | none => pure none
-
 -- | Enter directory or view file based on current row
 def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
@@ -196,7 +184,6 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   match ← curType s.cur, ← curPath s.cur with
   | some 'd', some p =>
     if p == ".." || p.endsWith "/.." then
-      -- navigate to parent
       match cfg with
       | some c => match c.parent curDir with
         | some par => tryView s par 1 false
@@ -205,19 +192,21 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
         | some s' => pure (some s')
         | none => tryView s ".." (curDepth s) false
     else
-      -- enter child directory
       let fullPath := match cfg with
         | some c => joinPath curDir (if c.dirSuffix then p ++ "/" else p)
         | none => joinPath curDir p
       tryView s fullPath (curDepth s) true
-  | some 'f', some p =>
-    if Osquery.isOsquery curDir then
-      match ← openOsqueryTable s p with
-      | some s' => pure (some s')
-      | none => pure (some s)
-    else do
-      -- Config-driven enter: expand {name} in enterUrl template
+  | some 'f', some p => do
+      -- Handler-driven enter (osquery, etc.)
       if let some c := cfg then
+        if !c.handler.isEmpty then
+          if let some h ← SourceConfig.findHandler c.handler then
+            match ← h.enter curDir p with
+            | some (adbc, label) => match View.fromTbl adbc s!"{c.pfx}{label}" with
+              | some v => return some (s.push v)
+              | none => return some s
+            | none => pure ()  -- fall through to default
+        -- Config-driven enter: expand {name} in enterUrl template
         if !c.enterUrl.isEmpty then
           return ← tryView s (SourceConfig.expand c.enterUrl #[("name", p)]) (curDepth s) true
       let fullPath := joinPath curDir p

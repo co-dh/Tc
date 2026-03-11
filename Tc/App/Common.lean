@@ -1,6 +1,8 @@
 -- App: app state, dispatch, effect runner, main loop, entry point
 import Tc.Filter
 import Tc.Folder
+import Tc.Osquery
+import Tc.SourceConfig
 import Tc.TmpDir
 import Tc.Meta
 import Tc.Plot
@@ -86,21 +88,18 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles
   let a := { a with stk := a.stk.setCur v', vs := vs' }
   renderTabLine a.stk.tabNames 0
-  -- Show osquery column description on status line
-  if a.stk.cur.path.startsWith "osquery://" then do
-    let raw := (a.stk.cur.path.drop 10).toString
-    let tableName := if raw.startsWith "schema:" then (raw.drop 7).toString else raw
-    if !tableName.isEmpty then
-      let colName := a.stk.cur.nav.colNames.getD a.stk.cur.nav.curColIdx ""
-      let desc ← Osquery.colDesc tableName colName
-      if !desc.isEmpty then
-        let h ← Term.height; let w ← Term.width
-        -- Rewrite status line: colName  desc  ...  right_stats
-        -- We only overwrite the left portion with "colName  desc"
-        let label := colName ++ ": " ++ desc
-        let maxLen := w.toNat * 2 / 3  -- leave room for right-aligned stats
-        let label := if label.length > maxLen then (label.take maxLen).toString ++ "…" else label
-        Term.print 0 (h - 1) Term.cyan Term.default label
+  -- Show handler-provided column description on status line
+  if let some cfg ← SourceConfig.findSource a.stk.cur.path then
+    if !cfg.handler.isEmpty then
+      if let some h ← SourceConfig.findHandler cfg.handler then
+        let colName := a.stk.cur.nav.colNames.getD a.stk.cur.nav.curColIdx ""
+        let desc ← h.statusInfo a.stk.cur.path colName
+        if !desc.isEmpty then
+          let ht ← Term.height; let w ← Term.width
+          let label := colName ++ ": " ++ desc
+          let maxLen := w.toNat * 2 / 3
+          let label := if label.length > maxLen then (label.take maxLen).toString ++ "…" else label
+          Term.print 0 (ht - 1) Term.cyan Term.default label
   if a.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat a.stk.cur.vkind
   -- Preview box for truncated cell text (skip in test mode)
   if !test then do
@@ -178,6 +177,7 @@ def appMain (args : List String) : IO Unit := do
   let ok ← try AdbcTable.init catch e => IO.eprintln s!"Backend init error: {e}"; return
   if !ok then IO.eprintln "Backend init failed"; return
   try SourceConfig.attachDb catch e => Log.write "init" s!"attachDb: {e}"
+  SourceConfig.registerHandler "osquery" Osquery.handler
   if pipeMode && path?.isNone then
     if let some a ← runTsv (← Tc.TextParse.fromStdin) "stdin" true testMode theme keys then
       outputTable a
@@ -187,15 +187,19 @@ def appMain (args : List String) : IO Unit := do
     let srcCfg ← SourceConfig.findSource path
     if path.isEmpty || srcCfg.isSome then
       let p := if path.isEmpty then "." else path
-      if p.startsWith "osquery://" then
-        let table := (p.drop 10).toString
-        if !table.isEmpty then
-          match ← Osquery.enterTable table with
-          | some (adbc, label) => match View.fromTbl adbc s!"osquery://{label}" with
-            | some v => let _ ← runApp v pipeMode testMode theme keys
-            | none => IO.eprintln s!"Empty osquery table: {table}"
-          | none => IO.eprintln s!"Cannot query osquery table: {table}"
-          return
+      -- Handler-driven direct entry (e.g. osquery://groups) — run setup first
+      if let some cfg := srcCfg then
+        if !cfg.handler.isEmpty && !cfg.pfx.isEmpty then
+          if let some h ← SourceConfig.findHandler cfg.handler then
+            let rest := (p.drop cfg.pfx.length).toString
+            if !rest.isEmpty then
+              SourceConfig.runSetup cfg
+              match ← h.enter "" rest with
+              | some (adbc, label) => match View.fromTbl adbc s!"{cfg.pfx}{label}" with
+                | some v => let _ ← runApp v pipeMode testMode theme keys
+                | none => IO.eprintln s!"Empty: {p}"
+              | none => IO.eprintln s!"Cannot open: {p}"
+              return
       match ← Folder.mkView p 1 with
       | some v => let _ ← runApp v pipeMode testMode theme keys
       | none => IO.eprintln s!"Cannot browse: {p}"

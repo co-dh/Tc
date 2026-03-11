@@ -2,12 +2,14 @@
 -- Template placeholders: {1}..{9} = path parts, {N+} = parts N onward joined by /,
 -- {path}, {name}, {tmp}, {extra}, {src} = JSON temp file (in list_sql only).
 -- {home} is expanded at load time.
+-- handler: name of Lean-side Handler (osquery, local). Empty = use listCmd/listSql.
 
 CREATE TABLE IF NOT EXISTS tc_sources (
   pfx VARCHAR, min_parts INTEGER, list_cmd VARCHAR,
   list_sql VARCHAR, download_cmd VARCHAR, needs_download BOOLEAN,
   dir_suffix BOOLEAN, parent_fallback VARCHAR,
-  setup_cmd VARCHAR, setup_sql VARCHAR, grp VARCHAR, enter_url VARCHAR
+  setup_cmd VARCHAR, setup_sql VARCHAR, grp VARCHAR, enter_url VARCHAR,
+  handler VARCHAR
 );
 
 INSERT INTO tc_sources VALUES
@@ -25,7 +27,7 @@ INSERT INTO tc_sources VALUES
     WHERE unnest.Prefix IS NOT NULL',
    'aws s3 cp {extra} {path} {tmp}/{name}',
    true, true, '',
-   '', '', '', ''),
+   '', '', '', '', ''),
 
   -- HF dataset browser: curl HF Hub API, DuckDB reads via httpfs
   ('hf://datasets/', 5,
@@ -34,7 +36,7 @@ INSERT INTO tc_sources VALUES
     FROM read_json_auto(''{src}'')',
    'curl -sfL -o {tmp}/{name} https://huggingface.co/datasets/{1}/{2}/resolve/main/{3+}',
    false, true, 'hf://',
-   '', '', '', ''),
+   '', '', '', '', ''),
 
   -- HF root: dataset listing from pre-populated DuckDB
   ('hf://', 0,
@@ -45,13 +47,21 @@ INSERT INTO tc_sources VALUES
    false, false, '',
    'python3 scripts/hf_datasets.py',
    'ATTACH ''{home}/.cache/tc/hf_datasets.duckdb'' AS hf (READ_ONLY)',
-   'id', 'hf://datasets/{name}/'),
+   'id', 'hf://datasets/{name}/', ''),
 
   -- Generic REST API: curl any JSON endpoint
-  -- Usage: tc rest://https://api.github.com/users/octocat/repos
   ('rest://', 1,
    'curl -sf {1+}',
    'SELECT * FROM read_json_auto(''{src}'', auto_detect=true)',
    '',
    false, false, '',
-   '', '', '', '');
+   '', '', '', '', ''),
+
+  -- Osquery: setup populates schema DB, list queries it directly
+  ('osquery://', 0,
+   '',
+   'SELECT name, safety, description FROM osq.listing ORDER BY name',
+   '', false, false, '',
+   'python3 scripts/osquery_tables.py',
+   'ATTACH ''{home}/.cache/tc/osquery.duckdb'' AS osq (READ_ONLY)',
+   'name', '', 'osquery');

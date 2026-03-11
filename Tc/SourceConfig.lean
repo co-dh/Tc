@@ -13,9 +13,9 @@ import Tc.TmpDir
 
 namespace Tc.SourceConfig
 
--- | Config entry for a remote source
+-- | Config entry for a source
 structure Config where
-  pfx            : String      -- URI prefix: "s3://", "hf://", etc.
+  pfx            : String      -- URI prefix: "s3://", "hf://", etc. Empty = catch-all.
   minParts       : Nat         -- min URI parts before parent returns none
   listCmd        : String      -- shell cmd template → stdout JSON. Empty = run listSql directly.
   listSql        : String      -- SQL to transform JSON (with {src}) or query directly (no {src})
@@ -27,6 +27,23 @@ structure Config where
   setupSql       : String      -- SQL to run before first listing (e.g. ATTACH). Empty = skip.
   grp            : String      -- default group column name. Empty = none.
   enterUrl       : String      -- URL template for entering file rows. Empty = default.
+  handler        : String      -- Lean-side handler name. Empty = use listCmd/listSql.
+
+-- | Handler for sources that need Lean-side logic beyond config (enter, status, enrichMeta).
+--   Listing is always config-driven via listCmd/listSql.
+structure Handler where
+  enter      : String → String → IO (Option (AdbcTable × String)) := fun _ _ => pure none
+  statusInfo : String → String → IO String := fun _ _ => pure ""
+  enrichMeta : String → String → IO Unit := fun _ _ => pure ()
+
+-- | Handler registry: name → Handler
+initialize handlers : IO.Ref (Array (String × Handler)) ← IO.mkRef #[]
+
+def registerHandler (name : String) (h : Handler) : IO Unit :=
+  handlers.modify (·.push (name, h))
+
+def findHandler (name : String) : IO (Option Handler) :=
+  (·.find? (·.1 == name) |>.map (·.2)) <$> handlers.get
 
 -- | Global flag: use --no-sign-request for S3 (set via +n arg)
 initialize noSign : IO.Ref Bool ← IO.mkRef false
@@ -117,6 +134,7 @@ private def configFromRow (qr : Adbc.QueryResult) (row : Nat) : IO Config := do
     setupSql       := ← r.str "setup_sql"
     grp            := ← r.str "grp"
     enterUrl       := ← r.str "enter_url"
+    handler        := ← r.str "handler"
   }
 
 -- | Find config for a path by prefix match (longest prefix wins)
@@ -140,7 +158,7 @@ def Config.parent (cfg : Config) (path : String) : Option String :=
 initialize setupDone : IO.Ref (Array String) ← IO.mkRef #[]
 
 -- | Run one-time setup for a config (setupCmd + setupSql), idempotent
-private def runSetup (cfg : Config) : IO Unit := do
+def runSetup (cfg : Config) : IO Unit := do
   let done ← setupDone.get
   if done.contains cfg.pfx then return
   let homeDir := (← IO.getEnv "HOME").getD "/tmp"
@@ -154,9 +172,9 @@ private def runSetup (cfg : Config) : IO Unit := do
     let _ ← Adbc.query sql
   setupDone.modify (·.push cfg.pfx)
 
--- | Run listing command, ingest into DuckDB temp table, return AdbcTable
+-- | Run listing: dispatch to handler if set, otherwise use listCmd/listSql
 def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
-  Log.write "src" s!"runList: pfx={cfg.pfx} path={path} listCmd={cfg.listCmd}"
+  Log.write "src" s!"runList: pfx={cfg.pfx} path={path} handler={cfg.handler} listCmd={cfg.listCmd}"
   statusMsg s!"Loading {path} ..."
   runSetup cfg
   let n ← memTblCounter.modifyGet fun n => (n, n + 1)

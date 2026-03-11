@@ -6,11 +6,10 @@
 import Tc.Data.ADBC.Table
 import Tc.Error
 import Tc.Render
+import Tc.SourceConfig
 import Tc.TmpDir
 
 namespace Tc.Osquery
-
-def isOsquery (path : String) : Bool := path.startsWith "osquery://"
 
 -- | Check if a table is dangerous (requires specific input) via osq.listing
 private def isDangerous (table : String) : IO Bool := do
@@ -80,73 +79,27 @@ initialize schemaState : IO.Ref (Option Bool) ← IO.mkRef none
 
 private def schemaAvail : IO Bool := (·.getD false) <$> schemaState.get
 
--- | Attach the schema DB (created by scripts/osquery_tables.py). Runs once per session.
+-- | Check if osq schema is already attached and populated (e.g. by SourceConfig.runSetup).
+--   If so, mark schemaState as available.
 def ensureSchema : IO Unit := do
   if (← schemaState.get).isSome then return
   schemaState.set (some false)
-  let homeDir := (← IO.getEnv "HOME").getD "/tmp"
-  let dbPath := s!"{homeDir}/.cache/tc/osquery.duckdb"
-  try
-    let _ ← Adbc.query s!"ATTACH '{dbPath}' AS osq"
-  catch _ =>
-    try IO.FS.removeFile dbPath catch _ => pure ()
-    try let _ ← Adbc.query s!"ATTACH '{dbPath}' AS osq"
-    catch e => Log.write "osquery" s!"ATTACH failed: {e}"; return
+  -- Check if already attached by config setup_sql
   let populated : Bool ← try
     let qr ← Adbc.query "SELECT count(*) FROM osq.listing"
     pure (decide ((← Adbc.cellInt qr 0 0).toNat > 0))
   catch _ => pure false
   if populated then
     schemaState.set (some true)
-    Log.write "osquery" s!"Schema DB attached ({dbPath})"
+    Log.write "osquery" "Schema DB available (attached by config)"
   else
-    Log.write "osquery" s!"Schema DB empty or missing ({dbPath})"
+    Log.write "osquery" "Schema DB not available"
 
 /-! ## Public API -/
 
--- | Run the Python script to populate the osquery DB
-private def runPythonSetup : IO Bool := do
-  let exe ← IO.appPath
-  let exeDir := exe.parent.getD "."
-  let candidates := #[
-    s!"{exeDir}/scripts/osquery_tables.py",
-    s!"{exeDir}/../scripts/osquery_tables.py",
-    s!"{exeDir}/../../scripts/osquery_tables.py"
-  ]
-  let mut script := "scripts/osquery_tables.py"
-  for c in candidates do
-    if ← (c : System.FilePath).pathExists then script := c; break
-  let r ← IO.Process.output { cmd := "python3", args := #[script] }
-  if r.exitCode != 0 then
-    Log.write "osquery" s!"Python script failed: {r.stderr.trimAscii.toString}"
-    errorPopup s!"osquery listing failed: {r.stderr.trimAscii.toString}"
-    return false
-  return true
-
--- | List all osquery tables from the pre-populated DB
-def list (_path : String) : IO (Option (AdbcTable × String)) := do
-  statusMsg "Loading osquery tables ..."
-  if !(← runPythonSetup) then return none
-  ensureSchema
-  if !(← schemaAvail) then return none
-  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
-  let tbl := s!"tc_osq_{n}"
-  try
-    let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS SELECT name, safety, rows, description FROM osq.listing"
-    let q : Prql.Query := { base := s!"from {tbl}" }
-    let total ← AdbcTable.queryCount q
-    (·.map (·, "osquery://")) <$> AdbcTable.requery q total
-  catch e =>
-    Log.write "osquery" s!"list error: {e}"
-    errorPopup e.toString
-    return none
-
--- | osquery parent: only root level, no hierarchy
-def parent (_path : String) : Option String := none
-
 -- | Enter a table: safe → query it, dangerous → show schema
 def enterTable (table : String) : IO (Option (AdbcTable × String)) := do
-  if !(← schemaAvail) then let _ ← runPythonSetup; ensureSchema
+  ensureSchema
   if ← isDangerous table then
     statusMsg s!"Loading schema for {table} ..."
     let json ← osqueryi s!"pragma table_info('{table}')"
@@ -175,5 +128,14 @@ def colDesc (tableName colName : String) : IO String := do
   try
     Adbc.cellStr (← Adbc.query s!"SELECT comment FROM duckdb_columns() WHERE schema_name = 'osq' AND table_name = '{escSql tableName}' AND column_name = '{escSql colName}' LIMIT 1") 0 0
   catch _ => pure ""
+
+-- | SourceConfig handler for osquery:// (enter, status, enrichMeta only; listing is config-driven)
+def handler : SourceConfig.Handler where
+  enter := fun _curDir table => enterTable table
+  statusInfo := fun path colName => do
+    let raw := (path.drop 10).toString  -- drop "osquery://"
+    let tableName := if raw.startsWith "schema:" then (raw.drop 7).toString else raw
+    if tableName.isEmpty then pure "" else colDesc tableName colName
+  enrichMeta := enrichMeta
 
 end Tc.Osquery
