@@ -165,8 +165,9 @@ def count_all_tables(names):
 
 
 def populate_views(schema):
-    """Create a view per osquery table with COMMENT ON COLUMN for descriptions."""
-    # Build all SQL in one batch: DROP old views, CREATE new ones, add comments
+    """Create a typed stub view per osquery table with COMMENT ON COLUMN for descriptions.
+    Stub views define column types (used by runEnter for TRY_CAST) and store comments
+    (used by status bar and meta enrich via duckdb_columns())."""
     stmts = ["CREATE SCHEMA IF NOT EXISTS osq"]
     # Drop existing views first
     existing = duckdb_json(

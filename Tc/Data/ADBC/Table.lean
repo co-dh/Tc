@@ -175,10 +175,11 @@ def duckDBPrimaryKeys (table : String) : IO (Array String) := do
     pure keys
   catch _ => pure #[]
 
--- | Open a table from an attached .duckdb file
+-- | Open a table/view from an attached .duckdb file or schema-qualified name
 def fromDuckDBTable (table : String) : IO (Option (AdbcTable × Array String)) := do
   let keys ← duckDBPrimaryKeys table
-  let query : Prql.Query := { base := s!"from extdb.{table}" }
+  let qualName := if table.contains "." then table else s!"extdb.{table}"
+  let query : Prql.Query := { base := s!"from {qualName}" }
   let total ← queryCount query
   (·.map (·, keys)) <$> requery query total
 

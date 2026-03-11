@@ -2,17 +2,14 @@
 -- Template placeholders: {1}..{9} = path parts, {N+} = parts N onward joined by /,
 -- {path}, {name}, {tmp}, {extra}, {src} = JSON temp file (in list_sql only).
 -- {home} is expanded at load time.
--- enter_cmd/enter_sql: CLI+SQL for entering a file row (like list_cmd/list_sql but for enter).
--- status_sql: SQL template for column status info. Vars: {table}, {col}.
--- enrich_sql: SQL statements (;-separated) for meta enrichment. Vars: {meta}, {table}.
+-- script: shell cmd template for entering a file row (stdout = JSON rows). Empty = none.
 
 CREATE TABLE IF NOT EXISTS tc_sources (
   pfx VARCHAR, min_parts INTEGER, list_cmd VARCHAR,
   list_sql VARCHAR, download_cmd VARCHAR, needs_download BOOLEAN,
   dir_suffix BOOLEAN, parent_fallback VARCHAR,
   setup_cmd VARCHAR, setup_sql VARCHAR, grp VARCHAR, enter_url VARCHAR,
-  enter_cmd VARCHAR, enter_sql VARCHAR, enter_types_sql VARCHAR,
-  status_sql VARCHAR, enrich_sql VARCHAR
+  script VARCHAR
 );
 
 INSERT INTO tc_sources VALUES
@@ -31,8 +28,7 @@ INSERT INTO tc_sources VALUES
    'aws s3 cp {extra} {path} {tmp}/{name}',
    true, true, '',
    '', '', '', '',
-   '', '', '',
-   '', ''),
+   ''),
 
   -- HF dataset browser: curl HF Hub API, DuckDB reads via httpfs
   ('hf://datasets/', 5,
@@ -42,8 +38,7 @@ INSERT INTO tc_sources VALUES
    'curl -sfL -o {tmp}/{name} https://huggingface.co/datasets/{1}/{2}/resolve/main/{3+}',
    false, true, 'hf://',
    '', '', '', '',
-   '', '', '',
-   '', ''),
+   ''),
 
   -- HF root: dataset listing from pre-populated DuckDB
   ('hf://', 0,
@@ -55,8 +50,7 @@ INSERT INTO tc_sources VALUES
    'python3 scripts/hf_datasets.py',
    'ATTACH ''{home}/.cache/tc/hf_datasets.duckdb'' AS hf (READ_ONLY)',
    'id', 'hf://datasets/{name}/',
-   '', '', '',
-   '', ''),
+   ''),
 
   -- Generic REST API: curl any JSON endpoint
   ('rest://', 1,
@@ -65,10 +59,10 @@ INSERT INTO tc_sources VALUES
    '',
    false, false, '',
    '', '', '', '',
-   '', '', '',
-   '', ''),
+   ''),
 
-  -- Osquery: setup populates schema DB, list+enter+status+enrich all config-driven
+  -- Osquery: stub views in osq schema provide types + column comments.
+  -- Script runs osqueryi for data; types applied from stub view metadata.
   ('osquery://', 0,
    '',
    'SELECT name, safety, rows, description FROM osq.listing ORDER BY name',
@@ -76,8 +70,4 @@ INSERT INTO tc_sources VALUES
    'python3 scripts/osquery_tables.py',
    'ATTACH ''{home}/.cache/tc/osquery.duckdb'' AS osq (READ_ONLY)',
    'name', '',
-   'osqueryi --json "SELECT * FROM {name}"',
-   'SELECT * FROM read_json_auto(''{src}'')',
-   'SELECT column_name, data_type FROM duckdb_columns() WHERE schema_name = ''osq'' AND table_name = ''{name}''',
-   'SELECT comment FROM duckdb_columns() WHERE schema_name = ''osq'' AND table_name = ''{table}'' AND column_name = ''{col}'' LIMIT 1',
-   'ALTER TABLE {meta} ADD COLUMN IF NOT EXISTS description VARCHAR DEFAULT ''''; UPDATE {meta} SET description = COALESCE((SELECT comment FROM duckdb_columns() WHERE schema_name = ''osq'' AND table_name = ''{table}'' AND column_name = {meta}."column"), '''')');
+   'osqueryi --json "SELECT * FROM {name}"');

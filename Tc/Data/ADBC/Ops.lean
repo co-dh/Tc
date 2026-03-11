@@ -106,6 +106,35 @@ def queryMetaColNames (tblName : String) (rows : Array Nat) : IO (Array String) 
   let nr ← Adbc.nrows qr
   (Array.range nr.toNat).mapM fun r => Adbc.cellStr qr r.toUInt64 0
 
+-- | Extract table name from path: last component after last "://" prefix strip.
+--   "osquery://groups" → "groups", "duckdb://osq.groups" → "groups"
+private def pathTable (path : String) : String :=
+  match path.splitOn "://" with
+  | [_, rest] => rest.splitOn "/" |>.filter (!·.isEmpty) |>.getLast?.getD ""
+  | _ => ""
+
+-- | Get column comment from DuckDB metadata. Searches all attached databases for a matching table.
+def columnComment (path colName : String) : IO String := do
+  let tbl := pathTable path
+  if tbl.isEmpty then return ""
+  try
+    let sql := s!"SELECT comment FROM duckdb_columns() WHERE table_name='{escSql tbl}' AND column_name='{escSql colName}' AND comment IS NOT NULL LIMIT 1"
+    let qr ← Adbc.query sql
+    let n ← Adbc.nrows qr
+    if n == 0 then return ""
+    Adbc.cellStr qr 0 0
+  catch _ => return ""
+
+-- | Enrich meta table with column descriptions from DuckDB metadata. Returns true if enriched.
+def enrichComments (metaTbl path : String) : IO Bool := do
+  let tbl := pathTable path
+  if tbl.isEmpty then return false
+  try
+    let _ ← Adbc.query s!"ALTER TABLE {metaTbl} ADD COLUMN IF NOT EXISTS description VARCHAR DEFAULT ''"
+    let _ ← Adbc.query s!"UPDATE {metaTbl} SET description = COALESCE((SELECT comment FROM duckdb_columns() WHERE table_name='{escSql tbl}' AND column_name = {metaTbl}.\"column\" AND comment IS NOT NULL), '')"
+    return true
+  catch _ => return false
+
 end AdbcTable
 
 end Tc

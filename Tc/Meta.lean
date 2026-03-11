@@ -5,7 +5,6 @@
 -/
 import Tc.View
 import Tc.Data.ADBC.Ops
-import Tc.SourceConfig
 
 namespace Tc.Meta
 
@@ -17,17 +16,14 @@ private def metaTblName (s : ViewStack AdbcTable) : String :=
 -- | Push column metadata view onto stack
 def push (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let some adbc ← AdbcTable.queryMeta s.tbl | return none
-  -- Enrich meta with config-driven column descriptions (e.g. osquery)
-  if let some cfg ← SourceConfig.findSource s.cur.path then
-    if !cfg.enrichSql.isEmpty then
-      let tableName := (s.cur.path.drop cfg.pfx.length).toString
-      let metaBase := (adbc.query.base.drop 5).trimAscii.toString
-      cfg.runEnrich metaBase tableName
-      match ← AdbcTable.requery adbc.query with
-      | some adbc' => match View.fromTbl adbc' s.cur.path with
-        | some v => return some (s.push { v with vkind := .colMeta, disp := "meta" })
-        | none => return none
+  -- Enrich meta with DuckDB column comments (e.g. osquery views with COMMENT ON COLUMN)
+  let metaBase := (adbc.query.base.drop 5).trimAscii.toString
+  if ← AdbcTable.enrichComments metaBase s.cur.path then
+    match ← AdbcTable.requery adbc.query with
+    | some adbc' => match View.fromTbl adbc' s.cur.path with
+      | some v => return some (s.push { v with vkind := .colMeta, disp := "meta" })
       | none => return none
+    | none => return none
   match View.fromTbl adbc s.cur.path with
   | some v => return some (s.push { v with vkind := .colMeta, disp := "meta" })
   | none => return none

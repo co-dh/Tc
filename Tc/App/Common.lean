@@ -88,14 +88,12 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles
   let a := { a with stk := a.stk.setCur v', vs := vs' }
   renderTabLine a.stk.tabNames 0
-  -- Show config-driven column description on status line (cached to avoid per-frame DB query)
+  -- Show column description on status line from DuckDB column comments (cached)
   let colName := a.stk.cur.nav.colNames.getD a.stk.cur.nav.curColIdx ""
-  let (cachedPath, cachedCol, cachedDesc) := a.statusCache
+  let (cachedPath, cachedCol, _) := a.statusCache
   let a ← if cachedPath == a.stk.cur.path && cachedCol == colName then pure a
     else do
-      let desc ← match ← SourceConfig.findSource a.stk.cur.path with
-        | some cfg => if cfg.statusSql.isEmpty then pure "" else cfg.runStatus a.stk.cur.path colName
-        | none => pure ""
+      let desc ← AdbcTable.columnComment a.stk.cur.path colName
       pure { a with statusCache := (a.stk.cur.path, colName, desc) }
   let (_, _, desc) := a.statusCache
   if !desc.isEmpty then
@@ -191,9 +189,9 @@ def appMain (args : List String) : IO Unit := do
     let isDir ← (path : System.FilePath).isDir
     if path.isEmpty || srcCfg.isSome || isDir then
       let p := if path.isEmpty then "." else path
-      -- Config-driven direct entry (e.g. osquery://cpu_info) via enterCmd
+      -- Config-driven direct entry (e.g. tc osquery://groups)
       if let some cfg := srcCfg then
-        if !cfg.enterCmd.isEmpty && !cfg.pfx.isEmpty then
+        if !cfg.script.isEmpty && !cfg.pfx.isEmpty then
           let rest := (p.drop cfg.pfx.length).toString
           if !rest.isEmpty then
             match ← cfg.runEnter rest with

@@ -27,11 +27,7 @@ structure Config where
   setupSql       : String      -- SQL to run before first listing (e.g. ATTACH). Empty = skip.
   grp            : String      -- default group column name. Empty = none.
   enterUrl       : String      -- URL template for entering file rows. Empty = default.
-  enterCmd       : String      -- shell cmd template for entering items. Empty = no CLI enter.
-  enterSql       : String      -- SQL to transform enter cmd output (with {src}). Empty = skip.
-  enterTypesSql  : String      -- SQL returning (column_name, column_type) for TRY_CAST. Vars: {name}.
-  statusSql      : String      -- SQL template for column status info. Vars: {table}, {col}.
-  enrichSql      : String      -- SQL statements (;-separated) for meta enrichment. Vars: {meta}, {table}.
+  script         : String      -- shell cmd template for enter: stdout = JSON rows. Empty = none.
 
 -- | Global flag: use --no-sign-request for S3 (set via +n arg)
 initialize noSign : IO.Ref Bool ← IO.mkRef false
@@ -122,11 +118,7 @@ private def configFromRow (qr : Adbc.QueryResult) (row : Nat) : IO Config := do
     setupSql       := ← r.str "setup_sql"
     grp            := ← r.str "grp"
     enterUrl       := ← r.str "enter_url"
-    enterCmd       := ← r.str "enter_cmd"
-    enterSql       := ← r.str "enter_sql"
-    enterTypesSql  := ← r.str "enter_types_sql"
-    statusSql      := ← r.str "status_sql"
-    enrichSql      := ← r.str "enrich_sql"
+    script         := ← r.str "script"
   }
 
 -- | Find config for a path by prefix match (longest prefix wins)
@@ -246,57 +238,34 @@ def Config.resolve (cfg : Config) (path : String) : IO String := do
   if cfg.needsDownload then cfg.runDownload path
   else pure path
 
--- | Run enter command: CLI → JSON → enterSql → AdbcTable
+-- | Run enter: script cmd → JSON → DuckDB temp table, apply types from stub view
 def Config.runEnter (cfg : Config) (name : String) : IO (Option AdbcTable) := do
-  if cfg.enterCmd.isEmpty then return none
+  if cfg.script.isEmpty then return none
   runSetup cfg
-  let cmd := expand cfg.enterCmd #[("name", name)]
+  let vars := mkVars cfg (cfg.pfx ++ name) "" name ""
+  let cmd := expand cfg.script vars
   Log.write "src" s!"enter: {cmd}"
   let out ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
   if out.exitCode != 0 then
-    let errMsg := out.stderr.trimAscii.toString
-    Log.write "src" s!"enter failed (exit {out.exitCode}): {errMsg}"
+    Log.write "src" s!"enter failed: {out.stderr.trimAscii.toString}"
     return none
   let json := out.stdout
-  let trimmed := json.trimAscii.toString
-  if trimmed.isEmpty || trimmed == "[]" then return none
+  if json.trimAscii.toString.isEmpty || json.trimAscii.toString == "[]" then return none
   let tbl ← freshTbl
   let tmpFile ← Tc.tmpPath s!"src-enter-{tbl}.json"
   IO.FS.writeFile tmpFile json
-  let sql := expand cfg.enterSql #[("src", tmpFile)]
-  let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {sql}"
+  let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS SELECT * FROM read_json_auto('{tmpFile}')"
   try IO.FS.removeFile tmpFile catch _ => pure ()
-  -- Apply TRY_CAST for columns if enterTypesSql is configured
-  if !cfg.enterTypesSql.isEmpty then
-    let typesSql := expand cfg.enterTypesSql #[("name", escSql name)]
-    let castCols : IO Unit := do
-      let qr ← Adbc.query typesSql
-      let nr ← Adbc.nrows qr
-      for i in [:nr.toNat] do
-        let colName ← Adbc.cellStr qr i.toUInt64 0
-        let colType ← Adbc.cellStr qr i.toUInt64 1
-        if colType != "VARCHAR" && !colName.isEmpty then
-          let alter := s!"ALTER TABLE {tbl} ALTER COLUMN \"{colName}\" TYPE {colType} USING TRY_CAST(\"{colName}\" AS {colType})"
-          try let _ ← Adbc.query alter catch _ => pure ()
-    try castCols catch e => Log.write "src" s!"enter types: {e}"
+  -- Apply types from DuckDB stub view (e.g. osq.groups has typed columns)
+  let typeApply : IO Unit := do
+    let qr ← Adbc.query s!"SELECT column_name, data_type FROM duckdb_columns() WHERE table_name = '{name.replace "'" "''"}' AND data_type != 'VARCHAR'"
+    let nr ← Adbc.nrows qr
+    for i in [:nr.toNat] do
+      let colName ← Adbc.cellStr qr i.toUInt64 0
+      let colType ← Adbc.cellStr qr i.toUInt64 1
+      let alter := s!"ALTER TABLE {tbl} ALTER COLUMN \"{colName}\" TYPE {colType} USING TRY_CAST(\"{colName}\" AS {colType})"
+      try let _ ← Adbc.query alter catch _ => pure ()
+  try typeApply catch e => Log.write "src" s!"enter types: {e}"
   fromTbl tbl
-
--- | Run status SQL: look up column description
-def Config.runStatus (cfg : Config) (path colName : String) : IO String := do
-  if cfg.statusSql.isEmpty then return ""
-  let table := (path.drop cfg.pfx.length).toString
-  if table.isEmpty then return ""
-  try
-    let sql := expand cfg.statusSql #[("table", escSql table), ("col", escSql colName)]
-    Adbc.cellStr (← Adbc.query sql) 0 0
-  catch _ => pure ""
-
--- | Run enrich SQL: add column descriptions to meta table
-def Config.runEnrich (cfg : Config) (metaTblName tableName : String) : IO Unit := do
-  if cfg.enrichSql.isEmpty then return
-  let stmts := cfg.enrichSql.splitOn ";" |>.map (·.trimAscii.toString) |>.filter (!·.isEmpty)
-  for stmt in stmts do
-    let sql := expand stmt #[("meta", metaTblName), ("table", escSql tableName)]
-    try let _ ← Adbc.query sql catch e => Log.write "enrich" s!"error: {e}"
 
 end Tc.SourceConfig
