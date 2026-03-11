@@ -25,6 +25,7 @@ structure AppState where
   theme : Theme.State
   info  : UI.Info.State
   prevScroll : Nat := 0
+  statusCache : String × String × String := ("", "", "")  -- (path, col, desc) — avoids per-frame DB query
 
 namespace AppState
 
@@ -87,17 +88,22 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles
   let a := { a with stk := a.stk.setCur v', vs := vs' }
   renderTabLine a.stk.tabNames 0
-  -- Show config-driven column description on status line
-  if let some cfg ← SourceConfig.findSource a.stk.cur.path then
-    if !cfg.statusSql.isEmpty then
-      let colName := a.stk.cur.nav.colNames.getD a.stk.cur.nav.curColIdx ""
-      let desc ← cfg.runStatus a.stk.cur.path colName
-      if !desc.isEmpty then
-        let ht ← Term.height; let w ← Term.width
-        let label := colName ++ ": " ++ desc
-        let maxLen := w.toNat * 2 / 3
-        let label := if label.length > maxLen then (label.take maxLen).toString ++ "…" else label
-        Term.print 0 (ht - 1) Term.cyan Term.default label
+  -- Show config-driven column description on status line (cached to avoid per-frame DB query)
+  let colName := a.stk.cur.nav.colNames.getD a.stk.cur.nav.curColIdx ""
+  let (cachedPath, cachedCol, cachedDesc) := a.statusCache
+  let a ← if cachedPath == a.stk.cur.path && cachedCol == colName then pure a
+    else do
+      let desc ← match ← SourceConfig.findSource a.stk.cur.path with
+        | some cfg => if cfg.statusSql.isEmpty then pure "" else cfg.runStatus a.stk.cur.path colName
+        | none => pure ""
+      pure { a with statusCache := (a.stk.cur.path, colName, desc) }
+  let (_, _, desc) := a.statusCache
+  if !desc.isEmpty then
+    let ht ← Term.height; let w ← Term.width
+    let label := colName ++ ": " ++ desc
+    let maxLen := w.toNat * 2 / 3
+    let label := if label.length > maxLen then (label.take maxLen).toString ++ "…" else label
+    Term.print 0 (ht - 1) Term.cyan Term.default label
   if a.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat a.stk.cur.vkind
   -- Preview box for truncated cell text (skip in test mode)
   if !test then do
@@ -140,7 +146,7 @@ def parseArgs (args : List String) : Option String × Array Char × Bool × Bool
 def runApp (v : View AdbcTable) (pipe test : Bool) (th : Theme.State) (ks : Array Char) : IO AppState := do
   if pipe then let _ ← Term.reopenTty
   let _ ← Term.init
-  let a' ← mainLoop ⟨⟨v, []⟩, .default, th, {}, 0⟩ test ks
+  let a' ← mainLoop ⟨⟨v, []⟩, .default, th, {}, 0, ("", "", "")⟩ test ks
   if !test then Term.shutdown
   pure a'
 

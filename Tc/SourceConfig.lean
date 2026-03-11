@@ -175,27 +175,41 @@ def runSetup (cfg : Config) : IO Unit := do
     let _ ← Adbc.query sql
   setupDone.modify (·.push cfg.pfx)
 
+-- | Allocate a fresh temp table name
+private def freshTbl : IO String := do
+  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
+  pure s!"tc_src_{n}"
+
+-- | Build AdbcTable from a temp table name
+private def fromTbl (tbl : String) : IO (Option AdbcTable) := do
+  let q : Prql.Query := { base := s!"from {tbl}" }
+  AdbcTable.requery q (← AdbcTable.queryCount q)
+
+-- | Extract last path component as a filename
+private def nameFromPath (path : String) : String :=
+  path.splitOn "/" |>.filter (·.length > 0) |>.getLast? |>.getD "file"
+
+-- | Build template vars for a config + path (shared by runList/runDownload)
+private def Config.cmdVars (cfg : Config) (path : String) : IO (Array (String × String)) := do
+  let tmpDir ← Tc.tmpPath "src"
+  let _ ← Log.run "src" "mkdir" #["-p", tmpDir]
+  let extra ← if cfg.pfx == "s3://" then s3Extra else pure ""
+  pure (mkVars cfg path tmpDir (nameFromPath path) extra)
+
 -- | Run listing: CLI cmd → JSON → listSql, or direct SQL mode
 def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
   Log.write "src" s!"runList: pfx={cfg.pfx} path={path} listCmd={cfg.listCmd}"
   statusMsg s!"Loading {path} ..."
   runSetup cfg
-  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
-  let tbl := s!"tc_src_{n}"
+  let tbl ← freshTbl
   if cfg.listCmd.isEmpty then
     -- Direct SQL mode: run listSql against existing tables (e.g. HF root)
-    let sql := s!"CREATE TEMP TABLE {tbl} AS {cfg.listSql}"
-    let _ ← Adbc.query sql
-    let q : Prql.Query := { base := s!"from {tbl}" }
-    AdbcTable.requery q (← AdbcTable.queryCount q)
+    let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {cfg.listSql}"
+    fromTbl tbl
   else
     -- CLI mode: run command, save JSON, transform via listSql
     let p := if path.endsWith "/" then path else s!"{path}/"
-    let tmpDir ← Tc.tmpPath "src"
-    let _ ← Log.run "src" "mkdir" #["-p", tmpDir]
-    let name := path.splitOn "/" |>.filter (·.length > 0) |>.getLast? |>.getD "file"
-    let extra ← if cfg.pfx == "s3://" then s3Extra else pure ""
-    let vars := mkVars cfg p tmpDir name extra
+    let vars ← cfg.cmdVars p
     let cmd := expand cfg.listCmd vars
     Log.write "src" s!"list: {cmd}"
     let out ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
@@ -213,24 +227,19 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
     let parentSql := if (cfg.parent path |>.isSome) && ((cfg.listSql.splitOn "as type").length > 1)
       then s!" UNION ALL SELECT '..' as name, 0 as size, '' as date, 'dir' as type"
       else ""
-    let sql := s!"CREATE TEMP TABLE {tbl} AS {listSql}{parentSql}"
-    let _ ← Adbc.query sql
+    let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {listSql}{parentSql}"
     try IO.FS.removeFile tmpFile catch _ => pure ()
-    let q : Prql.Query := { base := s!"from {tbl}" }
-    AdbcTable.requery q (← AdbcTable.queryCount q)
+    fromTbl tbl
 
 -- | Download a remote file to local temp path
 def Config.runDownload (cfg : Config) (path : String) : IO String := do
   statusMsg s!"Downloading {path} ..."
-  let tmpDir ← Tc.tmpPath "src"
-  let _ ← Log.run "src" "mkdir" #["-p", tmpDir]
-  let name := path.splitOn "/" |>.filter (·.length > 0) |>.getLast? |>.getD "file"
-  let extra ← if cfg.pfx == "s3://" then s3Extra else pure ""
-  let vars := mkVars cfg path tmpDir name extra
+  let vars ← cfg.cmdVars path
   let cmd := expand cfg.downloadCmd vars
   Log.write "src" s!"download: {cmd}"
   let _ ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
-  pure s!"{tmpDir}/{name}"
+  let tmpDir ← Tc.tmpPath "src"
+  pure s!"{tmpDir}/{nameFromPath path}"
 
 -- | Resolve data file path: download if needed, or return URI for DuckDB
 def Config.resolve (cfg : Config) (path : String) : IO String := do
@@ -249,10 +258,10 @@ def Config.runEnter (cfg : Config) (name : String) : IO (Option AdbcTable) := do
     Log.write "src" s!"enter failed (exit {out.exitCode}): {errMsg}"
     return none
   let json := out.stdout
-  if json.trimAscii.toString.isEmpty || json.trimAscii.toString == "[]" then return none
-  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
-  let tbl := s!"tc_src_{n}"
-  let tmpFile ← Tc.tmpPath s!"src-enter-{n}.json"
+  let trimmed := json.trimAscii.toString
+  if trimmed.isEmpty || trimmed == "[]" then return none
+  let tbl ← freshTbl
+  let tmpFile ← Tc.tmpPath s!"src-enter-{tbl}.json"
   IO.FS.writeFile tmpFile json
   let sql := expand cfg.enterSql #[("src", tmpFile)]
   let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {sql}"
@@ -270,8 +279,7 @@ def Config.runEnter (cfg : Config) (name : String) : IO (Option AdbcTable) := do
           let alter := s!"ALTER TABLE {tbl} ALTER COLUMN \"{colName}\" TYPE {colType} USING TRY_CAST(\"{colName}\" AS {colType})"
           try let _ ← Adbc.query alter catch _ => pure ()
     try castCols catch e => Log.write "src" s!"enter types: {e}"
-  let q : Prql.Query := { base := s!"from {tbl}" }
-  AdbcTable.requery q (← AdbcTable.queryCount q)
+  fromTbl tbl
 
 -- | Run status SQL: look up column description
 def Config.runStatus (cfg : Config) (path colName : String) : IO String := do
