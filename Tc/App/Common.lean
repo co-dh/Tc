@@ -173,16 +173,18 @@ def appMain (args : List String) : IO Unit := do
   let theme ← Theme.State.init
   try Term.loadExtColors (← IO.FS.readFile "ext_colors.csv")
   catch _ => pure ()  -- use C defaults if CSV not found
+  Log.setLogPath Log.path
   Log.write "init" s!"tmpdir={← Tc.tmpDir.get}"
   let ok ← try AdbcTable.init catch e => IO.eprintln s!"Backend init error: {e}"; return
   if !ok then IO.eprintln "Backend init failed"; return
+  try SourceConfig.attachDb catch e => Log.write "init" s!"attachDb: {e}"
   if pipeMode && path?.isNone then
     if let some a ← runTsv (← Tc.TextParse.fromStdin) "stdin" true testMode theme keys then
       outputTable a
     return
   let path := path?.getD ""
   try
-    if path.isEmpty || path.startsWith "s3://" || path.startsWith "hf://" || path.startsWith "osquery://" then
+    if path.isEmpty || (← SourceConfig.findSource path).isSome then
       let p := if path.isEmpty then "." else path
       if p.startsWith "osquery://" then
         let table := (p.drop 10).toString

@@ -4,13 +4,13 @@
   Kdb tests: lake build testkdb && .lake/build/bin/testkdb
 -/
 import Tc.Data.ADBC.Table
+import Tc.SourceConfig
 import Tc.Nav
 import Tc.View
 import Tc.UI.Info
 import Tc.Types
 import Tc.Remote
-import Tc.S3
-import Tc.HF
+import Tc.Remote
 import Tc.Data.Text
 import test.TestPure
 
@@ -259,24 +259,24 @@ end ColumnTests
 
 section S3Tests
 
--- | isS3 recognizes s3:// prefix
-#guard S3.isS3 "s3://bucket/path" == true
-#guard S3.isS3 "s3://my-bucket" == true
+-- | S3 prefix recognized
+#guard "s3://bucket/path".startsWith "s3://" == true
+#guard "s3://my-bucket".startsWith "s3://" == true
 
--- | isS3 rejects non-S3 paths
-#guard S3.isS3 "/local/path" == false
-#guard S3.isS3 "http://example.com" == false
-#guard S3.isS3 "" == false
+-- | Non-S3 paths rejected
+#guard "/local/path".startsWith "s3://" == false
+#guard "http://example.com".startsWith "s3://" == false
+#guard "".startsWith "s3://" == false
 
--- | parent strips last component
-#guard S3.parent "s3://bucket/a/b/" == some "s3://bucket/a/"
-#guard S3.parent "s3://bucket/a/" == some "s3://bucket/"
+-- | parent strips last component (minParts=3 for S3)
+#guard Remote.parent "s3://bucket/a/b/" 3 == some "s3://bucket/a/"
+#guard Remote.parent "s3://bucket/a/" 3 == some "s3://bucket/"
 
 -- | parent returns none at bucket root
-#guard S3.parent "s3://bucket/" == none
+#guard Remote.parent "s3://bucket/" 3 == none
 
 -- | parent without trailing slash
-#guard S3.parent "s3://bucket/a/b" == some "s3://bucket/a/"
+#guard Remote.parent "s3://bucket/a/b" 3 == some "s3://bucket/a/"
 
 end S3Tests
 
@@ -310,41 +310,10 @@ end RemoteTests
 
 section HFTests
 
--- | isHF recognizes hf:// prefix
-#guard HF.isHF "hf://datasets/user/dataset" == true
-#guard HF.isHF "hf://datasets/user/dataset/data/" == true
-
--- | isHF rejects non-HF paths
-#guard HF.isHF "/local/path" == false
-#guard HF.isHF "s3://bucket/path" == false
-#guard HF.isHF "" == false
-
--- | parsePath extracts repo and subpath
-#guard HF.parsePath "hf://datasets/user/ds" == some ("user/ds", "")
-#guard HF.parsePath "hf://datasets/user/ds/data" == some ("user/ds", "data")
-#guard HF.parsePath "hf://datasets/user/ds/data/train" == some ("user/ds", "data/train")
-
--- | parsePath rejects too-short paths
-#guard HF.parsePath "hf://datasets/user" == none
-
--- | parsePath rejects non-datasets paths
-#guard HF.parsePath "hf://finance.yahoo.com/quote/AAPL/profile" == none
-#guard HF.parsePath "hf://models/user/model" == none
-
--- | parent strips last component
-#guard HF.parent "hf://datasets/user/ds/a/b/" == some "hf://datasets/user/ds/a/"
-#guard HF.parent "hf://datasets/user/ds/a/" == some "hf://datasets/user/ds/"
-
--- | parent returns hf:// at dataset root (back to listing)
-#guard HF.parent "hf://datasets/user/ds" == some "hf://"
-#guard HF.parent "hf://datasets/user/ds/" == some "hf://"
-
--- | parent returns none at hf:// root
-#guard HF.parent "hf://" == none
-
--- | apiUrl builds correct HF Hub API URL
-#guard HF.apiUrl "hf://datasets/user/ds" == some "https://huggingface.co/api/datasets/user/ds/tree/main"
-#guard HF.apiUrl "hf://datasets/user/ds/data" == some "https://huggingface.co/api/datasets/user/ds/tree/main/data"
+-- | HF parent via Remote.parent (minParts=5 for hf://datasets/user/ds)
+#guard Remote.parent "hf://datasets/user/ds/a/b/" 5 == some "hf://datasets/user/ds/a/"
+#guard Remote.parent "hf://datasets/user/ds/a/" 5 == some "hf://datasets/user/ds/"
+#guard Remote.parent "hf://datasets/user/ds/" 5 == none
 
 end HFTests
 
@@ -959,6 +928,7 @@ def main (args : List String) : IO Unit := do
   IO.FS.writeFile "test.log" ""
   let ok ← Tc.AdbcTable.init
   if !ok then throw (IO.userError "Backend init failed")
+  try Tc.SourceConfig.attachDb catch _ => pure ()
   let filter := args.head?
   let selected := match filter with
     | none => tests

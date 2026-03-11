@@ -1,9 +1,9 @@
 /-
   SourceConfig: config-driven file/folder handling for remote sources.
-  Each source is a row in a config table with shell command templates
-  and SQL for listing, downloading, and loading into DuckDB.
+  Each source is a row in data/sources.duckdb (tc_sources table).
 
-  Flow: CLI cmd → JSON → tmp file → read_json_auto → DuckDB temp table
+  Flow: CLI cmd → JSON → tmp file → list_sql → DuckDB temp table
+  Or:   setup_cmd → setup_sql → list_sql directly (no CLI, e.g. HF root)
 -/
 import Tc.Data.ADBC.Table
 import Tc.Error
@@ -13,23 +13,20 @@ import Tc.TmpDir
 
 namespace Tc.SourceConfig
 
--- | How to parse CLI output before DuckDB ingestion
-inductive ListFormat where
-  | json     -- output is JSON array, use read_json_auto directly
-  | s3Text   -- output is `aws s3 ls` text, convert to JSON in Lean
-  deriving BEq
-
 -- | Config entry for a remote source
 structure Config where
-  prefix         : String      -- URI prefix: "s3://", "hf://", etc.
+  pfx            : String      -- URI prefix: "s3://", "hf://", etc.
   minParts       : Nat         -- min URI parts before parent returns none
-  listCmd        : String      -- shell cmd template → stdout (JSON or text)
-  listFormat     : ListFormat  -- how to interpret output
-  listSql        : String      -- SQL SELECT to transform columns. Empty = SELECT *
+  listCmd        : String      -- shell cmd template → stdout JSON. Empty = run listSql directly.
+  listSql        : String      -- SQL to transform JSON (with {src}) or query directly (no {src})
   downloadCmd    : String      -- shell cmd template to download a file
   needsDownload  : Bool        -- true: download before DuckDB read. false: DuckDB reads URI
   dirSuffix      : Bool        -- true: append "/" when joining child dir paths
   parentFallback : String      -- fallback parent when at minParts root. Empty = none.
+  setupCmd       : String      -- shell cmd to run before first listing. Empty = skip.
+  setupSql       : String      -- SQL to run before first listing (e.g. ATTACH). Empty = skip.
+  grp            : String      -- default group column name. Empty = none.
+  enterUrl       : String      -- URL template for entering file rows. Empty = default.
 
 -- | Global flag: use --no-sign-request for S3 (set via +n arg)
 initialize noSign : IO.Ref Bool ← IO.mkRef false
@@ -41,31 +38,9 @@ def getNoSign : IO Bool := noSign.get
 def s3Extra : IO String := do
   if ← getNoSign then pure "--no-sign-request" else pure ""
 
--- | Escape a string for JSON output
-private def escJson (s : String) : String :=
-  s.replace "\\" "\\\\" |>.replace "\"" "\\\"" |>.replace "\n" "\\n" |>.replace "\t" "\\t"
-
--- | Convert `aws s3 ls` text output to JSON array
-def s3TextToJson (text : String) : String :=
-  let lines := text.splitOn "\n" |>.filter (·.length > 0)
-  let entries := lines.filterMap fun line =>
-    if line.trimAsciiStart.toString.startsWith "PRE " then
-      let name := (line.trimAscii.toString.drop 4).toString
-      let name := if name.endsWith "/" then (name.take (name.length - 1)).toString else name
-      some s!"\{\"name\":\"{escJson name}\",\"size\":0,\"date\":\"\",\"type\":\"dir\"}"
-    else
-      let parts := line.trimAscii.toString.splitOn " " |>.filter (·.length > 0)
-      if parts.length >= 4 then
-        let dt := s!"{parts.getD 0 ""} {parts.getD 1 ""}"
-        let sz := parts.getD 2 ""
-        let name := parts.drop 3 |> " ".intercalate
-        some s!"\{\"name\":\"{escJson name}\",\"size\":{sz},\"date\":\"{dt}\",\"type\":\"file\"}"
-      else none
-  "[" ++ ",".intercalate entries ++ "]"
-
 -- | Split path into components after stripping prefix
-def pathParts (prefix path : String) : Array String :=
-  let rest := (path.drop prefix.length).toString
+def pathParts (pfx path : String) : Array String :=
+  let rest := (path.drop pfx.length).toString
   let rest := if rest.endsWith "/" then (rest.take (rest.length - 1)).toString else rest
   if rest.isEmpty then #[] else (rest.splitOn "/").toArray
 
@@ -74,49 +49,84 @@ def expand (tmpl : String) (vars : Array (String × String)) : String :=
   vars.foldl (fun s (k, v) => s.replace s!"\{{k}}" v) tmpl
 
 -- | Build template variables from a config and path
--- Provides {path}, {name}, {tmp}, {extra}, {1}..{9}, {1+}..{9+}
--- Missing parts default to empty string so unreplaced placeholders don't leak
 def mkVars (cfg : Config) (path tmp name extra : String) : Array (String × String) :=
-  let parts := pathParts cfg.prefix path
+  let parts := pathParts cfg.pfx path
   let baseVars := #[("path", path), ("tmp", tmp), ("name", name), ("extra", extra)]
-  -- {N} = Nth part, empty if out of range. Up to 9.
   let numbered := (List.range 9).map fun i =>
     (s!"{i + 1}", parts.getD i "")
-  -- {N+} = parts from N onward joined by "/". Empty if out of range.
   let plus := (List.range 9).map fun i =>
     (s!"{i + 1}+", "/".intercalate (parts.toList.drop i))
   baseVars ++ numbered.toArray ++ plus.toArray
 
-/-! ## Config Table -/
+/-! ## Config DB -/
 
-def s3Cfg : Config where
-  prefix         := "s3://"
-  minParts       := 3
-  listCmd        := "aws s3 ls {path} {extra}"
-  listFormat     := .s3Text
-  listSql        := ""
-  downloadCmd    := "aws s3 cp {extra} {path} {tmp}/{name}"
-  needsDownload  := true
-  dirSuffix      := true
-  parentFallback := ""
+-- | Attach data/sources.duckdb as schema "src". Called once after AdbcTable.init.
+def attachDb : IO Unit := do
+  let exe ← IO.appPath
+  let exeDir := exe.parent.getD "."
+  let candidates := #[
+    s!"{exeDir}/data/sources.duckdb",
+    s!"{exeDir}/../data/sources.duckdb",
+    s!"{exeDir}/../../data/sources.duckdb",
+    "data/sources.duckdb"
+  ]
+  for c in candidates do
+    if ← (c : System.FilePath).pathExists then
+      let _ ← Adbc.query s!"ATTACH '{c}' AS src (READ_ONLY)"
+      Log.write "init" s!"sources: {c}"
+      return
+  Log.write "init" "sources.duckdb not found"
 
-def hfCfg : Config where
-  prefix         := "hf://datasets/"
-  minParts       := 5
-  listCmd        := "curl -sf https://huggingface.co/api/datasets/{1}/{2}/tree/main/{3+}"
-  listFormat     := .json
-  listSql        := "SELECT split_part(path, '/', -1) as name, size, type FROM read_json_auto('{src}')"
-  downloadCmd    := "curl -sfL -o {tmp}/{name} https://huggingface.co/datasets/{1}/{2}/resolve/main/{3+}"
-  needsDownload  := false
-  dirSuffix      := true
-  parentFallback := "hf://"
+-- | A typed row accessor: bundles (qr, row, colMap) so column access
+-- takes only a name. The row/col swap bug is impossible by construction —
+-- there's no second UInt64 argument to confuse with the row index.
+structure QRow where
+  private mk ::
+  qr     : Adbc.QueryResult
+  row    : UInt64
+  colIdx : String → UInt64
 
--- | All registered sources. First prefix match wins.
-def sources : Array Config := #[s3Cfg, hfCfg]
+namespace QRow
 
--- | Find config for a path by prefix match
-def findSource (path : String) : Option Config :=
-  sources.find? fun c => path.startsWith c.prefix
+def ofRow (qr : Adbc.QueryResult) (row : Nat) : IO QRow := do
+  let nc ← Adbc.ncols qr
+  let mut m : Array (String × UInt64) := #[]
+  for i in [:nc.toNat] do
+    m := m.push (← Adbc.colName qr i.toUInt64, i.toUInt64)
+  pure ⟨qr, row.toUInt64, fun name => (m.find? (·.1 == name) |>.map (·.2)).getD 0⟩
+
+def str (r : QRow) (col : String) : IO String := Adbc.cellStr r.qr r.row (r.colIdx col)
+def int (r : QRow) (col : String) : IO Int   := Adbc.cellInt r.qr r.row (r.colIdx col)
+def bool (r : QRow) (col : String) : IO Bool  := (· != 0) <$> r.int col
+
+end QRow
+
+-- | Parse a Config from a query result row
+private def configFromRow (qr : Adbc.QueryResult) (row : Nat) : IO Config := do
+  let r ← QRow.ofRow qr row
+  pure {
+    pfx            := ← r.str "pfx"
+    minParts       := (← r.int "min_parts").toNat
+    listCmd        := ← r.str "list_cmd"
+    listSql        := ← r.str "list_sql"
+    downloadCmd    := ← r.str "download_cmd"
+    needsDownload  := ← r.bool "needs_download"
+    dirSuffix      := ← r.bool "dir_suffix"
+    parentFallback := ← r.str "parent_fallback"
+    setupCmd       := ← r.str "setup_cmd"
+    setupSql       := ← r.str "setup_sql"
+    grp            := ← r.str "grp"
+    enterUrl       := ← r.str "enter_url"
+  }
+
+-- | Find config for a path by prefix match (longest prefix wins)
+def findSource (path : String) : IO (Option Config) := do
+  try
+    let qr ← Adbc.query s!"SELECT * FROM src.tc_sources WHERE '{path.replace "'" "''"}' LIKE pfx || '%' ORDER BY length(pfx) DESC LIMIT 1"
+    let n ← Adbc.nrows qr
+    if n == 0 then return none
+    some <$> configFromRow qr 0
+  catch _ => return none
 
 /-! ## Generic Operations -/
 
@@ -126,53 +136,67 @@ def Config.parent (cfg : Config) (path : String) : Option String :=
   | some p => some p
   | none => if cfg.parentFallback.isEmpty then none else some cfg.parentFallback
 
--- | Run listing command, ingest JSON into DuckDB temp table, return AdbcTable
+-- | Track which prefixes have completed setup
+initialize setupDone : IO.Ref (Array String) ← IO.mkRef #[]
+
+-- | Run one-time setup for a config (setupCmd + setupSql), idempotent
+private def runSetup (cfg : Config) : IO Unit := do
+  let done ← setupDone.get
+  if done.contains cfg.pfx then return
+  setupDone.modify (·.push cfg.pfx)
+  if !cfg.setupCmd.isEmpty then
+    Log.write "src" s!"setup cmd: {cfg.setupCmd}"
+    let homeDir := (← IO.getEnv "HOME").getD "/tmp"
+    let cmd := expand cfg.setupCmd #[("home", homeDir)]
+    let _ ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
+  if !cfg.setupSql.isEmpty then
+    let homeDir := (← IO.getEnv "HOME").getD "/tmp"
+    let sql := expand cfg.setupSql #[("home", homeDir)]
+    Log.write "src" s!"setup sql: {sql}"
+    let _ ← Adbc.query sql
+
+-- | Run listing command, ingest into DuckDB temp table, return AdbcTable
 def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
+  Log.write "src" s!"runList: pfx={cfg.pfx} path={path} listCmd={cfg.listCmd}"
   statusMsg s!"Loading {path} ..."
-  let p := if path.endsWith "/" then path else s!"{path}/"
-  let tmpDir ← Tc.tmpPath "src"
-  let _ ← Log.run "src" "mkdir" #["-p", tmpDir]
-  let name := path.splitOn "/" |>.filter (·.length > 0) |>.getLast? |>.getD "file"
-  let extra ← if cfg.prefix == "s3://" then s3Extra else pure ""
-  let vars := mkVars cfg p tmpDir name extra
-  let cmd := expand cfg.listCmd vars
-  Log.write "src" s!"list: {cmd}"
-  let out ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
-  if out.exitCode != 0 then
-    Log.write "src" s!"list failed (exit {out.exitCode}): {out.stderr.trimAscii.toString}"
-    errorPopup s!"List failed: {out.stderr.trimAscii.toString}"
-    return none
-  -- Convert to JSON based on format
-  let json := match cfg.listFormat with
-    | .json => out.stdout
-    | .s3Text => s3TextToJson out.stdout
-  if json.trimAscii.toString.isEmpty || json.trimAscii.toString == "[]" then return none
-  -- Add ".." parent entry if applicable
-  let json := if cfg.parent path |>.isSome then
-    let parentEntry := "{\"name\":\"..\",\"size\":0,\"date\":\"\",\"type\":\"dir\"}"
-    -- Prepend parent entry to JSON array
-    if json.trimAscii.toString.startsWith "[" then
-      "[" ++ parentEntry ++ "," ++ (json.trimAscii.toString.drop 1)
-    else json
-  else json
-  -- Save JSON and ingest via DuckDB
-  let tmpFile ← Tc.tmpPath "src-list.json"
-  IO.FS.writeFile tmpFile json
+  runSetup cfg
   let n ← memTblCounter.modifyGet fun n => (n, n + 1)
   let tbl := s!"tc_src_{n}"
-  let sql := if cfg.listSql.isEmpty
-    then s!"CREATE TEMP TABLE {tbl} AS SELECT * FROM read_json_auto('{tmpFile}')"
-    else s!"CREATE TEMP TABLE {tbl} AS {expand cfg.listSql #[("src", tmpFile)]}"
-  try
+  if cfg.listCmd.isEmpty then
+    -- Direct SQL mode: run listSql against existing tables (e.g. HF root)
+    let sql := s!"CREATE TEMP TABLE {tbl} AS {cfg.listSql}"
+    let _ ← Adbc.query sql
+    let q : Prql.Query := { base := s!"from {tbl}" }
+    AdbcTable.requery q (← AdbcTable.queryCount q)
+  else
+    -- CLI mode: run command, save JSON, transform via listSql
+    let p := if path.endsWith "/" then path else s!"{path}/"
+    let tmpDir ← Tc.tmpPath "src"
+    let _ ← Log.run "src" "mkdir" #["-p", tmpDir]
+    let name := path.splitOn "/" |>.filter (·.length > 0) |>.getLast? |>.getD "file"
+    let extra ← if cfg.pfx == "s3://" then s3Extra else pure ""
+    let vars := mkVars cfg p tmpDir name extra
+    let cmd := expand cfg.listCmd vars
+    Log.write "src" s!"list: {cmd}"
+    let out ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
+    if out.exitCode != 0 then
+      Log.write "src" s!"list failed (exit {out.exitCode}): {out.stderr.trimAscii.toString}"
+      errorPopup s!"List failed: {out.stderr.trimAscii.toString}"
+      return none
+    let json := out.stdout
+    if json.trimAscii.toString.isEmpty then return none
+    let tmpFile ← Tc.tmpPath "src-list.json"
+    IO.FS.writeFile tmpFile json
+    let listSql := expand cfg.listSql #[("src", tmpFile)]
+    -- Only add ".." parent row if list_sql produces standard folder columns (name,size,date,type)
+    let parentSql := if (cfg.parent path |>.isSome) && ((cfg.listSql.splitOn "as type").length > 1)
+      then s!" UNION ALL SELECT '..' as name, 0 as size, '' as date, 'dir' as type"
+      else ""
+    let sql := s!"CREATE TEMP TABLE {tbl} AS {listSql}{parentSql}"
     let _ ← Adbc.query sql
     try IO.FS.removeFile tmpFile catch _ => pure ()
     let q : Prql.Query := { base := s!"from {tbl}" }
     AdbcTable.requery q (← AdbcTable.queryCount q)
-  catch e =>
-    try IO.FS.removeFile tmpFile catch _ => pure ()
-    Log.write "src" s!"ingest error: {e}"
-    errorPopup e.toString
-    return none
 
 -- | Download a remote file to local temp path
 def Config.runDownload (cfg : Config) (path : String) : IO String := do
@@ -180,7 +204,7 @@ def Config.runDownload (cfg : Config) (path : String) : IO String := do
   let tmpDir ← Tc.tmpPath "src"
   let _ ← Log.run "src" "mkdir" #["-p", tmpDir]
   let name := path.splitOn "/" |>.filter (·.length > 0) |>.getLast? |>.getD "file"
-  let extra ← if cfg.prefix == "s3://" then s3Extra else pure ""
+  let extra ← if cfg.pfx == "s3://" then s3Extra else pure ""
   let vars := mkVars cfg path tmpDir name extra
   let cmd := expand cfg.downloadCmd vars
   Log.write "src" s!"download: {cmd}"

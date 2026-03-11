@@ -4,8 +4,11 @@
 
 namespace Log
 
--- | Log file path
-def path : String := "/tmp/tc.log"
+-- | Log file path (single source of truth for Lean + C)
+def path : String := "tmp/tc.log"
+
+@[extern "lean_set_log_path"]
+opaque setLogPath : @& String → IO Unit
 
 @[extern "lean_local_timestamp"]
 opaque localTimestamp : IO String

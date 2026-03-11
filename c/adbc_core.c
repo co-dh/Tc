@@ -104,10 +104,19 @@ static struct AdbcDatabase g_db = {0};
 static struct AdbcConnection g_conn = {0};
 static int g_initialized = 0;
 static FILE* g_log = NULL;
+static char g_log_path[256] = "tmp/tc.log";
+
+lean_obj_res lean_set_log_path(b_lean_obj_arg path, lean_obj_arg w) {
+    const char* s = lean_string_cstr(path);
+    strncpy(g_log_path, s, sizeof(g_log_path) - 1);
+    g_log_path[sizeof(g_log_path) - 1] = '\0';
+    if (g_log) { fclose(g_log); g_log = NULL; }
+    return lean_io_result_mk_ok(lean_box(0));
+}
 
 /* === Logging === */
 static void log_msg(const char* fmt, ...) {
-    if (!g_log) g_log = fopen("/tmp/tc.log", "a");
+    if (!g_log) g_log = fopen(g_log_path, "a");
     if (!g_log) return;
     struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
     struct tm* t = localtime(&ts.tv_sec);

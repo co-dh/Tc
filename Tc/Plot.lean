@@ -224,7 +224,7 @@ def run (s : ViewStack T) (bar : Bool) : IO (Option (ViewStack T)) := do
         if ← renderGnuplot script then showPng pngPath; pure true
         else pure false
       else pure false
-    if !ok then IO.println "plot error (see /tmp/tc.log)"
+    if !ok then IO.println s!"plot error (see {Log.path})"
     -- show info line: x=col y=col [1s 1m 1h] +/-:interval q:exit
     let maxIdx := intervals.size - 1
     let bar_ := if bar then "bar" else "line"
