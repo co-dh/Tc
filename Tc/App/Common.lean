@@ -184,7 +184,8 @@ def appMain (args : List String) : IO Unit := do
     return
   let path := path?.getD ""
   try
-    if path.isEmpty || (← SourceConfig.findSource path).isSome then
+    let srcCfg ← SourceConfig.findSource path
+    if path.isEmpty || srcCfg.isSome then
       let p := if path.isEmpty then "." else path
       if p.startsWith "osquery://" then
         let table := (p.drop 10).toString

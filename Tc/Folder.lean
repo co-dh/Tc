@@ -12,10 +12,6 @@ import Tc.Remote
 
 namespace Tc.Folder
 
--- | Look up remote source config for a path
-private def sourceConfig? (path : String) : IO (Option SourceConfig.Config) :=
-  SourceConfig.findSource path
-
 -- | Strip base path prefix to get relative entry name
 private def stripBase (base path : String) : String :=
   if path.startsWith base then
@@ -138,7 +134,7 @@ def mkView (path : String) (depth : Nat) : IO (Option (View AdbcTable)) := do
     match ← Osquery.list path with
     | some (adbc, disp) => pure (mkViewFromAdbc adbc path depth disp (grp := #["name"]))
     | none => pure none
-  else match ← sourceConfig? path with
+  else match ← SourceConfig.findSource path with
   | some cfg =>
     match ← cfg.runList path with
     | some adbc =>
@@ -196,7 +192,7 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
     let some (adbc, keys) ← AdbcTable.fromDuckDBTable tableName | return some s
     let some v := View.fromTbl (adbc) s!"duckdb://{tableName}" (grp := keys) | return some s
     return some (s.push v)
-  let cfg ← sourceConfig? curDir
+  let cfg ← SourceConfig.findSource curDir
   match ← curType s.cur, ← curPath s.cur with
   | some 'd', some p =>
     if p == ".." || p.endsWith "/.." then
@@ -324,7 +320,7 @@ def trashFiles (paths : Array String) : IO Bool := do
 def del (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   if !(s.cur.vkind matches .fld _ _) then return none
   let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => ""
-  if (← sourceConfig? curDir).isSome then return some s
+  if (← SourceConfig.findSource curDir).isSome then return some s
   let paths ← selPaths s.cur
   if paths.isEmpty then return none
   if !(← confirmDel paths) then return some s
@@ -344,7 +340,7 @@ def del (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
 def setDepth (s : ViewStack AdbcTable) (delta : Int) : IO (Option (ViewStack AdbcTable)) := do
   match s.cur.vkind with
   | .fld path depth =>
-    if (← sourceConfig? path).isSome then return some s
+    if (← SourceConfig.findSource path).isSome then return some s
     let newDepth := max 1 ((depth : Int) + delta).toNat
     if newDepth == depth then pure (some s)
     else match ← mkView path newDepth with

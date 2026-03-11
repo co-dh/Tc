@@ -143,17 +143,16 @@ initialize setupDone : IO.Ref (Array String) ← IO.mkRef #[]
 private def runSetup (cfg : Config) : IO Unit := do
   let done ← setupDone.get
   if done.contains cfg.pfx then return
-  setupDone.modify (·.push cfg.pfx)
+  let homeDir := (← IO.getEnv "HOME").getD "/tmp"
   if !cfg.setupCmd.isEmpty then
     Log.write "src" s!"setup cmd: {cfg.setupCmd}"
-    let homeDir := (← IO.getEnv "HOME").getD "/tmp"
     let cmd := expand cfg.setupCmd #[("home", homeDir)]
     let _ ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
   if !cfg.setupSql.isEmpty then
-    let homeDir := (← IO.getEnv "HOME").getD "/tmp"
     let sql := expand cfg.setupSql #[("home", homeDir)]
     Log.write "src" s!"setup sql: {sql}"
     let _ ← Adbc.query sql
+  setupDone.modify (·.push cfg.pfx)
 
 -- | Run listing command, ingest into DuckDB temp table, return AdbcTable
 def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
@@ -180,8 +179,9 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
     Log.write "src" s!"list: {cmd}"
     let out ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
     if out.exitCode != 0 then
-      Log.write "src" s!"list failed (exit {out.exitCode}): {out.stderr.trimAscii.toString}"
-      errorPopup s!"List failed: {out.stderr.trimAscii.toString}"
+      let errMsg := out.stderr.trimAscii.toString
+      Log.write "src" s!"list failed (exit {out.exitCode}): {errMsg}"
+      errorPopup s!"List failed: {errMsg}"
       return none
     let json := out.stdout
     if json.trimAscii.toString.isEmpty then return none

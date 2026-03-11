@@ -10,7 +10,6 @@ import Tc.View
 import Tc.UI.Info
 import Tc.Types
 import Tc.Remote
-import Tc.Remote
 import Tc.Data.Text
 import test.TestPure
 
