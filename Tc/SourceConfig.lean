@@ -135,7 +135,7 @@ private def configFromRow (qr : Adbc.QueryResult) (row : Nat) : IO Config := do
 -- | Find config for a path by prefix match (longest prefix wins)
 def findSource (path : String) : IO (Option Config) := do
   try
-    let qr ← Adbc.query s!"SELECT * FROM src.tc_sources WHERE '{path.replace "'" "''"}' LIKE pfx || '%' ORDER BY length(pfx) DESC LIMIT 1"
+    let qr ← Adbc.queryParam "SELECT * FROM src.tc_sources WHERE $1 LIKE pfx || '%' ORDER BY length(pfx) DESC LIMIT 1" path
     let n ← Adbc.nrows qr
     if n == 0 then return none
     some <$> configFromRow qr 0
@@ -273,7 +273,7 @@ def Config.runEnter (cfg : Config) (name : String) : IO (Option AdbcTable) := do
   try IO.FS.removeFile tmpFile catch _ => pure ()
   -- Apply types from DuckDB stub view (e.g. osq.groups has typed columns)
   let typeApply : IO Unit := do
-    let qr ← Adbc.query s!"SELECT column_name, data_type FROM duckdb_columns() WHERE table_name = '{name.replace "'" "''"}' AND data_type != 'VARCHAR'"
+    let qr ← Adbc.queryParam "SELECT column_name, data_type FROM duckdb_columns() WHERE table_name = $1 AND data_type != 'VARCHAR'" name
     let nr ← Adbc.nrows qr
     for i in [:nr.toNat] do
       let colName ← Adbc.cellStr qr i.toUInt64 0

@@ -22,6 +22,9 @@ opaque shutdown : IO Unit
 @[extern "lean_adbc_query"]
 opaque query : @& String → IO QueryResult
 
+@[extern "lean_adbc_query_param"]
+opaque queryParam : @& String → @& String → IO QueryResult
+
 @[extern "lean_qr_ncols"]
 opaque ncols : @& QueryResult → IO UInt64
 

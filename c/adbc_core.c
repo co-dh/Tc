@@ -74,16 +74,18 @@ typedef AdbcStatusCode (*PFN_AdbcConnectionRelease)(struct AdbcConnection*, stru
 typedef AdbcStatusCode (*PFN_AdbcStatementNew)(struct AdbcConnection*, struct AdbcStatement*, struct AdbcError*);
 typedef AdbcStatusCode (*PFN_AdbcStatementSetSqlQuery)(struct AdbcStatement*, const char*, struct AdbcError*);
 typedef AdbcStatusCode (*PFN_AdbcStatementExecuteQuery)(struct AdbcStatement*, struct ArrowArrayStream*, int64_t*, struct AdbcError*);
+typedef AdbcStatusCode (*PFN_AdbcStatementBind)(struct AdbcStatement*, struct ArrowArray*, struct ArrowSchema*, struct AdbcError*);
 typedef AdbcStatusCode (*PFN_AdbcStatementRelease)(struct AdbcStatement*, struct AdbcError*);
 
 // | ADBC function pointers (indexed by enum)
 enum { FN_DB_NEW, FN_DB_OPT, FN_DB_INIT, FN_DB_REL, FN_CONN_NEW, FN_CONN_INIT,
-       FN_CONN_REL, FN_STMT_NEW, FN_STMT_SQL, FN_STMT_EXEC, FN_STMT_REL, FN_COUNT };
+       FN_CONN_REL, FN_STMT_NEW, FN_STMT_SQL, FN_STMT_EXEC, FN_STMT_BIND, FN_STMT_REL, FN_COUNT };
 static void* g_fn[FN_COUNT];
 static const char* g_fn_names[] = {
     "AdbcDatabaseNew", "AdbcDatabaseSetOption", "AdbcDatabaseInit", "AdbcDatabaseRelease",
     "AdbcConnectionNew", "AdbcConnectionInit", "AdbcConnectionRelease",
-    "AdbcStatementNew", "AdbcStatementSetSqlQuery", "AdbcStatementExecuteQuery", "AdbcStatementRelease"
+    "AdbcStatementNew", "AdbcStatementSetSqlQuery", "AdbcStatementExecuteQuery",
+    "AdbcStatementBind", "AdbcStatementRelease"
 };
 #define pAdbcDatabaseNew       ((PFN_AdbcDatabaseNew)g_fn[FN_DB_NEW])
 #define pAdbcDatabaseSetOption ((PFN_AdbcDatabaseSetOption)g_fn[FN_DB_OPT])
@@ -95,6 +97,7 @@ static const char* g_fn_names[] = {
 #define pAdbcStatementNew      ((PFN_AdbcStatementNew)g_fn[FN_STMT_NEW])
 #define pAdbcStatementSetSqlQuery   ((PFN_AdbcStatementSetSqlQuery)g_fn[FN_STMT_SQL])
 #define pAdbcStatementExecuteQuery  ((PFN_AdbcStatementExecuteQuery)g_fn[FN_STMT_EXEC])
+#define pAdbcStatementBind     ((PFN_AdbcStatementBind)g_fn[FN_STMT_BIND])
 #define pAdbcStatementRelease  ((PFN_AdbcStatementRelease)g_fn[FN_STMT_REL])
 
 /* === Global State === */
@@ -359,6 +362,146 @@ fail:
     return lean_io_result_mk_error(lean_mk_io_user_error(err_str));
     #undef QUERY_CHECK
     #undef STREAM_CHECK
+}
+
+// | Execute parameterized SQL query with a single string argument, return QueryResult
+lean_obj_res lean_adbc_query_param(b_lean_obj_arg sql_obj, b_lean_obj_arg param_obj, lean_obj_arg world) {
+    if (!g_initialized) return lean_io_result_mk_error(lean_mk_io_user_error(lean_mk_string("ADBC not initialized")));
+
+    const char* sql = lean_string_cstr(sql_obj);
+    const char* param = lean_string_cstr(param_obj);
+    int64_t param_len = (int64_t)strlen(param);
+    struct AdbcError err;
+    init_error(&err);
+    struct AdbcStatement stmt = {0};
+    struct ArrowArrayStream stream = {0};
+    QueryResult* qr = NULL;
+    const char* fail_msg = NULL;
+
+    // Build Arrow array with one string column, one row
+    struct ArrowSchema param_schema = {0};
+    struct ArrowArray param_array = {0};
+    struct ArrowSchema* child_schema = NULL;
+    struct ArrowArray* child_array = NULL;
+
+    // Schema: struct with one utf8 child
+    param_schema.format = "+s";
+    param_schema.name = "";
+    param_schema.n_children = 1;
+    child_schema = calloc(1, sizeof(struct ArrowSchema));
+    child_schema->format = "u";
+    child_schema->name = "p1";
+    child_schema->release = NULL;  // static, no-op
+    struct ArrowSchema** schema_children = malloc(sizeof(struct ArrowSchema*));
+    schema_children[0] = child_schema;
+    param_schema.children = schema_children;
+    param_schema.release = NULL;  // static
+
+    // Array: struct with one utf8 child, one row
+    param_array.length = 1;
+    param_array.null_count = 0;
+    param_array.n_children = 1;
+    child_array = calloc(1, sizeof(struct ArrowArray));
+    child_array->length = 1;
+    child_array->null_count = 0;
+    child_array->n_buffers = 3;
+    void** child_buffers = calloc(3, sizeof(void*));
+    // buffer 0: null bitmap (NULL = all valid)
+    child_buffers[0] = NULL;
+    // buffer 1: offsets (int32_t[2])
+    int32_t* offsets = malloc(2 * sizeof(int32_t));
+    offsets[0] = 0;
+    offsets[1] = (int32_t)param_len;
+    child_buffers[1] = offsets;
+    // buffer 2: data
+    char* data_buf = malloc(param_len);
+    memcpy(data_buf, param, param_len);
+    child_buffers[2] = data_buf;
+    child_array->buffers = (const void**)child_buffers;
+    child_array->release = NULL;  // static
+
+    struct ArrowArray** array_children = malloc(sizeof(struct ArrowArray*));
+    array_children[0] = child_array;
+    param_array.children = array_children;
+    param_array.n_buffers = 1;
+    void** struct_buffers = calloc(1, sizeof(void*));
+    param_array.buffers = (const void**)struct_buffers;
+    param_array.release = NULL;  // static
+
+    #define QP_CHECK(call, msg) if ((call) != ADBC_STATUS_OK) { fail_msg = err.message ? err.message : msg; goto qp_fail; }
+    #define QP_STREAM_CHECK(call, msg) if ((call) != 0) { fail_msg = msg; goto qp_fail; }
+
+    QP_CHECK(pAdbcStatementNew(&g_conn, &stmt, &err), "StatementNew");
+    QP_CHECK(pAdbcStatementSetSqlQuery(&stmt, sql, &err), "SetSqlQuery");
+    QP_CHECK(pAdbcStatementBind(&stmt, &param_array, &param_schema, &err), "Bind");
+    int64_t rows_affected = -1;
+    QP_CHECK(pAdbcStatementExecuteQuery(&stmt, &stream, &rows_affected, &err), "ExecuteQuery");
+
+    qr = calloc(1, sizeof(QueryResult));
+    QP_STREAM_CHECK(stream.get_schema(&stream, &qr->schema), "get_schema");
+
+    // collect batches (same as lean_adbc_query)
+    {
+        int64_t cap = 16;
+        qr->batches = malloc(cap * sizeof(struct ArrowArray));
+        qr->prefix = malloc((cap + 1) * sizeof(int64_t));
+        qr->prefix[0] = 0;
+        while (1) {
+            struct ArrowArray batch = {0};
+            if (stream.get_next(&stream, &batch) != 0 || !batch.release) break;
+            if (qr->n_batches >= cap) {
+                cap *= 2;
+                qr->batches = realloc(qr->batches, cap * sizeof(struct ArrowArray));
+                qr->prefix = realloc(qr->prefix, (cap + 1) * sizeof(int64_t));
+            }
+            qr->batches[qr->n_batches] = batch;
+            qr->total_rows += batch.length;
+            qr->prefix[++qr->n_batches] = qr->total_rows;
+        }
+    }
+
+    if (stream.release) stream.release(&stream);
+    pAdbcStatementRelease(&stmt, &err);
+    free_error(&err);
+
+    // Build nanoarrow views
+    {
+        int64_t nc = qr->schema.n_children;
+        qr->n_children = nc;
+        qr->col_types = calloc(nc, sizeof(struct ArrowSchemaView));
+        for (int64_t c = 0; c < nc; c++)
+            ArrowSchemaViewInit(&qr->col_types[c], qr->schema.children[c], NULL);
+        qr->views = calloc(qr->n_batches * nc, sizeof(struct ArrowArrayView));
+        for (int64_t b = 0; b < qr->n_batches; b++) {
+            for (int64_t c = 0; c < nc; c++) {
+                int64_t idx = b * nc + c;
+                if (ArrowArrayViewInitFromSchema(&qr->views[idx], qr->schema.children[c], NULL) != NANOARROW_OK) continue;
+                ArrowArrayViewSetArray(&qr->views[idx], qr->batches[b].children[c], NULL);
+            }
+        }
+    }
+
+    // Cleanup param buffers
+    free(offsets); free(data_buf); free(child_buffers);
+    free(child_array); free(array_children);
+    free(child_schema); free(schema_children);
+    free(struct_buffers);
+
+    return lean_io_result_mk_ok(lean_alloc_external(get_qr_class(), qr));
+
+qp_fail:
+    ;lean_object* qp_err_str = lean_mk_string(fail_msg ? fail_msg : "unknown error");
+    if (qr) { free(qr->batches); free(qr->prefix); free(qr); }
+    if (stream.release) stream.release(&stream);
+    if (stmt.private_data) pAdbcStatementRelease(&stmt, &err);
+    free_error(&err);
+    free(offsets); free(data_buf); free(child_buffers);
+    free(child_array); free(array_children);
+    free(child_schema); free(schema_children);
+    free(struct_buffers);
+    return lean_io_result_mk_error(lean_mk_io_user_error(qp_err_str));
+    #undef QP_CHECK
+    #undef QP_STREAM_CHECK
 }
 
 // | Get column count

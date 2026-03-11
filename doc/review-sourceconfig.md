@@ -29,9 +29,9 @@ Replaces `S3.lean`, `HF.lean`, and `Osquery.lean` (~411 lines deleted) with a si
 
 **Fix**: Added comment explaining the design decision.
 
-### 3. `findSource` SQL injection (minor) — NO CHANGE NEEDED
+### 3. `findSource` SQL injection (minor) — FIXED
 
-The `path.replace "'" "''"` escaping is correct for SQL string literals. A path containing `''` followed by ` OR 1=1--` becomes `'''' OR 1=1--` which is the literal string `'' OR 1=1--` in SQL. Safe as-is.
+Replaced string-interpolated SQL with parameterized queries via `Adbc.queryParam` (backed by `AdbcStatementBind`). Both `findSource` and the type-apply query in `runEnter` now use `$1` placeholders instead of string escaping.
 
 ### 4. Parent detection heuristic is fragile — FIXED
 
