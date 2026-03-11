@@ -576,13 +576,14 @@ def test_folder_relative : IO Unit := do
 
 def test_folder_pop : IO Unit := do
   log "folder_pop"
-  assert (contains (← run "jjj<ret>q") "[/") "q pops back to parent folder"
+  -- fixture dir: [sort, jjj → row 3 = subdir (dir), enter, q pops back
+  assert (contains (← run "[jjj<ret>q" "data/test_folder") "[/") "q pops back to parent folder"
 
 def test_folder_enter_symlink : IO Unit := do
   log "folder_enter_symlink"
-  -- sort by name, navigate to 'data' symlink (row 10), enter it
-  let output ← run "[jjjjjjjjjj<ret>"
-  assert (contains output "sample") "Enter on symlink dir shows its contents"
+  -- fixture dir: [sort, jj → row 2 = link_to_subdir (symlink to dir), enter it
+  let output ← run "[jj<ret>" "data/test_folder"
+  assert (contains output "file2") "Enter on symlink dir shows its contents"
   let (_, status) := footer output
   assert (contains status "r0/") "Entered symlink dir has rows"
 

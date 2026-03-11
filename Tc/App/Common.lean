@@ -185,7 +185,8 @@ def appMain (args : List String) : IO Unit := do
   let path := path?.getD ""
   try
     let srcCfg ← SourceConfig.findSource path
-    if path.isEmpty || srcCfg.isSome then
+    let isDir ← (path : System.FilePath).isDir
+    if path.isEmpty || srcCfg.isSome || isDir then
       let p := if path.isEmpty then "." else path
       -- Handler-driven direct entry (e.g. osquery://groups) — run setup first
       if let some cfg := srcCfg then

@@ -14,9 +14,10 @@ def parent (path : String) (minParts : Nat) : Option String :=
   if parts.length ≤ minParts then none
   else some ("/".intercalate (parts.dropLast) ++ "/")
 
--- | Display name: last non-empty path component
+-- | Display name: last non-empty path component (preserves protocol-only paths)
 def dispName (path : String) : String :=
   let p := if path.endsWith "/" then (path.take (path.length - 1)).toString else path
-  p.splitOn "/" |>.filter (·.length > 0) |>.getLast? |>.getD path
+  let parts := p.splitOn "/" |>.filter (·.length > 0)
+  if parts.length ≤ 1 then path else parts.getLast?.getD path
 
 end Tc.Remote
