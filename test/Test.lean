@@ -592,10 +592,10 @@ def test_script_append : IO Unit := do
   -- header + 4 data rows (2 from each file)
   assert (lines.length == 5) s!"script_append: expected 5 lines, got {lines.length}"
 
--- | -p with explicit from x: verify full PRQL passthrough
+-- | -p with explicit from: verify full PRQL passthrough
 def test_script_from : IO Unit := do
   log "script_from"
-  let out ← IO.Process.output { cmd := bin, args := #["data/basic.csv", "-p", "from x | take 2"] }
+  let out ← IO.Process.output { cmd := bin, args := #["data/basic.csv", "-p", "from `data/basic.csv` | take 2"] }
   assert (out.exitCode == 0) s!"script_from exit code: {out.exitCode}"
   let lines := out.stdout.splitOn "\n" |>.filter (· != "")
   -- header + 2 data rows

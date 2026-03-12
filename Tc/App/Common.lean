@@ -179,27 +179,23 @@ def runTsv (r : Except String String) (nm : String) (pipe test : Bool)
 def outputTable (a : AppState) : IO Unit := do
   IO.println (← AdbcTable.toText a.stk.tbl)
 
--- make a safe view name from a file path: sanitize to alphanumeric + underscore
--- e.g. "/tmp/right.csv" → "tc__tmp_right_csv"
-private def viewName (path : String) : String :=
-  let safe := String.ofList (path.toList.map fun c => if c.isAlphanum then c else '_')
-  s!"tc_{safe}"
+-- stem from file path: "/tmp/right.csv" → "right"
+private def fileStem (path : String) : String :=
+  let base := (path.splitOn "/").getLast?.getD path
+  (base.splitOn ".").head?.getD base
 
--- is this backtick content a file path? (contains / or . — distinguishes from PRQL s-string SQL splices)
-private def isFilePath (s : String) : Bool := s.any (· == '/') || s.any (· == '.')
-
--- extract backtick-quoted file paths from PRQL, register as DuckDB views,
--- and rewrite PRQL to use the view names instead.
--- Non-path backtick content (e.g. PRQL s-strings) is passed through unchanged.
+-- replace backtick file paths with their stems and register as DuckDB views
+-- needed because PRQL qualifies columns with the full backtick name, but DuckDB
+-- replacement scan only aliases by stem — causing "table not found" in joins
 private def resolveBacktickPaths (prql : String) : IO String := do
   let parts := prql.splitOn "`"
   let mut result := ""
   let mut i := 0
   for part in parts do
-    if i % 2 == 1 && !part.isEmpty && isFilePath part then
-      let vn := viewName part
-      let _ ← Adbc.query s!"CREATE OR REPLACE VIEW {vn} AS SELECT * FROM '{escSql part}'"
-      result := result ++ vn
+    if i % 2 == 1 && !part.isEmpty && (part.any (· == '/') || part.any (· == '.')) then
+      let stem := fileStem part
+      let _ ← Adbc.query s!"CREATE OR REPLACE VIEW \"{escSql stem}\" AS SELECT * FROM '{escSql part}'"
+      result := result ++ stem
     else if i % 2 == 1 then
       result := result ++ s!"`{part}`"  -- preserve non-path backticks
     else
