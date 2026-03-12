@@ -57,6 +57,20 @@ def dataLines (output : String) : List String :=
 def assert (cond : Bool) (msg : String) : IO Unit :=
   unless cond do throw (IO.userError msg)
 
+-- | Check if a file/directory exists (for skipping tests with untracked data)
+def hasFile (path : String) : IO Bool :=
+  try let _ ← IO.FS.Handle.mk path .read; pure true
+  catch _ => pure false
+
+-- | Skip guard for data/nyse directory
+def needsNyse : IO Bool := hasFile "data/nyse/1.parquet"
+
+-- | Skip guard for data/nyse10k.parquet
+def needsNyse10k : IO Bool := hasFile "data/nyse10k.parquet"
+
+-- | Skip guard for data/sample.parquet
+def needsSample : IO Bool := hasFile "data/sample.parquet"
+
 -- === Width stability tests ===
 
 def test_width_stable_after_info : IO Unit := do
@@ -271,22 +285,26 @@ def test_folder_prefix : IO Unit := do
 
 def test_page_down : IO Unit := do
   log "page_down"
+  unless (← needsSample) do log "  skip (no sample.parquet)"; return
   let (_, status) := footer (← run "<C-d>" "data/sample.parquet")
   assert (!contains status "r0/") "Ctrl-D pages down past row 0"
 
 def test_page_up : IO Unit := do
   log "page_up"
+  unless (← needsSample) do log "  skip (no sample.parquet)"; return
   let (_, status) := footer (← run "<C-d><C-u>" "data/sample.parquet")
   assert (contains status "r0/") "Ctrl-D then Ctrl-U returns to row 0"
 
 def test_page_down_scrolls : IO Unit := do
   log "page_down_scrolls"
+  unless (← needsSample) do log "  skip (no sample.parquet)"; return
   let (_, status1) := footer (← run "" "data/sample.parquet")
   let (_, status2) := footer (← run "<C-d>" "data/sample.parquet")
   assert (status1 != status2) "Page down changes status"
 
 def test_last_col_visible : IO Unit := do
   log "last_col_visible"
+  unless (← needsSample) do log "  skip (no sample.parquet)"; return
   let first := (dataLines (← run "llllllllllllllllllll" "data/sample.parquet")).headD ""
   let nonWs := first.toList.filter (!·.isWhitespace) |>.length
   assert (nonWs > 0) "Last col shows data"
@@ -296,11 +314,13 @@ def test_last_col_visible : IO Unit := do
 
 def test_parquet_sort_asc : IO Unit := do
   log "parquet_sort_asc"
+  unless (← needsSample) do log "  skip (no sample.parquet)"; return
   let first := (dataLines (← run "l[" "data/sample.parquet")).headD ""
   assert (contains first " 18 ") "[ on age sorts asc, age=18"
 
 def test_parquet_sort_desc : IO Unit := do
   log "parquet_sort_desc"
+  unless (← needsSample) do log "  skip (no sample.parquet)"; return
   let first := (dataLines (← run "l]" "data/sample.parquet")).headD ""
   assert (contains first " 80 ") "] on age sorts desc, age=80"
 
@@ -322,16 +342,19 @@ def test_sort_selected_not_key : IO Unit := do
 
 def test_parquet_meta : IO Unit := do
   log "parquet_meta"
+  unless (← needsSample) do log "  skip (no sample.parquet)"; return
   assert (contains (footer (← run "M" "data/sample.parquet")).1 "meta") "M on parquet shows meta"
 
 -- === Freq tests (parquet) ===
 
 def test_freq_parquet : IO Unit := do
   log "freq_parquet"
+  unless (← needsSample) do log "  skip (no sample.parquet)"; return
   assert (contains (footer (← run "F" "data/sample.parquet")).1 "freq") "F on parquet shows freq"
 
 def test_freq_enter_parquet : IO Unit := do
   log "freq_enter_parquet"
+  unless (← needsSample) do log "  skip (no sample.parquet)"; return
   let (tab, status) := footer (← run "F<ret>" "data/sample.parquet")
   assert (contains tab "sample.parquet") "F<ret> on parquet pops to parent"
   assert (!contains tab "freq") "F<ret> on parquet exits freq view"
@@ -339,21 +362,25 @@ def test_freq_enter_parquet : IO Unit := do
 
 def test_freq_parquet_key_values : IO Unit := do
   log "freq_parquet_key_values"
+  unless (← needsNyse10k) do log "  skip (no nyse10k.parquet)"; return
   let first := (dataLines (← run "lF" "data/nyse10k.parquet")).headD ""
   assert (!first.startsWith " 5180" && !first.startsWith " 2592") "Freq key column shows names, not counts"
 
 def test_freq_total_count : IO Unit := do
   log "freq_total_count"
+  unless (← needsNyse) do log "  skip (no nyse)"; return
   let (_, status) := footer (← run "l!l!hF" "data/nyse/1.parquet")
   assert (contains status "/128974") "Freq shows total group count (128974)"
 
 def test_freq_sort_preserves_total : IO Unit := do
   log "freq_sort_total"
+  unless (← needsNyse) do log "  skip (no nyse)"; return
   let (_, status) := footer (← run "llFll[" "data/nyse/1.parquet")
   assert (contains status "/") "Freq sort preserves total count in status"
 
 def test_freq_sort_asc_parquet : IO Unit := do
   log "freq_sort_asc"
+  unless (← needsNyse) do log "  skip (no nyse)"; return
   let first := (dataLines (← run "llFll[" "data/nyse/1.parquet")).headD ""
   assert (contains first "│") "Freq sort asc shows data"
 
@@ -361,11 +388,13 @@ def test_freq_sort_asc_parquet : IO Unit := do
 
 def test_parquet_meta_0_null_cols : IO Unit := do
   log "parquet_meta_0"
+  unless (← needsNyse) do log "  skip (no nyse)"; return
   let (_, status) := footer (← run "M0" "data/nyse/1.parquet")
   assert (contains status "sel=9") "M0 on parquet selects 9 null columns"
 
 def test_parquet_meta_0_enter_groups : IO Unit := do
   log "parquet_meta_0_enter"
+  unless (← needsNyse) do log "  skip (no nyse)"; return
   let (tab, status) := footer (← run "M0<ret>" "data/nyse/1.parquet")
   assert (tab.startsWith "[1.parquet]") "M0<ret> returns to parent view"
   assert (contains status "grp=9") "M0<ret> groups 9 null columns"
@@ -384,6 +413,7 @@ def test_filter_parquet_full_db : IO Unit := do
 
 def test_scroll_fetches_more : IO Unit := do
   log "scroll_fetches_more"
+  unless (← needsNyse10k) do log "  skip (no nyse10k.parquet)"; return
   let keys := String.join (List.replicate 105 "<C-d>")
   let (_, status) := footer (← run keys "data/nyse10k.parquet")
   let rpart := (status.splitOn " r" |>.getD 1 "").takeWhile (· != ' ')
@@ -394,11 +424,13 @@ def test_scroll_fetches_more : IO Unit := do
 
 def test_numeric_right_align : IO Unit := do
   log "numeric_align"
+  unless (← needsSample) do log "  skip (no sample.parquet)"; return
   let first := (dataLines (← run "" "data/sample.parquet")).headD ""
   assert (contains first "  ") "Numeric columns right-aligned"
 
 def test_enter_no_quit_parquet : IO Unit := do
   log "enter_no_quit_parquet"
+  unless (← needsNyse) do log "  skip (no nyse)"; return
   let (_, status) := footer (← run "<ret>j" "data/nyse/1.parquet")
   assert (contains status "r1/") "Enter on parquet should not quit (j moves to r1)"
 

@@ -185,18 +185,18 @@ class TblOps (α : Type) where
   fromUrl   : String → IO (Option α) := fun _ => pure none
 
 /-- ModifyTable: mutable table operations (extends TblOps).
-    Column deletion and sorting; row deletion is done via filter. -/
+    Column hiding and sorting; row deletion is done via filter. -/
 class ModifyTable (α : Type) extends TblOps α where
-  delCols : Array Nat → α → IO α           -- delete columns
+  hideCols : Array Nat → α → IO α           -- hide columns
   sortBy  : Array Nat → Bool → α → IO α    -- sort by columns
 
--- Delete columns at cursor + selections, return new table and filtered group
-def ModifyTable.del [ModifyTable α] (tbl : α) (cursor : Nat) (sels : Array Nat) (grp : Array String)
+-- Hide columns at cursor + selections, return new table and filtered group
+def ModifyTable.hide [ModifyTable α] (tbl : α) (cursor : Nat) (sels : Array Nat) (grp : Array String)
     : IO (α × Array String) := do
   let idxs := if sels.contains cursor then sels else sels.push cursor
   let names := TblOps.colNames tbl
-  let delNames := idxs.map (names.getD · "")
-  pure (← delCols idxs tbl, grp.filter (!delNames.contains ·))
+  let hideNames := idxs.map (names.getD · "")
+  pure (← hideCols idxs tbl, grp.filter (!hideNames.contains ·))
 
 -- Sort table by selected columns + cursor column, excluding group (key) columns
 def ModifyTable.sort [ModifyTable α] (tbl : α) (cursor : Nat) (selIdxs : Array Nat) (grpIdxs : Array Nat) (asc : Bool) : IO α :=
@@ -205,9 +205,9 @@ def ModifyTable.sort [ModifyTable α] (tbl : α) (cursor : Nat) (selIdxs : Array
   if cols.isEmpty then pure tbl else sortBy cols asc tbl
 
 
--- | Keep columns not in delete set (shared by delCols impls)
-def keepCols (nCols : Nat) (delIdxs : Array Nat) (names : Array String) : Array String :=
-  (Array.range nCols).filter (!delIdxs.contains ·) |>.map (names.getD · "")
+-- | Keep columns not in hide set (shared by hideCols impls)
+def keepCols (nCols : Nat) (hideIdxs : Array Nat) (names : Array String) : Array String :=
+  (Array.range nCols).filter (!hideIdxs.contains ·) |>.map (names.getD · "")
 
 -- | Convert columns to tab-separated text (shared by Table toText impls)
 def colsToText (names : Array String) (cols : Array Column) (nr : Nat) : String := Id.run do

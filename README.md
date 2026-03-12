@@ -64,14 +64,14 @@ cat data.csv | tc                  # Pipe mode (stdin)
 
 ### Views
 
-| Key | Action |
-|-----|--------|
-| `F` | Frequency view (group by key + cursor column) |
-| `M` | Column metadata view |
-| `Enter` | Enter (open file in folder, filter from freq, set key from meta) |
-| `q` / `Esc` | Pop view (quit if last) |
-| `S` | Swap top two views |
-| `Q` | Quit |
+| Key         | Action                                                           |
+|-----        |--------                                                          |
+| `F`         | Frequency view (group by key + cursor column)                    |
+| `M`         | Column metadata view                                             |
+| `Enter`     | Enter (open file in folder, filter from freq, set key from meta) |
+| `q` / `Esc` | Pop view (quit if last)                                          |
+| `S`         | Swap top two views                                               |
+| `Q`         | Quit                                                             |
 
 ### Selection and Grouping
 
@@ -88,7 +88,6 @@ cat data.csv | tc                  # Pipe mode (stdin)
 |-----|--------|
 | `[` | Sort ascending |
 | `]` | Sort descending |
-| `d` | Delete column (+ selected cols) |
 
 ### Search
 
@@ -103,10 +102,10 @@ cat data.csv | tc                  # Pipe mode (stdin)
 
 ### Meta View (M)
 
-| Key | Action |
-|-----|--------|
-| `0` | Select all-null columns |
-| `1` | Select single-value columns |
+| Key     | Action                                     |
+|-----    |--------                                    |
+| `0`     | Select all-null columns                    |
+| `1`     | Select single-value columns                |
 | `Enter` | Set selected as key columns, pop to parent |
 
 ### Display
@@ -133,31 +132,31 @@ After plotting, `+`/`-` cycle the downsampling interval and re-render in place. 
 
 Required:
 
-| Tool | Purpose |
-|------|---------|
-| `prqlc` | PRQL → SQL query compilation |
-| `find` | Folder browsing (GNU findutils `-printf`) |
-| `fzf` | Fuzzy search, column jump, command palette |
+| Tool    | Purpose                                    |
+|------   |---------                                   |
+| `prqlc` | PRQL → SQL query compilation               |
+| `find`  | Folder browsing (GNU findutils `-printf`)  |
+| `fzf`   | Fuzzy search, column jump, command palette |
 
 Optional (feature-specific):
 
-| Tool | Feature | Fallback |
-|------|---------|----------|
-| `gnuplot` | Line/bar plot generation | plot disabled |
-| `viu` | Display plot PNG in terminal | `xdg-open` |
-| `xdg-open` | Open plot PNG in GUI viewer | none |
-| `aws` | S3 bucket browsing & download | S3 disabled |
-| `curl` | Hugging Face Hub file access | HF disabled |
-| `jq` | Parse HF API JSON responses | HF disabled |
-| `bat` | Syntax-highlighted file preview | `less` |
-| `less` | File preview (pager) | none |
-| `trash-put` | Move files to trash (folder view) | `gio trash` |
-| `gio` | Move files to trash (GNOME) | none |
-| `stty` | Terminal raw mode for plot interaction | — |
-| `osqueryi` | Osquery table browsing & queries | osquery disabled |
-| `python3` | Osquery table metadata setup | osquery disabled |
-| `realpath` | Resolve folder paths | — |
-| `tmux` | fzf popup mode (`--tmux`) | fullscreen fzf |
+| Tool        | Feature                                | Fallback         |
+|------       |---------                               |----------        |
+| `gnuplot`   | Line/bar plot generation               | plot disabled    |
+| `viu`       | Display plot PNG in terminal           | `xdg-open`       |
+| `xdg-open`  | Open plot PNG in GUI viewer            | none             |
+| `aws`       | S3 bucket browsing & download          | S3 disabled      |
+| `curl`      | Hugging Face Hub file access           | HF disabled      |
+| `jq`        | Parse HF API JSON responses            | HF disabled      |
+| `bat`       | Syntax-highlighted file preview        | `less`           |
+| `less`      | File preview (pager)                   | none             |
+| `trash-put` | Move files to trash (folder view)      | `gio trash`      |
+| `gio`       | Move files to trash (GNOME)            | none             |
+| `stty`      | Terminal raw mode for plot interaction | —                |
+| `osqueryi`  | Osquery table browsing & queries       | osquery disabled |
+| `python3`   | Osquery table metadata setup           | osquery disabled |
+| `realpath`  | Resolve folder paths                   | —                |
+| `tmux`      | fzf popup mode (`--tmux`)              | fullscreen fzf   |
 
 ## Known Limitations
 

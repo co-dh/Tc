@@ -28,7 +28,7 @@ instance : TblOps AdbcTable where
 
 -- | ModifyTable instance for AdbcTable
 instance : ModifyTable AdbcTable where
-  delCols := fun delIdxs t => AdbcTable.delCols t delIdxs
+  hideCols := fun hideIdxs t => AdbcTable.hideCols t hideIdxs
   sortBy  := fun idxs asc t => AdbcTable.sortBy t idxs asc
 
 -- | Format table as plain text

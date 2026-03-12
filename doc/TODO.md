@@ -138,5 +138,10 @@
 3. Memory display
 4. Error display in status bar
 
+## Zip file support
+- Open zip files; if single file inside, open it directly
+- If multiple files, show folder view listing zip contents
+- Enter on a file extracts and opens it
+
 ## change the Verb letter to +-<>0$~
 ## Backend.lean not used? getIdx not used?

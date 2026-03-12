@@ -194,9 +194,9 @@ def sortBy (t : AdbcTable) (idxs : Array Nat) (asc : Bool) : IO AdbcTable := do
   | some t' => pure t'
   | none => pure t
 
--- | Delete columns: append select op and re-query
-def delCols (t : AdbcTable) (delIdxs : Array Nat) : IO AdbcTable := do
-  match ← requery (t.query.pipe (.sel (keepCols t.colNames.size delIdxs t.colNames))) t.totalRows with
+-- | Hide columns: append select op and re-query
+def hideCols (t : AdbcTable) (hideIdxs : Array Nat) : IO AdbcTable := do
+  match ← requery (t.query.pipe (.sel (keepCols t.colNames.size hideIdxs t.colNames))) t.totalRows with
   | some t' => pure t' | none => pure t
 
 -- | Fetch more rows (increase limit by prqlLimit)

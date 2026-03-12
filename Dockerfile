@@ -40,4 +40,5 @@ COPY . .
 RUN lake build tc test
 
 # Run tests by default (osquery/HF tests auto-skip when tools missing)
+RUN mkdir -p tmp
 CMD [".lake/build/bin/test"]

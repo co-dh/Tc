@@ -1,7 +1,19 @@
 S3_PATH ?= s3://overturemaps-us-west-2/release/
 PERF_OUT := /tmp/tc-perf.data
 
-.PHONY: perf mem
+.PHONY: build test docker docker-test perf mem
+
+build:
+	lake build tc test
+
+test:
+	lake run runtest
+
+docker:
+	docker build -t tc .
+
+docker-test:
+	docker run --rm tc
 
 perf:
 	.lake/build/bin/tc +n $(S3_PATH) &  PID=$$!; \
