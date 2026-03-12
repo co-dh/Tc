@@ -129,16 +129,31 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
         else let a'' ← if e.isNone then pure a' else runEffect a' e
              mainLoop { a'' with prevScroll := 0 } test ks'
 
--- parse args: path?, -c keys?, test mode, +n (S3 no-sign-request)
-def parseArgs (args : List String) : Option String × Array Char × Bool × Bool :=
+-- parsed CLI arguments
+structure CliArgs where
+  path   : Option String := none
+  keys   : Array Char := #[]
+  test   : Bool := false
+  noSign : Bool := false
+  prql   : Option String := none   -- -p "prql" script mode
+
+-- extract -p flag and its argument, return (prql?, remaining args)
+private def extractPrql : List String → Option String × List String
+  | "-p" :: v :: rest => (some v, rest)
+  | x :: rest => let (p, r) := extractPrql rest; (p, x :: r)
+  | [] => (none, [])
+
+-- parse args: path?, -c keys?, test mode, +n, -p prql
+def parseArgs (args : List String) : CliArgs :=
   let noSign := args.any (· == "+n")
   let args := args.filter (· != "+n")
+  let (prql, args) := extractPrql args
   let toK s := (parseKeys s).toList.toArray
   match args with
-  | "-c" :: k :: _ => (none, toK k, true, noSign)
-  | p :: "-c" :: k :: _ => (some p, toK k, true, noSign)
-  | p :: _ => (some p, #[], false, noSign)
-  | [] => (none, #[], false, noSign)
+  | "-c" :: k :: _ => { path := none, keys := toK k, test := true, noSign, prql }
+  | p :: "-c" :: k :: _ => { path := some p, keys := toK k, test := true, noSign, prql }
+  | p :: _ => { path := some p, noSign, prql }
+  | [] => { noSign, prql }
 
 -- run app with view
 def runApp (v : View AdbcTable) (pipe test : Bool) (th : Theme.State) (ks : Array Char) : IO AppState := do
@@ -164,9 +179,50 @@ def runTsv (r : Except String String) (nm : String) (pipe test : Bool)
 def outputTable (a : AppState) : IO Unit := do
   IO.println (← AdbcTable.toText a.stk.tbl)
 
+-- make a safe view name from a file path: sanitize to alphanumeric + underscore
+-- e.g. "/tmp/right.csv" → "tc__tmp_right_csv"
+private def viewName (path : String) : String :=
+  let safe := String.ofList (path.toList.map fun c => if c.isAlphanum then c else '_')
+  s!"tc_{safe}"
+
+-- is this backtick content a file path? (contains / or . — distinguishes from PRQL s-string SQL splices)
+private def isFilePath (s : String) : Bool := s.any (· == '/') || s.any (· == '.')
+
+-- extract backtick-quoted file paths from PRQL, register as DuckDB views,
+-- and rewrite PRQL to use the view names instead.
+-- Non-path backtick content (e.g. PRQL s-strings) is passed through unchanged.
+private def resolveBacktickPaths (prql : String) : IO String := do
+  let parts := prql.splitOn "`"
+  let mut result := ""
+  let mut i := 0
+  for part in parts do
+    if i % 2 == 1 && !part.isEmpty && isFilePath part then
+      let vn := viewName part
+      let _ ← Adbc.query s!"CREATE OR REPLACE VIEW {vn} AS SELECT * FROM '{escSql part}'"
+      result := result ++ vn
+    else if i % 2 == 1 then
+      result := result ++ s!"`{part}`"  -- preserve non-path backticks
+    else
+      result := result ++ part
+    i := i + 1
+  pure result
+
+-- run PRQL script: register CLI file as view `x`, compile PRQL, execute, print TSV
+-- If prql starts with "from " or "let " → use as-is; otherwise prepend "from x |"
+def runScript (path : String) (prqlOps : String) : IO Unit := do
+  let _ ← Adbc.query s!"CREATE OR REPLACE VIEW x AS SELECT * FROM '{escSql path}'"
+  let prqlOps ← resolveBacktickPaths prqlOps
+  let prql := if prqlOps.startsWith "from " || prqlOps.startsWith "let " then prqlOps
+    else s!"from x | {prqlOps}"
+  let some sql ← Prql.compile prql | IO.eprintln "PRQL compilation failed"; return
+  let qr ← Adbc.query sql
+  let tbl ← AdbcTable.ofQueryResult qr default 0
+  IO.println (← AdbcTable.toText tbl)
+
 -- main entry point: init backend, parse args, run app
 def appMain (args : List String) : IO Unit := do
-  let (path?, keys, testMode, noSign) := parseArgs args
+  let cli := parseArgs args
+  let (path?, keys, testMode, noSign) := (cli.path, cli.keys, cli.test, cli.noSign)
   let envTest := (← IO.getEnv "TC_TEST_MODE").isSome
   Fzf.setTestMode (testMode || envTest)
   SourceConfig.setNoSign noSign
@@ -179,6 +235,13 @@ def appMain (args : List String) : IO Unit := do
   let ok ← try AdbcTable.init catch e => IO.eprintln s!"Backend init error: {e}"; return
   if !ok then IO.eprintln "Backend init failed"; return
   try SourceConfig.attachDb catch e => Log.write "init" s!"attachDb: {e}"
+  -- script mode: run PRQL against file and exit
+  if let some prqlOps := cli.prql then
+    let path := path?.getD ""
+    if path.isEmpty then IO.eprintln "tc -p requires a file argument"; return
+    try runScript path prqlOps
+    finally AdbcTable.shutdown; Tc.cleanupTmp
+    return
   if pipeMode && path?.isNone then
     if let some a ← runTsv (← Tc.TextParse.fromStdin) "stdin" true testMode theme keys then
       outputTable a
