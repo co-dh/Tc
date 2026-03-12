@@ -723,4 +723,108 @@ def dedup (arr : Array Nat) : Array Nat :=
 
 end SortTests
 
+/-! ## pathParts Tests -/
+
+section PathPartsTests
+open Tc.SourceConfig
+
+-- | S3 path splits into bucket + key components
+#guard pathParts "s3://" "s3://bucket/a/b" == #["bucket", "a", "b"]
+
+-- | S3 path with trailing slash
+#guard pathParts "s3://" "s3://bucket/a/" == #["bucket", "a"]
+
+-- | S3 bucket root
+#guard pathParts "s3://" "s3://bucket" == #["bucket"]
+
+-- | HF path splits into components
+#guard pathParts "hf://datasets/" "hf://datasets/openai/gsm8k/data" == #["openai", "gsm8k", "data"]
+
+-- | Empty remainder returns empty
+#guard pathParts "s3://" "s3://" == #[]
+
+-- | No prefix returns full path parts
+#guard pathParts "" "a/b/c" == #["a", "b", "c"]
+
+end PathPartsTests
+
+/-! ## escSql Tests -/
+
+section EscSqlTests
+
+-- | Single quote escaped
+#guard escSql "it's" == "it''s"
+
+-- | Multiple quotes
+#guard escSql "it's Bob's" == "it''s Bob''s"
+
+-- | No quotes unchanged
+#guard escSql "hello" == "hello"
+
+-- | Empty string unchanged
+#guard escSql "" == ""
+
+end EscSqlTests
+
+/-! ## clamp / adjOff Tests -/
+
+section ClampTests2
+
+-- | clamp within range
+#guard Tc.clamp 3 0 10 == 3
+
+-- | clamp below range
+#guard Tc.clamp 0 5 10 == 5
+
+-- | clamp above range (hi-1)
+#guard Tc.clamp 15 0 10 == 9
+
+-- | clamp degenerate range (hi ≤ lo)
+#guard Tc.clamp 5 10 10 == 10
+
+-- | adjOff keeps cursor visible
+#guard Tc.adjOff 5 0 10 == 0
+#guard Tc.adjOff 15 0 10 == 6
+#guard Tc.adjOff 0 5 10 == 0
+
+end ClampTests2
+
+/-! ## Agg.short Tests -/
+
+section AggTests
+
+#guard Agg.short .count == "count"
+#guard Agg.short .sum == "sum"
+#guard Agg.short .avg == "avg"
+#guard Agg.short .min == "min"
+#guard Agg.short .max == "max"
+#guard Agg.short .stddev == "stddev"
+#guard Agg.short .dist == "dist"
+
+end AggTests
+
+/-! ## Cell.toRaw Tests -/
+
+section CellToRawTests
+
+#guard Cell.toRaw .null == ""
+#guard Cell.toRaw (.int 42) == "42"
+#guard Cell.toRaw (.str "hello") == "hello"
+#guard Cell.toRaw (.bool true) == "true"
+#guard Cell.toRaw (.bool false) == "false"
+
+end CellToRawTests
+
+/-! ## Array.idxOf? Tests -/
+
+section IdxOfTests
+
+#guard (#["a", "b", "c"]).idxOf? "b" == some 1
+#guard (#["a", "b", "c"]).idxOf? "d" == none
+#guard (#[] : Array Nat).idxOf? 1 == none
+#guard (#[10, 20, 30]).idxOf? 10 == some 0
+#guard (#[10, 20, 30]).idxOf? 30 == some 2
+
+end IdxOfTests
+
 end PureTest2
