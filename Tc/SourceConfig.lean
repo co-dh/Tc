@@ -59,6 +59,17 @@ def mkVars (cfg : Config) (path tmp name extra : String) : Array (String × Stri
     (s!"{i + 1}+", "/".intercalate (parts.toList.drop i))
   baseVars ++ numbered.toArray ++ plus.toArray
 
+-- | Whitelist of characters safe in shell arguments (rejects metacharacters like $, `, ;, &, etc.)
+private def isSafePathChar (c : Char) : Bool :=
+  c.isAlphanum || c == '-' || c == '_' || c == '.' || c == '/' || c == ':'
+    || c == '+' || c == '@' || c == '~' || c == ' ' || c == '%' || c == ','
+
+-- | Validate that a user-supplied path contains no shell metacharacters before template expansion
+private def validateShellSafe (s : String) (label : String) : IO Unit := do
+  unless s.all isSafePathChar do
+    Log.write "src" s!"rejected unsafe {label}: {s}"
+    throw (IO.userError s!"Path contains unsafe characters: {s}")
+
 /-! ## Config DB -/
 
 -- | Attach data/sources.duckdb as schema "src". Called once after AdbcTable.init.
@@ -76,7 +87,7 @@ def attachDb : IO Unit := do
       let _ ← Adbc.query s!"ATTACH '{c}' AS src (READ_ONLY)"
       Log.write "init" s!"sources: {c}"
       return
-  Log.write "init" "sources.duckdb not found"
+  Log.write "init" "sources.duckdb not found (remote source browsing disabled)"
 
 -- | A typed row accessor: bundles (qr, row, colMap) so column access
 -- takes only a name. The row/col swap bug is impossible by construction —
@@ -124,7 +135,7 @@ private def configFromRow (qr : Adbc.QueryResult) (row : Nat) : IO Config := do
 -- | Find config for a path by prefix match (longest prefix wins)
 def findSource (path : String) : IO (Option Config) := do
   try
-    let qr ← Adbc.query s!"SELECT * FROM src.tc_sources WHERE '{path.replace "'" "''"}' LIKE pfx || '%' ORDER BY length(pfx) DESC LIMIT 1"
+    let qr ← Adbc.queryParam "SELECT * FROM src.tc_sources WHERE $1 LIKE pfx || '%' ORDER BY length(pfx) DESC LIMIT 1" path
     let n ← Adbc.nrows qr
     if n == 0 then return none
     some <$> configFromRow qr 0
@@ -183,8 +194,10 @@ private def nameFromPath (path : String) : String :=
 
 -- | Build template vars for a config + path (shared by runList/runDownload)
 private def Config.cmdVars (cfg : Config) (path : String) : IO (Array (String × String)) := do
+  validateShellSafe path "path"
   let tmpDir ← Tc.tmpPath "src"
   let _ ← Log.run "src" "mkdir" #["-p", tmpDir]
+  -- S3-specific: --no-sign-request via +n CLI arg. Other sources use static URLs/tokens in templates.
   let extra ← if cfg.pfx == "s3://" then s3Extra else pure ""
   pure (mkVars cfg path tmpDir (nameFromPath path) extra)
 
@@ -203,6 +216,8 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
     let p := if path.endsWith "/" then path else s!"{path}/"
     let vars ← cfg.cmdVars p
     let cmd := expand cfg.listCmd vars
+    -- Strip trailing slash from expanded URL (e.g. {3+} empty → "tree/main/")
+    let cmd := if cmd.endsWith "/" then (cmd.take (cmd.length - 1)).toString else cmd
     Log.write "src" s!"list: {cmd}"
     let out ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
     if out.exitCode != 0 then
@@ -216,7 +231,8 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
     IO.FS.writeFile tmpFile json
     let listSql := expand cfg.listSql #[("src", tmpFile)]
     -- Only add ".." parent row if list_sql produces standard folder columns (name,size,date,type)
-    let parentSql := if (cfg.parent path |>.isSome) && ((cfg.listSql.splitOn "as type").length > 1)
+    let hasTypeCol := (cfg.listSql.splitOn "as type").length > 1 || (cfg.listSql.splitOn "AS type").length > 1
+    let parentSql := if (cfg.parent path |>.isSome) && hasTypeCol
       then s!" UNION ALL SELECT '..' as name, 0 as size, '' as date, 'dir' as type"
       else ""
     let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {listSql}{parentSql}"
@@ -230,7 +246,7 @@ def Config.runDownload (cfg : Config) (path : String) : IO String := do
   let cmd := expand cfg.downloadCmd vars
   Log.write "src" s!"download: {cmd}"
   let _ ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
-  let tmpDir ← Tc.tmpPath "src"
+  let tmpDir := vars.findSome? (fun (k, v) => if k == "tmp" then some v else none) |>.getD ""
   pure s!"{tmpDir}/{nameFromPath path}"
 
 -- | Resolve data file path: download if needed, or return URI for DuckDB
@@ -241,6 +257,7 @@ def Config.resolve (cfg : Config) (path : String) : IO String := do
 -- | Run enter: script cmd → JSON → DuckDB temp table, apply types from stub view
 def Config.runEnter (cfg : Config) (name : String) : IO (Option AdbcTable) := do
   if cfg.script.isEmpty then return none
+  validateShellSafe name "name"
   runSetup cfg
   let vars := mkVars cfg (cfg.pfx ++ name) "" name ""
   let cmd := expand cfg.script vars
@@ -258,7 +275,7 @@ def Config.runEnter (cfg : Config) (name : String) : IO (Option AdbcTable) := do
   try IO.FS.removeFile tmpFile catch _ => pure ()
   -- Apply types from DuckDB stub view (e.g. osq.groups has typed columns)
   let typeApply : IO Unit := do
-    let qr ← Adbc.query s!"SELECT column_name, data_type FROM duckdb_columns() WHERE table_name = '{name.replace "'" "''"}' AND data_type != 'VARCHAR'"
+    let qr ← Adbc.queryParam "SELECT column_name, data_type FROM duckdb_columns() WHERE table_name = $1 AND data_type != 'VARCHAR'" name
     let nr ← Adbc.nrows qr
     for i in [:nr.toNat] do
       let colName ← Adbc.cellStr qr i.toUInt64 0
