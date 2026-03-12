@@ -56,7 +56,9 @@ private def parquetMetaPrql (path : String) : String :=
   let p := escSql path
   "from s\"SELECT * FROM parquet_metadata('" ++ p ++ "')\" | pqmeta"
 
--- | SQL: per-column stats via UNION ALL (for non-parquet sources)
+-- | SQL: per-column stats via UNION ALL (for non-parquet sources).
+-- Cannot use DuckDB SUMMARIZE: its null_percentage uses approximate counting
+-- which miscounts NULLs for some column types, giving wrong null_pct values.
 private def colStatsSql (baseSql : String) (names : Array String) (types : Array String) : String :=
   let one (i : Nat) : String :=
     let nm := escSql (names.getD i "")
