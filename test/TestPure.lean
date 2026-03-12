@@ -10,6 +10,7 @@ import Tc.Types
 import Tc.Filter
 import Tc.Folder
 import Tc.Data.Text
+import Tc.Remote
 
 namespace PureTest2
 
@@ -411,5 +412,315 @@ open Tc.SourceConfig
 #guard expand "a/{1}/b" #[("1", "")] == "a/b"
 
 end ExpandTests
+
+/-! ## NavState Tests (moved from Test.lean) -/
+
+section NavTests2
+
+-- 5 rows, 3 cols — uses mock53/testNav already defined above
+
+-- | j (row.inc) moves cursor from 0 to 1
+#guard (NavState.exec (.row .inc) testNav 1 1).map (·.row.cur.val) == some 1
+
+-- | k (row.dec) at row 0 stays at 0 (clamped)
+#guard (NavState.exec (.row .dec) testNav 1 1).map (·.row.cur.val) == some 0
+
+-- | l (col.inc) moves cursor from 0 to 1
+#guard (NavState.exec (.col .inc) testNav 1 1).map (·.col.cur.val) == some 1
+
+-- | h (col.dec) at col 0 stays at 0 (clamped)
+#guard (NavState.exec (.col .dec) testNav 1 1).map (·.col.cur.val) == some 0
+
+-- | G (ver.inc) goes to last row (4)
+#guard (NavState.exec (.ver .inc) testNav 1 1).map (·.row.cur.val) == some 4
+
+-- | g (ver.dec) goes to first row (0)
+def navAtRow4 : NavState 5 3 (MockTable 5 3) :=
+  match NavState.exec (.ver .inc) testNav 1 1 with
+  | some n => n
+  | none => testNav
+#guard (NavState.exec (.ver .dec) navAtRow4 1 1).map (·.row.cur.val) == some 0
+
+-- | $ (hor.inc) goes to last col (2)
+#guard (NavState.exec (.hor .inc) testNav 1 1).map (·.col.cur.val) == some 2
+
+-- | 0 (hor.dec) goes to first col (0)
+def navAtCol2 : NavState 5 3 (MockTable 5 3) :=
+  match NavState.exec (.hor .inc) testNav 1 1 with
+  | some n => n
+  | none => testNav
+#guard (NavState.exec (.hor .dec) navAtCol2 1 1).map (·.col.cur.val) == some 0
+
+-- | Page down (vPage.inc) with page size 2 moves from 0 to 2
+#guard (NavState.exec (.vPage .inc) testNav 2 1).map (·.row.cur.val) == some 2
+
+-- | Page up (vPage.dec) at row 0 stays at 0
+#guard (NavState.exec (.vPage .dec) testNav 2 1).map (·.row.cur.val) == some 0
+
+-- | T (rowSel.ent) toggles row selection
+#guard (NavState.exec (.rowSel .ent) testNav 1 1).map (·.row.sels) == some #[0]
+
+-- | T twice removes selection
+def navWithSel : NavState 5 3 (MockTable 5 3) :=
+  match NavState.exec (.rowSel .ent) testNav 1 1 with
+  | some n => n
+  | none => testNav
+#guard (NavState.exec (.rowSel .ent) navWithSel 1 1).map (·.row.sels) == some #[]
+
+-- | ! (grp.ent) toggles group
+#guard (NavState.exec (.grp .ent) testNav 1 1).map (·.grp) == some #["c0"]
+
+-- | Unhandled command returns none
+#guard (NavState.exec (.thm .inc) testNav 1 1).isNone
+
+-- | update returns Effect.none for nav commands
+#guard (NavState.update (.row .inc) testNav 1 1).map (·.2) == some .none
+
+end NavTests2
+
+/-! ## Array.toggle Tests -/
+
+section ToggleTests
+
+-- | toggle adds element if absent
+#guard #[1, 2].toggle 3 == #[1, 2, 3]
+
+-- | toggle removes element if present
+#guard #[1, 2, 3].toggle 2 == #[1, 3]
+
+-- | toggle on empty array adds element
+#guard (#[] : Array Nat).toggle 1 == #[1]
+
+-- | toggle twice returns original (when not present initially)
+#guard ((#[1, 2] : Array Nat).toggle 3).toggle 3 == #[1, 2]
+
+end ToggleTests
+
+/-! ## Fin.clamp Tests -/
+
+section ClampTests
+
+#guard (⟨0, by decide⟩ : Fin 5).clamp 10 == ⟨4, by decide⟩
+#guard (⟨4, by decide⟩ : Fin 5).clamp (-10) == ⟨0, by decide⟩
+#guard (⟨2, by decide⟩ : Fin 5).clamp 1 == ⟨3, by decide⟩
+#guard (⟨2, by decide⟩ : Fin 5).clamp (-1) == ⟨1, by decide⟩
+
+end ClampTests
+
+/-! ## Info.State Tests -/
+
+section InfoTests2
+
+def infoOff : UI.Info.State := { vis := false }
+def infoOn : UI.Info.State := { vis := true }
+
+-- | Default is on
+#guard ({} : UI.Info.State).vis == true
+
+-- | I toggles info visibility
+#guard (UI.Info.State.update infoOff (.info .ent)).map (·.1.vis) == some true
+#guard (UI.Info.State.update infoOn (.info .ent)).map (·.1.vis) == some false
+
+-- | info.inc turns on
+#guard (UI.Info.State.update infoOff (.info .inc)).map (·.1.vis) == some true
+
+-- | info.dec turns off
+#guard (UI.Info.State.update infoOn (.info .dec)).map (·.1.vis) == some false
+
+-- | Unhandled returns none
+#guard (UI.Info.State.update infoOff (.row .inc)).isNone
+
+-- | Info update returns Effect.none
+#guard (UI.Info.State.update infoOff (.info .ent)).map (·.2) == some .none
+
+end InfoTests2
+
+/-! ## dispOrder Tests -/
+
+section DispOrderTests
+
+-- | Empty group: order unchanged
+#guard dispOrder #[] #["a", "b", "c"] == #[0, 1, 2]
+
+-- | Group first col: moves to front
+#guard dispOrder #["b"] #["a", "b", "c"] == #[1, 0, 2]
+
+-- | Group multiple: group columns come first (in column order)
+#guard dispOrder #["c", "a"] #["a", "b", "c"] == #[0, 2, 1]
+
+-- | Group non-existent: ignored
+#guard dispOrder #["x"] #["a", "b", "c"] == #[0, 1, 2]
+
+end DispOrderTests
+
+/-! ## TextParse Tests -/
+
+section TextParseTests
+
+-- | fromText parses tab-separated content
+#guard (Tc.TextParse.fromText "a\tb\n1\t2\n3\t4").toOption.isSome
+
+-- | fromText parses space-separated content
+#guard (Tc.TextParse.fromText "PID  CMD\n1    init\n2    kthreadd").toOption.isSome
+
+-- | fromText empty input returns error
+#guard (Tc.TextParse.fromText "").toOption.isNone
+
+end TextParseTests
+
+/-! ## Column Operation Tests -/
+
+section ColumnTests
+
+-- | Column.size for ints
+#guard (Column.ints #[10, 20, 30]).size == 3
+
+-- | Column.size for strs
+#guard (Column.strs #["a", "b"]).size == 2
+
+-- | Column.size for floats
+#guard (Column.floats #[1.0, 2.0, 3.0, 4.0]).size == 4
+
+-- | Column.size for empty
+#guard (Column.ints #[]).size == 0
+
+-- | Column.take preserves first n elements (check via get + toRaw)
+#guard ((Column.ints #[10, 20, 30]).take 2).size == 2
+#guard (((Column.ints #[10, 20, 30]).take 2).get 0).toRaw == "10"
+#guard (((Column.ints #[10, 20, 30]).take 2).get 1).toRaw == "20"
+
+-- | Column.take with n > size returns all
+#guard ((Column.strs #["a", "b"]).take 5).size == 2
+
+-- | Column.take 0 returns empty
+#guard ((Column.ints #[10, 20, 30]).take 0).size == 0
+
+-- | Column.gather reindexes correctly (ints)
+#guard ((Column.ints #[10, 20, 30]).gather #[2, 0]).size == 2
+#guard (((Column.ints #[10, 20, 30]).gather #[2, 0]).get 0).toRaw == "30"
+#guard (((Column.ints #[10, 20, 30]).gather #[2, 0]).get 1).toRaw == "10"
+
+-- | Column.gather reindexes correctly (strs)
+#guard (((Column.strs #["a", "b", "c"]).gather #[2, 0]).get 0).toRaw == "c"
+#guard (((Column.strs #["a", "b", "c"]).gather #[2, 0]).get 1).toRaw == "a"
+
+-- | Column.gather with empty indices returns empty column
+#guard ((Column.ints #[10, 20, 30]).gather #[]).size == 0
+
+-- | Column.gather duplicate indices
+#guard ((Column.ints #[10, 20]).gather #[0, 0, 1, 1]).size == 4
+#guard (((Column.ints #[10, 20]).gather #[0, 0, 1, 1]).get 2).toRaw == "20"
+
+-- | Column.get returns correct Cell.toRaw for strs
+#guard ((Column.strs #["hello", "world"]).get 0).toRaw == "hello"
+#guard ((Column.strs #["hello", "world"]).get 1).toRaw == "world"
+
+-- | Column.get out of bounds returns default (empty/0)
+#guard ((Column.ints #[10]).get 5).toRaw == "0"
+#guard ((Column.strs #["a"]).get 5).toRaw == ""
+
+end ColumnTests
+
+/-! ## S3 Path Helper Tests -/
+
+section S3Tests
+
+-- | S3 prefix recognized
+#guard "s3://bucket/path".startsWith "s3://" == true
+#guard "s3://my-bucket".startsWith "s3://" == true
+
+-- | Non-S3 paths rejected
+#guard "/local/path".startsWith "s3://" == false
+#guard "http://example.com".startsWith "s3://" == false
+#guard "".startsWith "s3://" == false
+
+-- | parent strips last component (minParts=3 for S3)
+#guard Remote.parent "s3://bucket/a/b/" 3 == some "s3://bucket/a/"
+#guard Remote.parent "s3://bucket/a/" 3 == some "s3://bucket/"
+
+-- | parent returns none at bucket root
+#guard Remote.parent "s3://bucket/" 3 == none
+
+-- | parent without trailing slash
+#guard Remote.parent "s3://bucket/a/b" 3 == some "s3://bucket/a/"
+
+end S3Tests
+
+/-! ## Remote Path Helper Tests -/
+
+section RemoteTests
+
+-- | join with trailing slash
+#guard Remote.join "s3://b/a/" "x" == "s3://b/a/x"
+
+-- | join without trailing slash adds separator
+#guard Remote.join "s3://b/a" "x" == "s3://b/a/x"
+
+-- | join preserves trailing slash on child
+#guard Remote.join "s3://b/" "subdir/" == "s3://b/subdir/"
+
+-- | dispName extracts last component
+#guard Remote.dispName "hf://datasets/user/ds" == "ds"
+#guard Remote.dispName "hf://datasets/user/ds/data/" == "data"
+#guard Remote.dispName "s3://bucket/prefix/" == "prefix"
+
+-- | parent with different minParts
+#guard Remote.parent "s3://bucket/" 3 == none
+#guard Remote.parent "s3://bucket/a/b" 3 == some "s3://bucket/a/"
+#guard Remote.parent "hf://datasets/user/ds" 5 == none
+#guard Remote.parent "hf://datasets/user/ds/a/" 5 == some "hf://datasets/user/ds/"
+
+end RemoteTests
+
+/-! ## HF Path Helper Tests -/
+
+section HFTests
+
+-- | HF parent via Remote.parent (minParts=5 for hf://datasets/user/ds)
+#guard Remote.parent "hf://datasets/user/ds/a/b/" 5 == some "hf://datasets/user/ds/a/"
+#guard Remote.parent "hf://datasets/user/ds/a/" 5 == some "hf://datasets/user/ds/"
+#guard Remote.parent "hf://datasets/user/ds/" 5 == none
+
+end HFTests
+
+/-! ## FreqResult Construction Tests -/
+
+section FreqTests
+
+-- | freqPctBar produces pct array of same size as input
+#guard (freqPctBar #[10, 20, 30]).1.size == 3
+
+-- | freqPctBar produces bar array of same size as input
+#guard (freqPctBar #[10, 20, 30]).2.size == 3
+
+-- | freqPctBar with empty input
+#guard (freqPctBar #[]).1.size == 0
+#guard (freqPctBar #[]).2.size == 0
+
+-- | freqPctBar with single element
+#guard (freqPctBar #[100]).1.size == 1
+#guard (freqPctBar #[100]).2.size == 1
+
+-- | freqPctBar pct and bar arrays have same size as each other
+#guard (freqPctBar #[5, 10, 15]).1.size == (freqPctBar #[5, 10, 15]).2.size
+
+end FreqTests
+
+/-! ## Sort Behavior Tests -/
+
+section SortTests
+
+-- Group exclusion logic
+#guard (#[] ++ #[(0:Nat)]).filter (!#[(0:Nat)].contains ·) == #[]
+#guard (#[(0:Nat)] ++ #[1]).filter (!#[(0:Nat)].contains ·) == #[1]
+#guard (#[(0:Nat), 2] ++ #[1]).filter (!#[(0:Nat), 3].contains ·) == #[2, 1]
+
+-- Deduplication
+def dedup (arr : Array Nat) : Array Nat :=
+  arr.foldl (init := #[]) fun acc c => if acc.contains c then acc else acc.push c
+#guard dedup (#[(0:Nat), 1] ++ #[1]) == #[0, 1]
+#guard dedup (#[(2:Nat), 0] ++ #[2]) == #[2, 0]
+
+end SortTests
 
 end PureTest2
