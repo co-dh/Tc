@@ -846,10 +846,17 @@ def test_width_grows_on_scroll : IO Unit := do
 
 -- === HF tests ===
 
--- | Check if HuggingFace API is reachable
+-- | Check if HuggingFace API is reachable (cached to avoid repeated 3s timeouts)
+initialize hfAccessCache : IO.Ref (Option Bool) ← IO.mkRef none
+
 def hasHfAccess : IO Bool := do
-  let r ← IO.Process.output { cmd := "curl", args := #["-sf", "--max-time", "3", "https://huggingface.co/api/datasets/openai/gsm8k"] }
-  pure (r.exitCode == 0)
+  match ← hfAccessCache.get with
+  | some v => pure v
+  | none =>
+    let r ← IO.Process.output { cmd := "curl", args := #["-sf", "--max-time", "3", "https://huggingface.co/api/datasets/openai/gsm8k"] }
+    let ok := r.exitCode == 0
+    hfAccessCache.set (some ok)
+    pure ok
 
 def test_hf_readme : IO Unit := do
   log "hf_readme"

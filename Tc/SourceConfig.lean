@@ -46,8 +46,12 @@ def pathParts (pfx path : String) : Array String :=
   if rest.isEmpty then #[] else (rest.splitOn "/").toArray
 
 -- | Expand template placeholders: {path}, {name}, {tmp}, {extra}, {1}, {2}, {2+}, etc.
+-- For empty values, also removes a preceding "/" to avoid trailing slashes
+-- (e.g., "tree/main/{3+}" with empty {3+} becomes "tree/main" not "tree/main/").
 def expand (tmpl : String) (vars : Array (String × String)) : String :=
-  vars.foldl (fun s (k, v) => s.replace s!"\{{k}}" v) tmpl
+  vars.foldl (fun s (k, v) =>
+    if v.isEmpty then s.replace s!"/\{{k}}" "" |>.replace s!"\{{k}}" ""
+    else s.replace s!"\{{k}}" v) tmpl
 
 -- | Build template variables from a config and path
 def mkVars (cfg : Config) (path tmp name extra : String) : Array (String × String) :=
@@ -59,16 +63,17 @@ def mkVars (cfg : Config) (path tmp name extra : String) : Array (String × Stri
     (s!"{i + 1}+", "/".intercalate (parts.toList.drop i))
   baseVars ++ numbered.toArray ++ plus.toArray
 
--- | Whitelist of characters safe in shell arguments (rejects metacharacters like $, `, ;, &, etc.)
-private def isSafePathChar (c : Char) : Bool :=
-  c.isAlphanum || c == '-' || c == '_' || c == '.' || c == '/' || c == ':'
-    || c == '+' || c == '@' || c == '~' || c == ' ' || c == '%' || c == ','
+-- | Reject shell metacharacters in user-supplied values before template expansion.
+-- Blocklist approach: reject only dangerous chars, allow everything else (unicode, #, etc.)
+private def hasShellMeta (s : String) : Bool :=
+  s.any fun c => c == '$' || c == '`' || c == ';' || c == '&' || c == '|'
+    || c == '(' || c == ')' || c == '!' || c == '{' || c == '}' || c == '<'
+    || c == '>' || c == '\\' || c == '"' || c == '\'' || c == '\n'
 
--- | Validate that a user-supplied path contains no shell metacharacters before template expansion
 private def validateShellSafe (s : String) (label : String) : IO Unit := do
-  unless s.all isSafePathChar do
+  if hasShellMeta s then
     Log.write "src" s!"rejected unsafe {label}: {s}"
-    throw (IO.userError s!"Path contains unsafe characters: {s}")
+    throw (IO.userError s!"Path contains shell metacharacters: {s}")
 
 /-! ## Config DB -/
 
@@ -192,14 +197,14 @@ private def fromTbl (tbl : String) : IO (Option AdbcTable) := do
 private def nameFromPath (path : String) : String :=
   path.splitOn "/" |>.filter (·.length > 0) |>.getLast? |>.getD "file"
 
--- | Build template vars for a config + path (shared by runList/runDownload)
-private def Config.cmdVars (cfg : Config) (path : String) : IO (Array (String × String)) := do
+-- | Build template vars for a config + path (shared by runList/runDownload).
+-- Returns (vars, tmpDir) so callers don't need to search the array.
+private def Config.cmdVars (cfg : Config) (path : String) : IO (Array (String × String) × String) := do
   validateShellSafe path "path"
   let tmpDir ← Tc.tmpPath "src"
   let _ ← Log.run "src" "mkdir" #["-p", tmpDir]
-  -- S3-specific: --no-sign-request via +n CLI arg. Other sources use static URLs/tokens in templates.
   let extra ← if cfg.pfx == "s3://" then s3Extra else pure ""
-  pure (mkVars cfg path tmpDir (nameFromPath path) extra)
+  pure (mkVars cfg path tmpDir (nameFromPath path) extra, tmpDir)
 
 -- | Run listing: CLI cmd → JSON → listSql, or direct SQL mode
 def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
@@ -214,10 +219,8 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
   else
     -- CLI mode: run command, save JSON, transform via listSql
     let p := if path.endsWith "/" then path else s!"{path}/"
-    let vars ← cfg.cmdVars p
+    let (vars, _) ← cfg.cmdVars p
     let cmd := expand cfg.listCmd vars
-    -- Strip trailing slash from expanded URL (e.g. {3+} empty → "tree/main/")
-    let cmd := if cmd.endsWith "/" then (cmd.take (cmd.length - 1)).toString else cmd
     Log.write "src" s!"list: {cmd}"
     let out ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
     if out.exitCode != 0 then
@@ -230,23 +233,21 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
     let tmpFile ← Tc.tmpPath "src-list.json"
     IO.FS.writeFile tmpFile json
     let listSql := expand cfg.listSql #[("src", tmpFile)]
-    -- Only add ".." parent row if list_sql produces standard folder columns (name,size,date,type)
-    let hasTypeCol := (cfg.listSql.splitOn "as type").length > 1 || (cfg.listSql.splitOn "AS type").length > 1
-    let parentSql := if (cfg.parent path |>.isSome) && hasTypeCol
-      then s!" UNION ALL SELECT '..' as name, 0 as size, '' as date, 'dir' as type"
-      else ""
-    let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {listSql}{parentSql}"
+    let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {listSql}"
+    -- Add ".." parent row if table has standard folder columns (name,size,date,type)
+    if cfg.parent path |>.isSome then
+      try let _ ← Adbc.query s!"INSERT INTO {tbl} SELECT '..' as name, 0 as size, '' as date, 'dir' as type"
+      catch _ => pure ()
     try IO.FS.removeFile tmpFile catch _ => pure ()
     fromTbl tbl
 
 -- | Download a remote file to local temp path
 def Config.runDownload (cfg : Config) (path : String) : IO String := do
   statusMsg s!"Downloading {path} ..."
-  let vars ← cfg.cmdVars path
+  let (vars, tmpDir) ← cfg.cmdVars path
   let cmd := expand cfg.downloadCmd vars
   Log.write "src" s!"download: {cmd}"
   let _ ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
-  let tmpDir := vars.findSome? (fun (k, v) => if k == "tmp" then some v else none) |>.getD ""
   pure s!"{tmpDir}/{nameFromPath path}"
 
 -- | Resolve data file path: download if needed, or return URI for DuckDB

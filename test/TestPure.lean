@@ -394,4 +394,22 @@ section KeepColsTests
 
 end KeepColsTests
 
+/-! ## expand: empty placeholder removes preceding slash -/
+
+section ExpandTests
+open Tc.SourceConfig
+
+-- empty {3+} after slash: "/tree/main/{3+}" → "/tree/main" not "/tree/main/"
+#guard expand "curl -sf https://example.com/{1}/{2}/tree/main/{3+}"
+  #[("1", "openai"), ("2", "gsm8k"), ("3+", "")] == "curl -sf https://example.com/openai/gsm8k/tree/main"
+
+-- non-empty {3+} preserved normally
+#guard expand "https://example.com/{1}/{2}/tree/{3+}"
+  #[("1", "a"), ("2", "b"), ("3+", "sub/dir")] == "https://example.com/a/b/tree/sub/dir"
+
+-- empty {1} in middle: no double slash
+#guard expand "a/{1}/b" #[("1", "")] == "a/b"
+
+end ExpandTests
+
 end PureTest2

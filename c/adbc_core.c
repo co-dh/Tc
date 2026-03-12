@@ -281,37 +281,18 @@ static lean_external_class* get_qr_class(void) {
     return g_qr_class;
 }
 
-// | Execute SQL query, return QueryResult
-lean_obj_res lean_adbc_query(b_lean_obj_arg sql_obj, lean_obj_arg world) {
-    if (!g_initialized) return lean_io_result_mk_error(lean_mk_io_user_error(lean_mk_string("ADBC not initialized")));
+// | Collect batches from stream into QueryResult, build nanoarrow views.
+// Returns error message on failure, NULL on success. Caller must release stream/stmt.
+static const char* qr_collect(struct ArrowArrayStream* stream, QueryResult* qr) {
+    if (stream->get_schema(stream, &qr->schema) != 0) return "get_schema";
 
-    const char* sql = lean_string_cstr(sql_obj);
-    struct AdbcError err;
-    init_error(&err);
-    struct AdbcStatement stmt = {0};
-    struct ArrowArrayStream stream = {0};
-    QueryResult* qr = NULL;
-    const char* fail_msg = NULL;
-
-    #define QUERY_CHECK(call, msg) if ((call) != ADBC_STATUS_OK) { fail_msg = err.message ? err.message : msg; goto fail; }
-    #define STREAM_CHECK(call, msg) if ((call) != 0) { fail_msg = msg; goto fail; }
-
-    QUERY_CHECK(pAdbcStatementNew(&g_conn, &stmt, &err), "StatementNew");
-    QUERY_CHECK(pAdbcStatementSetSqlQuery(&stmt, sql, &err), "SetSqlQuery");
-    int64_t rows_affected = -1;
-    QUERY_CHECK(pAdbcStatementExecuteQuery(&stmt, &stream, &rows_affected, &err), "ExecuteQuery");
-
-    qr = calloc(1, sizeof(QueryResult));
-    STREAM_CHECK(stream.get_schema(&stream, &qr->schema), "get_schema");
-
-    // collect batches
     int64_t cap = 16;
     qr->batches = malloc(cap * sizeof(struct ArrowArray));
     qr->prefix = malloc((cap + 1) * sizeof(int64_t));
     qr->prefix[0] = 0;
     while (1) {
         struct ArrowArray batch = {0};
-        if (stream.get_next(&stream, &batch) != 0 || !batch.release) break;
+        if (stream->get_next(stream, &batch) != 0 || !batch.release) break;
         if (qr->n_batches >= cap) {
             cap *= 2;
             qr->batches = realloc(qr->batches, cap * sizeof(struct ArrowArray));
@@ -322,190 +303,103 @@ lean_obj_res lean_adbc_query(b_lean_obj_arg sql_obj, lean_obj_arg world) {
         qr->prefix[++qr->n_batches] = qr->total_rows;
     }
 
-    if (stream.release) stream.release(&stream);
-    pAdbcStatementRelease(&stmt, &err);
-    free_error(&err);
-
-    // Build nanoarrow views for typed access
-    {
-        int64_t nc = qr->schema.n_children;
-        qr->n_children = nc;
-
-        qr->col_types = calloc(nc, sizeof(struct ArrowSchemaView));
+    int64_t nc = qr->schema.n_children;
+    qr->n_children = nc;
+    qr->col_types = calloc(nc, sizeof(struct ArrowSchemaView));
+    for (int64_t c = 0; c < nc; c++)
+        ArrowSchemaViewInit(&qr->col_types[c], qr->schema.children[c], NULL);
+    qr->views = calloc(qr->n_batches * nc, sizeof(struct ArrowArrayView));
+    for (int64_t b = 0; b < qr->n_batches; b++) {
         for (int64_t c = 0; c < nc; c++) {
-            if (ArrowSchemaViewInit(&qr->col_types[c], qr->schema.children[c], NULL) != NANOARROW_OK)
-                log_msg("[adbc] ArrowSchemaViewInit failed col=%ld\n", (long)c);
-        }
-
-        qr->views = calloc(qr->n_batches * nc, sizeof(struct ArrowArrayView));
-        for (int64_t b = 0; b < qr->n_batches; b++) {
-            for (int64_t c = 0; c < nc; c++) {
-                int64_t idx = b * nc + c;
-                if (ArrowArrayViewInitFromSchema(&qr->views[idx], qr->schema.children[c], NULL) != NANOARROW_OK) {
-                    log_msg("[adbc] ArrowArrayViewInitFromSchema failed b=%ld c=%ld\n", (long)b, (long)c);
-                    continue;
-                }
-                if (ArrowArrayViewSetArray(&qr->views[idx], qr->batches[b].children[c], NULL) != NANOARROW_OK)
-                    log_msg("[adbc] ArrowArrayViewSetArray failed b=%ld c=%ld\n", (long)b, (long)c);
-            }
+            int64_t idx = b * nc + c;
+            if (ArrowArrayViewInitFromSchema(&qr->views[idx], qr->schema.children[c], NULL) != NANOARROW_OK) continue;
+            ArrowArrayViewSetArray(&qr->views[idx], qr->batches[b].children[c], NULL);
         }
     }
-
-    return lean_io_result_mk_ok(lean_alloc_external(get_qr_class(), qr));
-
-fail:
-    ;lean_object* err_str = lean_mk_string(fail_msg ? fail_msg : "unknown error");
-    if (qr) { free(qr->batches); free(qr->prefix); free(qr); }
-    if (stream.release) stream.release(&stream);
-    if (stmt.private_data) pAdbcStatementRelease(&stmt, &err);
-    free_error(&err);
-    return lean_io_result_mk_error(lean_mk_io_user_error(err_str));
-    #undef QUERY_CHECK
-    #undef STREAM_CHECK
+    return NULL;
 }
 
-// | No-op release for static Arrow arrays/schemas (required: Arrow C Data Interface checks release != NULL)
-static void noop_release_schema(struct ArrowSchema* s) { s->release = NULL; }
-static void noop_release_array(struct ArrowArray* a) { a->release = NULL; }
+// | Common error path: clean up stmt/stream/qr, return Lean IO error
+static lean_obj_res qr_fail(const char* msg, QueryResult* qr,
+    struct ArrowArrayStream* stream, struct AdbcStatement* stmt, struct AdbcError* err)
+{
+    lean_object* err_str = lean_mk_string(msg ? msg : "unknown error");
+    if (qr) { free(qr->batches); free(qr->prefix); free(qr); }
+    if (stream->release) stream->release(stream);
+    if (stmt->private_data) pAdbcStatementRelease(stmt, err);
+    free_error(err);
+    return lean_io_result_mk_error(lean_mk_io_user_error(err_str));
+}
 
-// | Execute parameterized SQL query with a single string argument, return QueryResult
-lean_obj_res lean_adbc_query_param(b_lean_obj_arg sql_obj, b_lean_obj_arg param_obj, lean_obj_arg world) {
+#define ADBC_QR_CHECK(call, msg) if ((call) != ADBC_STATUS_OK) { \
+    return qr_fail(err.message ? err.message : msg, qr, &stream, &stmt, &err); }
+
+// | Execute SQL query, return QueryResult
+lean_obj_res lean_adbc_query(b_lean_obj_arg sql_obj, lean_obj_arg world) {
     if (!g_initialized) return lean_io_result_mk_error(lean_mk_io_user_error(lean_mk_string("ADBC not initialized")));
 
-    const char* sql = lean_string_cstr(sql_obj);
-    const char* param = lean_string_cstr(param_obj);
-    int64_t param_len = (int64_t)strlen(param);
-    struct AdbcError err;
-    init_error(&err);
+    struct AdbcError err; init_error(&err);
     struct AdbcStatement stmt = {0};
     struct ArrowArrayStream stream = {0};
     QueryResult* qr = NULL;
-    const char* fail_msg = NULL;
 
-    // Build Arrow array with one string column, one row
-    struct ArrowSchema param_schema = {0};
-    struct ArrowArray param_array = {0};
-    struct ArrowSchema* child_schema = NULL;
-    struct ArrowArray* child_array = NULL;
-
-    // Schema: struct with one utf8 child
-    param_schema.format = "+s";
-    param_schema.name = "";
-    param_schema.n_children = 1;
-    child_schema = calloc(1, sizeof(struct ArrowSchema));
-    child_schema->format = "u";
-    child_schema->name = "p1";
-    child_schema->release = noop_release_schema;
-    struct ArrowSchema** schema_children = malloc(sizeof(struct ArrowSchema*));
-    schema_children[0] = child_schema;
-    param_schema.children = schema_children;
-    param_schema.release = noop_release_schema;
-
-    // Array: struct with one utf8 child, one row
-    param_array.length = 1;
-    param_array.null_count = 0;
-    param_array.n_children = 1;
-    child_array = calloc(1, sizeof(struct ArrowArray));
-    child_array->length = 1;
-    child_array->null_count = 0;
-    child_array->n_buffers = 3;
-    void** child_buffers = calloc(3, sizeof(void*));
-    // buffer 0: null bitmap (NULL = all valid)
-    child_buffers[0] = NULL;
-    // buffer 1: offsets (int32_t[2])
-    int32_t* offsets = malloc(2 * sizeof(int32_t));
-    offsets[0] = 0;
-    offsets[1] = (int32_t)param_len;
-    child_buffers[1] = offsets;
-    // buffer 2: data
-    char* data_buf = malloc(param_len);
-    memcpy(data_buf, param, param_len);
-    child_buffers[2] = data_buf;
-    child_array->buffers = (const void**)child_buffers;
-    child_array->release = noop_release_array;
-
-    struct ArrowArray** array_children = malloc(sizeof(struct ArrowArray*));
-    array_children[0] = child_array;
-    param_array.children = array_children;
-    param_array.n_buffers = 1;
-    void** struct_buffers = calloc(1, sizeof(void*));
-    param_array.buffers = (const void**)struct_buffers;
-    param_array.release = noop_release_array;
-
-    #define QP_CHECK(call, msg) if ((call) != ADBC_STATUS_OK) { fail_msg = err.message ? err.message : msg; goto qp_fail; }
-    #define QP_STREAM_CHECK(call, msg) if ((call) != 0) { fail_msg = msg; goto qp_fail; }
-
-    QP_CHECK(pAdbcStatementNew(&g_conn, &stmt, &err), "StatementNew");
-    QP_CHECK(pAdbcStatementSetSqlQuery(&stmt, sql, &err), "SetSqlQuery");
-    QP_CHECK(pAdbcStatementBind(&stmt, &param_array, &param_schema, &err), "Bind");
+    ADBC_QR_CHECK(pAdbcStatementNew(&g_conn, &stmt, &err), "StatementNew");
+    ADBC_QR_CHECK(pAdbcStatementSetSqlQuery(&stmt, lean_string_cstr(sql_obj), &err), "SetSqlQuery");
     int64_t rows_affected = -1;
-    QP_CHECK(pAdbcStatementExecuteQuery(&stmt, &stream, &rows_affected, &err), "ExecuteQuery");
+    ADBC_QR_CHECK(pAdbcStatementExecuteQuery(&stmt, &stream, &rows_affected, &err), "ExecuteQuery");
 
     qr = calloc(1, sizeof(QueryResult));
-    QP_STREAM_CHECK(stream.get_schema(&stream, &qr->schema), "get_schema");
-
-    // collect batches (same as lean_adbc_query)
-    {
-        int64_t cap = 16;
-        qr->batches = malloc(cap * sizeof(struct ArrowArray));
-        qr->prefix = malloc((cap + 1) * sizeof(int64_t));
-        qr->prefix[0] = 0;
-        while (1) {
-            struct ArrowArray batch = {0};
-            if (stream.get_next(&stream, &batch) != 0 || !batch.release) break;
-            if (qr->n_batches >= cap) {
-                cap *= 2;
-                qr->batches = realloc(qr->batches, cap * sizeof(struct ArrowArray));
-                qr->prefix = realloc(qr->prefix, (cap + 1) * sizeof(int64_t));
-            }
-            qr->batches[qr->n_batches] = batch;
-            qr->total_rows += batch.length;
-            qr->prefix[++qr->n_batches] = qr->total_rows;
-        }
-    }
-
+    const char* collect_err = qr_collect(&stream, qr);
     if (stream.release) stream.release(&stream);
     pAdbcStatementRelease(&stmt, &err);
     free_error(&err);
-
-    // Build nanoarrow views
-    {
-        int64_t nc = qr->schema.n_children;
-        qr->n_children = nc;
-        qr->col_types = calloc(nc, sizeof(struct ArrowSchemaView));
-        for (int64_t c = 0; c < nc; c++)
-            ArrowSchemaViewInit(&qr->col_types[c], qr->schema.children[c], NULL);
-        qr->views = calloc(qr->n_batches * nc, sizeof(struct ArrowArrayView));
-        for (int64_t b = 0; b < qr->n_batches; b++) {
-            for (int64_t c = 0; c < nc; c++) {
-                int64_t idx = b * nc + c;
-                if (ArrowArrayViewInitFromSchema(&qr->views[idx], qr->schema.children[c], NULL) != NANOARROW_OK) continue;
-                ArrowArrayViewSetArray(&qr->views[idx], qr->batches[b].children[c], NULL);
-            }
-        }
-    }
-
-    // Cleanup param buffers
-    free(offsets); free(data_buf); free(child_buffers);
-    free(child_array); free(array_children);
-    free(child_schema); free(schema_children);
-    free(struct_buffers);
+    if (collect_err) return qr_fail(collect_err, qr, &stream, &stmt, &err);
 
     return lean_io_result_mk_ok(lean_alloc_external(get_qr_class(), qr));
+}
 
-qp_fail:
-    ;lean_object* qp_err_str = lean_mk_string(fail_msg ? fail_msg : "unknown error");
-    if (qr) { free(qr->batches); free(qr->prefix); free(qr); }
+// | Execute parameterized SQL query with a single string argument, return QueryResult
+// Uses nanoarrow to build the one-row, one-column Arrow array for binding.
+lean_obj_res lean_adbc_query_param(b_lean_obj_arg sql_obj, b_lean_obj_arg param_obj, lean_obj_arg world) {
+    if (!g_initialized) return lean_io_result_mk_error(lean_mk_io_user_error(lean_mk_string("ADBC not initialized")));
+
+    const char* param = lean_string_cstr(param_obj);
+    struct AdbcError err; init_error(&err);
+    struct AdbcStatement stmt = {0};
+    struct ArrowArrayStream stream = {0};
+    QueryResult* qr = NULL;
+
+    // Build param array via nanoarrow: struct{utf8} with one row
+    struct ArrowSchema param_schema = {0};
+    struct ArrowArray param_array = {0};
+    ArrowSchemaInit(&param_schema);
+    ArrowSchemaSetTypeStruct(&param_schema, 1);
+    ArrowSchemaInitFromType(param_schema.children[0], NANOARROW_TYPE_STRING);
+    ArrowSchemaSetName(param_schema.children[0], "p1");
+    ArrowArrayInitFromSchema(&param_array, &param_schema, NULL);
+    ArrowArrayStartAppending(&param_array);
+    struct ArrowStringView sv = {param, (int64_t)strlen(param)};
+    ArrowArrayAppendString(param_array.children[0], sv);
+    ArrowArrayFinishElement(&param_array);
+    ArrowArrayFinishBuildingDefault(&param_array, NULL);
+
+    ADBC_QR_CHECK(pAdbcStatementNew(&g_conn, &stmt, &err), "StatementNew");
+    ADBC_QR_CHECK(pAdbcStatementSetSqlQuery(&stmt, lean_string_cstr(sql_obj), &err), "SetSqlQuery");
+    ADBC_QR_CHECK(pAdbcStatementBind(&stmt, &param_array, &param_schema, &err), "Bind");
+    int64_t rows_affected = -1;
+    ADBC_QR_CHECK(pAdbcStatementExecuteQuery(&stmt, &stream, &rows_affected, &err), "ExecuteQuery");
+
+    qr = calloc(1, sizeof(QueryResult));
+    const char* collect_err = qr_collect(&stream, qr);
     if (stream.release) stream.release(&stream);
-    if (stmt.private_data) pAdbcStatementRelease(&stmt, &err);
+    pAdbcStatementRelease(&stmt, &err);
     free_error(&err);
-    free(offsets); free(data_buf); free(child_buffers);
-    free(child_array); free(array_children);
-    free(child_schema); free(schema_children);
-    free(struct_buffers);
-    return lean_io_result_mk_error(lean_mk_io_user_error(qp_err_str));
-    #undef QP_CHECK
-    #undef QP_STREAM_CHECK
+    if (param_schema.release) param_schema.release(&param_schema);
+    if (param_array.release) param_array.release(&param_array);
+    if (collect_err) { free(qr->batches); free(qr->prefix); free(qr);
+        return lean_io_result_mk_error(lean_mk_io_user_error(lean_mk_string(collect_err))); }
+
+    return lean_io_result_mk_ok(lean_alloc_external(get_qr_class(), qr));
 }
 
 // | Get column count
