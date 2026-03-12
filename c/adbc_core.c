@@ -364,6 +364,10 @@ fail:
     #undef STREAM_CHECK
 }
 
+// | No-op release for static Arrow arrays/schemas (required: Arrow C Data Interface checks release != NULL)
+static void noop_release_schema(struct ArrowSchema* s) { s->release = NULL; }
+static void noop_release_array(struct ArrowArray* a) { a->release = NULL; }
+
 // | Execute parameterized SQL query with a single string argument, return QueryResult
 lean_obj_res lean_adbc_query_param(b_lean_obj_arg sql_obj, b_lean_obj_arg param_obj, lean_obj_arg world) {
     if (!g_initialized) return lean_io_result_mk_error(lean_mk_io_user_error(lean_mk_string("ADBC not initialized")));
@@ -391,11 +395,11 @@ lean_obj_res lean_adbc_query_param(b_lean_obj_arg sql_obj, b_lean_obj_arg param_
     child_schema = calloc(1, sizeof(struct ArrowSchema));
     child_schema->format = "u";
     child_schema->name = "p1";
-    child_schema->release = NULL;  // static, no-op
+    child_schema->release = noop_release_schema;
     struct ArrowSchema** schema_children = malloc(sizeof(struct ArrowSchema*));
     schema_children[0] = child_schema;
     param_schema.children = schema_children;
-    param_schema.release = NULL;  // static
+    param_schema.release = noop_release_schema;
 
     // Array: struct with one utf8 child, one row
     param_array.length = 1;
@@ -418,7 +422,7 @@ lean_obj_res lean_adbc_query_param(b_lean_obj_arg sql_obj, b_lean_obj_arg param_
     memcpy(data_buf, param, param_len);
     child_buffers[2] = data_buf;
     child_array->buffers = (const void**)child_buffers;
-    child_array->release = NULL;  // static
+    child_array->release = noop_release_array;
 
     struct ArrowArray** array_children = malloc(sizeof(struct ArrowArray*));
     array_children[0] = child_array;
@@ -426,7 +430,7 @@ lean_obj_res lean_adbc_query_param(b_lean_obj_arg sql_obj, b_lean_obj_arg param_
     param_array.n_buffers = 1;
     void** struct_buffers = calloc(1, sizeof(void*));
     param_array.buffers = (const void**)struct_buffers;
-    param_array.release = NULL;  // static
+    param_array.release = noop_release_array;
 
     #define QP_CHECK(call, msg) if ((call) != ADBC_STATUS_OK) { fail_msg = err.message ? err.message : msg; goto qp_fail; }
     #define QP_STREAM_CHECK(call, msg) if ((call) != 0) { fail_msg = msg; goto qp_fail; }

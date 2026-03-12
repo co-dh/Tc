@@ -846,18 +846,25 @@ def test_width_grows_on_scroll : IO Unit := do
 
 -- === HF tests ===
 
+-- | Check if HuggingFace API is reachable
+def hasHfAccess : IO Bool := do
+  let r ← IO.Process.output { cmd := "curl", args := #["-sf", "--max-time", "3", "https://huggingface.co/api/datasets/openai/gsm8k"] }
+  pure (r.exitCode == 0)
+
 def test_hf_readme : IO Unit := do
   log "hf_readme"
+  unless (← hasHfAccess) do log "  skip (no HF access)"; return
   -- Enter README.md from openai/gsm8k (row 5: .., main, socratic, .gitattributes, README.md)
-  let output ← run "jjjjj<ret>" "hf://datasets/openai/gsm8k/"
+  let output ← run "jjjjj<ret>" "hf://datasets/openai/gsm8k"
   assert (contains output "GSM8K") "HF README shows dataset name"
   assert (contains output "math" || contains output "arithmetic" || contains output "word problems")
     "HF README shows description content"
 
 def test_hf_enter_parquet : IO Unit := do
   log "hf_enter_parquet"
+  unless (← hasHfAccess) do log "  skip (no HF access)"; return
   -- Enter main/ dir then first parquet file
-  let output ← run "jj<ret>j<ret>" "hf://datasets/openai/gsm8k/"
+  let output ← run "jj<ret>j<ret>" "hf://datasets/openai/gsm8k"
   assert (contains output "question") "HF parquet has question column"
   assert (contains output "answer") "HF parquet has answer column"
 

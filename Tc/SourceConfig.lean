@@ -216,6 +216,8 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
     let p := if path.endsWith "/" then path else s!"{path}/"
     let vars ← cfg.cmdVars p
     let cmd := expand cfg.listCmd vars
+    -- Strip trailing slash from expanded URL (e.g. {3+} empty → "tree/main/")
+    let cmd := if cmd.endsWith "/" then (cmd.take (cmd.length - 1)).toString else cmd
     Log.write "src" s!"list: {cmd}"
     let out ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
     if out.exitCode != 0 then
