@@ -292,6 +292,7 @@ section CellPrqlTests
 #guard Cell.toPrql .null == "null"
 #guard Cell.toPrql (.int 42) == "42"
 #guard Cell.toPrql (.str "hello") == "'hello'"
+#guard Cell.toPrql (.str "it's") == "'it''s'"
 #guard Cell.toPrql (.bool true) == "true"
 #guard Cell.toPrql (.bool false) == "false"
 

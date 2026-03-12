@@ -102,7 +102,7 @@ def toPrql : Cell → String
   | .null => "null"
   | .int n => s!"{n}"
   | .float f => s!"{f}"
-  | .str s => s!"'{s}'"
+  | .str s => s!"'{s.replace "'" "''"}'"
   | .bool b => if b then "true" else "false"
 
 end Cell
