@@ -234,6 +234,15 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
     IO.FS.writeFile tmpFile json
     let listSql := expand cfg.listSql #[("src", tmpFile)]
     let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {listSql}"
+    -- Auto-unnest: if result is 1 row with a struct[] column, expand it
+    try
+      let qr ← Adbc.query s!"SELECT column_name FROM duckdb_columns() WHERE table_name='{tbl}' AND data_type LIKE 'STRUCT%[]' LIMIT 1"
+      let cnt ← Adbc.query s!"SELECT count(*)::INT FROM {tbl}"
+      let col ← Adbc.cellStr qr 0 0
+      let n ← Adbc.cellInt cnt 0 0
+      if n == 1 && !col.isEmpty then
+        let _ ← Adbc.query s!"CREATE OR REPLACE TEMP TABLE {tbl} AS SELECT unnest(\"{col}\", recursive:=true) FROM {tbl}"
+    catch _ => pure ()
     -- Add ".." parent row if table has standard folder columns (name,size,date,type)
     if cfg.parent path |>.isSome then
       try let _ ← Adbc.query s!"INSERT INTO {tbl} SELECT '..' as name, 0 as size, '' as date, 'dir' as type"
