@@ -453,6 +453,44 @@ def test_sqlite_enter : IO Unit := do
   let (_, status) := footer output
   assert (contains status "r0/3") "SQLite table has 3 rows"
 
+-- === JSONL tests ===
+
+-- test_jsonl_open: opening a .jsonl file shows its data
+def test_jsonl_open : IO Unit := do
+  log "jsonl_open"
+  let output ← run "" "data/test.jsonl"
+  assert (contains output "alpha") "JSONL shows 'alpha' row"
+  assert (contains output "beta") "JSONL shows 'beta' row"
+  let (_, status) := footer output
+  assert (contains status "r0/3") "JSONL has 3 rows"
+
+-- test_jsonl_sort: sorting works on JSONL data
+def test_jsonl_sort : IO Unit := do
+  log "jsonl_sort"
+  let output ← run "[" "data/test.jsonl"
+  let first := (dataLines output).headD ""
+  assert (contains first "alpha") "JSONL sort asc: first row is alpha"
+
+-- === Arrow/Feather tests ===
+
+-- test_arrow_open: opening a .arrow file shows its data
+def test_arrow_open : IO Unit := do
+  log "arrow_open"
+  let output ← run "" "data/test.arrow"
+  assert (contains output "alpha") "Arrow shows 'alpha' row"
+  assert (contains output "gamma") "Arrow shows 'gamma' row"
+  let (_, status) := footer output
+  assert (contains status "r0/3") "Arrow has 3 rows"
+
+-- test_feather_open: opening a .feather file shows its data
+def test_feather_open : IO Unit := do
+  log "feather_open"
+  let output ← run "" "data/test.feather"
+  assert (contains output "alpha") "Feather shows 'alpha' row"
+  assert (contains output "beta") "Feather shows 'beta' row"
+  let (_, status) := footer output
+  assert (contains status "r0/3") "Feather has 3 rows"
+
 -- === Osquery tests ===
 
 def hasOsquery : IO Bool := do
@@ -649,6 +687,8 @@ def tests : Array (String × IO Unit) := #[
   ("duckdb_list", test_duckdb_list), ("duckdb_enter", test_duckdb_enter),
   ("duckdb_primary_key", test_duckdb_primary_key),
   ("sqlite_list", test_sqlite_list), ("sqlite_enter", test_sqlite_enter),
+  ("jsonl_open", test_jsonl_open), ("jsonl_sort", test_jsonl_sort),
+  ("arrow_open", test_arrow_open), ("feather_open", test_feather_open),
   ("folder_prefix", test_folder_prefix),
   -- Parquet tests
   ("page_down", test_page_down), ("page_up", test_page_up),

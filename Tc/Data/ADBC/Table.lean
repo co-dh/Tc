@@ -279,11 +279,15 @@ def fromFileWith (path : String) (reader setupSql : String) : IO (Option AdbcTab
   if !setupSql.isEmpty then
     for stmt in setupSql.splitOn ";" |>.map (·.trimAscii.toString) |>.filter (·.length > 0) do
       let _ ← Adbc.query stmt
-  let query : Prql.Query :=
-    if reader.isEmpty then { base := s!"from `{path}`" }
-    else { base := s!"from {reader}('{escSql path}')" }
-  let total ← queryCount query
-  requery query total
+  if reader.isEmpty then
+    fromFile path
+  else
+    -- Materialize via reader function into temp table (PRQL can't parse function calls in `from`)
+    let tbl := remoteTblName path
+    let _ ← Adbc.query s!"CREATE OR REPLACE TEMP TABLE \"{tbl}\" AS (SELECT * FROM {reader}('{escSql path}'))"
+    let query : Prql.Query := { base := s!"from {tbl}" }
+    let total ← queryCount query
+    requery query total
 
 end AdbcTable
 
