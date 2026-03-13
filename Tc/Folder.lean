@@ -67,47 +67,36 @@ def viewFile (path : String) : IO Unit := do
     let _ ← IO.Process.spawn { cmd := "less", args := #[path], stdin := .inherit, stdout := .inherit, stderr := .inherit } >>= (·.wait)
   let _ ← Term.init
 
--- | Is file a DuckDB database?
-def isDuckDB (p : String) : Bool :=
-  p.endsWith ".duckdb" || p.endsWith ".db"
+-- | Is file a data format we can open as a table? (config-driven via tc_sources ext column)
+def isDataFile (p : String) : IO Bool := do
+  let exts ← SourceConfig.knownExts
+  pure (exts.any (p.endsWith ·))
 
--- | Is file a SQLite database?
-def isSQLite (p : String) : Bool :=
-  p.endsWith ".sqlite" || p.endsWith ".sqlite3"
-
--- | Is file a data format we can open as a table?
-def isDataFile (p : String) : Bool :=
-  p.endsWith ".csv" || p.endsWith ".parquet" || isDuckDB p || isSQLite p
-
--- | Open any supported data file as a View
+-- | Open any supported data file as a View (config-driven)
 def openFile (path : String) : IO (Option (View AdbcTable)) := do
-  if isDuckDB path then
-    match ← AdbcTable.listDuckDBTables path with
-    | some adbc => match View.fromTbl (adbc) s!"duckdb://{path}" with
-      | some v =>
-        let disp := path.splitOn "/" |>.getLast?.getD path
-        pure (some { v with vkind := .fld s!"duckdb://{path}" 1, disp })
-      | none => pure none
-    | none => pure none
-  else if isSQLite path then
-    -- Config-driven: route through tc_sources via sqlite:// prefix
-    let absPath ← do
-      let rp ← IO.Process.output { cmd := "realpath", args := #[path] }
-      pure (if rp.exitCode == 0 then rp.stdout.trimAscii.toString else path)
-    let uri := s!"sqlite://{absPath}"
-    let disp := path.splitOn "/" |>.getLast?.getD path
-    match ← SourceConfig.findSource uri with
-    | some cfg =>
-      match ← cfg.runList uri with
+  let absPath ← do
+    let rp ← IO.Process.output { cmd := "realpath", args := #[path] }
+    pure (if rp.exitCode == 0 then rp.stdout.trimAscii.toString else path)
+  match ← SourceConfig.findByExt path with
+  | some cfg =>
+    if !cfg.listSql.isEmpty then
+      -- Attach-based: list tables (DuckDB, SQLite)
+      match ← cfg.runList absPath with
       | some adbc =>
         let grp := if cfg.grp.isEmpty then #[] else #[cfg.grp]
-        match View.fromTbl adbc uri (grp := grp) with
-        | some v => pure (some { v with vkind := .fld uri 1, disp })
+        let disp := path.splitOn "/" |>.getLast?.getD path
+        match View.fromTbl adbc absPath (grp := grp) with
+        | some v => pure (some { v with vkind := .fld absPath 1, disp })
         | none => pure none
       | none => pure none
-    | none => pure none
-  else
-    match ← TblOps.fromFile path with
+    else
+      -- File reader: use reader function or auto-detect
+      match ← AdbcTable.fromFileWith absPath cfg.reader cfg.setupSql with
+      | some tbl => pure (View.fromTbl tbl path)
+      | none => pure none
+  | none =>
+    -- No config: try DuckDB auto-detect
+    match ← AdbcTable.fromFile absPath with
     | some tbl => pure (View.fromTbl tbl path)
     | none => pure none
 
@@ -195,14 +184,15 @@ private def curDepth (s : ViewStack AdbcTable) : Nat :=
 -- | Enter directory or view file based on current row
 def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
-  -- DuckDB/SQLite: enter opens a table from the attached database
-  if curDir.startsWith "duckdb://" || curDir.startsWith "sqlite://" then do
-    let some tableName ← curPath s.cur | return some s
-    let some (adbc, keys) ← AdbcTable.fromDuckDBTable tableName | return some s
-    let pfx := if curDir.startsWith "sqlite://" then "sqlite" else "duckdb"
-    let some v := View.fromTbl (adbc) s!"{pfx}://{tableName}" (grp := keys) | return some s
-    return some (s.push v)
   let cfg ← SourceConfig.findSource curDir
+  -- Config-driven attach: enter opens a table from the attached database
+  let extCfg ← SourceConfig.findByExt curDir
+  if let some ec := extCfg then
+    if ec.attach then
+      let some tableName ← curPath s.cur | return some s
+      let some (adbc, keys) ← AdbcTable.fromDuckDBTable tableName | return some s
+      let some v := View.fromTbl (adbc) s!"{curDir}:{tableName}" (grp := keys) | return some s
+      return some (s.push v)
   match ← curType s.cur, ← curPath s.cur with
   | some 'd', some p =>
     if p == ".." || p.endsWith "/.." then
@@ -230,7 +220,7 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
         if !c.enterUrl.isEmpty then
           return ← tryView s (SourceConfig.expand c.enterUrl #[("name", p)]) (curDepth s) true
       let fullPath := joinPath curDir p
-      if isDataFile p then
+      if ← isDataFile p then
         let openPath ← match cfg with | some c => c.resolve fullPath | none => pure fullPath
         match ← openFile openPath with
         | some v => pure (some (s.push v))
@@ -243,7 +233,7 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
     let fullPath := joinPath curDir p
     let stat ← IO.Process.output { cmd := "test", args := #["-d", fullPath] }
     if stat.exitCode == 0 then tryView s fullPath (curDepth s) true
-    else if isDataFile fullPath then
+    else if ← isDataFile fullPath then
       match ← openFile fullPath with
       | some v => pure (some (s.push v))
       | none => viewFile fullPath; pure (some s)

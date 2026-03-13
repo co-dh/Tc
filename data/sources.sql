@@ -1,15 +1,19 @@
--- Default source configs for tc remote browsing.
+-- Default source configs for tc remote browsing and file type readers.
 -- Template placeholders: {1}..{9} = path parts, {N+} = parts N onward joined by /,
 -- {path}, {name}, {tmp}, {extra}, {src} = JSON temp file (in list_sql only).
 -- {home} is expanded at load time.
 -- script: shell cmd template for entering a file row (stdout = JSON rows). Empty = none.
+-- ext: comma-separated file extensions (e.g. '.sqlite,.sqlite3'). Matched by findByExt.
+-- reader: DuckDB reader function for ext-based files. Empty = auto-detect.
+-- attach: true = enter uses fromDuckDBTable (for attached databases like DuckDB/SQLite).
 
 CREATE TABLE IF NOT EXISTS tc_sources (
   pfx VARCHAR, min_parts INTEGER, list_cmd VARCHAR,
   list_sql VARCHAR, download_cmd VARCHAR, needs_download BOOLEAN,
   dir_suffix BOOLEAN, parent_fallback VARCHAR,
   setup_cmd VARCHAR, setup_sql VARCHAR, grp VARCHAR, enter_url VARCHAR,
-  script VARCHAR
+  script VARCHAR,
+  ext VARCHAR, reader VARCHAR, attach BOOLEAN
 );
 
 INSERT INTO tc_sources VALUES
@@ -28,7 +32,7 @@ INSERT INTO tc_sources VALUES
    'aws s3 cp {extra} {path} {tmp}/{name}',
    true, true, '',
    '', '', '', '',
-   ''),
+   '', '', '', false),
 
   -- HF dataset browser: curl HF Hub API, DuckDB reads via httpfs
   ('hf://datasets/', 5,
@@ -38,7 +42,7 @@ INSERT INTO tc_sources VALUES
    'curl -sfL -o {tmp}/{name} https://huggingface.co/datasets/{1}/{2}/resolve/main/{3+}',
    false, true, 'hf://',
    '', '', '', '',
-   ''),
+   '', '', '', false),
 
   -- HF root: dataset listing from pre-populated DuckDB
   ('hf://', 0,
@@ -50,7 +54,7 @@ INSERT INTO tc_sources VALUES
    'python3 scripts/hf_datasets.py',
    'ATTACH ''{home}/.cache/tc/hf_datasets.duckdb'' AS hf (READ_ONLY)',
    'id', 'hf://datasets/{name}/',
-   ''),
+   '', '', '', false),
 
   -- Generic REST API: curl any JSON endpoint
   ('rest://', 1,
@@ -59,22 +63,9 @@ INSERT INTO tc_sources VALUES
    '',
    false, false, '',
    '', '', '', '',
-   ''),
-
-  -- SQLite: ATTACH via DuckDB sqlite extension, list tables, enter via extdb alias
-  ('sqlite://', 1,
-   '',
-   'DETACH DATABASE IF EXISTS extdb;
-    INSTALL sqlite;
-    LOAD sqlite;
-    ATTACH ''/{1+}'' AS extdb (TYPE SQLITE, READ_ONLY);
-    SELECT table_name as name FROM duckdb_tables() WHERE database_name = ''extdb''',
-   '', false, false, '',
-   '', '', 'name', '',
-   ''),
+   '', '', '', false),
 
   -- Osquery: stub views in osq schema provide types + column comments.
-  -- Script runs osqueryi for data; types applied from stub view metadata.
   ('osquery://', 0,
    '',
    'SELECT name, safety, rows, description FROM osq.listing ORDER BY name',
@@ -82,4 +73,34 @@ INSERT INTO tc_sources VALUES
    'python3 scripts/osquery_tables.py',
    'ATTACH ''{home}/.cache/tc/osquery.duckdb'' AS osq (READ_ONLY)',
    'name', '',
-   'osqueryi --json "SELECT * FROM {name}"');
+   'osqueryi --json "SELECT * FROM {name}"', '', '', false),
+
+  -- DuckDB databases: ATTACH and list tables
+  ('', 0, '',
+   'DETACH DATABASE IF EXISTS extdb;
+    ATTACH ''{path}'' AS extdb (READ_ONLY);
+    SELECT table_name as name, estimated_size as size, column_count as columns
+    FROM duckdb_tables() WHERE database_name = ''extdb''',
+   '', false, false, '',
+   '', '', 'name', '', '',
+   '.duckdb,.db', '', true),
+
+  -- SQLite databases: ATTACH via DuckDB sqlite extension
+  ('', 0, '',
+   'DETACH DATABASE IF EXISTS extdb;
+    INSTALL sqlite;
+    LOAD sqlite;
+    ATTACH ''{path}'' AS extdb (TYPE SQLITE, READ_ONLY);
+    SELECT table_name as name FROM duckdb_tables() WHERE database_name = ''extdb''',
+   '', false, false, '',
+   '', '', 'name', '', '',
+   '.sqlite,.sqlite3', '', true),
+
+  -- File readers: auto-detected by DuckDB
+  ('', 0, '', '', '', false, false, '', '', '', '', '', '',
+   '.csv,.parquet,.json,.jsonl,.ndjson', '', false),
+
+  -- Arrow IPC / Feather: needs explicit reader
+  ('', 0, '', '', '', false, false, '',
+   '', 'INSTALL arrow; LOAD arrow', '', '', '',
+   '.arrow,.feather', 'read_arrow', false);

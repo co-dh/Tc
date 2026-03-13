@@ -272,6 +272,19 @@ private def fromIngest (content label reader : String) : IO (Option AdbcTable) :
 def fromTsv (content : String) := fromIngest content "tsv" "read_csv_auto"
 def fromJson (content : String) := fromIngest content "json" "read_json_auto"
 
+-- | Create from file path with optional setup SQL and reader function.
+--   setupSql: run before reading (e.g. "INSTALL arrow; LOAD arrow")
+--   reader: DuckDB reader function (e.g. "read_arrow"). Empty = auto-detect via backtick.
+def fromFileWith (path : String) (reader setupSql : String) : IO (Option AdbcTable) := do
+  if !setupSql.isEmpty then
+    for stmt in setupSql.splitOn ";" |>.map (·.trimAscii.toString) |>.filter (·.length > 0) do
+      let _ ← Adbc.query stmt
+  let query : Prql.Query :=
+    if reader.isEmpty then { base := s!"from `{path}`" }
+    else { base := s!"from {reader}('{escSql path}')" }
+  let total ← queryCount query
+  requery query total
+
 end AdbcTable
 
 -- NOTE: TblOps/ModifyTable instances for AdbcTable are in ADBC/Ops.lean
