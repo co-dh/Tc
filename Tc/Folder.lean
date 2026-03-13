@@ -186,9 +186,9 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
   let cfg ← SourceConfig.findSource curDir
   -- Config-driven attach: enter opens a table from the attached database
-  let extCfg ← SourceConfig.findByExt curDir
-  if let some ec := extCfg then
-    if ec.attach then
+  let attachCfg := (← SourceConfig.findByExt curDir) |>.orElse fun _ => cfg
+  if let some ac := attachCfg then
+    if ac.attach then
       let some tableName ← curPath s.cur | return some s
       let some (adbc, keys) ← AdbcTable.fromDuckDBTable tableName | return some s
       let some v := View.fromTbl (adbc) s!"{curDir}:{tableName}" (grp := keys) | return some s

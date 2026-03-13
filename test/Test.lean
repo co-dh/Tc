@@ -513,6 +513,28 @@ def test_avro_open : IO Unit := do
   let (_, status) := footer output
   assert (contains status "r0/3") "Avro has 3 rows"
 
+-- === PostgreSQL tests ===
+
+def hasPgTest : IO Bool := do
+  let r ← IO.Process.output { cmd := "pg_isready", args := #["-h", "/tmp/claude-1000", "-p", "5433"] }
+  pure (r.exitCode == 0)
+
+-- test_pg_list: connecting to PostgreSQL lists public tables
+def test_pg_list : IO Unit := do
+  log "pg_list"
+  unless (← hasPgTest) do log "  skip (no pg on /tmp/claude-1000:5433)"; return
+  let output ← run "" "pg://host=/tmp/claude-1000 port=5433 dbname=pagila"
+  assert (contains output "film") "pg:// lists 'film' table"
+  assert (contains output "actor") "pg:// lists 'actor' table"
+
+-- test_pg_enter: entering a PostgreSQL table shows its data
+def test_pg_enter : IO Unit := do
+  log "pg_enter"
+  unless (← hasPgTest) do log "  skip (no pg on /tmp/claude-1000:5433)"; return
+  let output ← run "jjjjj<ret>" "pg://host=/tmp/claude-1000 port=5433 dbname=pagila"
+  let (_, status) := footer output
+  assert (contains status "r0/") "Enter on pg table opens it with rows"
+
 -- === Osquery tests ===
 
 def hasOsquery : IO Bool := do
@@ -712,6 +734,7 @@ def tests : Array (String × IO Unit) := #[
   ("jsonl_open", test_jsonl_open), ("jsonl_sort", test_jsonl_sort),
   ("arrow_open", test_arrow_open), ("feather_open", test_feather_open),
   ("xlsx_open", test_xlsx_open), ("avro_open", test_avro_open),
+  ("pg_list", test_pg_list), ("pg_enter", test_pg_enter),
   ("folder_prefix", test_folder_prefix),
   -- Parquet tests
   ("page_down", test_page_down), ("page_up", test_page_up),

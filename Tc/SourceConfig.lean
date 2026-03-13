@@ -59,7 +59,8 @@ def expand (tmpl : String) (vars : Array (String × String)) : String :=
 -- | Build template variables from a config and path
 def mkVars (cfg : Config) (path tmp name extra : String) : Array (String × String) :=
   let parts := pathParts cfg.pfx path
-  let baseVars := #[("path", path), ("tmp", tmp), ("name", name), ("extra", extra)]
+  let dsn := (path.drop cfg.pfx.length).toString  -- path with prefix stripped, no splitting
+  let baseVars := #[("path", path), ("tmp", tmp), ("name", name), ("extra", extra), ("dsn", dsn)]
   let numbered := (List.range 9).map fun i =>
     (s!"{i + 1}", parts.getD i "")
   let plus := (List.range 9).map fun i =>

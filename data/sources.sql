@@ -75,6 +75,18 @@ INSERT INTO tc_sources VALUES
    'name', '',
    'osqueryi --json "SELECT * FROM {name}"', '', '', false),
 
+  -- PostgreSQL: ATTACH via DuckDB postgres extension, list public tables
+  ('pg://', 99, '',
+   'INSTALL postgres;
+    LOAD postgres;
+    DETACH DATABASE IF EXISTS extdb;
+    ATTACH ''{dsn}'' AS extdb (TYPE POSTGRES, READ_ONLY);
+    SELECT table_name as name
+    FROM duckdb_tables() WHERE database_name = ''extdb'' AND schema_name = ''public''',
+   '', false, false, '',
+   '', '', 'name', '', '',
+   '', '', true),
+
   -- DuckDB databases: ATTACH and list tables
   ('', 0, '',
    'DETACH DATABASE IF EXISTS extdb;
