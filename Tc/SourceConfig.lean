@@ -28,11 +28,9 @@ structure Config where
   grp            : String      -- default group column name. Empty = none.
   enterUrl       : String      -- URL template for entering file rows. Empty = default.
   script         : String      -- shell cmd template for enter: stdout = JSON rows. Empty = none.
-  ext            : String      -- file extensions, comma-separated (e.g. ".sqlite,.sqlite3"). Empty = URI source.
-  reader         : String      -- DuckDB reader function (e.g. "read_arrow"). Empty = auto-detect.
   attach         : Bool        -- true: enter uses fromDuckDBTable (for attached databases)
-  duckdbExt      : String      -- DuckDB extension to auto INSTALL/LOAD (e.g. "sqlite", "arrow"). Empty = none.
-  attachType     : String      -- ATTACH TYPE clause (e.g. "SQLITE", "POSTGRES"). Empty = native DuckDB.
+  duckdbExt      : String      -- DuckDB extension to auto INSTALL/LOAD (e.g. "postgres"). Empty = none.
+  attachType     : String      -- ATTACH TYPE clause (e.g. "POSTGRES"). Empty = native DuckDB.
 
 -- | Global flag: use --no-sign-request for S3 (set via +n arg)
 initialize noSign : IO.Ref Bool ← IO.mkRef false
@@ -141,8 +139,6 @@ private def configFromRow (qr : Adbc.QueryResult) (row : Nat) : IO Config := do
     grp            := ← r.str "grp"
     enterUrl       := ← r.str "enter_url"
     script         := ← r.str "script"
-    ext            := ← r.str "ext"
-    reader         := ← r.str "reader"
     attach         := ← r.bool "attach"
     duckdbExt      := ← r.str "duckdb_ext"
     attachType     := ← r.str "attach_type"
@@ -157,32 +153,6 @@ def findSource (path : String) : IO (Option Config) := do
     some <$> configFromRow qr 0
   catch _ => return none
 
--- | Find config by file extension (checks comma-separated ext column)
-def findByExt (path : String) : IO (Option Config) := do
-  try
-    let qr ← Adbc.queryParam "SELECT * FROM src.tc_sources WHERE ext != '' AND list_contains(string_split(ext, ','), $1) LIMIT 1" (s!".{path.splitOn "." |>.getLast?.getD ""}")
-    let n ← Adbc.nrows qr
-    if n == 0 then return none
-    some <$> configFromRow qr 0
-  catch _ => return none
-
--- | Get all known file extensions from config (cached after first call)
-initialize extCache : IO.Ref (Option (Array String)) ← IO.mkRef none
-
-def knownExts : IO (Array String) := do
-  if let some exts ← extCache.get then return exts
-  let exts ← try
-    let qr ← Adbc.query "SELECT ext FROM src.tc_sources WHERE ext != ''"
-    let nr ← Adbc.nrows qr
-    let mut all : Array String := #[]
-    for i in [:nr.toNat] do
-      let extStr ← Adbc.cellStr qr i.toUInt64 0
-      for e in extStr.splitOn "," do
-        all := all.push e.trimAscii.toString
-    pure all
-  catch _ => pure #[]
-  extCache.set (some exts)
-  pure exts
 
 /-! ## Generic Operations -/
 
