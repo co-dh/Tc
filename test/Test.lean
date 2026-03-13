@@ -453,6 +453,33 @@ def test_sqlite_enter : IO Unit := do
   let (_, status) := footer output
   assert (contains status "r0/3") "SQLite table has 3 rows"
 
+-- === CSV test ===
+
+-- test_csv_open: opening a .csv file shows its data
+def test_csv_open : IO Unit := do
+  log "csv_open"
+  let output ← run "" "data/basic.csv"
+  let (_, status) := footer output
+  assert (contains status "r0/5") "CSV has 5 rows"
+
+-- === JSON tests ===
+
+-- test_json_open: opening a .json file shows its data
+def test_json_open : IO Unit := do
+  log "json_open"
+  let output ← run "" "data/test.json"
+  assert (contains output "alpha") "JSON shows 'alpha' row"
+  let (_, status) := footer output
+  assert (contains status "r0/3") "JSON has 3 rows"
+
+-- test_ndjson_open: opening a .ndjson file shows its data
+def test_ndjson_open : IO Unit := do
+  log "ndjson_open"
+  let output ← run "" "data/test.ndjson"
+  assert (contains output "beta") "NDJSON shows 'beta' row"
+  let (_, status) := footer output
+  assert (contains status "r0/3") "NDJSON has 3 rows"
+
 -- === JSONL tests ===
 
 -- test_jsonl_open: opening a .jsonl file shows its data
@@ -731,6 +758,8 @@ def tests : Array (String × IO Unit) := #[
   ("duckdb_list", test_duckdb_list), ("duckdb_enter", test_duckdb_enter),
   ("duckdb_primary_key", test_duckdb_primary_key),
   ("sqlite_list", test_sqlite_list), ("sqlite_enter", test_sqlite_enter),
+  ("csv_open", test_csv_open),
+  ("json_open", test_json_open), ("ndjson_open", test_ndjson_open),
   ("jsonl_open", test_jsonl_open), ("jsonl_sort", test_jsonl_sort),
   ("arrow_open", test_arrow_open), ("feather_open", test_feather_open),
   ("xlsx_open", test_xlsx_open), ("avro_open", test_avro_open),
