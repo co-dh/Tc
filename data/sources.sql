@@ -103,4 +103,14 @@ INSERT INTO tc_sources VALUES
   -- Arrow IPC / Feather: needs explicit reader
   ('', 0, '', '', '', false, false, '',
    '', 'INSTALL arrow; LOAD arrow', '', '', '',
-   '.arrow,.feather', 'read_arrow', false);
+   '.arrow,.feather', 'read_arrow', false),
+
+  -- Excel: needs excel extension
+  ('', 0, '', '', '', false, false, '',
+   '', 'INSTALL excel; LOAD excel', '', '', '',
+   '.xlsx,.xls', 'read_xlsx', false),
+
+  -- Avro: needs avro extension
+  ('', 0, '', '', '', false, false, '',
+   '', 'INSTALL avro; LOAD avro', '', '', '',
+   '.avro', 'read_avro', false);

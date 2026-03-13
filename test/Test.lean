@@ -491,6 +491,28 @@ def test_feather_open : IO Unit := do
   let (_, status) := footer output
   assert (contains status "r0/3") "Feather has 3 rows"
 
+-- === Excel tests ===
+
+-- test_xlsx_open: opening a .xlsx file shows its data
+def test_xlsx_open : IO Unit := do
+  log "xlsx_open"
+  let output ← run "" "data/test.xlsx"
+  assert (contains output "alpha") "Excel shows 'alpha' value"
+  assert (contains output "gamma") "Excel shows 'gamma' value"
+  let (_, status) := footer output
+  assert (contains status "r0/3") "Excel has 3 rows"
+
+-- === Avro tests ===
+
+-- test_avro_open: opening a .avro file shows its data
+def test_avro_open : IO Unit := do
+  log "avro_open"
+  let output ← run "" "data/test.avro"
+  assert (contains output "alpha") "Avro shows 'alpha' row"
+  assert (contains output "gamma") "Avro shows 'gamma' row"
+  let (_, status) := footer output
+  assert (contains status "r0/3") "Avro has 3 rows"
+
 -- === Osquery tests ===
 
 def hasOsquery : IO Bool := do
@@ -689,6 +711,7 @@ def tests : Array (String × IO Unit) := #[
   ("sqlite_list", test_sqlite_list), ("sqlite_enter", test_sqlite_enter),
   ("jsonl_open", test_jsonl_open), ("jsonl_sort", test_jsonl_sort),
   ("arrow_open", test_arrow_open), ("feather_open", test_feather_open),
+  ("xlsx_open", test_xlsx_open), ("avro_open", test_avro_open),
   ("folder_prefix", test_folder_prefix),
   -- Parquet tests
   ("page_down", test_page_down), ("page_up", test_page_up),
