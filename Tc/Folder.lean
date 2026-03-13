@@ -79,8 +79,8 @@ def openFile (path : String) : IO (Option (View AdbcTable)) := do
     pure (if rp.exitCode == 0 then rp.stdout.trimAscii.toString else path)
   match ← SourceConfig.findByExt path with
   | some cfg =>
-    if !cfg.listSql.isEmpty then
-      -- Attach-based: list tables (DuckDB, SQLite)
+    if cfg.attach then
+      -- Attach-based: list tables (DuckDB, SQLite, PostgreSQL)
       match ← cfg.runList absPath with
       | some adbc =>
         let grp := if cfg.grp.isEmpty then #[] else #[cfg.grp]
@@ -91,7 +91,7 @@ def openFile (path : String) : IO (Option (View AdbcTable)) := do
       | none => pure none
     else
       -- File reader: use reader function or auto-detect
-      match ← AdbcTable.fromFileWith absPath cfg.reader cfg.setupSql with
+      match ← AdbcTable.fromFileWith absPath cfg.reader cfg.duckdbExt with
       | some tbl => pure (View.fromTbl tbl path)
       | none => pure none
   | none =>

@@ -275,10 +275,9 @@ def fromJson (content : String) := fromIngest content "json" "read_json_auto"
 -- | Create from file path with optional setup SQL and reader function.
 --   setupSql: run before reading (e.g. "INSTALL arrow; LOAD arrow")
 --   reader: DuckDB reader function (e.g. "read_arrow"). Empty = auto-detect via backtick.
-def fromFileWith (path : String) (reader setupSql : String) : IO (Option AdbcTable) := do
-  if !setupSql.isEmpty then
-    for stmt in setupSql.splitOn ";" |>.map (·.trimAscii.toString) |>.filter (·.length > 0) do
-      let _ ← Adbc.query stmt
+def fromFileWith (path : String) (reader duckdbExt : String) : IO (Option AdbcTable) := do
+  if !duckdbExt.isEmpty then
+    let _ ← Adbc.query s!"INSTALL {duckdbExt}; LOAD {duckdbExt}"
   if reader.isEmpty then
     fromFile path
   else

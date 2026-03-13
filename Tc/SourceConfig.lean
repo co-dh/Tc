@@ -31,6 +31,8 @@ structure Config where
   ext            : String      -- file extensions, comma-separated (e.g. ".sqlite,.sqlite3"). Empty = URI source.
   reader         : String      -- DuckDB reader function (e.g. "read_arrow"). Empty = auto-detect.
   attach         : Bool        -- true: enter uses fromDuckDBTable (for attached databases)
+  duckdbExt      : String      -- DuckDB extension to auto INSTALL/LOAD (e.g. "sqlite", "arrow"). Empty = none.
+  attachType     : String      -- ATTACH TYPE clause (e.g. "SQLITE", "POSTGRES"). Empty = native DuckDB.
 
 -- | Global flag: use --no-sign-request for S3 (set via +n arg)
 initialize noSign : IO.Ref Bool ← IO.mkRef false
@@ -142,6 +144,8 @@ private def configFromRow (qr : Adbc.QueryResult) (row : Nat) : IO Config := do
     ext            := ← r.str "ext"
     reader         := ← r.str "reader"
     attach         := ← r.bool "attach"
+    duckdbExt      := ← r.str "duckdb_ext"
+    attachType     := ← r.str "attach_type"
   }
 
 -- | Find config for a path by prefix match (longest prefix wins)
@@ -188,12 +192,25 @@ def Config.parent (cfg : Config) (path : String) : Option String :=
   | some p => some p
   | none => if cfg.parentFallback.isEmpty then none else some cfg.parentFallback
 
--- | Track which prefixes have completed setup
+-- | Track which prefixes/extensions have completed setup
 initialize setupDone : IO.Ref (Array String) ← IO.mkRef #[]
 
--- | Run one-time setup for a config (setupCmd + setupSql), idempotent.
+-- | Track which DuckDB extensions have been installed/loaded
+initialize extLoaded : IO.Ref (Array String) ← IO.mkRef #[]
+
+-- | Install and load a DuckDB extension (idempotent)
+def loadExt (ext : String) : IO Unit := do
+  if ext.isEmpty then return
+  let done ← extLoaded.get
+  if done.contains ext then return
+  Log.write "src" s!"loading ext: {ext}"
+  let _ ← Adbc.query s!"INSTALL {ext}; LOAD {ext}"
+  extLoaded.modify (·.push ext)
+
+-- | Run one-time setup for a config (duckdbExt + setupCmd + setupSql), idempotent.
 --   Tries setupSql first; if it fails (e.g. DB doesn't exist), runs setupCmd to create it.
 def runSetup (cfg : Config) : IO Unit := do
+  loadExt cfg.duckdbExt
   let done ← setupDone.get
   if done.contains cfg.pfx then return
   let homeDir := (← IO.getEnv "HOME").getD "/tmp"
@@ -240,6 +257,11 @@ private def Config.cmdVars (cfg : Config) (path : String) : IO (Array (String ×
   let extra ← if cfg.pfx == "s3://" then s3Extra else pure ""
   pure (mkVars cfg path tmpDir (nameFromPath path) extra, tmpDir)
 
+-- | Generate attach SQL from config fields (DRY: DETACH/ATTACH/SELECT pattern)
+private def Config.attachSql (cfg : Config) (connStr : String) : String :=
+  let typClause := if cfg.attachType.isEmpty then "" else s!"TYPE {cfg.attachType}, "
+  s!"DETACH DATABASE IF EXISTS extdb;\nATTACH '{escSql connStr}' AS extdb ({typClause}READ_ONLY);\nSELECT table_name as name, estimated_size as size, column_count as columns FROM duckdb_tables() WHERE database_name = 'extdb' AND schema_name NOT IN ('information_schema', 'pg_catalog')"
+
 -- | Run listing: CLI cmd → JSON → listSql, or direct SQL mode
 def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
   Log.write "src" s!"runList: pfx={cfg.pfx} path={path} listCmd={cfg.listCmd}"
@@ -247,9 +269,15 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
   runSetup cfg
   let tbl ← freshTbl
   if cfg.listCmd.isEmpty then
-    -- Direct SQL mode: expand template vars, support multi-statement (split on ";\n")
-    let (vars, _) ← cfg.cmdVars path
-    let sql := expand cfg.listSql vars
+    -- Auto-generate attach SQL if attach=true and no custom listSql
+    let sql ← if cfg.attach && cfg.listSql.isEmpty then do
+      let connStr := if cfg.pfx.isEmpty then path
+        else (path.drop cfg.pfx.length).toString
+      pure (cfg.attachSql connStr)
+    else do
+      let (vars, _) ← cfg.cmdVars path
+      pure (expand cfg.listSql vars)
+    -- Direct SQL mode: support multi-statement (split on ";\n")
     let stmts := sql.splitOn ";\n" |>.map (·.trimAscii.toString) |>.filter (·.length > 0)
     for stmt in stmts.dropLast do
       let _ ← Adbc.query stmt
