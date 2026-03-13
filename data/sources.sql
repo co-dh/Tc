@@ -61,6 +61,18 @@ INSERT INTO tc_sources VALUES
    '', '', '', '',
    ''),
 
+  -- SQLite: ATTACH via DuckDB sqlite extension, list tables, enter via extdb alias
+  ('sqlite://', 1,
+   '',
+   'DETACH DATABASE IF EXISTS extdb;
+    INSTALL sqlite;
+    LOAD sqlite;
+    ATTACH ''/{1+}'' AS extdb (TYPE SQLITE, READ_ONLY);
+    SELECT table_name as name FROM duckdb_tables() WHERE database_name = ''extdb''',
+   '', false, false, '',
+   '', '', 'name', '',
+   ''),
+
   -- Osquery: stub views in osq schema provide types + column comments.
   -- Script runs osqueryi for data; types applied from stub view metadata.
   ('osquery://', 0,

@@ -6,8 +6,6 @@ ENV PATH="/root/.elan/bin:${PATH}"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates git gcc make unzip \
-    fzf findutils bat less gnuplot-nox \
-    python3-pip python3 jq coreutils trash-cli \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL https://github.com/duckdb/duckdb/releases/download/v1.2.2/libduckdb-linux-amd64.zip \
@@ -32,15 +30,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     fzf findutils bat less gnuplot-nox \
-    python3-pip python3 jq coreutils trash-cli \
-    curl ca-certificates unzip \
+    coreutils trash-cli curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /usr/local/lib/libduckdb.so /usr/local/lib/
 RUN ldconfig
 COPY --from=build /usr/local/bin/prqlc /usr/local/bin/
-
-RUN pip3 install --break-system-packages awscli
 
 RUN curl -fsSL https://github.com/atanunq/viu/releases/download/v1.5.1/viu-x86_64-unknown-linux-musl \
     -o /usr/local/bin/viu && chmod +x /usr/local/bin/viu

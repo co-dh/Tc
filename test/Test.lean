@@ -436,6 +436,23 @@ def test_enter_no_quit_parquet : IO Unit := do
   let (_, status) := footer (← run "<ret>j" "data/nyse/1.parquet")
   assert (contains status "r1/") "Enter on parquet should not quit (j moves to r1)"
 
+-- === SQLite tests ===
+
+-- test_sqlite_list: opening a .sqlite file lists its tables
+def test_sqlite_list : IO Unit := do
+  log "sqlite_list"
+  let output ← run "" "data/test.sqlite"
+  assert (contains output "items") "SQLite file lists 'items' table"
+
+-- test_sqlite_enter: entering a SQLite table shows its data
+def test_sqlite_enter : IO Unit := do
+  log "sqlite_enter"
+  let output ← run "<ret>" "data/test.sqlite"
+  assert (contains output "alpha") "SQLite table shows 'alpha' row"
+  assert (contains output "gamma") "SQLite table shows 'gamma' row"
+  let (_, status) := footer output
+  assert (contains status "r0/3") "SQLite table has 3 rows"
+
 -- === Osquery tests ===
 
 def hasOsquery : IO Bool := do
@@ -631,6 +648,7 @@ def tests : Array (String × IO Unit) := #[
   ("folder_enter_symlink", test_folder_enter_symlink),
   ("duckdb_list", test_duckdb_list), ("duckdb_enter", test_duckdb_enter),
   ("duckdb_primary_key", test_duckdb_primary_key),
+  ("sqlite_list", test_sqlite_list), ("sqlite_enter", test_sqlite_enter),
   ("folder_prefix", test_folder_prefix),
   -- Parquet tests
   ("page_down", test_page_down), ("page_up", test_page_up),

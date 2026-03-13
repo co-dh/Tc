@@ -213,8 +213,14 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
   runSetup cfg
   let tbl ← freshTbl
   if cfg.listCmd.isEmpty then
-    -- Direct SQL mode: run listSql against existing tables (e.g. HF root)
-    let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {cfg.listSql}"
+    -- Direct SQL mode: expand template vars, support multi-statement (split on ";\n")
+    let (vars, _) ← cfg.cmdVars path
+    let sql := expand cfg.listSql vars
+    let stmts := sql.splitOn ";\n" |>.map (·.trimAscii.toString) |>.filter (·.length > 0)
+    for stmt in stmts.dropLast do
+      let _ ← Adbc.query stmt
+    let selectSql := stmts.getLast?.getD sql
+    let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {selectSql}"
     fromTbl tbl
   else
     -- CLI mode: run command, save JSON, transform via listSql

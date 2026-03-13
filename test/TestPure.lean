@@ -332,10 +332,18 @@ section FolderHelperTests
 #guard Tc.Folder.isDuckDB "data/test.csv" == false
 #guard Tc.Folder.isDuckDB "data/test.parquet" == false
 
+-- isSQLite: detect SQLite files by extension
+#guard Tc.Folder.isSQLite "data/test.sqlite" == true
+#guard Tc.Folder.isSQLite "data/test.sqlite3" == true
+#guard Tc.Folder.isSQLite "data/test.db" == false
+#guard Tc.Folder.isSQLite "data/test.csv" == false
+
 -- isDataFile (from test_folder_enter_symlink where enter dispatches on file type)
 #guard Tc.Folder.isDataFile "test.csv" == true
 #guard Tc.Folder.isDataFile "test.parquet" == true
 #guard Tc.Folder.isDataFile "test.duckdb" == true
+#guard Tc.Folder.isDataFile "test.sqlite" == true
+#guard Tc.Folder.isDataFile "test.sqlite3" == true
 #guard Tc.Folder.isDataFile "test.txt" == false
 #guard Tc.Folder.isDataFile "test.json" == false
 

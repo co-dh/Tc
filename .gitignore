@@ -14,3 +14,7 @@ tc.log
 test.log
 run_test.sh
 test/qcon
+# makepkg build artifacts
+src/
+pkg/
+*.pkg.tar.zst

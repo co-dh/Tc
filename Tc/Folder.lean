@@ -71,9 +71,13 @@ def viewFile (path : String) : IO Unit := do
 def isDuckDB (p : String) : Bool :=
   p.endsWith ".duckdb" || p.endsWith ".db"
 
+-- | Is file a SQLite database?
+def isSQLite (p : String) : Bool :=
+  p.endsWith ".sqlite" || p.endsWith ".sqlite3"
+
 -- | Is file a data format we can open as a table?
 def isDataFile (p : String) : Bool :=
-  p.endsWith ".csv" || p.endsWith ".parquet" || isDuckDB p
+  p.endsWith ".csv" || p.endsWith ".parquet" || isDuckDB p || isSQLite p
 
 -- | Open any supported data file as a View
 def openFile (path : String) : IO (Option (View AdbcTable)) := do
@@ -83,6 +87,23 @@ def openFile (path : String) : IO (Option (View AdbcTable)) := do
       | some v =>
         let disp := path.splitOn "/" |>.getLast?.getD path
         pure (some { v with vkind := .fld s!"duckdb://{path}" 1, disp })
+      | none => pure none
+    | none => pure none
+  else if isSQLite path then
+    -- Config-driven: route through tc_sources via sqlite:// prefix
+    let absPath ← do
+      let rp ← IO.Process.output { cmd := "realpath", args := #[path] }
+      pure (if rp.exitCode == 0 then rp.stdout.trimAscii.toString else path)
+    let uri := s!"sqlite://{absPath}"
+    let disp := path.splitOn "/" |>.getLast?.getD path
+    match ← SourceConfig.findSource uri with
+    | some cfg =>
+      match ← cfg.runList uri with
+      | some adbc =>
+        let grp := if cfg.grp.isEmpty then #[] else #[cfg.grp]
+        match View.fromTbl adbc uri (grp := grp) with
+        | some v => pure (some { v with vkind := .fld uri 1, disp })
+        | none => pure none
       | none => pure none
     | none => pure none
   else
@@ -174,11 +195,12 @@ private def curDepth (s : ViewStack AdbcTable) : Nat :=
 -- | Enter directory or view file based on current row
 def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
-  -- DuckDB: enter opens a table from the attached database
-  if curDir.startsWith "duckdb://" then do
+  -- DuckDB/SQLite: enter opens a table from the attached database
+  if curDir.startsWith "duckdb://" || curDir.startsWith "sqlite://" then do
     let some tableName ← curPath s.cur | return some s
     let some (adbc, keys) ← AdbcTable.fromDuckDBTable tableName | return some s
-    let some v := View.fromTbl (adbc) s!"duckdb://{tableName}" (grp := keys) | return some s
+    let pfx := if curDir.startsWith "sqlite://" then "sqlite" else "duckdb"
+    let some v := View.fromTbl (adbc) s!"{pfx}://{tableName}" (grp := keys) | return some s
     return some (s.push v)
   let cfg ← SourceConfig.findSource curDir
   match ← curType s.cur, ← curPath s.cur with
