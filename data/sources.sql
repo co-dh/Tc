@@ -54,7 +54,7 @@ INSERT INTO tc_sources VALUES
 
   -- Generic REST API: curl any JSON endpoint
   ('rest://', 1,
-   'curl -sf {1+}',
+   'curl -sfL https://{1+}',
    'SELECT * FROM read_json_auto(''{src}'', auto_detect=true)',
    '',
    false, false, '',
