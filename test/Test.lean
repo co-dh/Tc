@@ -573,10 +573,10 @@ def test_script_filter : IO Unit := do
 -- | -p join: join two CSV files on shared column
 def test_script_join : IO Unit := do
   log "script_join"
-  IO.FS.writeFile "/tmp/claude-1000/left.csv" "k,val\n1,a\n2,b\n3,c\n"
-  IO.FS.writeFile "/tmp/claude-1000/right.csv" "k,score\n1,10\n3,30\n"
-  let prql := "from x | join (from `/tmp/claude-1000/right.csv`) (==k)"
-  let out ← IO.Process.output { cmd := bin, args := #["/tmp/claude-1000/left.csv", "-p", prql] }
+  IO.FS.writeFile "/tmp/tc_test/left.csv" "k,val\n1,a\n2,b\n3,c\n"
+  IO.FS.writeFile "/tmp/tc_test/right.csv" "k,score\n1,10\n3,30\n"
+  let prql := "from x | join (from `/tmp/tc_test/right.csv`) (==k)"
+  let out ← IO.Process.output { cmd := bin, args := #["/tmp/tc_test/left.csv", "-p", prql] }
   assert (out.exitCode == 0) s!"script_join exit code: {out.exitCode}"
   assert (contains out.stdout "10") "script_join: score=10 present"
   assert (contains out.stdout "30") "script_join: score=30 present"
@@ -585,10 +585,10 @@ def test_script_join : IO Unit := do
 -- | -p append: union two files
 def test_script_append : IO Unit := do
   log "script_append"
-  IO.FS.writeFile "/tmp/claude-1000/a1.csv" "x\n1\n2\n"
-  IO.FS.writeFile "/tmp/claude-1000/a2.csv" "x\n3\n4\n"
-  let prql := "from x | append (from `/tmp/claude-1000/a2.csv`)"
-  let out ← IO.Process.output { cmd := bin, args := #["/tmp/claude-1000/a1.csv", "-p", prql] }
+  IO.FS.writeFile "/tmp/tc_test/a1.csv" "x\n1\n2\n"
+  IO.FS.writeFile "/tmp/tc_test/a2.csv" "x\n3\n4\n"
+  let prql := "from x | append (from `/tmp/tc_test/a2.csv`)"
+  let out ← IO.Process.output { cmd := bin, args := #["/tmp/tc_test/a1.csv", "-p", prql] }
   assert (out.exitCode == 0) s!"script_append exit code: {out.exitCode}"
   let lines := out.stdout.splitOn "\n" |>.filter (· != "")
   -- header + 4 data rows (2 from each file)
@@ -676,6 +676,7 @@ def tests : Array (String × IO Unit) := #[
 
 def main (args : List String) : IO Unit := do
   IO.FS.writeFile "test.log" ""
+  IO.FS.createDirAll "/tmp/tc_test"
   let ok ← Tc.AdbcTable.init
   if !ok then throw (IO.userError "Backend init failed")
   try Tc.SourceConfig.attachDb catch _ => pure ()
