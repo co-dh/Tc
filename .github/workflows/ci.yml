@@ -32,5 +32,8 @@ jobs:
       - name: Build
         run: lake build tc test
 
+      - name: Install prqlc
+        run: curl -fsSL https://github.com/PRQL/prql/releases/download/0.13.10/prqlc-0.13.10-x86_64-unknown-linux-musl.tar.gz | sudo tar xz -C /usr/local/bin prqlc
+
       - name: Test
-        run: .lake/build/bin/test
+        run: .lake/build/bin/test || (cat test.log; exit 1)

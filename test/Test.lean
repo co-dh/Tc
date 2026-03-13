@@ -33,6 +33,8 @@ def run (keys : String) (file : String := "") : IO String := do
   log s!"  run: {file} keys={keys}"
   let args := if file.isEmpty then #["-c", keys] else #[file, "-c", keys]
   let out ← IO.Process.output { cmd := bin, args }
+  if !out.stderr.isEmpty then log s!"  stderr: {out.stderr.trimAscii.toString}"
+  if out.exitCode != 0 then log s!"  exit: {out.exitCode}"
   log "  done"
   pure out.stdout
 
