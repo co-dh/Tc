@@ -25,6 +25,7 @@ structure AppState where
   theme : Theme.State
   info  : UI.Info.State
   prevScroll : Nat := 0
+  heatOn : Bool := false
   statusCache : String × String × String := ("", "", "")  -- (path, col, desc) — avoids per-frame DB query
 
 namespace AppState
@@ -85,7 +86,7 @@ where
 
 -- main loop: render → input → update → effect → loop
 partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppState := do
-  let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles
+  let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles a.heatOn
   let a := { a with stk := a.stk.setCur v', vs := vs' }
   renderTabLine a.stk.tabNames 0
   -- Show column description on status line from DuckDB column comments (cached)
@@ -118,6 +119,7 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   let (ev, ks') ← nextEvent ks
   if isKey ev 'Q' then return a
   if isKey ev ' ' then mainLoop (← runEffect a (.fzf .cmd)) test ks'
+  else if isKey ev 'm' then mainLoop { a with heatOn := !a.heatOn } test ks'
   else if isKey ev '{' then mainLoop { a with prevScroll := a.prevScroll - min a.prevScroll 5 } test ks'
   else if isKey ev '}' then mainLoop { a with prevScroll := a.prevScroll + 5 } test ks'
   else match evToCmd ev a.stk.cur.vkind with
@@ -159,7 +161,7 @@ def parseArgs (args : List String) : CliArgs :=
 def runApp (v : View AdbcTable) (pipe test : Bool) (th : Theme.State) (ks : Array Char) : IO AppState := do
   if pipe then let _ ← Term.reopenTty
   let _ ← Term.init
-  let a' ← mainLoop ⟨⟨v, []⟩, .default, th, {}, 0, ("", "", "")⟩ test ks
+  let a' ← mainLoop { stk := ⟨v, []⟩, vs := .default, theme := th, info := {} } test ks
   if !test then Term.shutdown
   pure a'
 
