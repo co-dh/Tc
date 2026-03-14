@@ -56,21 +56,21 @@ private def parquetMetaPrql (path : String) : String :=
   let p := escSql path
   "from s\"SELECT * FROM parquet_metadata('" ++ p ++ "')\" | pqmeta"
 
--- | SQL: per-column stats via UNION ALL (for non-parquet sources).
+-- | PRQL: per-column stats via colstat function + UNION ALL.
+-- Compiles each column's PRQL colstat call to SQL, then joins with UNION ALL.
 -- Cannot use DuckDB SUMMARIZE: its null_percentage uses approximate counting
 -- which miscounts NULLs for some column types, giving wrong null_pct values.
-private def colStatsSql (baseSql : String) (names : Array String) (types : Array String) : String :=
-  let one (i : Nat) : String :=
+private def colStatsPrql (baseSql : String) (names : Array String) (types : Array String) : IO (Option String) := do
+  let mut parts : Array String := #[]
+  for i in [:names.size] do
     let nm := escSql (names.getD i "")
     let tp := escSql (types.getD i "?")
-    let q := quoteId (names.getD i "")
-    s!"SELECT '{nm}' AS \"column\", '{tp}' AS coltype, " ++
-    s!"CAST(COUNT({q}) AS BIGINT) AS cnt, " ++
-    s!"CAST(COUNT(DISTINCT {q}) AS BIGINT) AS dist, " ++
-    s!"CAST(ROUND((1.0 - COUNT({q})::FLOAT / NULLIF(COUNT(*),0)) * 100) AS BIGINT) AS null_pct, " ++
-    s!"CAST(MIN({q}) AS VARCHAR) AS mn, CAST(MAX({q}) AS VARCHAR) AS mx FROM __src"
-  let parts := (Array.range names.size).map one
-  "WITH __src AS (" ++ baseSql ++ ") " ++ " UNION ALL ".intercalate parts.toList
+    let col := Prql.quote (names.getD i "")
+    let prql := s!"from s\"(SELECT * FROM __src)\" | colstat {col} '{nm}' '{tp}'"
+    let some sql ← Prql.compile prql | return none
+    parts := parts.push (stripSemi sql)
+  if parts.isEmpty then return none
+  pure (some (s!"WITH __src AS ({baseSql}) " ++ " UNION ALL ".intercalate parts.toList))
 
 -- | Query meta: parquet uses file metadata (instant), others use SQL aggregation.
 def queryMeta (t : AdbcTable) : IO (Option AdbcTable) := do
@@ -83,7 +83,8 @@ def queryMeta (t : AdbcTable) : IO (Option AdbcTable) := do
       pure sql
     | none => do
       let some baseSql ← Prql.compile t.query.base | return none
-      pure (colStatsSql (baseSql.trimAsciiEnd).toString names types)
+      let some sql ← colStatsPrql (baseSql.trimAsciiEnd).toString names types | return none
+      pure sql
   let n ← memTblCounter.modifyGet fun n => (n, n + 1)
   let tblName := s!"tc_meta_{n}"
   let _ ← Adbc.query s!"CREATE OR REPLACE TEMP TABLE {tblName} AS ({metaSql})"
@@ -120,7 +121,8 @@ def columnComment (path colName : String) : IO String := do
   let tbl := pathTable path
   if tbl.isEmpty then return ""
   try
-    let sql := s!"SELECT comment FROM duckdb_columns() WHERE table_name='{escSql tbl}' AND column_name='{escSql colName}' AND comment IS NOT NULL LIMIT 1"
+    let prql := s!"from s\"duckdb_columns()\" | col_comment '{escSql tbl}' '{escSql colName}'"
+    let some sql ← Prql.compile prql | return ""
     let qr ← Adbc.query sql
     let n ← Adbc.nrows qr
     if n == 0 then return ""

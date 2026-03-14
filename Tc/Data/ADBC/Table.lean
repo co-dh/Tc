@@ -162,15 +162,19 @@ def fromFile (path : String) : IO (Option AdbcTable) := do
 -- | Attach a .duckdb file and list its tables as TSV (for folder-like view)
 def listDuckDBTables (path : String) : IO (Option AdbcTable) := do
   let _ ← Adbc.query s!"ATTACH '{escSql path}' AS extdb (READ_ONLY)"
-  let qr ← Adbc.query "SELECT table_name as name, estimated_size as size, column_count as columns FROM duckdb_tables() WHERE database_name = 'extdb'"
+  let prql := "from s\"duckdb_tables()\" | extdb_tables"
+  let some sql ← Prql.compile prql | return none
+  let qr ← Adbc.query sql
   let total ← Adbc.nrows qr
   if total.toNat == 0 then return none
-  some <$> ofQueryResult qr { base := "from duckdb_tables() | filter database_name == 'extdb' | select {name, estimated_size, column_count}" } total.toNat
+  some <$> ofQueryResult qr { base := "from s\"duckdb_tables()\" | extdb_tables" } total.toNat
 
 -- | Get primary key columns for a table in the attached extdb
 def duckDBPrimaryKeys (table : String) : IO (Array String) := do
   try
-    let qr ← Adbc.query s!"SELECT unnest(constraint_column_names) as col FROM duckdb_constraints() WHERE database_name = 'extdb' AND table_name = '{escSql table}' AND constraint_type = 'PRIMARY KEY'"
+    let prql := s!"from s\"duckdb_constraints()\" | filter database_name == 'extdb' | filter table_name == '{escSql table}' | filter constraint_type == 'PRIMARY KEY' | derive \{col = s\"unnest(constraint_column_names)\"} | select \{col}"
+    let some sql ← Prql.compile prql | return #[]
+    let qr ← Adbc.query sql
     let nr ← Adbc.nrows qr
     let mut keys : Array String := #[]
     for i in [:nr.toNat] do

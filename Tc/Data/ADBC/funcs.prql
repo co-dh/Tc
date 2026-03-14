@@ -88,6 +88,31 @@ let pqmeta = func tbl <relation> -> (
   select {column = path_in_schema, coltype = `type`, this.cnt, this.dist, this.null_pct, mn, mx}
 )
 
+# List tables in an attached external database
+let extdb_tables = func tbl <relation> -> (
+  from tbl
+  filter database_name == 'extdb'
+  select {name = table_name, size = estimated_size, columns = column_count}
+)
+
+# List tables excluding system schemas (information_schema, pg_catalog)
+let extdb_tables_filtered = func tbl <relation> -> (
+  from tbl
+  filter database_name == 'extdb'
+  filter s"schema_name NOT IN ('information_schema', 'pg_catalog')"
+  select {name = table_name, size = estimated_size, columns = column_count}
+)
+
+# Column comment lookup from DuckDB metadata
+let col_comment = func tbl_name col_name tbl <relation> -> (
+  from tbl
+  filter table_name == tbl_name
+  filter column_name == col_name
+  filter comment != null
+  take 1
+  select {comment}
+)
+
 let colstat = func c nm tp tbl <relation> -> (
   from tbl
   aggregate {

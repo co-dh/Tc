@@ -100,11 +100,13 @@ private def attachFile (absPath : String) (fmt : FileFormat) : IO (Option (View 
   let typClause := if fmt.attachType.isEmpty then "" else s!"TYPE {fmt.attachType}, "
   let _ ← Adbc.query s!"DETACH DATABASE IF EXISTS extdb"
   let _ ← Adbc.query s!"ATTACH '{escSql absPath}' AS extdb ({typClause}READ_ONLY)"
-  let qr ← Adbc.query "SELECT table_name as name, estimated_size as size, column_count as columns FROM duckdb_tables() WHERE database_name = 'extdb'"
+  let prql := "from s\"duckdb_tables()\" | extdb_tables"
+  let some sql ← Prql.compile prql | return none
+  let qr ← Adbc.query sql
   let total ← Adbc.nrows qr
   if total.toNat == 0 then return none
   let adbc ← AdbcTable.ofQueryResult qr
-    { base := "from duckdb_tables() | filter database_name == 'extdb' | select {table_name, estimated_size, column_count}" }
+    { base := prql }
     total.toNat
   let disp := absPath.splitOn "/" |>.getLast?.getD absPath
   match View.fromTbl adbc absPath (grp := #["name"]) with

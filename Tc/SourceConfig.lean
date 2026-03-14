@@ -228,9 +228,14 @@ private def Config.cmdVars (cfg : Config) (path : String) : IO (Array (String ×
   pure (mkVars cfg path tmpDir (nameFromPath path) extra, tmpDir)
 
 -- | Generate attach SQL from config fields (DRY: DETACH/ATTACH/SELECT pattern)
-private def Config.attachSql (cfg : Config) (connStr : String) : String :=
+-- The SELECT portion is compiled from PRQL extdb_tables_filtered function.
+private def Config.attachSql (cfg : Config) (connStr : String) : IO String := do
   let typClause := if cfg.attachType.isEmpty then "" else s!"TYPE {cfg.attachType}, "
-  s!"DETACH DATABASE IF EXISTS extdb;\nATTACH '{escSql connStr}' AS extdb ({typClause}READ_ONLY);\nSELECT table_name as name, estimated_size as size, column_count as columns FROM duckdb_tables() WHERE database_name = 'extdb' AND schema_name NOT IN ('information_schema', 'pg_catalog')"
+  let ddl := s!"DETACH DATABASE IF EXISTS extdb;\nATTACH '{escSql connStr}' AS extdb ({typClause}READ_ONLY)"
+  let prql := "from s\"duckdb_tables()\" | extdb_tables_filtered"
+  match ← Prql.compile prql with
+  | some selectSql => pure s!"{ddl};\n{stripSemi selectSql}"
+  | none => pure s!"{ddl};\nSELECT table_name as name, estimated_size as size, column_count as columns FROM duckdb_tables() WHERE database_name = 'extdb' AND schema_name NOT IN ('information_schema', 'pg_catalog')"
 
 -- | Run listing: CLI cmd → JSON → listSql, or direct SQL mode
 def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
@@ -243,7 +248,7 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
     let sql ← if cfg.attach && cfg.listSql.isEmpty then do
       let connStr := if cfg.pfx.isEmpty then path
         else (path.drop cfg.pfx.length).toString
-      pure (cfg.attachSql connStr)
+      cfg.attachSql connStr
     else do
       let (vars, _) ← cfg.cmdVars path
       pure (expand cfg.listSql vars)
@@ -274,8 +279,12 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
     let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {listSql}"
     -- Auto-unnest: if result is 1 row with a struct[] column, expand it
     try
-      let qr ← Adbc.query s!"SELECT column_name FROM duckdb_columns() WHERE table_name='{tbl}' AND data_type LIKE 'STRUCT%[]' LIMIT 1"
-      let cnt ← Adbc.query s!"SELECT count(*)::INT FROM {tbl}"
+      let structPrql := s!"from s\"duckdb_columns()\" | filter table_name == '{tbl}' | filter s\"data_type LIKE 'STRUCT%[]'\" | take 1 | select \{column_name}"
+      let cntPrql := s!"from {tbl} | aggregate \{n = s\"count(*)::INT\"}"
+      let some structSql ← Prql.compile structPrql | throw (IO.userError "prql")
+      let some cntSql ← Prql.compile cntPrql | throw (IO.userError "prql")
+      let qr ← Adbc.query structSql
+      let cnt ← Adbc.query cntSql
       let col ← Adbc.cellStr qr 0 0
       let n ← Adbc.cellInt cnt 0 0
       if n == 1 && !col.isEmpty then
