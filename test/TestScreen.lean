@@ -139,8 +139,8 @@ def tests : Array (String × IO Unit) := #[
 
 def main (args : List String) : IO Unit := do
   IO.FS.writeFile "test.log" ""
-  let ok ← Tc.AdbcTable.init
-  if !ok then throw (IO.userError "Backend init failed")
+  let err ← Tc.AdbcTable.init
+  if !err.isEmpty then throw (IO.userError s!"Backend init failed: {err}")
   let filter := args.head?
   let selected := match filter with
     | none => tests

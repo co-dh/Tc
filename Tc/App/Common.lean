@@ -227,8 +227,8 @@ def appMain (args : List String) : IO Unit := do
   catch _ => pure ()  -- use C defaults if CSV not found
   Log.setLogPath Log.path
   Log.write "init" s!"tmpdir={← Tc.tmpDir.get}"
-  let ok ← try AdbcTable.init catch e => IO.eprintln s!"Backend init error: {e}"; return
-  if !ok then IO.eprintln "Backend init failed"; return
+  let err ← try AdbcTable.init catch e => IO.eprintln s!"Backend init error: {e}"; return
+  if !err.isEmpty then IO.eprintln s!"Backend init failed: {err}"; return
   try SourceConfig.attachDb catch e => Log.write "init" s!"attachDb: {e}"
   -- script mode: run PRQL against file and exit
   if let some prqlOps := cli.prql then

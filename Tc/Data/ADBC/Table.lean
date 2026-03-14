@@ -13,8 +13,9 @@ namespace Adbc
 
 opaque QueryResult : Type
 
+-- | Returns "" on success, error message on failure
 @[extern "lean_adbc_init"]
-opaque init : IO Bool
+opaque init : IO String
 
 @[extern "lean_adbc_shutdown"]
 opaque shutdown : IO Unit
@@ -82,13 +83,14 @@ initialize memTblCounter : IO.Ref Nat ← IO.mkRef 0
 
 namespace AdbcTable
 
--- | Init ADBC backend (DuckDB), install+load httpfs for hf:// support
-def init : IO Bool := do
-  let ok ← Adbc.init
-  if ok then
+-- | Init ADBC backend (DuckDB), install+load httpfs for hf:// support.
+--   Returns "" on success, error message on failure.
+def init : IO String := do
+  let err ← Adbc.init
+  if err.isEmpty then
     try let _ ← Adbc.query "INSTALL httpfs; LOAD httpfs"
     catch e => Log.write "init" s!"httpfs extension: {e}"
-  pure ok
+  pure err
 
 -- | Shutdown ADBC backend
 def shutdown : IO Unit := Adbc.shutdown

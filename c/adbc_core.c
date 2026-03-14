@@ -151,22 +151,29 @@ static int load_adbc_funcs_from_path(const char* path) {
 #define ADBC_CHECK(call, msg) do { \
     if ((call) != ADBC_STATUS_OK) { \
         log_msg("[adbc] %s: %s\n", msg, err.message ? err.message : "?"); \
+        step = msg; \
         goto fail; \
     } \
 } while(0)
 
 // | Generic ADBC init with configurable driver
+// | Returns "" on success, error message on failure
 lean_obj_res lean_adbc_init_driver(b_lean_obj_arg driver_obj, b_lean_obj_arg entry_obj, lean_obj_arg world) {
-    if (g_initialized) return lean_io_result_mk_ok(lean_box(1));
+    if (g_initialized) return lean_io_result_mk_ok(lean_mk_string(""));
 
     const char* driver = lean_string_cstr(driver_obj);
     const char* entry = lean_string_cstr(entry_obj);
 
-    if (!load_adbc_funcs_from_path(driver)) return lean_io_result_mk_ok(lean_box(0));
+    if (!load_adbc_funcs_from_path(driver)) {
+        char buf[512];
+        snprintf(buf, sizeof(buf), "dlopen %s: %s", driver, dlerror());
+        return lean_io_result_mk_ok(lean_mk_string(buf));
+    }
 
     struct AdbcError err;
     init_error(&err);
     int have_db = 0, have_conn = 0;
+    const char* step = "";
 
     ADBC_CHECK(pAdbcDatabaseNew(&g_db, &err), "DatabaseNew");
     have_db = 1;
@@ -180,13 +187,16 @@ lean_obj_res lean_adbc_init_driver(b_lean_obj_arg driver_obj, b_lean_obj_arg ent
 
     log_msg("[adbc] initialized OK with driver=%s entry=%s\n", driver, entry);
     g_initialized = 1;
-    return lean_io_result_mk_ok(lean_box(1));
+    return lean_io_result_mk_ok(lean_mk_string(""));
 
-fail:
+fail:;
+    char buf[512];
+    snprintf(buf, sizeof(buf), "ADBC %s: %s", step, err.message ? err.message : "unknown");
+    lean_object* result = lean_mk_string(buf);
     if (have_conn) pAdbcConnectionRelease(&g_conn, &err);
     if (have_db) pAdbcDatabaseRelease(&g_db, &err);
     free_error(&err);
-    return lean_io_result_mk_ok(lean_box(0));
+    return lean_io_result_mk_ok(result);
 }
 
 /* === DuckDB Driver === */
@@ -202,8 +212,10 @@ static const char* DUCKDB_PATHS[] = {
 // | DuckDB ADBC entrypoint
 static const char* DUCKDB_ENTRYPOINT = "duckdb_adbc_init";
 
-// | Init ADBC with DuckDB (tries multiple paths)
+// | Init ADBC with DuckDB (tries multiple paths). Returns "" on success, error on failure.
 lean_obj_res lean_adbc_init(lean_obj_arg world) {
+    char errs[1024] = "";
+    int off = 0;
     for (int i = 0; DUCKDB_PATHS[i]; i++) {
         lean_object* driver = lean_mk_string(DUCKDB_PATHS[i]);
         lean_object* entry = lean_mk_string(DUCKDB_ENTRYPOINT);
@@ -211,15 +223,17 @@ lean_obj_res lean_adbc_init(lean_obj_arg world) {
         lean_dec_ref(driver);
         lean_dec_ref(entry);
 
-        // Check if init succeeded (result is lean_box(1))
-        if (lean_is_scalar(lean_io_result_get_value(res))) {
-            if (lean_unbox(lean_io_result_get_value(res)) == 1) {
-                return res;  // success
-            }
-        }
+        // success: init_driver returns ""
+        lean_object* val = lean_io_result_get_value(res);
+        if (lean_string_size(val) == 1) return res;  // empty string = success
+
+        // collect error
+        const char* msg = lean_string_cstr(val);
+        off += snprintf(errs + off, sizeof(errs) - off, "%s%s", off ? "; " : "", msg);
         lean_dec_ref(res);
     }
-    return lean_io_result_mk_ok(lean_box(0));  // all paths failed
+    log_msg("[adbc] init failed: %s\n", errs);
+    return lean_io_result_mk_ok(lean_mk_string(errs));
 }
 
 // | Shutdown ADBC
