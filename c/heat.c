@@ -24,15 +24,16 @@ int col_num_val(lean_obj_arg col, size_t row, double *out) {
 }
 
 uint32_t heat_color(double t) {
-    // 21-stop blue→cyan→green→yellow→orange→red ramp via xterm-256 cube.
+    // Viridis-inspired purple→teal→green→yellow ramp via xterm-256 cube.
     // Each adjacent pair differs by one RGB channel step → clean transitions.
+    // Perceptually uniform, colorblind-safe, no aggressive red.
     static const uint32_t ramp[] = {
-        17, 18, 19, 20, 21,   // deep blue → blue (r=0, g=0, b++)
-        27, 33, 39,            // blue → cyan (r=0, g++, b=5)
-        49, 48, 47, 82, 118,  // cyan → green (g=5 b--, then g=5 r++)
-        154, 190, 226,         // green → yellow (r++, g=5, b=0)
-        220, 214, 208,         // yellow → orange (r=5, g--, b=0)
-        202, 196,              // orange → red
+        53, 54, 55,            // dark purple → purple → blue-purple
+        61, 25, 31,            // indigo → blue → teal-blue
+        30, 36, 42,            // teal → green-teal → bright teal
+        41, 77, 113,           // green → light green → yellow-green
+        149, 148, 184,         // chartreuse → yellow-green → dark yellow
+        190, 226,              // bright yellow → yellow
     };
     static const int N = sizeof(ramp) / sizeof(ramp[0]);
     if (t <= 0.0) return ramp[0];
