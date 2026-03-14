@@ -26,18 +26,29 @@ private def samples (col : String) : String → String
   | _ =>
     s!"{col} != null | {col} > 0 | f\"\{col}\""
 
+-- | Build "col : type" lines with aligned ":"
+private def colHints (names : Array String) (types : Array String) : String :=
+  let maxLen := names.foldl (fun mx n => max mx n.length) 0
+  let lines := names.mapIdx fun i n =>
+    let pad := String.ofList (List.replicate (maxLen - n.length) ' ')
+    s!"{n}{pad} : {types.getD i "?"}"
+  "\n".intercalate lines.toList
+
 -- | Prompt for expression, requery with derive, push new view.
 -- Returns unchanged stack on cancel (like Export.run).
+-- If user selects a hint line ("col : type"), strips the type annotation.
 def run (s : ViewStack AdbcTable) : IO (ViewStack AdbcTable) := do
   let names := TblOps.colNames s.tbl
   let curCol := s.cur.nav.curColIdx
   let curName := names.getD curCol ""
   let typ := TblOps.colType s.tbl curCol
-  let cols := names.mapIdx (fun i n => s!"{n}:{s.tbl.colTypes.getD i "?"}") |>.toList |> " ".intercalate
-  let header := s!"{cols}\n{samples curName typ}"
-  let hint := "\n".intercalate names.toList
-  let some expr ← Fzf.fzf #["--print-query", "--prompt=derive: ", s!"--header={header}"] hint | return s
-  let expr := expr.trimAscii.toString
+  let header := samples curName typ
+  let hint := colHints names s.tbl.colTypes
+  let some raw ← Fzf.fzf #["--print-query", "--prompt=derive: ", s!"--header={header}"] hint | return s
+  -- strip " : type" suffix if user selected a hint line verbatim
+  let expr := match (raw.trimAscii.toString).splitOn " : " with
+    | [name, _] => if names.contains name then name else raw.trimAscii.toString
+    | _ => raw.trimAscii.toString
   if expr.isEmpty then return s
   let n ← deriveCount.modifyGet fun n => (n + 1, n + 1)
   let name := s!"_{n}"
@@ -45,7 +56,8 @@ def run (s : ViewStack AdbcTable) : IO (ViewStack AdbcTable) := do
   Log.write "derive" q.render
   -- derive preserves row count, no need for queryCount
   let some tbl' ← AdbcTable.requery q s.tbl.totalRows | return s
-  let some v := s.cur.rebuild tbl' | return s
+  let nCols := (TblOps.colNames tbl').size
+  let some v := s.cur.rebuild tbl' (col := nCols - 1) | return s
   return s.push { v with disp := s!"={name}" }
 
 end Tc.Derive
