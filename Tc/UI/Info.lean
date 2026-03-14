@@ -1,6 +1,5 @@
 /-
-  Info overlay: key hints display
-  Shows view-specific commands first, then common navigation.
+  Info overlay: context-specific key hints per view kind.
 -/
 import Tc.Cmd
 import Tc.Term
@@ -26,28 +25,22 @@ instance : Update State where update := update
 
 end State
 
--- | View-specific key hints (shown first)
+-- | Context-specific key hints per view (no common navigation)
 def viewHints : ViewKind → Array (String × String)
   | .colMeta => #[("0", "sel null"), ("1", "sel single"), ("⏎", "set key"), ("q", "back")]
   | .freqV _ _ => #[("⏎", "filter"), ("q", "back")]
   | .fld _ _ => #[("⏎", "enter"), ("d", "trash"), (",d", "depth-"), (".d", "depth+")]
-  | .tbl => #[("M", "meta"), ("F", "freq"), ("D", "folder")]
-
--- | Common key hints (shown after view-specific)
-def commonHints : Array (String × String) := #[
-  ("j/k", "up/down"), ("h/l", "left/right"),
-  ("^D/^U", "page"), ("[/]", "sort"),
-  ("/", "search"), ("n/N", "next/prev"),
-  ("\\", "filter"), ("!", "key col"),
-  ("t/T", "sel"), ("H", "hide"),
-  ("s", "col jump"), (".", "line plot"),
-  ("P,", "bar plot"), ("S", "swap"),
-  ("X", "transpose"), ("m", "heatmap"), ("I", "info"), ("q", "pop"), ("Q", "quit")
-]
+  | .tbl => #[
+    ("=", "derive"), ("e", "export"), ("m", "heatmap"),
+    (".", "line plot"), ("P,", "bar plot"),
+    ("t/T", "sel"), ("H", "hide"), ("!", "group"),
+    ("\\", "filter"), ("s", "col jump"), ("X", "transpose"),
+    ("M", "meta"), ("F", "freq"), ("D", "folder"),
+    ("I", "info"), ("SPC", "cmd mode")]
 
 -- | Render info overlay at bottom-right
 def render (screenH screenW : Nat) (vk : ViewKind) : IO Unit := do
-  let hints := viewHints vk ++ commonHints
+  let hints := viewHints vk
   let nRows := hints.size
   let keyW : Nat := 5; let hintW : Nat := 10
   let boxW := keyW + 1 + hintW
