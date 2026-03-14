@@ -703,26 +703,9 @@ lean_obj_res lean_render_table(
         }
     }
 
-    // heatmap: per-column min/max over visible rows (not full column) —
-    // adapts contrast to what's on screen and avoids scanning all rows for ADBC tables
-    double colMin[MAX_HEAT_COLS], colMax[MAX_HEAT_COLS];
-    int colHeat[MAX_HEAT_COLS];  // 1 if numeric with range
-    if (heatOn && nVisCols <= MAX_HEAT_COLS) {
-        for (size_t c = 0; c < nVisCols; c++) {
-            size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, dispIdxs[c]));
-            lean_obj_arg col = lean_array_get_core(allCols, origIdx);
-            colHeat[c] = 0;
-            if (!col_is_num(col)) continue;
-            double mn = 1e308, mx = -1e308;
-            for (size_t ri = 0; ri < nRows; ri++) {
-                double v;
-                if (!col_num_val(col, r0 + ri, &v)) continue;
-                if (v < mn) mn = v;
-                if (v > mx) mx = v;
-            }
-            if (mx > mn) { colMin[c] = mn; colMax[c] = mx; colHeat[c] = 1; }
-        }
-    }
+    HeatCol hcols[MAX_HEAT_COLS] = {{0}};
+    if (heatOn && nVisCols <= MAX_HEAT_COLS)
+        heat_scan(allCols, colIdxs, dispIdxs, nVisCols, nRows, r0, hcols);
 
     // render data rows (r0..r1 in original table, 0..nRows in screen)
     for (size_t ri = 0; ri < nRows; ri++) {
@@ -779,16 +762,8 @@ lean_obj_res lean_render_table(
 
             lean_obj_arg col = lean_array_get_core(allCols, origIdx);
 
-            // heatmap bg override (non-cursor/selection numeric cells)
-            if (heatOn && c < MAX_HEAT_COLS && colHeat[c]
-                && si != STYLE_CURSOR && si != STYLE_SEL_ROW && si != STYLE_SEL_CUR) {
-                double v;
-                if (col_num_val(col, row, &v)) {
-                    double t = (v - colMin[c]) / (colMax[c] - colMin[c]);
-                    bg = heat_color(t);
-                    fg = 16;  // black text on colored bg
-                }
-            }
+            if (heatOn && heat_cell_bg(col, row, c, si, hcols, &bg))
+                fg = HEAT_FG;
             format_col_cell(col, row, buf, sizeof(buf), (int)precAdj);
             // leading space
             tb_set_cell(xs[c], y, ' ', fg, bg);
