@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [main]
+    branches: [main, 'claude/**']
   pull_request:
 
 jobs:
@@ -28,6 +28,9 @@ jobs:
           unzip /tmp/duckdb.zip -d /tmp/duckdb
           sudo cp /tmp/duckdb/libduckdb.so /usr/local/lib/
           sudo ldconfig
+
+      - name: Remove stale binaries
+        run: rm -f .lake/build/bin/tc .lake/build/bin/test
 
       - name: Build
         run: lake build tc test

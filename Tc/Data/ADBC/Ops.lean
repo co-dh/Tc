@@ -65,7 +65,8 @@ private def colStatsPrql (baseSql : String) (names : Array String) (types : Arra
   for i in [:names.size] do
     let nm := escSql (names.getD i "")
     let tp := escSql (types.getD i "?")
-    let col := Prql.quote (names.getD i "")
+    -- Always backtick-quote: PRQL compiles `col` to "col" in SQL, safe for all names
+    let col := s!"`{names.getD i ""}`"
     let prql := s!"from s\"(SELECT * FROM __src)\" | colstat {col} '{nm}' '{tp}'"
     let some sql ← Prql.compile prql | return none
     parts := parts.push (stripSemi sql)
