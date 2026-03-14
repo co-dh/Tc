@@ -8,6 +8,8 @@ jobs:
   build:
     # ubuntu-latest (currently 24.04). Not pinned — we download our own tools so host version rarely matters.
     runs-on: ubuntu-latest
+    env:
+      PATH: /home/runner/.elan/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     steps:
       - uses: actions/checkout@v4
 
@@ -21,7 +23,7 @@ jobs:
             /usr/local/lib/libduckdb.so
             /usr/local/bin/prqlc
             ~/.elan
-          key: tools-${{ runner.os }}-duckdb${{ hashFiles('Makefile') }}
+          key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
       - name: Install tools
         if: steps.tools.outputs.cache-hit != 'true'
@@ -29,10 +31,7 @@ jobs:
           sudo make duckdb prqlc
           make elan
 
-      - name: Setup PATH
-        run: echo "$HOME/.elan/bin" >> $GITHUB_PATH
-
-      # Ensure ldconfig knows about libduckdb (cache restores file but not ldconfig state)
+      # ldconfig needed even on cache hit (cache restores file but not ldconfig state)
       - name: ldconfig
         run: sudo ldconfig
 
