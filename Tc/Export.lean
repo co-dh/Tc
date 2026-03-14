@@ -3,9 +3,16 @@
   Uses DuckDB COPY for efficient streaming export.
 -/
 import Tc.Data.ADBC.Ops
+import Tc.Fzf
 import Tc.View
 
 namespace Tc.Export
+
+-- | Prompt user for export format via fzf
+def pickFmt : IO (Option ExportFmt) := do
+  match ← Fzf.fzf #["--prompt=export: "] "csv\nparquet\njson\nndjson" with
+  | some raw => pure (ExportFmt.ofString? raw.trim)
+  | none => pure none
 
 -- | Export current view to file via DuckDB COPY
 def exportView (t : AdbcTable) (path : String) (fmt : ExportFmt) : IO Unit := do
