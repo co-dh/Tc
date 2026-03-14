@@ -170,7 +170,7 @@ def listDuckDBTables (path : String) : IO (Option AdbcTable) := do
 -- | Get primary key columns for a table in the attached extdb
 def duckDBPrimaryKeys (table : String) : IO (Array String) := do
   try
-    let some qr ← Prql.query s!"from dcons | extdb_pkeys '{escSql table}'" | return #[]
+    let some qr ← Prql.query s!"from dcons | prim_keys '{escSql table}'" | return #[]
     let nr ← Adbc.nrows qr
     let mut keys : Array String := #[]
     for i in [:nr.toNat] do

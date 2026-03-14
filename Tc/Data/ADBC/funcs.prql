@@ -127,7 +127,7 @@ let col_comment = func tbl_name col_name tbl <relation> -> (
 )
 
 # Primary key columns for a table in an attached extdb
-let extdb_pkeys = func tname tbl <relation> -> (
+let prim_keys = func tname tbl <relation> -> (
   from tbl
   filter database_name == 'extdb'
   filter table_name == tname
