@@ -90,6 +90,7 @@ Exports to `~/tc_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows
 | `t` | Toggle column selection |
 | `T` | Toggle row selection |
 | `!` | Toggle key column (group) |
+| `Shift+←/→` | Reorder key columns (for join ordering) |
 | `H` | Toggle hide column |
 
 ### Sorting and Editing

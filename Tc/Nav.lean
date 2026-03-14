@@ -43,13 +43,17 @@ abbrev ColNav (n : Nat) := NavAxis n String
 def Array.idxOf? [BEq α] (a : Array α) (x : α) : Option Nat :=
   a.findIdx? (· == x)
 
--- Compute display order: group names first, then rest
--- Uses range partition: filter + complement = full range
--- O(n*m) where m = group.size (was O(n²*m) via idxOf? per index)
+-- Compute display order: group names first (in grp array order), then rest
+-- Group order matters for join key ordering (Shift+Arrow reorders grp)
+-- Uses filter partition (preserves size proof) + qsort by grp position
 def dispOrder (group : Array String) (names : Array String) : Array Nat :=
   let n := names.size
   let isGrp := fun i => group.contains (names.getD i "")
-  (Array.range n).filter isGrp ++ (Array.range n).filter (!isGrp ·)
+  let grpIdxs := (Array.range n).filter isGrp
+  -- Sort group indices by position in grp array (respects grp add/reorder order)
+  let grpSorted := grpIdxs.qsort fun a b =>
+    (group.idxOf? (names.getD a "")).getD 0 < (group.idxOf? (names.getD b "")).getD 0
+  grpSorted ++ (Array.range n).filter (!isGrp ·)
 
 -- Helper: list filter partition
 private theorem list_filter_partition (p : α → Bool) (l : List α) :
@@ -58,11 +62,15 @@ private theorem list_filter_partition (p : α → Bool) (l : List α) :
   | nil => simp
   | cons h t ih => simp only [List.filter_cons]; split <;> simp_all <;> omega
 
--- dispOrder preserves size (partition of range n)
+-- qsort preserves size (Vector round-trip)
+private theorem qsort_size (a : Array α) (f : α → α → Bool) : (a.qsort f).size = a.size := by
+  simp [Array.qsort]; split <;> simp [Vector.size_toArray]
+
+-- dispOrder preserves size (filter partition of range n, qsort preserves size)
 theorem dispOrder_size (group : Array String) (names : Array String) :
     (dispOrder group names).size = names.size := by
   simp only [dispOrder]
-  rw [Array.size_append]
+  rw [Array.size_append, qsort_size]
   let isGrp := fun i => group.contains (names.getD i "")
   have s1 : (Array.filter isGrp (Array.range names.size)).size =
       (List.filter isGrp (List.range names.size)).length := by
@@ -147,6 +155,23 @@ def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option
     some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames }
   | .colSel .dup =>
     some { nav with hidden := nav.hidden.toggle nav.curColName }
+  -- Shift+Arrow: swap key column with neighbor in grp array, cursor follows
+  | .colShift v =>
+    let name := nav.curColName
+    match nav.grp.idxOf? name with
+    | some i =>
+      -- Boundary check: can't shift left at 0 or right at last
+      if v == .inc && i + 1 ≥ nav.grp.size then none
+      else if v == .dec && i == 0 then none
+      else
+        let j := if v == .inc then i + 1 else i - 1
+        let gi := nav.grp.getD i ""
+        let gj := nav.grp.getD j ""
+        let newGrp := nav.grp.set! i gj |>.set! j gi
+        let d := if v == .inc then (1 : Int) else -1
+        some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames,
+                        col := { nav.col with cur := nav.col.cur.clamp d } }
+    | none => none
   | _ => none  -- unhandled: .col .del, .colSel .sort*, .prec, .width, etc.
 
 -- | Pure update: wrap exec to return Effect
