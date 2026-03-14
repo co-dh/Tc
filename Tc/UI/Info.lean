@@ -42,7 +42,7 @@ def commonHints : Array (String × String) := #[
   ("t/T", "sel"), ("H", "hide"),
   ("s", "col jump"), (".", "line plot"),
   ("P,", "bar plot"), ("S", "swap"),
-  ("m", "heatmap"), ("I", "info"), ("q", "pop"), ("Q", "quit")
+  ("X", "transpose"), ("m", "heatmap"), ("I", "info"), ("q", "pop"), ("Q", "quit")
 ]
 
 -- | Render info overlay at bottom-right

@@ -70,6 +70,7 @@ cat data.csv | tc                  # Pipe mode (stdin)
 | `M`         | Column metadata view                                             |
 | `Enter`     | Enter (open file in folder, filter from freq, set key from meta) |
 | `q` / `Esc` | Pop view (quit if last)                                          |
+| `X`         | Transpose (swap rows and columns)                                |
 | `S`         | Swap top two views                                               |
 | `Q`         | Quit                                                             |
 
