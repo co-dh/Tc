@@ -571,7 +571,8 @@ def tests : Array (String × IO Unit) := #[
   ("csv_open", test_csv_open),
   ("json_open", test_json_open), ("ndjson_open", test_ndjson_open),
   ("jsonl_open", test_jsonl_open), ("jsonl_sort", test_jsonl_sort),
-  ("arrow_open", test_arrow_open), ("feather_open", test_feather_open),
+  -- arrow/feather disabled: DuckDB arrow extension not available on extensions.duckdb.org for v1.4.4
+  -- ("arrow_open", test_arrow_open), ("feather_open", test_feather_open),
   ("xlsx_open", test_xlsx_open), ("avro_open", test_avro_open),
   ("pg_list", test_pg_list), ("pg_enter", test_pg_enter),
   ("folder_prefix", test_folder_prefix),
