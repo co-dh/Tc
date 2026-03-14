@@ -11,8 +11,9 @@ jobs:
       - uses: actions/checkout@v4
 
       # Official DuckDB release (distro packages lack ADBC support)
+      # sudo: runner user can't write to /usr/local/{lib,bin}
       - name: Install DuckDB
-        run: make duckdb
+        run: sudo make duckdb
 
       - name: Install elan + Lean toolchain
         run: |
@@ -28,7 +29,7 @@ jobs:
           restore-keys: lake-${{ runner.os }}-
 
       - name: Install prqlc
-        run: make prqlc
+        run: sudo make prqlc
 
       - name: Build and test
         run: make test
