@@ -34,7 +34,7 @@ def viewHints : ViewKind → Array (String × String)
     ("=", "derive"), ("e", "export"), ("m", "heatmap"),
     (".", "line plot"), ("P,", "bar plot"),
     ("t/T", "sel"), ("H", "hide"), ("!", "group"),
-    ("\\", "filter"), ("s", "col jump"),
+    ("\\", "filter"), ("s", "col jump"), ("X", "transpose"),
     ("M", "meta"), ("F", "freq"), ("D", "folder"),
     ("I", "info"), ("SPC", "cmd mode")]
 
