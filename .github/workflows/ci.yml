@@ -10,15 +10,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Official DuckDB release (distro packages lack ADBC support)
-      # sudo: runner user can't write to /usr/local/{lib,bin}
-      - name: Install DuckDB
-        run: sudo make duckdb
+      # Cache tools (duckdb, prqlc, elan/lean) to avoid re-downloading each run
+      - name: Cache tools
+        id: tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/libduckdb.so
+            /usr/local/bin/prqlc
+            ~/.elan
+          key: tools-${{ runner.os }}-duckdb${{ hashFiles('Makefile') }}
 
-      - name: Install elan + Lean toolchain
+      - name: Install tools
+        if: steps.tools.outputs.cache-hit != 'true'
         run: |
+          sudo make duckdb prqlc
           make elan
-          echo "$HOME/.elan/bin" >> $GITHUB_PATH
+
+      - name: Setup PATH
+        run: echo "$HOME/.elan/bin" >> $GITHUB_PATH
+
+      # Ensure ldconfig knows about libduckdb (cache restores file but not ldconfig state)
+      - name: ldconfig
+        run: sudo ldconfig
 
       # Cache Lean build artifacts to avoid full recompilation (~10+ min) on each run
       - name: Cache .lake
@@ -27,9 +41,6 @@ jobs:
           path: .lake
           key: lake-${{ runner.os }}-${{ hashFiles('lakefile.lean', 'lake-manifest.json') }}
           restore-keys: lake-${{ runner.os }}-
-
-      - name: Install prqlc
-        run: sudo make prqlc
 
       - name: Build and test
         run: make test
