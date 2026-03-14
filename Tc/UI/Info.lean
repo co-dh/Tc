@@ -33,7 +33,7 @@ def viewHints : ViewKind → Array (String × String)
   | .tbl => #[
     ("=", "derive"), ("e", "export"), ("m", "heatmap"),
     (".", "line plot"), ("P,", "bar plot"),
-    ("t/T", "sel"), ("H", "hide"), ("!", "group"),
+    ("t/T", "sel"), ("H", "hide"), ("!", "group"), ("S-←→", "key order"),
     ("\\", "filter"), ("s", "col jump"), ("X", "transpose"),
     ("M", "meta"), ("F", "freq"), ("D", "folder"),
     ("I", "info"), ("SPC", "cmd mode")]

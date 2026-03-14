@@ -588,6 +588,18 @@ def test_transpose_pop : IO Unit := do
   let (_, status) := footer output
   assert (contains status "r0/5") "q pops back to original 5-row view"
 
+-- === Key column reorder tests ===
+
+-- | Shift+Arrow reorders key columns: !l! groups a,b; <S-left> swaps b before a
+def test_key_shift : IO Unit := do
+  log "key_shift"
+  -- !l! → key both cols (grp=["a","b"]), then shift-left moves b before a
+  let hdr := header (← run "!l!<S-left>" "data/basic.csv")
+  -- After shift: grp=["b","a"], so header should show b before a
+  let bPos := hdr.splitOn "b" |>.head?.map (·.length) |>.getD 999
+  let aPos := hdr.splitOn "a" |>.head?.map (·.length) |>.getD 999
+  assert (bPos < aPos) s!"shift-left: b ({bPos}) should appear before a ({aPos}) in header"
+
 -- === Run all tests ===
 
 -- | All tests as (name, action) pairs
@@ -652,7 +664,9 @@ def tests : Array (String × IO Unit) := #[
   ("transpose", test_transpose),
   ("transpose_pop", test_transpose_pop),
   -- Derive tests
-  ("derive", test_derive)
+  ("derive", test_derive),
+  -- Key column reorder tests
+  ("key_shift", test_key_shift)
 ]
 
 def main (args : List String) : IO Unit := do

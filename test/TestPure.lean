@@ -85,6 +85,17 @@ theorem enter_meta : evToCmd (charToEvent '\r') .colMeta = some (.metaV .ent)   
 theorem enter_fld  : evToCmd (charToEvent '\r') (.fld "/tmp" 1) = some (.fld .ent)      := by native_decide
 theorem enter_tbl  : evToCmd (charToEvent '\r') .tbl = none                             := by native_decide
 
+-- Shift+Arrow keys (from test_key_shift: reorder key columns)
+-- Synthetic shift+arrow events: mod=4 (modShift), key=arrow code
+theorem key_shift_left : evToCmd ⟨Term.eventKey, Term.modShift, Term.keyArrowLeft, 0, 0, 0⟩ .tbl
+    = some (.colShift .dec) := by native_decide
+theorem key_shift_right : evToCmd ⟨Term.eventKey, Term.modShift, Term.keyArrowRight, 0, 0, 0⟩ .tbl
+    = some (.colShift .inc) := by native_decide
+
+-- Test synthetic shift+arrow via charToEvent (\x11=S-left, \x12=S-right)
+theorem key_synth_shift_left : evToCmd (charToEvent '\x11') .tbl = some (.colShift .dec) := by native_decide
+theorem key_synth_shift_right : evToCmd (charToEvent '\x12') .tbl = some (.colShift .inc) := by native_decide
+
 end KeyMapTests
 
 /-! ## View.update Tests (derived from screen tests) -/
@@ -220,6 +231,9 @@ section ParseKeysTests
 #guard parseKeys "jjj<ret>" == "jjj\r"
 #guard parseKeys "<C-d><C-u>" == "\x04\x15"
 #guard parseKeys "abc" == "abc"
+#guard parseKeys "<S-left>" == "\x11"
+#guard parseKeys "<S-right>" == "\x12"
+#guard parseKeys "!l!<S-left>" == "!l!\x11"
 
 end ParseKeysTests
 
@@ -459,6 +473,25 @@ def navWithSel : NavState 5 3 (MockTable 5 3) :=
 -- | ! (grp.ent) toggles group
 #guard (NavState.exec (.grp .ent) testNav 1 1).map (·.grp) == some #["c0"]
 
+-- | colShift on non-keyed column is no-op
+#guard (NavState.exec (.colShift .inc) testNav 1 1).isNone
+
+-- | colShift on keyed column swaps grp order
+-- !l! → grp=["c0","c1"], then shift-left on c1 (cursor at disp pos 1) → grp=["c1","c0"]
+def navGrp2 : NavState 5 3 (MockTable 5 3) :=
+  match do let n1 ← NavState.exec (.grp .ent) testNav 1 1
+           let n2 ← NavState.exec (.col .inc) n1 1 1
+           NavState.exec (.grp .ent) n2 1 1 with
+  | some n => n | none => testNav
+#guard navGrp2.grp == #["c0", "c1"]
+#guard (NavState.exec (.colShift .dec) navGrp2 1 1).map (·.grp) == some #["c1", "c0"]
+
+-- | colShift at boundary is no-op (first key col can't shift left)
+def navGrp2AtFirst : NavState 5 3 (MockTable 5 3) :=
+  match NavState.exec (.col .dec) navGrp2 1 1 with
+  | some n => n | none => navGrp2
+#guard (NavState.exec (.colShift .dec) navGrp2AtFirst 1 1).isNone
+
 -- | Unhandled command returns none
 #guard (NavState.exec (.thm .inc) testNav 1 1).isNone
 
@@ -534,11 +567,14 @@ section DispOrderTests
 -- | Group first col: moves to front
 #guard dispOrder #["b"] #["a", "b", "c"] == #[1, 0, 2]
 
--- | Group multiple: group columns come first (in column order)
-#guard dispOrder #["c", "a"] #["a", "b", "c"] == #[0, 2, 1]
+-- | Group multiple: group columns come first (in grp array order)
+#guard dispOrder #["c", "a"] #["a", "b", "c"] == #[2, 0, 1]
 
 -- | Group non-existent: ignored
 #guard dispOrder #["x"] #["a", "b", "c"] == #[0, 1, 2]
+
+-- | Group order reversed: display order follows grp array
+#guard dispOrder #["a", "c"] #["a", "b", "c"] == #[0, 2, 1]
 
 end DispOrderTests
 

@@ -92,7 +92,8 @@ def objMenu : Array (Char × String × (Verb → Cmd)) := #[
   ('M', "metaV  : meta view",            .metaV),
   ('F', "freq   : frequency view",       .freq),
   ('D', "fld    : folder view",          .fld),
-  ('P', "plot   : gnuplot chart",       .plot)
+  ('P', "plot   : gnuplot chart",       .plot),
+  ('K', "colShift : reorder key cols", .colShift)
 ]
 
 -- | Verb menu for command mode, context-sensitive per object and view kind
@@ -122,6 +123,7 @@ def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
     | _ => #[('c', "push freq", .dup)]
   | 'D' => #[(',', "depth--", .dec), ('.', "depth++", .inc), ('~', "enter", .ent), ('d', "trash", .del), ('c', "push folder", .dup)]
   | 'P' => #[('.', "line chart", .inc), (',', "bar chart", .dec)]
+  | 'K' => #[(',', "shift left", .dec), ('.', "shift right", .inc)]
   | _   => #[]
 
 -- | Enter key → context-specific command based on view kind
@@ -148,7 +150,10 @@ def evToCmd (ev : Term.Event) (vk : ViewKind) : Option Cmd :=
   if ev.key == Term.keyEnter then enterCmd vk else  -- context-sensitive Enter
   let c := evToChar ev
   let shift := ev.mod &&& Term.modShift != 0
-  lookup KeyMap.char c <|> navCmd c shift <|> lookup KeyMap.special ev.key <|> lookup KeyMap.ctrl ev.key
+  -- Shift+Arrow left/right → reorder key columns (before nav normalization)
+  if shift && ev.key == Term.keyArrowLeft then some (.colShift .dec)
+  else if shift && ev.key == Term.keyArrowRight then some (.colShift .inc)
+  else lookup KeyMap.char c <|> navCmd c shift <|> lookup KeyMap.special ev.key <|> lookup KeyMap.ctrl ev.key
 
 -- | Parse key notation: <ret> → \r, <C-d> → Ctrl-D, etc.
 def parseKeys (s : String) : String :=
@@ -156,14 +161,19 @@ def parseKeys (s : String) : String :=
    |>.replace "<esc>" "\x1b"
    |>.replace "<C-d>" "\x04"
    |>.replace "<C-u>" "\x15"
+   |>.replace "<S-left>" "\x11"
+   |>.replace "<S-right>" "\x12"
    |>.replace "<backslash>" "\\"
    |>.replace "<key>" "!"
 
 -- | Convert char to synthetic Term.Event (matches termbox behavior)
 def charToEvent (c : Char) : Term.Event :=
   let ch := c.toNat.toUInt32
+  -- Synthetic shift+arrow for test mode (<S-left> = \x11, <S-right> = \x12)
+  if ch == 0x11 then ⟨Term.eventKey, Term.modShift, Term.keyArrowLeft, 0, 0, 0⟩
+  else if ch == 0x12 then ⟨Term.eventKey, Term.modShift, Term.keyArrowRight, 0, 0, 0⟩
   -- Ctrl chars: termbox reports key=ctrl_code, ch=0, mod=2
-  if ch < 32 then ⟨Term.eventKey, 2, ch.toUInt16, 0, 0, 0⟩
+  else if ch < 32 then ⟨Term.eventKey, 2, ch.toUInt16, 0, 0, 0⟩
   else ⟨Term.eventKey, 0, 0, ch, 0, 0⟩
 
 -- | Check if event is a key press for given char
