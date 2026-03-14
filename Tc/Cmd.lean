@@ -104,6 +104,7 @@ inductive FolderEffect where | push | enter | del | depth (delta : Int) deriving
 inductive SearchEffect where | next | prev deriving Repr, BEq
 inductive PlotEffect where | line | bar deriving Repr, BEq
 inductive MetaEffect where | selNull | selSingle | setKey deriving Repr, BEq
+inductive ExportFmt where | csv | parquet | json | ndjson deriving Repr, BEq
 
 -- | Effect: describes an IO operation to perform (Runner interprets)
 inductive Effect where
@@ -116,6 +117,7 @@ inductive Effect where
   | colMeta : MetaEffect → Effect
   | themeLoad (delta : Int)
   | fetchMore
+  | export : ExportFmt → Effect
   deriving Repr, BEq
 
 namespace Effect

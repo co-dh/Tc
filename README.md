@@ -73,6 +73,14 @@ cat data.csv | tc                  # Pipe mode (stdin)
 | `S`         | Swap top two views                                               |
 | `Q`         | Quit                                                             |
 
+### Export
+
+| Key | Action |
+|-----|--------|
+| `e` | Export current view (fzf picker: csv, parquet, json) |
+
+Exports to `~/tc_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows.
+
 ### Selection and Grouping
 
 | Key | Action |
