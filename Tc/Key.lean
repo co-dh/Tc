@@ -169,7 +169,7 @@ def parseKeys (s : String) : String :=
 -- | Convert char to synthetic Term.Event (matches termbox behavior)
 def charToEvent (c : Char) : Term.Event :=
   let ch := c.toNat.toUInt32
-  -- Synthetic shift+arrow for test mode (<S-left> = \x11, <S-right> = \x12)
+  -- Synthetic shift+arrow for test mode (\x11/\x12 shadow Ctrl-Q/R — neither is mapped)
   if ch == 0x11 then ⟨Term.eventKey, Term.modShift, Term.keyArrowLeft, 0, 0, 0⟩
   else if ch == 0x12 then ⟨Term.eventKey, Term.modShift, Term.keyArrowRight, 0, 0, 0⟩
   -- Ctrl chars: termbox reports key=ctrl_code, ch=0, mod=2
