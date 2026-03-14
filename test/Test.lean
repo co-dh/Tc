@@ -543,17 +543,18 @@ def test_script_from : IO Unit := do
 
 -- === Export tests ===
 
--- | Export: press 'e', fzf auto-selects csv, verify file created
+-- | Export: press 'e', fzf auto-selects csv, verify file created with correct content
 def test_export_csv : IO Unit := do
   log "export_csv"
   let home := (← IO.getEnv "HOME").getD "."
   let path := s!"{home}/tc_export_sort_test.csv"
   try IO.FS.removeFile path catch _ => pure ()
   let out ← run "e" "data/sort_test.parquet"
-  assert (contains out "id") "export_csv: table should render"
-  let found ← (path : System.FilePath).pathExists
-  assert found "export_csv: csv file should exist"
-  if found then IO.FS.removeFile path
+  assert (contains out "name") "export_csv: table should render"
+  let csv ← IO.FS.readFile path
+  assert (contains csv "name") "export_csv: csv should contain header"
+  assert (contains csv "alice") "export_csv: csv should contain data"
+  IO.FS.removeFile path
 
 -- === Run all tests ===
 

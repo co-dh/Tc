@@ -104,14 +104,15 @@ inductive FolderEffect where | push | enter | del | depth (delta : Int) deriving
 inductive SearchEffect where | next | prev deriving Repr, BEq
 inductive PlotEffect where | line | bar deriving Repr, BEq
 inductive MetaEffect where | selNull | selSingle | setKey deriving Repr, BEq
-inductive ExportFmt where | csv | parquet | json deriving Repr, BEq
+inductive ExportFmt where | csv | parquet | json | ndjson deriving Repr, BEq
 
 namespace ExportFmt
-def ext : ExportFmt → String | .csv => "csv" | .parquet => "parquet" | .json => "json"
+def ext : ExportFmt → String | .csv => "csv" | .parquet => "parquet" | .json => "json" | .ndjson => "ndjson"
 def copyOpt : ExportFmt → String
-  | .csv => "(FORMAT CSV, HEADER true)" | .json => "(FORMAT JSON)" | .parquet => "(FORMAT PARQUET)"
+  | .csv => "(FORMAT CSV, HEADER true)" | .json => "(FORMAT JSON)"
+  | .parquet => "(FORMAT PARQUET)" | .ndjson => "(FORMAT JSON, ARRAY false)"
 def ofString? : String → Option ExportFmt
-  | "csv" => some .csv | "parquet" => some .parquet | "json" => some .json | _ => none
+  | "csv" => some .csv | "parquet" => some .parquet | "json" => some .json | "ndjson" => some .ndjson | _ => none
 end ExportFmt
 
 -- | Effect: describes an IO operation to perform (Runner interprets)
