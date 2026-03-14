@@ -24,7 +24,7 @@ typedef struct {
 // Extract numeric value from Column at row. Returns 1 if valid, 0 if NaN/non-numeric.
 int col_num_val(lean_obj_arg col, size_t row, double *out);
 
-// 21-stop blue→cyan→green→yellow→orange→red ramp (xterm-256 cube indices).
+// Viridis-inspired purple→teal→green→yellow ramp (xterm-256 cube indices).
 // Adjacent stops differ by one RGB channel step for clean transitions.
 uint32_t heat_color(double t);
 
