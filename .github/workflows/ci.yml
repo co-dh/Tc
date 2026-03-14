@@ -7,6 +7,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Arch: Ubuntu's DuckDB ADBC rejects multi-statement queries that Arch's newer DuckDB handles
     container: archlinux:latest
     steps:
       - name: Install dependencies
@@ -29,14 +30,8 @@ jobs:
       - name: Remove stale binaries
         run: rm -f .lake/build/bin/tc .lake/build/bin/test
 
-      - name: Build
-        run: lake build tc test
-
       - name: Install prqlc
-        run: curl -fsSL https://github.com/PRQL/prql/releases/download/0.13.10/prqlc-0.13.10-x86_64-unknown-linux-musl.tar.gz | tar xz -C /usr/local/bin ./prqlc
+        run: make prqlc
 
-      - name: Copy funcs.prql
-        run: cp Tc/Data/ADBC/funcs.prql .lake/build/bin/
-
-      - name: Test
-        run: .lake/build/bin/test || (cat test.log; exit 1)
+      - name: Build and test
+        run: make test
