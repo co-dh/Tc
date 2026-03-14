@@ -249,13 +249,6 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
     return some cats
   | none => return some #[]
 
--- | Export current view to file via DuckDB COPY
-def exportView (t : AdbcTable) (path : String) (fmt : ExportFmt) : IO Unit := do
-  let some sql ← Prql.compile t.query.render | throw (.userError "PRQL compile failed")
-  let copySql := s!"COPY ({stripSemi sql}) TO '{escSql path}' {fmt.copyOpt}"
-  Log.write "export" copySql
-  let _ ← Adbc.query copySql
-
 -- | Ingest content via DuckDB reader into a temp table
 private def fromIngest (content label reader : String) : IO (Option AdbcTable) := do
   if content.isEmpty || content.trimAscii.toString == "[]" then return none

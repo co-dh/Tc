@@ -8,6 +8,7 @@ import Tc.Folder
 import Tc.Meta
 import Tc.Theme
 import Tc.Plot
+import Tc.Export
 
 namespace Tc
 
@@ -95,14 +96,7 @@ def runStackEffect (s : ViewStack AdbcTable) (eff : Effect) : IO (ViewStack Adbc
       | some v => pure (s.setCur v)
       | none => pure s
     | none => pure s
-  | .export fmt => do
-    let name := s.cur.tabName.replace "/" "_" |>.replace " " "_"
-    let stem := (name.splitOn ".").head?.filter (!·.isEmpty) |>.getD name
-    let home := (← IO.getEnv "HOME").getD "."
-    let path := s!"{home}/tc_export_{stem}.{fmt.ext}"
-    AdbcTable.exportView s.tbl path fmt
-    statusMsg s!"exported {path}"
-    pure s
+  | .export fmt => Export.run s fmt
   | .quit | .themeLoad _ => pure s
 
 end Runner
