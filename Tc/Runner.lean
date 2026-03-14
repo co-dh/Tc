@@ -99,7 +99,7 @@ def runStackEffect (s : ViewStack AdbcTable) (eff : Effect) : IO (ViewStack Adbc
     let name := s.cur.tabName.replace "/" "_" |>.replace " " "_"
     let stem := (name.splitOn ".").head?.getD name
     let home := (← IO.getEnv "HOME").getD "."
-    let path := s!"{home}/tc_export_{stem}.{fmt}"
+    let path := s!"{home}/tc_export_{stem}.{fmt.ext}"
     AdbcTable.exportView s.tbl path fmt
     statusMsg s!"exported {path}"
     pure s

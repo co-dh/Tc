@@ -250,13 +250,9 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
   | none => return some #[]
 
 -- | Export current view to file via DuckDB COPY
-def exportView (t : AdbcTable) (path : String) (fmt : String) : IO Unit := do
+def exportView (t : AdbcTable) (path : String) (fmt : ExportFmt) : IO Unit := do
   let some sql ← Prql.compile t.query.render | throw (.userError "PRQL compile failed")
-  let fmtOpt := match fmt with
-    | "csv" => "(FORMAT CSV, HEADER true)"
-    | "json" => "(FORMAT JSON)"
-    | _ => "(FORMAT PARQUET)"
-  let copySql := s!"COPY ({stripSemi sql}) TO '{escSql path}' {fmtOpt}"
+  let copySql := s!"COPY ({stripSemi sql}) TO '{escSql path}' {fmt.copyOpt}"
   Log.write "export" copySql
   let _ ← Adbc.query copySql
 

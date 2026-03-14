@@ -104,6 +104,15 @@ inductive FolderEffect where | push | enter | del | depth (delta : Int) deriving
 inductive SearchEffect where | next | prev deriving Repr, BEq
 inductive PlotEffect where | line | bar deriving Repr, BEq
 inductive MetaEffect where | selNull | selSingle | setKey deriving Repr, BEq
+inductive ExportFmt where | csv | parquet | json deriving Repr, BEq
+
+namespace ExportFmt
+def ext : ExportFmt → String | .csv => "csv" | .parquet => "parquet" | .json => "json"
+def copyOpt : ExportFmt → String
+  | .csv => "(FORMAT CSV, HEADER true)" | .json => "(FORMAT JSON)" | .parquet => "(FORMAT PARQUET)"
+def ofString? : String → Option ExportFmt
+  | "csv" => some .csv | "parquet" => some .parquet | "json" => some .json | _ => none
+end ExportFmt
 
 -- | Effect: describes an IO operation to perform (Runner interprets)
 inductive Effect where
@@ -116,7 +125,7 @@ inductive Effect where
   | colMeta : MetaEffect → Effect
   | themeLoad (delta : Int)
   | fetchMore
-  | export (fmt : String)
+  | export : ExportFmt → Effect
   deriving Repr, BEq
 
 namespace Effect
