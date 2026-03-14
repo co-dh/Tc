@@ -556,6 +556,28 @@ def test_export_csv : IO Unit := do
   assert (contains csv "alice") "export_csv: csv should contain data"
   IO.FS.removeFile path
 
+-- === Transpose tests ===
+
+-- test_transpose: X swaps rows/columns; original col names become row values
+def test_transpose : IO Unit := do
+  log "transpose"
+  let output ← run "X" "data/basic.csv"
+  assert (contains output "column") "X shows 'column' header"
+  -- original column names a, b appear as data in the "column" column
+  let lines := dataLines output
+  assert (lines.any (contains · " a ")) "transposed row for col 'a'"
+  assert (lines.any (contains · " b ")) "transposed row for col 'b'"
+  let (_, status) := footer output
+  -- basic.csv has 2 data columns (a, b) → transposed has 2 rows
+  assert (contains status "r0/2") "transposed has 2 rows (one per original column)"
+
+-- test_transpose_pop: q pops back from transposed view
+def test_transpose_pop : IO Unit := do
+  log "transpose_pop"
+  let output ← run "Xq" "data/basic.csv"
+  let (_, status) := footer output
+  assert (contains status "r0/5") "q pops back to original 5-row view"
+
 -- === Run all tests ===
 
 -- | All tests as (name, action) pairs
@@ -615,7 +637,10 @@ def tests : Array (String × IO Unit) := #[
   ("script_append", test_script_append),
   ("script_from", test_script_from),
   -- Export tests
-  ("export_csv", test_export_csv)
+  ("export_csv", test_export_csv),
+  -- Transpose tests
+  ("transpose", test_transpose),
+  ("transpose_pop", test_transpose_pop)
 ]
 
 def main (args : List String) : IO Unit := do

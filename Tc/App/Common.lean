@@ -5,6 +5,7 @@ import Tc.SourceConfig
 import Tc.TmpDir
 import Tc.Meta
 import Tc.Plot
+import Tc.Transpose
 import Tc.Fzf
 import Tc.Key
 import Tc.Render
@@ -122,6 +123,10 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   else if isKey ev 'e' then do
     match ← Export.pickFmt with
     | some fmt => mainLoop (← runEffect a (.export fmt)) test ks'
+    | none => mainLoop a test ks'
+  else if isKey ev 'X' then do
+    match ← Transpose.push a.stk with
+    | some s' => mainLoop { a with stk := s', vs := .default } test ks'
     | none => mainLoop a test ks'
   else if isKey ev 'm' then mainLoop { a with heatOn := !a.heatOn } test ks'
   else if isKey ev '{' then mainLoop { a with prevScroll := a.prevScroll - min a.prevScroll 5 } test ks'

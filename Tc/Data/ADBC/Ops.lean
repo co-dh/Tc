@@ -53,7 +53,7 @@ private def parquetMetaPrql (path : String) : String :=
   "from s\"SELECT * FROM parquet_metadata('" ++ p ++ "')\" | pqmeta"
 
 -- | Double-quote identifier for DuckDB
-private def quoteId (s : String) : String :=
+def quoteId (s : String) : String :=
   "\"" ++ s.replace "\"" "\"\"" ++ "\""
 
 -- | SQL: per-column stats via UNION ALL (for non-parquet sources).
