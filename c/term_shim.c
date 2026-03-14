@@ -4,11 +4,11 @@
 #include <lean/lean.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
 #include "termbox2.h"
+#include "heat.h"
 
 // | Local time as "HH:MM:SS.mmm"
 lean_obj_res lean_local_timestamp(lean_obj_arg world) {
@@ -341,15 +341,12 @@ lean_obj_res lean_tb_render_col(uint32_t x, uint32_t w, uint32_t y0,
 #define STYLE_GROUP      8   // group/key column background
 #define NUM_STYLES       9
 
-// | Column type tags (matches Lean Column inductive)
-#define COL_INTS   0
-#define COL_FLOATS 1
+// COL_INTS, COL_FLOATS defined in heat.h
 #define COL_STRS   2
 
 // | Minimum header text width (chars shown before truncation)
 #define MIN_HDR_WIDTH 3
 #define MAX_DISP_WIDTH 50
-#define MAX_HEAT_COLS 256
 
 // | VisiData-style type chars from Arrow format
 // # int, % float, ? bool, @ date, space string
@@ -438,23 +435,6 @@ static int col_is_num(lean_obj_arg col) {
     return tag == COL_INTS || tag == COL_FLOATS;
 }
 
-// | Extract numeric value from Column at row. Returns 1 if valid, 0 if NaN/non-numeric.
-static int col_num_val(lean_obj_arg col, size_t row, double *out) {
-    unsigned tag = lean_obj_tag(col);
-    lean_obj_arg data = lean_ctor_get(col, 0);
-    if (tag == COL_INTS) {
-        *out = (double)(int64_t)lean_unbox_uint64(lean_array_get_core(data, row));
-        return 1;
-    } else if (tag == COL_FLOATS) {
-        lean_obj_arg fbox = lean_array_get_core(data, row);
-        double v = lean_ctor_get_float(fbox, 0);
-        if (isnan(v)) return 0;
-        *out = v;
-        return 1;
-    }
-    return 0;
-}
-
 // | Compute column data width (not including header)
 static int compute_data_width(lean_obj_arg col, size_t r0, size_t r1, int precAdj) {
     int w = 1;  // minimum 1 char
@@ -500,19 +480,6 @@ static void build_sel_bits(b_lean_obj_arg arr, size_t n, uint64_t* bits) {
     }
 }
 #define IS_SEL(bits, v) ((v) < 256 && ((bits)[(v)/64] & (1ULL << ((v)%64))))
-
-// | Heatmap: 5-stop blue→red gradient (256-color indices)
-// Snap to nearest stop rather than interpolate — 256-color mode's 6×6×6 cube
-// produces muddy intermediate colors. 5 hand-picked stops give clean, distinct bands.
-static uint32_t heat_color(double t) {
-    static const uint32_t stops[] = {27, 39, 77, 220, 196};
-    if (t <= 0.0) return stops[0];
-    if (t >= 1.0) return stops[4];
-    double pos = t * 4.0;
-    int lo = (int)pos;
-    if (lo >= 4) lo = 3;
-    return (pos - lo < 0.5) ? stops[lo] : stops[lo + 1];
-}
 
 // | Unified table render - reads Column directly, computes widths if needed
 // allCols: Array Column (ALL columns)
