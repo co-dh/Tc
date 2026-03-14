@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <time.h>
 #include "termbox2.h"
+#include "heat.h"
 
 // | Local time as "HH:MM:SS.mmm"
 lean_obj_res lean_local_timestamp(lean_obj_arg world) {
@@ -340,9 +341,7 @@ lean_obj_res lean_tb_render_col(uint32_t x, uint32_t w, uint32_t y0,
 #define STYLE_GROUP      8   // group/key column background
 #define NUM_STYLES       9
 
-// | Column type tags (matches Lean Column inductive)
-#define COL_INTS   0
-#define COL_FLOATS 1
+// COL_INTS, COL_FLOATS defined in heat.h
 #define COL_STRS   2
 
 // | Minimum header text width (chars shown before truncation)
@@ -508,6 +507,7 @@ lean_obj_res lean_render_table(
     b_lean_obj_arg styles,
     int64_t precAdj,          // precision adjustment for floats
     int64_t widthAdj,         // column width offset
+    uint8_t heatOn,           // heatmap toggle
     lean_obj_arg world)
 {
     int screenW = screen_w();
@@ -703,6 +703,10 @@ lean_obj_res lean_render_table(
         }
     }
 
+    HeatCol hcols[MAX_HEAT_COLS] = {{0}};
+    if (heatOn && nVisCols <= MAX_HEAT_COLS)
+        heat_scan(allCols, colIdxs, dispIdxs, nVisCols, nRows, r0, hcols);
+
     // render data rows (r0..r1 in original table, 0..nRows in screen)
     for (size_t ri = 0; ri < nRows; ri++) {
         uint64_t row = r0 + ri;  // original table row
@@ -757,6 +761,9 @@ lean_obj_res lean_render_table(
             }
 
             lean_obj_arg col = lean_array_get_core(allCols, origIdx);
+
+            if (heatOn && heat_cell_bg(col, row, c, si, hcols, &bg))
+                fg = HEAT_FG;
             format_col_cell(col, row, buf, sizeof(buf), (int)precAdj);
             // leading space
             tb_set_cell(xs[c], y, ' ', fg, bg);
