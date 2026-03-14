@@ -6,6 +6,7 @@ on:
 
 jobs:
   build:
+    # ubuntu-latest (currently 24.04). Not pinned — we download our own tools so host version rarely matters.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
