@@ -7,17 +7,16 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Arch: Ubuntu's DuckDB ADBC rejects multi-statement queries that Arch's newer DuckDB handles
-    container: archlinux:latest
     steps:
-      - name: Install dependencies
-        run: pacman -Syu --noconfirm base-devel git duckdb curl unzip
-
       - uses: actions/checkout@v4
+
+      # Official DuckDB release (distro packages lack ADBC support)
+      - name: Install DuckDB
+        run: sudo make duckdb
 
       - name: Install elan + Lean toolchain
         run: |
-          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain leanprover/lean4:v4.28.0
+          make elan
           echo "$HOME/.elan/bin" >> $GITHUB_PATH
 
       # Cache Lean build artifacts to avoid full recompilation (~10+ min) on each run
@@ -25,14 +24,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .lake
-          key: lake-arch-${{ hashFiles('lakefile.lean', 'lake-manifest.json') }}
-          restore-keys: lake-arch-
-
-      - name: Remove stale binaries
-        run: rm -f .lake/build/bin/tc .lake/build/bin/test
+          key: lake-${{ runner.os }}-${{ hashFiles('lakefile.lean', 'lake-manifest.json') }}
+          restore-keys: lake-${{ runner.os }}-
 
       - name: Install prqlc
-        run: make prqlc
+        run: sudo make prqlc
 
       - name: Build and test
         run: make test

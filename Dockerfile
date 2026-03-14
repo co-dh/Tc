@@ -8,20 +8,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates git gcc make unzip \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL https://github.com/duckdb/duckdb/releases/download/v1.2.2/libduckdb-linux-amd64.zip \
-    -o /tmp/duckdb.zip && unzip /tmp/duckdb.zip -d /tmp/duckdb \
-    && cp /tmp/duckdb/libduckdb.so /usr/local/lib/ \
-    && ldconfig && rm -rf /tmp/duckdb /tmp/duckdb.zip
-
-RUN curl -fsSL https://github.com/PRQL/prql/releases/download/0.13.2/prqlc-0.13.2-x86_64-unknown-linux-musl.tar.gz \
-    | tar xz -C /usr/local/bin --strip-components=0 ./prqlc
-
-RUN curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
-    | bash -s -- -y --default-toolchain leanprover/lean4:v4.28.0
-
 WORKDIR /root/Tc
+COPY Makefile .
+RUN make duckdb elan prqlc
+
 COPY . .
-RUN lake build tc test && mkdir -p tmp && .lake/build/bin/test
+RUN make test
 
 # === Runtime ===
 FROM ubuntu:24.04

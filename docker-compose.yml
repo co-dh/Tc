@@ -1,0 +1,13 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/workspace
+      # Persist .lake cache across runs
+      - lake-cache:/workspace/.lake
+    working_dir: /workspace
+
+volumes:
+  lake-cache:

@@ -1,0 +1,14 @@
+# Dev environment matching CI: Ubuntu 24.04 + DuckDB + Lean + prqlc
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PATH="/root/.elan/bin:${PATH}"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates git gcc make unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY Makefile /tmp/Makefile
+RUN make -f /tmp/Makefile duckdb elan prqlc && rm /tmp/Makefile
+
+WORKDIR /workspace
