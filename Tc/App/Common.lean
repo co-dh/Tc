@@ -5,6 +5,7 @@ import Tc.SourceConfig
 import Tc.TmpDir
 import Tc.Meta
 import Tc.Plot
+import Tc.Clip
 import Tc.Fzf
 import Tc.Key
 import Tc.Render
@@ -53,6 +54,7 @@ def update (a : AppState) (cmd : Cmd) : Option (AppState × Effect) :=
   | .metaV _  => liftStk a cmd (Meta.update a.stk cmd) <|> viewUp
   | .freq _   => liftStk a cmd (Freq.update a.stk cmd) <|> viewUp
   | .plot _   => liftStk a cmd (Plot.update a.stk cmd)
+  | .yank _   => liftStk a cmd (Clip.update a.stk cmd)
   | .col .ent | .rowSel _ => liftStk a cmd (Filter.update a.stk cmd) <|> viewUp
   | .grp .inc | .grp .dec => liftStk a cmd (Filter.update a.stk cmd)
   | _ => viewUp

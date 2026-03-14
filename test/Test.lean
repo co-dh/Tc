@@ -730,6 +730,18 @@ def test_script_from : IO Unit := do
   assert (lines.length == 3) s!"script_from: expected 3 lines, got {lines.length}"
   assert (contains out.stdout "a\tb") "script_from: header present"
 
+-- | Yank cell: press y on a parquet file, verify table still renders
+def test_yank_cell : IO Unit := do
+  log "yank_cell"
+  let out ← run "y" "data/sample.parquet"
+  assert (contains out "id") "yank_cell: table should render after y"
+
+-- | Yank row: press Y on a parquet file, verify table still renders
+def test_yank_row : IO Unit := do
+  log "yank_row"
+  let out ← run "Y" "data/sample.parquet"
+  assert (contains out "id") "yank_row: table should render after Y"
+
 -- === Run all tests ===
 
 -- | All tests as (name, action) pairs
@@ -804,7 +816,10 @@ def tests : Array (String × IO Unit) := #[
   ("script_filter", test_script_filter),
   ("script_join", test_script_join),
   ("script_append", test_script_append),
-  ("script_from", test_script_from)
+  ("script_from", test_script_from),
+  -- Clipboard tests
+  ("yank_cell", test_yank_cell),
+  ("yank_row", test_yank_row)
 ]
 
 def main (args : List String) : IO Unit := do

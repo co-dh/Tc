@@ -50,7 +50,9 @@ namespace KeyMap
     ('\\', .rowSel .dec),    -- row filter: fzf PRQL filter (backslash)
     ('q', .stk .dec), ('S', .stk .ent),  -- stack: q=pop, S=swap
     ('I', .info .ent),  -- info: toggle overlay
-    ('.', .plot .inc)   -- plot: line chart
+    ('.', .plot .inc),  -- plot: line chart
+    ('y', .yank .ent),  -- yank cell
+    ('Y', .yank .inc)   -- yank row
   ]
 end KeyMap
 
@@ -92,7 +94,8 @@ def objMenu : Array (Char × String × (Verb → Cmd)) := #[
   ('M', "metaV  : meta view",            .metaV),
   ('F', "freq   : frequency view",       .freq),
   ('D', "fld    : folder view",          .fld),
-  ('P', "plot   : gnuplot chart",       .plot)
+  ('P', "plot   : gnuplot chart",       .plot),
+  ('y', "yank   : copy to clipboard",  .yank)
 ]
 
 -- | Verb menu for command mode, context-sensitive per object and view kind
@@ -122,6 +125,7 @@ def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
     | _ => #[('c', "push freq", .dup)]
   | 'D' => #[(',', "depth--", .dec), ('.', "depth++", .inc), ('~', "enter", .ent), ('d', "trash", .del), ('c', "push folder", .dup)]
   | 'P' => #[('.', "line chart", .inc), (',', "bar chart", .dec)]
+  | 'y' => #[('~', "cell", .ent), ('.', "row", .inc), (',', "column", .dec)]
   | _   => #[]
 
 -- | Enter key → context-specific command based on view kind

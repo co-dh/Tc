@@ -55,6 +55,7 @@ inductive Cmd where
   | freq (v : Verb)    -- freq c=push, ~=filter
   | fld (v : Verb)     -- fld c=push, +/-=depth, ~=enter dir/file
   | plot (v : Verb)    -- plot +=line, -=bar
+  | yank (v : Verb)    -- yank ~=cell, +=row, -=col
   deriving Repr, BEq, DecidableEq
 
 namespace Cmd
@@ -64,7 +65,8 @@ private def objs : Array (Char × (Verb → Cmd)) := #[
   ('r', .row), ('c', .col), ('R', .rowSel), ('C', .colSel), ('g', .grp), ('s', .stk),
   ('h', .hPage), ('v', .vPage), ('H', .hor), ('V', .ver), ('p', .prec), ('w', .width),
   ('T', .thm), ('i', .info), ('M', .metaV), ('F', .freq), ('D', .fld),
-  ('P', .plot)
+  ('P', .plot),
+  ('y', .yank)
 ]
 
 -- | Get obj char for Cmd
@@ -74,12 +76,13 @@ private def objChar : Cmd → Char
   | .hPage _ => 'h' | .vPage _ => 'v' | .hor _ => 'H' | .ver _ => 'V'
   | .prec _ => 'p' | .width _ => 'w' | .thm _ => 'T' | .info _ => 'i'
   | .metaV _ => 'M' | .freq _ => 'F' | .fld _ => 'D' | .plot _ => 'P'
+  | .yank _ => 'y'
 
 -- | Get verb from Cmd
 private def verb : Cmd → Verb
   | .row v | .col v | .rowSel v | .colSel v | .grp v | .stk v => v
   | .hor v | .ver v | .hPage v | .vPage v | .prec v | .width v => v
-  | .thm v | .info v | .metaV v | .freq v | .fld v | .plot v => v
+  | .thm v | .info v | .metaV v | .freq v | .fld v | .plot v | .yank v => v
 
 instance : ToString Cmd where toString c := s!"{c.objChar}{c.verb.toChar}"
 
@@ -104,6 +107,7 @@ inductive FolderEffect where | push | enter | del | depth (delta : Int) deriving
 inductive SearchEffect where | next | prev deriving Repr, BEq
 inductive PlotEffect where | line | bar deriving Repr, BEq
 inductive MetaEffect where | selNull | selSingle | setKey deriving Repr, BEq
+inductive ClipEffect where | cell | row | col deriving Repr, BEq
 
 -- | Effect: describes an IO operation to perform (Runner interprets)
 inductive Effect where
@@ -114,6 +118,7 @@ inductive Effect where
   | search : SearchEffect → Effect
   | plot : PlotEffect → Effect
   | colMeta : MetaEffect → Effect
+  | clip : ClipEffect → Effect
   | themeLoad (delta : Int)
   | fetchMore
   deriving Repr, BEq
