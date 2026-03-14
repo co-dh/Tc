@@ -227,21 +227,20 @@ private def Config.cmdVars (cfg : Config) (path : String) : IO (Array (String ×
   let extra ← if cfg.pfx == "s3://" then s3Extra else pure ""
   pure (mkVars cfg path tmpDir (nameFromPath path) extra, tmpDir)
 
--- | Cached compiled SQL for extdb_tables_filtered (fixed query, compile once)
+-- | Cached compiled SQL for tbl_info_filtered (fixed query, compile once)
 initialize extdbFilteredSql : IO.Ref String ← IO.mkRef ""
 
 private def getExtdbFilteredSql : IO String := do
   let cached ← extdbFilteredSql.get
   if !cached.isEmpty then return cached
-  let prql := Prql.extdbTablesFilteredPrql
-  let some sql ← Prql.compile prql |
-    throw (IO.userError s!"Failed to compile PRQL: {Prql.extdbTablesFilteredPrql}")
+  let some sql ← Prql.compile Prql.ducktabsF |
+    throw (IO.userError s!"Failed to compile PRQL: {Prql.ducktabsF}")
   let sql := stripSemi sql
   extdbFilteredSql.set sql
   return sql
 
 -- | Generate attach SQL from config fields (DRY: DETACH/ATTACH/SELECT pattern)
--- The SELECT portion is compiled from PRQL extdb_tables_filtered function.
+-- The SELECT portion is compiled from PRQL tbl_info_filtered function.
 private def Config.attachSql (cfg : Config) (connStr : String) : IO String := do
   let typClause := if cfg.attachType.isEmpty then "" else s!"TYPE {cfg.attachType}, "
   let ddl := s!"DETACH DATABASE IF EXISTS extdb;\nATTACH '{escSql connStr}' AS extdb ({typClause}READ_ONLY)"
@@ -290,7 +289,7 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
     let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {listSql}"
     -- Auto-unnest: if result is 1 row with a struct[] column, expand it
     try
-      let structPrql := s!"from s\"SELECT * FROM duckdb_columns()\" | struct_col '{tbl}'"
+      let structPrql := s!"from dcols | struct_col '{tbl}'"
       let cntPrql := s!"from {tbl} | aggregate \{n = s\"count(*)::INT\"}"
       let some structSql ← Prql.compile structPrql | throw (IO.userError s!"PRQL compile failed: {structPrql}")
       let some cntSql ← Prql.compile cntPrql | throw (IO.userError s!"PRQL compile failed: {cntPrql}")

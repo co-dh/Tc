@@ -1,5 +1,19 @@
-# PRQL function definitions for tv
+# PRQL function definitions for tc
 # use std.count to avoid ambiguity with column named 'count'
+#
+# DuckDB-specific table functions used here:
+#   duckdb_tables()      — returns database_name, estimated_size, column_count, comment, etc.
+#                          (information_schema.tables lacks these DuckDB-specific fields)
+#   duckdb_columns()     — returns comment, data_type_id, internal, etc.
+#                          (information_schema.columns lacks the comment field)
+#   duckdb_constraints() — returns constraint_column_names (array), constraint_type, etc.
+#
+# PRQL has no built-in unnest — use s"unnest(...)" to emit DuckDB's unnest as raw SQL.
+
+# Named relations for DuckDB metadata table functions
+let dtabs = s"SELECT * FROM duckdb_tables()"
+let dcols = s"SELECT * FROM duckdb_columns()"
+let dcons = s"SELECT * FROM duckdb_constraints()"
 
 let freq = func c tbl <relation> -> (
   from tbl
@@ -89,17 +103,17 @@ let pqmeta = func tbl <relation> -> (
 )
 
 # List tables in an attached external database
-let extdb_tables = func tbl <relation> -> (
+let tbl_info = func tbl <relation> -> (
   from tbl
   filter database_name == 'extdb'
   select {name = table_name, size = estimated_size, columns = column_count}
 )
 
 # List tables excluding system schemas (information_schema, pg_catalog)
-let extdb_tables_filtered = func tbl <relation> -> (
+let tbl_info_filtered = func tbl <relation> -> (
   from tbl
   filter s"schema_name NOT IN ('information_schema', 'pg_catalog')"
-  extdb_tables
+  tbl_info
 )
 
 # Column comment lookup from DuckDB metadata
@@ -118,6 +132,7 @@ let extdb_pkeys = func tname tbl <relation> -> (
   filter database_name == 'extdb'
   filter table_name == tname
   filter constraint_type == 'PRIMARY KEY'
+  # unnest: DuckDB function to expand array into rows (no PRQL equivalent)
   derive {col = s"unnest(constraint_column_names)"}
   select {col}
 )

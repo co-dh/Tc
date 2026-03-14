@@ -162,17 +162,16 @@ def fromFile (path : String) : IO (Option AdbcTable) := do
 -- | Attach a .duckdb file and list its tables as TSV (for folder-like view)
 def listDuckDBTables (path : String) : IO (Option AdbcTable) := do
   let _ ← Adbc.query s!"ATTACH '{escSql path}' AS extdb (READ_ONLY)"
-  let prql := Prql.extdbTablesPrql
-  let some sql ← Prql.compile prql | return none
+  let some sql ← Prql.compile Prql.ducktabs | return none
   let qr ← Adbc.query sql
   let total ← Adbc.nrows qr
   if total.toNat == 0 then return none
-  some <$> ofQueryResult qr { base := prql } total.toNat
+  some <$> ofQueryResult qr { base := Prql.ducktabs } total.toNat
 
 -- | Get primary key columns for a table in the attached extdb
 def duckDBPrimaryKeys (table : String) : IO (Array String) := do
   try
-    let prql := s!"from s\"SELECT * FROM duckdb_constraints()\" | extdb_pkeys '{escSql table}'"
+    let prql := s!"from dcons | extdb_pkeys '{escSql table}'"
     let some sql ← Prql.compile prql | return #[]
     let qr ← Adbc.query sql
     let nr ← Adbc.nrows qr
