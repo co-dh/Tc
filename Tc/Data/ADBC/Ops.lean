@@ -92,9 +92,7 @@ def queryMeta (t : AdbcTable) : IO (Option AdbcTable) := do
 
 -- | Query row indices matching PRQL filter on meta table
 def queryMetaIndices (tblName : String) (flt : String) : IO (Array Nat) := do
-  let prql := "from " ++ tblName ++ " | rowidx | filter " ++ flt ++ " | select {idx}"
-  let some sql ← Prql.compile prql | return #[]
-  let qr ← Adbc.query sql
+  let some qr ← Prql.query ("from " ++ tblName ++ " | rowidx | filter " ++ flt ++ " | select {idx}") | return #[]
   let nr ← Adbc.nrows qr
   (Array.range nr.toNat).mapM fun r => (·.toNat) <$> Adbc.cellInt qr r.toUInt64 0
 
@@ -102,9 +100,7 @@ def queryMetaIndices (tblName : String) (flt : String) : IO (Array Nat) := do
 def queryMetaColNames (tblName : String) (rows : Array Nat) : IO (Array String) := do
   if rows.isEmpty then return #[]
   let idxs := ", ".intercalate (rows.map (s!"{·}") |>.toList)
-  let prql := "from " ++ tblName ++ " | rowidx | filter (idx | in [" ++ idxs ++ "]) | select {column, idx}"
-  let some sql ← Prql.compile prql | return #[]
-  let qr ← Adbc.query sql
+  let some qr ← Prql.query ("from " ++ tblName ++ " | rowidx | filter (idx | in [" ++ idxs ++ "]) | select {column, idx}") | return #[]
   let nr ← Adbc.nrows qr
   (Array.range nr.toNat).mapM fun r => Adbc.cellStr qr r.toUInt64 0
 
@@ -120,9 +116,7 @@ def columnComment (path colName : String) : IO String := do
   let tbl := pathTable path
   if tbl.isEmpty then return ""
   try
-    let prql := s!"from dcols | col_comment '{escSql tbl}' '{escSql colName}'"
-    let some sql ← Prql.compile prql | return ""
-    let qr ← Adbc.query sql
+    let some qr ← Prql.query s!"from dcols | col_comment '{escSql tbl}' '{escSql colName}'" | return ""
     let n ← Adbc.nrows qr
     if n == 0 then return ""
     Adbc.cellStr qr 0 0

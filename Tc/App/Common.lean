@@ -210,8 +210,7 @@ def runScript (path : String) (prqlOps : String) : IO Unit := do
   let prqlOps ← resolveBacktickPaths prqlOps
   let prql := if prqlOps.startsWith "from " || prqlOps.startsWith "let " then prqlOps
     else s!"from x | {prqlOps}"
-  let some sql ← Prql.compile prql | IO.eprintln "PRQL compilation failed"; return
-  let qr ← Adbc.query sql
+  let some qr ← Prql.query prql | IO.eprintln "PRQL compilation failed"; return
   let tbl ← AdbcTable.ofQueryResult qr default 0
   IO.println (← AdbcTable.toText tbl)
 

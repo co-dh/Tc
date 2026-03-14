@@ -100,8 +100,7 @@ private def attachFile (absPath : String) (fmt : FileFormat) : IO (Option (View 
   let typClause := if fmt.attachType.isEmpty then "" else s!"TYPE {fmt.attachType}, "
   let _ ← Adbc.query s!"DETACH DATABASE IF EXISTS extdb"
   let _ ← Adbc.query s!"ATTACH '{escSql absPath}' AS extdb ({typClause}READ_ONLY)"
-  let some sql ← Prql.compile Prql.ducktabs | return none
-  let qr ← Adbc.query sql
+  let some qr ← Prql.query Prql.ducktabs | return none
   let total ← Adbc.nrows qr
   if total.toNat == 0 then return none
   let adbc ← AdbcTable.ofQueryResult qr

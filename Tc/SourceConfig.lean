@@ -289,12 +289,8 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
     let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {listSql}"
     -- Auto-unnest: if result is 1 row with a struct[] column, expand it
     try
-      let structPrql := s!"from dcols | struct_col '{tbl}'"
-      let cntPrql := s!"from {tbl} | aggregate \{n = s\"count(*)::INT\"}"
-      let some structSql ← Prql.compile structPrql | throw (IO.userError s!"PRQL compile failed: {structPrql}")
-      let some cntSql ← Prql.compile cntPrql | throw (IO.userError s!"PRQL compile failed: {cntPrql}")
-      let qr ← Adbc.query structSql
-      let cnt ← Adbc.query cntSql
+      let some qr ← Prql.query s!"from dcols | struct_col '{tbl}'" | throw (IO.userError "struct_col PRQL failed")
+      let some cnt ← Prql.query s!"from {tbl} | aggregate \{n = s\"count(*)::INT\"}" | throw (IO.userError "count PRQL failed")
       let col ← Adbc.cellStr qr 0 0
       let n ← Adbc.cellInt cnt 0 0
       if n == 1 && !col.isEmpty then

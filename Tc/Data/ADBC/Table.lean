@@ -51,6 +51,12 @@ opaque colType : @& QueryResult → UInt64 → IO String
 
 end Adbc
 
+-- | Compile PRQL and execute via Adbc. Logs the PRQL, returns none on compile failure.
+def Prql.query (prql : String) : IO (Option Adbc.QueryResult) := do
+  Log.write "prql" prql
+  let some sql ← Prql.compile prql | return none
+  some <$> Adbc.query sql
+
 namespace Tc
 
 -- | Default row limit for PRQL queries
@@ -125,10 +131,7 @@ def getCol (t : AdbcTable) (col r0 r1 : Nat) : IO Column := do
 
 -- | Query total row count using cnt function
 def queryCount (query : Prql.Query) : IO Nat := do
-  let prql := s!"{query.render} | cnt"
-  Log.write "prql" prql
-  let some sql ← Prql.compile prql | return 0
-  let qr ← Adbc.query sql
+  let some qr ← Prql.query s!"{query.render} | cnt" | return 0
   let nr ← Adbc.nrows qr
   if nr.toNat > 0 then
     let v ← Adbc.cellInt qr 0 0
@@ -137,10 +140,7 @@ def queryCount (query : Prql.Query) : IO Nat := do
 
 -- | Execute PRQL query and return new AdbcTable (preserves totalRows if provided)
 def requery (query : Prql.Query) (total : Nat := 0) : IO (Option AdbcTable) := do
-  let prql := s!"{query.render} | take {prqlLimit}"
-  Log.write "prql" prql
-  let some sql ← Prql.compile prql | return none
-  let qr ← Adbc.query sql
+  let some qr ← Prql.query s!"{query.render} | take {prqlLimit}" | return none
   some <$> ofQueryResult qr query total
 
 -- | Sanitize path to valid SQL identifier (alphanumeric + underscore)
@@ -162,8 +162,7 @@ def fromFile (path : String) : IO (Option AdbcTable) := do
 -- | Attach a .duckdb file and list its tables as TSV (for folder-like view)
 def listDuckDBTables (path : String) : IO (Option AdbcTable) := do
   let _ ← Adbc.query s!"ATTACH '{escSql path}' AS extdb (READ_ONLY)"
-  let some sql ← Prql.compile Prql.ducktabs | return none
-  let qr ← Adbc.query sql
+  let some qr ← Prql.query Prql.ducktabs | return none
   let total ← Adbc.nrows qr
   if total.toNat == 0 then return none
   some <$> ofQueryResult qr { base := Prql.ducktabs } total.toNat
@@ -171,9 +170,7 @@ def listDuckDBTables (path : String) : IO (Option AdbcTable) := do
 -- | Get primary key columns for a table in the attached extdb
 def duckDBPrimaryKeys (table : String) : IO (Array String) := do
   try
-    let prql := s!"from dcons | extdb_pkeys '{escSql table}'"
-    let some sql ← Prql.compile prql | return #[]
-    let qr ← Adbc.query sql
+    let some qr ← Prql.query s!"from dcons | extdb_pkeys '{escSql table}'" | return #[]
     let nr ← Adbc.nrows qr
     let mut keys : Array String := #[]
     for i in [:nr.toNat] do
@@ -206,10 +203,7 @@ def hideCols (t : AdbcTable) (hideIdxs : Array Nat) : IO AdbcTable := do
 def fetchMore (t : AdbcTable) : IO (Option AdbcTable) := do
   if t.nRows >= t.totalRows then return none
   let limit := t.nRows + prqlLimit
-  let prql := s!"{t.query.render} | take {limit}"
-  Log.write "fetch" s!"fetchMore limit={limit}"
-  let some sql ← Prql.compile prql | return none
-  let qr ← Adbc.query sql
+  let some qr ← Prql.query s!"{t.query.render} | take {limit}" | return none
   some <$> ofQueryResult qr t.query t.totalRows
 
 -- | Export plot data to tmpdir/plot.dat via DuckDB COPY (downsample in SQL)
@@ -231,7 +225,7 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
           | some cn => s!"ds_nth_cat {q yName} {q cn} {step}"
           | none    => s!"ds_nth {q yName} {step}"
         s!"{t.query.render} | {dsFn} | select \{{selCols}}"
-    Log.write "plot-prql" prql
+    Log.write "prql" prql
     let some sql ← Prql.compile prql | return none
     pure (stripSemi sql)
   let datPath ← Tc.tmpPath "plot.dat"
@@ -245,9 +239,7 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
   -- get distinct categories if needed
   match catName? with
   | some cn =>
-    let catPrql := s!"{t.query.render} | uniq {q cn}"
-    let some catSql ← Prql.compile catPrql | return some #[]
-    let catQr ← Adbc.query catSql
+    let some catQr ← Prql.query s!"{t.query.render} | uniq {q cn}" | return some #[]
     let nr ← Adbc.nrows catQr
     let mut cats : Array String := #[]
     for i in [:nr.toNat] do
@@ -302,18 +294,15 @@ def freqTable (t : AdbcTable) (colNames : Array String) : IO (Option (AdbcTable 
   if colNames.isEmpty then return none
   let cols := colNames.map Prql.quote |> (", ".intercalate ·.toList)
   -- total distinct groups
-  let cntPrql := s!"{t.query.render} | cntdist \{{cols}}"
-  Log.write "prql-cntdist" cntPrql
   let totalGroups ← do
-    let some sql ← Prql.compile cntPrql | pure 0
-    let qr ← Adbc.query sql
+    let some qr ← Prql.query s!"{t.query.render} | cntdist \{{cols}}" | pure 0
     let v ← Adbc.cellStr qr 0 0
     pure (v.toNat?.getD 0)
   -- freq table: uses freq PRQL function which computes Cnt, Pct, Bar in SQL
   let n ← memTblCounter.modifyGet fun n => (n, n + 1)
   let tblName := s!"tc_freq_{n}"
   let prql := s!"{t.query.render} | freq \{{cols}} | take 1000"
-  Log.write "prql-freq" prql
+  Log.write "prql" prql
   let some sql ← Prql.compile prql | return none
   let sql := stripSemi sql
   let _ ← Adbc.query s!"CREATE TEMP TABLE {tblName} AS {sql}"
@@ -330,10 +319,7 @@ def filter (t : AdbcTable) (expr : String) : IO (Option AdbcTable) := do
 -- | Distinct: use SQL DISTINCT
 def distinct (t : AdbcTable) (col : Nat) : IO (Array String) := do
   let colName := t.colNames.getD col ""
-  let prql := s!"{t.query.render} | uniq {Prql.quote colName}"
-  Log.write "prql" prql
-  let some sql ← Prql.compile prql | return #[]
-  let qr ← Adbc.query sql
+  let some qr ← Prql.query s!"{t.query.render} | uniq {Prql.quote colName}" | return #[]
   let nr ← Adbc.nrows qr
   let mut result : Array String := #[]
   for i in [:nr.toNat] do
@@ -344,9 +330,7 @@ def distinct (t : AdbcTable) (col : Nat) : IO (Array String) := do
 --   Uses PRQL row_number (sort-aware) instead of raw SQL ROW_NUMBER.
 def findRow (t : AdbcTable) (col : Nat) (val : String) (start : Nat) (fwd : Bool) : IO (Option Nat) := do
   let colName := Prql.quote (t.colNames.getD col "")
-  let prql := s!"{t.query.render} | derive \{_rn0 = row_number this} | derive \{_rn = _rn0 - 1} | filter ({colName} == '{escSql val}') | select \{_rn}"
-  let some sql ← Prql.compile prql | return none
-  let qr ← Adbc.query sql
+  let some qr ← Prql.query s!"{t.query.render} | derive \{_rn0 = row_number this} | derive \{_rn = _rn0 - 1} | filter ({colName} == '{escSql val}') | select \{_rn}" | return none
   let nr ← Adbc.nrows qr
   let mut rows : Array Nat := #[]
   for i in [:nr.toNat] do
