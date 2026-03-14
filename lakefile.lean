@@ -30,7 +30,7 @@ lean_exe tc where
 
 -- | Test library (pure + runtime + screen backup tests)
 lean_lib TcTest where
-  roots := #[`test.TestPure, `test.Test, `test.TestScreen, `test.TestLargeData]
+  roots := #[`test.TestUtil, `test.TestPure, `test.Test, `test.TestScreen, `test.TestLargeData]
 
 -- | Screen backup tests (logic covered by pure theorems, kept for rendering validation)
 lean_exe testscreen where

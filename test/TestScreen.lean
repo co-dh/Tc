@@ -4,39 +4,11 @@
   Run: lake run runscreen
 -/
 import Tc.Data.ADBC.Table
+import test.TestUtil
 
 namespace ScreenBackup
 
-open Tc
-
-def bin := ".lake/build/bin/tc"
-
-def log (msg : String) : IO Unit := do
-  let h ← IO.FS.Handle.mk "test.log" .append
-  h.putStrLn msg; h.flush
-
-def run (keys : String) (file : String := "") : IO String := do
-  log s!"  run: {file} keys={keys}"
-  let args := if file.isEmpty then #["-c", keys] else #[file, "-c", keys]
-  let out ← IO.Process.output { cmd := bin, args }
-  log "  done"
-  pure out.stdout
-
-def isContent (l : String) : Bool := l.any fun c => c.isAlpha || c.isDigit
-def contains (s sub : String) : Bool := (s.splitOn sub).length > 1
-
-def footer (output : String) : String × String :=
-  let lines := output.splitOn "\n" |>.filter isContent
-  let n := lines.length
-  (lines.getD (n - 2) "", lines.getD (n - 1) "")
-
-def header (output : String) : String :=
-  let lines := output.splitOn "\n" |>.filter isContent
-  let hdr := lines.headD ""
-  if hdr.length > 80 then (hdr.drop (hdr.length - 80)).toString else hdr
-
-def assert (cond : Bool) (msg : String) : IO Unit :=
-  unless cond do throw (IO.userError msg)
+open Tc TestUtil
 
 -- === Navigation ===
 -- Pure: key_j, key_k, key_l, key_h (key→cmd mapping)

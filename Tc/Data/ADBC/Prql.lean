@@ -62,6 +62,10 @@ infixl:65 " |> " => Query.pipe
 -- | Filter helper
 def Query.filter (q : Query) (expr : String) : Query := q.pipe (.filter expr)
 
+-- | Common PRQL query strings (avoid duplication across modules)
+def extdbTablesPrql := "from s\"SELECT * FROM duckdb_tables()\" | extdb_tables"
+def extdbTablesFilteredPrql := "from s\"SELECT * FROM duckdb_tables()\" | extdb_tables_filtered"
+
 -- | Cached PRQL function definitions, loaded once from funcs.prql next to the executable
 initialize funcsRef : IO.Ref String ← IO.mkRef ""
 
@@ -74,7 +78,7 @@ def funcs : IO String := do
   let path := s!"{dir}/funcs.prql"
   let content ← try IO.FS.readFile path
     catch _ => Log.error s!"funcs.prql not found at {path}"; pure ""
-  funcsRef.set content
+  if !content.isEmpty then funcsRef.set content
   return content
 
 -- | Compile PRQL to SQL using prqlc CLI

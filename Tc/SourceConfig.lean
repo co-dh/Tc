@@ -233,8 +233,9 @@ initialize extdbFilteredSql : IO.Ref String ← IO.mkRef ""
 private def getExtdbFilteredSql : IO String := do
   let cached ← extdbFilteredSql.get
   if !cached.isEmpty then return cached
-  let prql := "from s\"SELECT * FROM duckdb_tables()\" | extdb_tables_filtered"
-  let some sql ← Prql.compile prql | return ""
+  let prql := Prql.extdbTablesFilteredPrql
+  let some sql ← Prql.compile prql |
+    throw (IO.userError s!"Failed to compile PRQL: {Prql.extdbTablesFilteredPrql}")
   let sql := stripSemi sql
   extdbFilteredSql.set sql
   return sql
@@ -245,9 +246,7 @@ private def Config.attachSql (cfg : Config) (connStr : String) : IO String := do
   let typClause := if cfg.attachType.isEmpty then "" else s!"TYPE {cfg.attachType}, "
   let ddl := s!"DETACH DATABASE IF EXISTS extdb;\nATTACH '{escSql connStr}' AS extdb ({typClause}READ_ONLY)"
   let sql ← getExtdbFilteredSql
-  if sql.isEmpty then
-    pure s!"{ddl};\nSELECT table_name as name, estimated_size as size, column_count as columns FROM duckdb_tables() WHERE database_name = 'extdb' AND schema_name NOT IN ('information_schema', 'pg_catalog')"
-  else pure s!"{ddl};\n{sql}"
+  pure s!"{ddl};\n{sql}"
 
 -- | Run listing: CLI cmd → JSON → listSql, or direct SQL mode
 def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
@@ -293,8 +292,8 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
     try
       let structPrql := s!"from s\"SELECT * FROM duckdb_columns()\" | struct_col '{tbl}'"
       let cntPrql := s!"from {tbl} | aggregate \{n = s\"count(*)::INT\"}"
-      let some structSql ← Prql.compile structPrql | throw (IO.userError "prql")
-      let some cntSql ← Prql.compile cntPrql | throw (IO.userError "prql")
+      let some structSql ← Prql.compile structPrql | throw (IO.userError s!"PRQL compile failed: {structPrql}")
+      let some cntSql ← Prql.compile cntPrql | throw (IO.userError s!"PRQL compile failed: {cntPrql}")
       let qr ← Adbc.query structSql
       let cnt ← Adbc.query cntSql
       let col ← Adbc.cellStr qr 0 0

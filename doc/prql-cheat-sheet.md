@@ -29,6 +29,7 @@ f"Hello {name}"  s"SQL({col})"  r"\raw"           # f/s/r-strings
 3days  2years  1hours                             # duration
 ```
 s-string tips: `{{`/`}}` for literal braces, `s"({x}) / 365"` for precedence.
+`from s"..."` requires the s-string to start with `SELECT` (prqlc limitation) — use `from s"SELECT * FROM func()"` not `from s"func()"`.
 ## Joins
 ```
 join side:left t (==id)                                    # shorthand

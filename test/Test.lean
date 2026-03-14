@@ -12,6 +12,7 @@ import Tc.Types
 import Tc.Remote
 import Tc.Data.Text
 import test.TestPure
+import test.TestUtil
 
 -- ============================================================================
 -- Runtime UI tests
@@ -19,45 +20,7 @@ import test.TestPure
 
 namespace Test
 
-open Tc
-
-def bin := ".lake/build/bin/tc"
-
--- | Log to file
-def log (msg : String) : IO Unit := do
-  let h ← IO.FS.Handle.mk "test.log" .append
-  h.putStrLn msg; h.flush
-
--- | Run tc with -c flag, no tmux. Headless mode renders to internal buffer.
-def run (keys : String) (file : String := "") : IO String := do
-  log s!"  run: {file} keys={keys}"
-  let args := if file.isEmpty then #["-c", keys] else #[file, "-c", keys]
-  let out ← IO.Process.output { cmd := bin, args }
-  if !out.stderr.isEmpty then log s!"  stderr: {out.stderr.trimAscii.toString}"
-  if out.exitCode != 0 then log s!"  exit: {out.exitCode}"
-  log "  done"
-  pure out.stdout
-
-def isContent (l : String) : Bool := l.any fun c => c.isAlpha || c.isDigit
-def contains (s sub : String) : Bool := (s.splitOn sub).length > 1
-
-def footer (output : String) : String × String :=
-  let lines := output.splitOn "\n" |>.filter isContent
-  let n := lines.length
-  (lines.getD (n - 2) "", lines.getD (n - 1) "")
-
-def header (output : String) : String :=
-  let lines := output.splitOn "\n" |>.filter isContent
-  let hdr := lines.headD ""
-  if hdr.length > 80 then (hdr.drop (hdr.length - 80)).toString else hdr
-
-def dataLines (output : String) : List String :=
-  let lines := output.splitOn "\n" |>.filter isContent
-  let n := lines.length
-  lines.drop 1 |>.take (n - 3)
-
-def assert (cond : Bool) (msg : String) : IO Unit :=
-  unless cond do throw (IO.userError msg)
+open Tc TestUtil
 
 -- === Sort tests (CSV) ===
 

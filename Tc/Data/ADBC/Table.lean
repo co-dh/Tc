@@ -162,7 +162,7 @@ def fromFile (path : String) : IO (Option AdbcTable) := do
 -- | Attach a .duckdb file and list its tables as TSV (for folder-like view)
 def listDuckDBTables (path : String) : IO (Option AdbcTable) := do
   let _ ← Adbc.query s!"ATTACH '{escSql path}' AS extdb (READ_ONLY)"
-  let prql := "from s\"SELECT * FROM duckdb_tables()\" | extdb_tables"
+  let prql := Prql.extdbTablesPrql
   let some sql ← Prql.compile prql | return none
   let qr ← Adbc.query sql
   let total ← Adbc.nrows qr
