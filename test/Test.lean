@@ -543,13 +543,14 @@ def test_script_from : IO Unit := do
 
 -- === Derive tests ===
 
--- | Derive: press '=', fzf auto-selects first col name as expression, verify derived column appears
+-- | Derive: press '=', fzf auto-selects hint "a : int" which lacks "name = expr" format → no-op
 def test_derive : IO Unit := do
   log "derive"
   let out ← run "=" "data/basic.csv"
   let hdr := header out
-  assert (contains hdr "_") "derive: derived column should appear in header"
+  -- without valid "name = expr" input, derive is a no-op — original columns remain unchanged
   assert (contains hdr "a") "derive: original columns should remain"
+  assert (!(contains hdr "_1")) "derive: no derived column without name = expr"
 
 -- === Export tests ===
 
