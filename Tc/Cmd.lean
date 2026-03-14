@@ -116,6 +116,7 @@ inductive Effect where
   | colMeta : MetaEffect → Effect
   | themeLoad (delta : Int)
   | fetchMore
+  | export (fmt : String)
   deriving Repr, BEq
 
 namespace Effect

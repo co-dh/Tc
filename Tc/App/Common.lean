@@ -118,6 +118,10 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   let (ev, ks') ← nextEvent ks
   if isKey ev 'Q' then return a
   if isKey ev ' ' then mainLoop (← runEffect a (.fzf .cmd)) test ks'
+  else if isKey ev 'e' then do
+    match ← Fzf.fzf #["--prompt=export format "] "csv\nparquet\njson" with
+    | some fmt => mainLoop (← runEffect a (.export fmt.trimAscii.toString)) test ks'
+    | none => mainLoop a test ks'
   else if isKey ev '{' then mainLoop { a with prevScroll := a.prevScroll - min a.prevScroll 5 } test ks'
   else if isKey ev '}' then mainLoop { a with prevScroll := a.prevScroll + 5 } test ks'
   else match evToCmd ev a.stk.cur.vkind with

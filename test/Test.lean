@@ -541,6 +541,20 @@ def test_script_from : IO Unit := do
   assert (lines.length == 3) s!"script_from: expected 3 lines, got {lines.length}"
   assert (contains out.stdout "a\tb") "script_from: header present"
 
+-- === Export tests ===
+
+-- | Export: press 'e', fzf auto-selects csv, verify file created
+def test_export_csv : IO Unit := do
+  log "export_csv"
+  let home := (← IO.getEnv "HOME").getD "."
+  let path := s!"{home}/tc_export_sort_test.csv"
+  try IO.FS.removeFile path catch _ => pure ()
+  let out ← run "e" "data/sort_test.parquet"
+  assert (contains out "id") "export_csv: table should render"
+  let found ← (path : System.FilePath).pathExists
+  assert found "export_csv: csv file should exist"
+  if found then IO.FS.removeFile path
+
 -- === Run all tests ===
 
 -- | All tests as (name, action) pairs
@@ -598,7 +612,9 @@ def tests : Array (String × IO Unit) := #[
   ("script_filter", test_script_filter),
   ("script_join", test_script_join),
   ("script_append", test_script_append),
-  ("script_from", test_script_from)
+  ("script_from", test_script_from),
+  -- Export tests
+  ("export_csv", test_export_csv)
 ]
 
 def main (args : List String) : IO Unit := do
