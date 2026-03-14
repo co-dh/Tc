@@ -96,24 +96,7 @@ def runStackEffect (s : ViewStack AdbcTable) (eff : Effect) : IO (ViewStack Adbc
       | some v => pure (s.setCur v)
       | none => pure s
     | none => pure s
-  | .clip ce => do
-    let n := s.cur.nav
-    let names := TblOps.colNames n.tbl
-    let curCol := n.curColIdx
-    let text ← match ce with
-      | .cell => TblOps.cellStr n.tbl n.row.cur.val curCol
-      | .row => do
-        let cols ← TblOps.getCols n.tbl (Array.range names.size) n.row.cur.val (n.row.cur.val + 1)
-        pure ("\t".intercalate (cols.map fun c => (c.get 0).toRaw).toList)
-      | .col => do
-        let nr := TblOps.nRows n.tbl
-        let cols ← TblOps.getCols n.tbl #[curCol] 0 nr
-        let col := cols.getD 0 default
-        pure ("\n".intercalate (List.range nr |>.map fun i => (col.get i).toRaw))
-    let ok ← Clip.copyToClip text
-    if ok then statusMsg s!"yanked {text.length} chars"
-    else statusMsg "no clipboard tool found"
-    pure s
+  | .clip ce => Clip.run s ce
   | .quit | .themeLoad _ => pure s
 
 end Runner

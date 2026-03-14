@@ -128,6 +128,16 @@ cat data.csv | tc                  # Pipe mode (stdin)
 
 After plotting, `+`/`-` cycle the downsampling interval and re-render in place. Any other key exits back to the table.
 
+### Clipboard
+
+| Key | Action |
+|-----|--------|
+| `y` | Yank cell (copy cursor cell value) |
+| `Y` | Yank row (copy cursor row, tab-separated) |
+| `Space y ,` | Yank column (copy cursor column, newline-separated) |
+
+Requires `pbcopy` (macOS), `wl-copy` (Wayland), `xclip`, or `xsel`.
+
 ## Dependencies
 
 Required:
