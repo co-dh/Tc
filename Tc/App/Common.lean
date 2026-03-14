@@ -241,7 +241,7 @@ def appMain (args : List String) : IO Unit := do
   let theme ← Theme.State.init
   try Term.loadExtColors (← IO.FS.readFile "ext_colors.csv")
   catch _ => pure ()  -- use C defaults if CSV not found
-  Log.setLogPath Log.path
+  Log.setLogPath (← Log.path)
   Log.write "init" s!"tmpdir={← Tc.tmpDir.get}"
   let err ← try AdbcTable.init catch e => IO.eprintln s!"Backend init error: {e}"; return
   if !err.isEmpty then IO.eprintln s!"Backend init failed: {err}"; return
