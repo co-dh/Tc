@@ -541,6 +541,16 @@ def test_script_from : IO Unit := do
   assert (lines.length == 3) s!"script_from: expected 3 lines, got {lines.length}"
   assert (contains out.stdout "a\tb") "script_from: header present"
 
+-- === Derive tests ===
+
+-- | Derive: press '=', fzf auto-selects first col name as expression, verify derived column appears
+def test_derive : IO Unit := do
+  log "derive"
+  let out ← run "=" "data/basic.csv"
+  let hdr := header out
+  assert (contains hdr "_") "derive: derived column should appear in header"
+  assert (contains hdr "a") "derive: original columns should remain"
+
 -- === Export tests ===
 
 -- | Export: press 'e', fzf auto-selects csv, verify file created with correct content
@@ -615,7 +625,9 @@ def tests : Array (String × IO Unit) := #[
   ("script_append", test_script_append),
   ("script_from", test_script_from),
   -- Export tests
-  ("export_csv", test_export_csv)
+  ("export_csv", test_export_csv),
+  -- Derive tests
+  ("derive", test_derive)
 ]
 
 def main (args : List String) : IO Unit := do
