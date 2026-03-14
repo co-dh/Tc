@@ -1,6 +1,6 @@
 /-
   SourceConfig: config-driven file/folder handling for remote sources.
-  Each source is a row in data/sources.duckdb (tc_sources table).
+  Each source is a row in cfg/sources.duckdb (tc_sources table).
 
   Flow: CLI cmd → JSON → tmp file → list_sql → DuckDB temp table
   Or:   setup_cmd → setup_sql → list_sql directly (no CLI, e.g. HF root)
@@ -81,15 +81,15 @@ private def validateShellSafe (s : String) (label : String) : IO Unit := do
 
 /-! ## Config DB -/
 
--- | Attach data/sources.duckdb as schema "src". Called once after AdbcTable.init.
+-- | Attach cfg/sources.duckdb as schema "src". Called once after AdbcTable.init.
 def attachDb : IO Unit := do
   let exe ← IO.appPath
   let exeDir := exe.parent.getD "."
   let candidates := #[
-    s!"{exeDir}/data/sources.duckdb",
-    s!"{exeDir}/../data/sources.duckdb",
-    s!"{exeDir}/../../data/sources.duckdb",
-    "data/sources.duckdb"
+    s!"{exeDir}/cfg/sources.duckdb",
+    s!"{exeDir}/../cfg/sources.duckdb",
+    s!"{exeDir}/../../cfg/sources.duckdb",
+    "cfg/sources.duckdb"
   ]
   for c in candidates do
     if ← (c : System.FilePath).pathExists then

@@ -159,11 +159,14 @@ def test_folder_D : IO Unit := do
   log "folder_D_key"
   assert (contains (← run "D" "data/basic.csv") "[/") "D pushes folder view with absolute path"
 
+-- Folder tab shows the current working directory as an absolute path
 def test_folder_tab : IO Unit := do
   log "folder_tab_path"
   let (tab, _) := footer (← run "")
   assert (contains tab "[/") "Folder tab shows absolute path (starts with /)"
-  assert (contains tab "/Tc]") "Folder tab shows absolute path (ends with /Tc])"
+  let cwd ← IO.currentDir
+  let dirName := cwd.toString.splitOn "/" |>.getLast?.getD ""
+  assert (contains tab s!"/{dirName}]") s!"Folder tab ends with /{dirName}]"
 
 def test_folder_enter : IO Unit := do
   log "folder_enter_dir"

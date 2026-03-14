@@ -38,7 +38,7 @@ package() {
   cd "${pkgname}"
   # Binary + data dir (sources.duckdb is found relative to exe)
   install -Dm755 .lake/build/bin/tc "$pkgdir/usr/lib/tc/bin/tc"
-  install -Dm644 data/sources.duckdb "$pkgdir/usr/lib/tc/bin/data/sources.duckdb"
+  install -Dm644 cfg/sources.duckdb "$pkgdir/usr/lib/tc/bin/cfg/sources.duckdb"
 
   # Symlink into PATH
   install -dm755 "$pkgdir/usr/bin"

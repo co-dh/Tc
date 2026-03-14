@@ -4,7 +4,7 @@ Reviewed: `main` branch (8 commits from `eb90bbb` to `8143209`)
 
 ## Overview
 
-Replaces `S3.lean`, `HF.lean`, and `Osquery.lean` (~411 lines deleted) with a single `SourceConfig.lean` (271 lines) backed by a DuckDB config table (`data/sources.duckdb` / `data/sources.sql`). Adding a new source is now a SQL `INSERT` — no Lean code changes needed. `Folder.lean` is simplified from importing 4 modules to 2 (`SourceConfig` + `Remote`).
+Replaces `S3.lean`, `HF.lean`, and `Osquery.lean` (~411 lines deleted) with a single `SourceConfig.lean` (271 lines) backed by a DuckDB config table (`cfg/sources.duckdb` / `cfg/sources.sql`). Adding a new source is now a SQL `INSERT` — no Lean code changes needed. `Folder.lean` is simplified from importing 4 modules to 2 (`SourceConfig` + `Remote`).
 
 ## Good
 
