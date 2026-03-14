@@ -45,16 +45,41 @@ def Array.idxOf? [BEq α] (a : Array α) (x : α) : Option Nat :=
 
 -- Compute display order: group names first (in grp array order), then rest
 -- Group order matters for join key ordering (Shift+Arrow reorders grp)
+-- Uses filter partition (preserves size proof) + qsort by grp position
 def dispOrder (group : Array String) (names : Array String) : Array Nat :=
+  let n := names.size
   let isGrp := fun i => group.contains (names.getD i "")
-  let grpIdxs := group.filterMap fun g => names.idxOf? g
-  grpIdxs ++ (Array.range names.size).filter (!isGrp ·)
+  let grpIdxs := (Array.range n).filter isGrp
+  -- Sort group indices by position in grp array (respects grp add/reorder order)
+  let grpSorted := grpIdxs.qsort fun a b =>
+    (group.idxOf? (names.getD a "")).getD 0 < (group.idxOf? (names.getD b "")).getD 0
+  grpSorted ++ (Array.range n).filter (!isGrp ·)
 
+-- Helper: list filter partition
+private theorem list_filter_partition (p : α → Bool) (l : List α) :
+    (l.filter p).length + (l.filter (!p ·)).length = l.length := by
+  induction l with
+  | nil => simp
+  | cons h t ih => simp only [List.filter_cons]; split <;> simp_all <;> omega
 
--- dispOrder preserves size when group names are distinct and all present in names
--- (holds by construction: grp comes from Array.toggle on column names)
-theorem dispOrder_size_concrete :
-    (dispOrder #["c1"] #["c0", "c1", "c2"]).size = 3 := by native_decide
+-- qsort preserves size (Vector round-trip)
+private theorem qsort_size (a : Array α) (f : α → α → Bool) : (a.qsort f).size = a.size := by
+  simp [Array.qsort]; split <;> simp [Vector.size_toArray]
+
+-- dispOrder preserves size (filter partition of range n, qsort preserves size)
+theorem dispOrder_size (group : Array String) (names : Array String) :
+    (dispOrder group names).size = names.size := by
+  simp only [dispOrder]
+  rw [Array.size_append, qsort_size]
+  let isGrp := fun i => group.contains (names.getD i "")
+  have s1 : (Array.filter isGrp (Array.range names.size)).size =
+      (List.filter isGrp (List.range names.size)).length := by
+    rw [Array.size_eq_length_toList, Array.toList_filter, Array.toList_range]
+  have s2 : (Array.filter (!isGrp ·) (Array.range names.size)).size =
+      (List.filter (!isGrp ·) (List.range names.size)).length := by
+    rw [Array.size_eq_length_toList, Array.toList_filter, Array.toList_range]
+  rw [s1, s2]
+  exact list_filter_partition isGrp (List.range names.size) |>.symm ▸ by simp [List.length_range]
 
 -- When a column is grouped, its index appears first in dispOrder
 theorem dispOrder_grp_first :
