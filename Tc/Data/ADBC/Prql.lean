@@ -62,12 +62,24 @@ infixl:65 " |> " => Query.pipe
 -- | Filter helper
 def Query.filter (q : Query) (expr : String) : Query := q.pipe (.filter expr)
 
--- | PRQL function definitions (prepended to all queries)
-def funcs : String := include_str "funcs.prql"
+-- | Cached PRQL function definitions, loaded once from funcs.prql next to the executable
+initialize funcsRef : IO.Ref String ← IO.mkRef ""
+
+-- | Load funcs.prql from disk (once), cache in IORef
+def funcs : IO String := do
+  let cached ← funcsRef.get
+  if !cached.isEmpty then return cached
+  let exe ← IO.appPath
+  let dir := exe.parent.getD "."
+  let path := s!"{dir}/funcs.prql"
+  let content ← try IO.FS.readFile path
+    catch _ => Log.error s!"funcs.prql not found at {path}"; pure ""
+  funcsRef.set content
+  return content
 
 -- | Compile PRQL to SQL using prqlc CLI
 def compile (prql : String) : IO (Option String) := do
-  let full := funcs ++ "\n" ++ prql
+  let full := (← funcs) ++ "\n" ++ prql
   let child ← IO.Process.spawn {
     cmd := "prqlc"
     args := #["compile", "--hide-signature-comment", "-t", "sql.duckdb"]

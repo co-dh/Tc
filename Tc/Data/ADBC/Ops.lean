@@ -120,7 +120,7 @@ def columnComment (path colName : String) : IO String := do
   let tbl := pathTable path
   if tbl.isEmpty then return ""
   try
-    let prql := s!"from s\"duckdb_columns()\" | col_comment '{escSql tbl}' '{escSql colName}'"
+    let prql := s!"from s\"SELECT * FROM duckdb_columns()\" | col_comment '{escSql tbl}' '{escSql colName}'"
     let some sql ← Prql.compile prql | return ""
     let qr ← Adbc.query sql
     let n ← Adbc.nrows qr

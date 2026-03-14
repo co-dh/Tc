@@ -40,6 +40,10 @@ lean_exe testscreen where
 lean_exe test where
   root := `test.Test
 
+-- | Copy funcs.prql next to tc binary (runtime dependency)
+def copyFuncsPrql : IO Unit := do
+  IO.FS.writeFile ".lake/build/bin/funcs.prql" (← IO.FS.readFile "Tc/Data/ADBC/funcs.prql")
+
 -- | Build test + tc, then run tests (test shells out to tc binary)
 script runscreen args do
   let build ← IO.Process.spawn {
@@ -47,6 +51,7 @@ script runscreen args do
     stdin := .inherit, stdout := .inherit, stderr := .inherit
   }
   if (← build.wait) != 0 then return 1
+  copyFuncsPrql
   let child ← IO.Process.spawn {
     cmd := ".lake/build/bin/testscreen"
     args := args.toArray
@@ -60,6 +65,7 @@ script runtest args do
     stdin := .inherit, stdout := .inherit, stderr := .inherit
   }
   if (← build.wait) != 0 then return 1
+  copyFuncsPrql
   let child ← IO.Process.spawn {
     cmd := ".lake/build/bin/test"
     args := args.toArray

@@ -98,9 +98,8 @@ let extdb_tables = func tbl <relation> -> (
 # List tables excluding system schemas (information_schema, pg_catalog)
 let extdb_tables_filtered = func tbl <relation> -> (
   from tbl
-  filter database_name == 'extdb'
   filter s"schema_name NOT IN ('information_schema', 'pg_catalog')"
-  select {name = table_name, size = estimated_size, columns = column_count}
+  extdb_tables
 )
 
 # Column comment lookup from DuckDB metadata
@@ -111,6 +110,25 @@ let col_comment = func tbl_name col_name tbl <relation> -> (
   filter comment != null
   take 1
   select {comment}
+)
+
+# Primary key columns for a table in an attached extdb
+let extdb_pkeys = func tname tbl <relation> -> (
+  from tbl
+  filter database_name == 'extdb'
+  filter table_name == tname
+  filter constraint_type == 'PRIMARY KEY'
+  derive {col = s"unnest(constraint_column_names)"}
+  select {col}
+)
+
+# Find first struct[] column in a table (for auto-unnest)
+let struct_col = func tname tbl <relation> -> (
+  from tbl
+  filter table_name == tname
+  filter s"data_type LIKE 'STRUCT%[]'"
+  take 1
+  select {column_name}
 )
 
 let colstat = func c nm tp tbl <relation> -> (
