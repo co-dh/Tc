@@ -12,7 +12,7 @@ jobs:
 
       # Official DuckDB release (distro packages lack ADBC support)
       - name: Install DuckDB
-        run: sudo make duckdb
+        run: make duckdb
 
       - name: Install elan + Lean toolchain
         run: |
@@ -28,7 +28,7 @@ jobs:
           restore-keys: lake-${{ runner.os }}-
 
       - name: Install prqlc
-        run: sudo make prqlc
+        run: make prqlc
 
       - name: Build and test
         run: make test
