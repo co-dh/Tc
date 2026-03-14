@@ -16,8 +16,8 @@ lean_obj_res lean_local_timestamp(lean_obj_arg world) {
     struct tm tm;
     localtime_r(&ts.tv_sec, &tm);
     char buf[16];
-    snprintf(buf, sizeof(buf), "%02d:%02d:%02d.%03ld",
-             tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec / 1000000);
+    snprintf(buf, sizeof(buf), "%02d:%02d:%02d.%03d",
+             tm.tm_hour, tm.tm_min, tm.tm_sec, (int)(ts.tv_nsec / 1000000));
     return lean_io_result_mk_ok(lean_mk_string(buf));
 }
 

@@ -39,10 +39,6 @@ def AdbcTable.toText (t : AdbcTable) : IO String := do
 
 namespace AdbcTable
 
--- | Double-quote identifier for DuckDB
-private def quoteId (s : String) : String :=
-  "\"" ++ s.replace "\"" "\"\"" ++ "\""
-
 -- | Extract file path from PRQL base: "from `path`" → some "path"
 private def extractPath (base : String) : Option String :=
   let parts := base.splitOn "`"
