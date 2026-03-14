@@ -6,6 +6,15 @@ import Tc.Data.ADBC.Ops
 import Tc.Fzf
 import Tc.View
 
+namespace ExportFmt
+def ext : ExportFmt → String | .csv => "csv" | .parquet => "parquet" | .json => "json" | .ndjson => "ndjson"
+def copyOpt : ExportFmt → String
+  | .csv => "(FORMAT CSV, HEADER true)" | .json => "(FORMAT JSON)"
+  | .parquet => "(FORMAT PARQUET)" | .ndjson => "(FORMAT JSON, ARRAY false)"
+def ofString? : String → Option ExportFmt
+  | "csv" => some .csv | "parquet" => some .parquet | "json" => some .json | "ndjson" => some .ndjson | _ => none
+end ExportFmt
+
 namespace Tc.Export
 
 -- | Prompt user for export format via fzf
