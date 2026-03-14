@@ -106,7 +106,7 @@ def test_freq_quit : IO Unit := do
 def test_info : IO Unit := do
   log "info"
   let output ← run "" "data/basic.csv"
-  assert (contains output "quit" || contains output "up/down") "Info overlay shown by default"
+  assert (contains output "derive" || contains output "export") "Info overlay shown by default"
 
 -- === Cursor tracking ===
 -- Pure: nav_grp_col (l! groups c1, cursor tracks)

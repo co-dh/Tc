@@ -125,7 +125,7 @@ Exports to `~/tc_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows
 | `Space w .`/`,` | Widen/narrow columns |
 | `Space T .`/`,` | Cycle themes |
 | `m` | Toggle heatmap (numeric columns) |
-| `I` | Toggle info overlay |
+| `I` | Toggle info overlay (context-specific hints) |
 
 ### Plot
 
