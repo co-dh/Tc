@@ -24,13 +24,23 @@ int col_num_val(lean_obj_arg col, size_t row, double *out) {
 }
 
 uint32_t heat_color(double t) {
-    static const uint32_t stops[] = {27, 39, 77, 220, 196};
-    if (t <= 0.0) return stops[0];
-    if (t >= 1.0) return stops[4];
-    double pos = t * 4.0;
+    // 21-stop blue→cyan→green→yellow→orange→red ramp via xterm-256 cube.
+    // Each adjacent pair differs by one RGB channel step → clean transitions.
+    static const uint32_t ramp[] = {
+        17, 18, 19, 20, 21,   // deep blue → blue (r=0, g=0, b++)
+        27, 33, 39,            // blue → cyan (r=0, g++, b=5)
+        49, 48, 47, 82, 118,  // cyan → green (g=5 b--, then g=5 r++)
+        154, 190, 226,         // green → yellow (r++, g=5, b=0)
+        220, 214, 208,         // yellow → orange (r=5, g--, b=0)
+        202, 196,              // orange → red
+    };
+    static const int N = sizeof(ramp) / sizeof(ramp[0]);
+    if (t <= 0.0) return ramp[0];
+    if (t >= 1.0) return ramp[N - 1];
+    double pos = t * (N - 1);
     int lo = (int)pos;
-    if (lo >= 4) lo = 3;
-    return (pos - lo < 0.5) ? stops[lo] : stops[lo + 1];
+    if (lo >= N - 1) lo = N - 2;
+    return (pos - lo < 0.5) ? ramp[lo] : ramp[lo + 1];
 }
 
 static int col_is_num(lean_obj_arg col) {

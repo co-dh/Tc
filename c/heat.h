@@ -24,9 +24,8 @@ typedef struct {
 // Extract numeric value from Column at row. Returns 1 if valid, 0 if NaN/non-numeric.
 int col_num_val(lean_obj_arg col, size_t row, double *out);
 
-// 5-stop blue→red gradient (256-color indices).
-// Snap to nearest stop rather than interpolate — 256-color mode's 6×6×6 cube
-// produces muddy intermediate colors. 5 hand-picked stops give clean, distinct bands.
+// 21-stop blue→cyan→green→yellow→orange→red ramp (xterm-256 cube indices).
+// Adjacent stops differ by one RGB channel step for clean transitions.
 uint32_t heat_color(double t);
 
 // Scan visible rows to compute per-column min/max for numeric columns.
