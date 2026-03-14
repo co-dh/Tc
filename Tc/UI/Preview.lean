@@ -36,7 +36,6 @@ def render (screenH screenW : Nat) (text : String) (scroll : Nat) : IO Unit := d
   let contentW := lines.foldl (fun mx l => max mx l.length) 0
   let innerW := min contentW maxW
   let innerW := max innerW 4  -- minimum inner width
-  let boxW := innerW + 2      -- +2 for │ borders
   -- bottom-left: x0=0, box ends at screenH - 3 (above tab + status lines)
   let x0 : Nat := 0
   let y1 := screenH - 3                  -- last row of box (bottom border)
