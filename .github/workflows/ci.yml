@@ -11,6 +11,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # Separate caches: tools change with Makefile versions (rare), .lake changes with deps (frequent)
+      # actions/cache restores here, saves at end of job
       - name: Cache tools
         id: tools
         uses: actions/cache@v4
