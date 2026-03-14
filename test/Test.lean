@@ -59,32 +59,6 @@ def dataLines (output : String) : List String :=
 def assert (cond : Bool) (msg : String) : IO Unit :=
   unless cond do throw (IO.userError msg)
 
--- | Check if a file/directory exists (for skipping tests with untracked data)
-def hasFile (path : String) : IO Bool :=
-  try let _ ← IO.FS.Handle.mk path .read; pure true
-  catch _ => pure false
-
--- | Skip guard for data/nyse directory
-def needsNyse : IO Bool := hasFile "data/nyse/1.parquet"
-
--- | Skip guard for data/nyse10k.parquet
-def needsNyse10k : IO Bool := hasFile "data/nyse10k.parquet"
-
--- | Skip guard for data/sample.parquet
-def needsSample : IO Bool := hasFile "data/sample.parquet"
-
--- === Width stability tests ===
-
-def test_width_stable_after_info : IO Unit := do
-  log "width_stable_after_info"
-  -- pac.csv has wide columns (deps, desc). Pressing I (info toggle) triggers re-render.
-  -- Bug: Lean cached widths with min(maxColWidth=50), so re-render shrinks wide columns.
-  let hdr1 := header (← run "" "data/pac.csv")
-  let hdr2 := header (← run "I" "data/pac.csv")   -- toggle info on
-  let hdr3 := header (← run "II" "data/pac.csv")   -- toggle info on then off
-  assert (hdr1 == hdr2) s!"Info toggle must not change column widths: [{hdr1}] vs [{hdr2}]"
-  assert (hdr1 == hdr3) s!"Info double-toggle must not change column widths"
-
 -- === Sort tests (CSV) ===
 
 def test_sort_asc : IO Unit := do
@@ -283,49 +257,6 @@ def test_folder_prefix : IO Unit := do
   assert (r2.toNat?.getD 0 >= r1.toNat?.getD 0) ", prefix works in folder"
 
 
--- === Navigation tests (parquet) ===
-
-def test_page_down : IO Unit := do
-  log "page_down"
-  unless (← needsSample) do log "  skip (no sample.parquet)"; return
-  let (_, status) := footer (← run "<C-d>" "data/sample.parquet")
-  assert (!contains status "r0/") "Ctrl-D pages down past row 0"
-
-def test_page_up : IO Unit := do
-  log "page_up"
-  unless (← needsSample) do log "  skip (no sample.parquet)"; return
-  let (_, status) := footer (← run "<C-d><C-u>" "data/sample.parquet")
-  assert (contains status "r0/") "Ctrl-D then Ctrl-U returns to row 0"
-
-def test_page_down_scrolls : IO Unit := do
-  log "page_down_scrolls"
-  unless (← needsSample) do log "  skip (no sample.parquet)"; return
-  let (_, status1) := footer (← run "" "data/sample.parquet")
-  let (_, status2) := footer (← run "<C-d>" "data/sample.parquet")
-  assert (status1 != status2) "Page down changes status"
-
-def test_last_col_visible : IO Unit := do
-  log "last_col_visible"
-  unless (← needsSample) do log "  skip (no sample.parquet)"; return
-  let first := (dataLines (← run "llllllllllllllllllll" "data/sample.parquet")).headD ""
-  let nonWs := first.toList.filter (!·.isWhitespace) |>.length
-  assert (nonWs > 0) "Last col shows data"
-
-
--- === Sort tests (parquet) ===
-
-def test_parquet_sort_asc : IO Unit := do
-  log "parquet_sort_asc"
-  unless (← needsSample) do log "  skip (no sample.parquet)"; return
-  let first := (dataLines (← run "l[" "data/sample.parquet")).headD ""
-  assert (contains first " 18 ") "[ on age sorts asc, age=18"
-
-def test_parquet_sort_desc : IO Unit := do
-  log "parquet_sort_desc"
-  unless (← needsSample) do log "  skip (no sample.parquet)"; return
-  let first := (dataLines (← run "l]" "data/sample.parquet")).headD ""
-  assert (contains first " 80 ") "] on age sorts desc, age=80"
-
 -- Sort by non-first column: l moves to val, [ sorts asc → val=1 first
 def test_sort_excludes_key : IO Unit := do
   log "sort_excludes_key"
@@ -340,68 +271,7 @@ def test_sort_selected_not_key : IO Unit := do
   -- within filtered group, original order preserved (val=3 first for A, val=6 for B)
   assert (contains first " 3 " || contains first " 6 ") "sort on key col is no-op"
 
--- === Meta tests (parquet) ===
-
-def test_parquet_meta : IO Unit := do
-  log "parquet_meta"
-  unless (← needsSample) do log "  skip (no sample.parquet)"; return
-  assert (contains (footer (← run "M" "data/sample.parquet")).1 "meta") "M on parquet shows meta"
-
--- === Freq tests (parquet) ===
-
-def test_freq_parquet : IO Unit := do
-  log "freq_parquet"
-  unless (← needsSample) do log "  skip (no sample.parquet)"; return
-  assert (contains (footer (← run "F" "data/sample.parquet")).1 "freq") "F on parquet shows freq"
-
-def test_freq_enter_parquet : IO Unit := do
-  log "freq_enter_parquet"
-  unless (← needsSample) do log "  skip (no sample.parquet)"; return
-  let (tab, status) := footer (← run "F<ret>" "data/sample.parquet")
-  assert (contains tab "sample.parquet") "F<ret> on parquet pops to parent"
-  assert (!contains tab "freq") "F<ret> on parquet exits freq view"
-  assert (contains status "r0/") "F<ret> on parquet shows filtered rows"
-
-def test_freq_parquet_key_values : IO Unit := do
-  log "freq_parquet_key_values"
-  unless (← needsNyse10k) do log "  skip (no nyse10k.parquet)"; return
-  let first := (dataLines (← run "lF" "data/nyse10k.parquet")).headD ""
-  assert (!first.startsWith " 5180" && !first.startsWith " 2592") "Freq key column shows names, not counts"
-
-def test_freq_total_count : IO Unit := do
-  log "freq_total_count"
-  unless (← needsNyse) do log "  skip (no nyse)"; return
-  let (_, status) := footer (← run "l!l!hF" "data/nyse/1.parquet")
-  assert (contains status "/128974") "Freq shows total group count (128974)"
-
-def test_freq_sort_preserves_total : IO Unit := do
-  log "freq_sort_total"
-  unless (← needsNyse) do log "  skip (no nyse)"; return
-  let (_, status) := footer (← run "llFll[" "data/nyse/1.parquet")
-  assert (contains status "/") "Freq sort preserves total count in status"
-
-def test_freq_sort_asc_parquet : IO Unit := do
-  log "freq_sort_asc"
-  unless (← needsNyse) do log "  skip (no nyse)"; return
-  let first := (dataLines (← run "llFll[" "data/nyse/1.parquet")).headD ""
-  assert (contains first "│") "Freq sort asc shows data"
-
--- === Meta selection tests (parquet) ===
-
-def test_parquet_meta_0_null_cols : IO Unit := do
-  log "parquet_meta_0"
-  unless (← needsNyse) do log "  skip (no nyse)"; return
-  let (_, status) := footer (← run "M0" "data/nyse/1.parquet")
-  assert (contains status "sel=9") "M0 on parquet selects 9 null columns"
-
-def test_parquet_meta_0_enter_groups : IO Unit := do
-  log "parquet_meta_0_enter"
-  unless (← needsNyse) do log "  skip (no nyse)"; return
-  let (tab, status) := footer (← run "M0<ret>" "data/nyse/1.parquet")
-  assert (tab.startsWith "[1.parquet]") "M0<ret> returns to parent view"
-  assert (contains status "grp=9") "M0<ret> groups 9 null columns"
-
--- === Filter tests (parquet) ===
+-- === Filter tests (parquet — checked-in) ===
 
 def test_filter_parquet_full_db : IO Unit := do
   log "filter_parquet_full_db"
@@ -410,31 +280,6 @@ def test_filter_parquet_full_db : IO Unit := do
   let countStr := (status.splitOn "r0/" |>.getD 1 "").takeWhile (·.isDigit)
   let count := countStr.toString.toNat?.getD 0
   assert (count > 1000) s!"filter queries full DB ({count} rows, expected 40000 or 60000)"
-
--- === Scroll fetch tests (parquet) ===
-
-def test_scroll_fetches_more : IO Unit := do
-  log "scroll_fetches_more"
-  unless (← needsNyse10k) do log "  skip (no nyse10k.parquet)"; return
-  let keys := String.join (List.replicate 105 "<C-d>")
-  let (_, status) := footer (← run keys "data/nyse10k.parquet")
-  let rpart := (status.splitOn " r" |>.getD 1 "").takeWhile (· != ' ')
-  let cursor := ((rpart.toString.splitOn "/").headD "").toNat?.getD 0
-  assert (cursor > 999) s!"Scroll fetches more: cursor={cursor}, expected > 999"
-
--- === Misc ===
-
-def test_numeric_right_align : IO Unit := do
-  log "numeric_align"
-  unless (← needsSample) do log "  skip (no sample.parquet)"; return
-  let first := (dataLines (← run "" "data/sample.parquet")).headD ""
-  assert (contains first "  ") "Numeric columns right-aligned"
-
-def test_enter_no_quit_parquet : IO Unit := do
-  log "enter_no_quit_parquet"
-  unless (← needsNyse) do log "  skip (no nyse)"; return
-  let (_, status) := footer (← run "<ret>j" "data/nyse/1.parquet")
-  assert (contains status "r1/") "Enter on parquet should not quit (j moves to r1)"
 
 -- === SQLite tests ===
 
@@ -735,7 +580,6 @@ def test_script_from : IO Unit := do
 -- | All tests as (name, action) pairs
 def tests : Array (String × IO Unit) := #[
   -- CSV tests (nav/key/hide/select/stack/info/quit moved to TestScreen.lean)
-  ("width_stable_after_info", test_width_stable_after_info),
   ("sort_asc", test_sort_asc), ("sort_desc", test_sort_desc),
   ("meta_shows", test_meta_shows), ("meta_col_info", test_meta_col_info),
   ("meta_no_garbage", test_meta_no_garbage),
@@ -765,27 +609,10 @@ def tests : Array (String × IO Unit) := #[
   ("xlsx_open", test_xlsx_open), ("avro_open", test_avro_open),
   ("pg_list", test_pg_list), ("pg_enter", test_pg_enter),
   ("folder_prefix", test_folder_prefix),
-  -- Parquet tests
-  ("page_down", test_page_down), ("page_up", test_page_up),
-  ("page_down_scrolls", test_page_down_scrolls),
-  ("last_col_visible", test_last_col_visible),
-  ("parquet_sort_asc", test_parquet_sort_asc),
-  ("parquet_sort_desc", test_parquet_sort_desc),
+  -- Parquet tests (checked-in data only)
   ("sort_excludes_key", test_sort_excludes_key),
   ("sort_selected_not_key", test_sort_selected_not_key),
-  ("parquet_meta", test_parquet_meta),
-  ("freq_parquet", test_freq_parquet),
-  ("freq_enter_parquet", test_freq_enter_parquet),
-  ("freq_parquet_key_values", test_freq_parquet_key_values),
-  ("freq_total_count", test_freq_total_count),
-  ("freq_sort_preserves_total", test_freq_sort_preserves_total),
-  ("freq_sort_asc_parquet", test_freq_sort_asc_parquet),
-  ("parquet_meta_0_null_cols", test_parquet_meta_0_null_cols),
-  ("parquet_meta_0_enter_groups", test_parquet_meta_0_enter_groups),
   ("filter_parquet_full_db", test_filter_parquet_full_db),
-  ("scroll_fetches_more", test_scroll_fetches_more),
-  ("numeric_right_align", test_numeric_right_align),
-  ("enter_no_quit_parquet", test_enter_no_quit_parquet),
   -- Osquery tests
   ("osquery_list", test_osquery_list), ("osquery_enter", test_osquery_enter),
   ("osquery_scroll_no_hide", test_osquery_scroll_no_hide),

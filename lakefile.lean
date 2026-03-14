@@ -30,7 +30,7 @@ lean_exe tc where
 
 -- | Test library (pure + runtime + screen backup tests)
 lean_lib TcTest where
-  roots := #[`test.TestPure, `test.Test, `test.TestScreen]
+  roots := #[`test.TestPure, `test.Test, `test.TestScreen, `test.TestLargeData]
 
 -- | Screen backup tests (logic covered by pure theorems, kept for rendering validation)
 lean_exe testscreen where
@@ -39,6 +39,10 @@ lean_exe testscreen where
 -- | Test executable (DuckDB backend tests)
 lean_exe test where
   root := `test.Test
+
+-- | Large-data tests (gitignored files: sample.parquet, nyse, pac.csv)
+lean_exe testlarge where
+  root := `test.TestLargeData
 
 -- | Copy funcs.prql next to tc binary (runtime dependency)
 def copyFuncsPrql : IO Unit := do
@@ -54,6 +58,20 @@ script runscreen args do
   copyFuncsPrql
   let child ← IO.Process.spawn {
     cmd := ".lake/build/bin/testscreen"
+    args := args.toArray
+    stdin := .inherit, stdout := .inherit, stderr := .inherit
+  }
+  return ← child.wait
+
+script runlarge args do
+  let build ← IO.Process.spawn {
+    cmd := "lake", args := #["build", "testlarge", "tc"]
+    stdin := .inherit, stdout := .inherit, stderr := .inherit
+  }
+  if (← build.wait) != 0 then return 1
+  copyFuncsPrql
+  let child ← IO.Process.spawn {
+    cmd := ".lake/build/bin/testlarge"
     args := args.toArray
     stdin := .inherit, stdout := .inherit, stderr := .inherit
   }

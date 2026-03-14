@@ -38,5 +38,8 @@ jobs:
       - name: Install prqlc
         run: curl -fsSL https://github.com/PRQL/prql/releases/download/0.13.10/prqlc-0.13.10-x86_64-unknown-linux-musl.tar.gz | sudo tar xz -C /usr/local/bin ./prqlc
 
+      - name: Copy funcs.prql
+        run: cp Tc/Data/ADBC/funcs.prql .lake/build/bin/
+
       - name: Test
         run: .lake/build/bin/test || (cat test.log; exit 1)
