@@ -8,6 +8,28 @@ import Tc.Render
 
 namespace Tc
 
+namespace AdbcTable
+
+-- | Extract table name from path: last component after last "://" prefix strip.
+--   "osquery://groups" → "groups", "duckdb://osq.groups" → "groups"
+private def pathTable (path : String) : String :=
+  match path.splitOn "://" with
+  | [_, rest] => rest.splitOn "/" |>.filter (!·.isEmpty) |>.getLast?.getD ""
+  | _ => ""
+
+-- | Get column comment from DuckDB metadata. Searches all attached databases for a matching table.
+def columnComment (path colName : String) : IO String := do
+  let tbl := pathTable path
+  if tbl.isEmpty then return ""
+  try
+    let some qr ← Prql.query s!"from dcols | col_comment '{escSql tbl}' '{escSql colName}'" | return ""
+    let n ← Adbc.nrows qr
+    if n == 0 then return ""
+    Adbc.cellStr qr 0 0
+  catch _ => return ""
+
+end AdbcTable
+
 -- | TblOps instance for AdbcTable
 instance : TblOps AdbcTable where
   nRows     := (·.nRows)
@@ -18,6 +40,7 @@ instance : TblOps AdbcTable where
   findRow   := AdbcTable.findRow
   getCols t idxs r0 r1 := idxs.mapM fun i => t.getCol i r0 r1
   colType t col := t.colTypes.getD col "?"
+  colDesc t path col := AdbcTable.columnComment path (t.colNames.getD col "")
   cellStr t row col := Adbc.cellStr t.qr row.toUInt64 col.toUInt64
   plotExport := AdbcTable.plotExport
   fetchMore := AdbcTable.fetchMore
@@ -103,24 +126,6 @@ def queryMetaColNames (tblName : String) (rows : Array Nat) : IO (Array String) 
   let some qr ← Prql.query ("from " ++ tblName ++ " | rowidx | filter (idx | in [" ++ idxs ++ "]) | select {column, idx}") | return #[]
   let nr ← Adbc.nrows qr
   (Array.range nr.toNat).mapM fun r => Adbc.cellStr qr r.toUInt64 0
-
--- | Extract table name from path: last component after last "://" prefix strip.
---   "osquery://groups" → "groups", "duckdb://osq.groups" → "groups"
-private def pathTable (path : String) : String :=
-  match path.splitOn "://" with
-  | [_, rest] => rest.splitOn "/" |>.filter (!·.isEmpty) |>.getLast?.getD ""
-  | _ => ""
-
--- | Get column comment from DuckDB metadata. Searches all attached databases for a matching table.
-def columnComment (path colName : String) : IO String := do
-  let tbl := pathTable path
-  if tbl.isEmpty then return ""
-  try
-    let some qr ← Prql.query s!"from dcols | col_comment '{escSql tbl}' '{escSql colName}'" | return ""
-    let n ← Adbc.nrows qr
-    if n == 0 then return ""
-    Adbc.cellStr qr 0 0
-  catch _ => return ""
 
 -- | Enrich meta table with column descriptions from DuckDB metadata. Returns true if enriched.
 def enrichComments (metaTbl path : String) : IO Bool := do

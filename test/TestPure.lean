@@ -314,6 +314,10 @@ section BuildFilterTests
 #guard buildFilterPrql "sym" #["AAPL", "GOOG"] "AAPL\nAAPL\nGOOG" false ==
   "(sym == 'AAPL' || sym == 'GOOG')"
 
+-- 3+ multi-select: OR expression with all selected values
+#guard buildFilterPrql "sym" #["AAPL", "GOOG", "MSFT"] "\nAAPL\nGOOG\nMSFT" false ==
+  "(sym == 'AAPL' || sym == 'GOOG' || sym == 'MSFT')"
+
 -- Custom query (no matching hint): passthrough
 #guard buildFilterPrql "age" #["18", "25"] "age > 20\n" true == "age > 20"
 

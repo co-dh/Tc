@@ -105,7 +105,7 @@ Exports to `~/tc_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows
 | `/` | Search (fzf) |
 | `n` | Next match |
 | `N` | Previous match |
-| `\` | Filter expression (PRQL) |
+| `\` | Filter (multi-select or PRQL expression) |
 | `s` | Column jump (fzf) |
 | `Space` | Command palette (fzf) |
 

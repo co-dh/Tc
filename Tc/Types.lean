@@ -177,6 +177,8 @@ class TblOps (α : Type) where
   -- args: tbl xName yName catName? xIsTime step truncLen
   plotExport : α → String → String → Option String → Bool → Nat → Nat → IO (Option (Array String))
     := fun _ _ _ _ _ _ _ => pure none
+  -- column description (e.g. from DuckDB COMMENT ON COLUMN)
+  colDesc   : α → String → Nat → IO String := fun _ _ _ => pure ""
   -- get cell value as string (for preview)
   cellStr   : α → Nat → Nat → IO String := fun _ _ _ => pure ""
   -- fetch more rows (scroll-to-bottom): returns table with more rows, or none
