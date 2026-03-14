@@ -7,7 +7,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    container: archlinux:latest
     steps:
+      - name: Install dependencies
+        run: pacman -Syu --noconfirm base-devel git duckdb curl unzip
+
       - uses: actions/checkout@v4
 
       - name: Install elan + Lean toolchain
@@ -19,15 +23,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .lake
-          key: lake-${{ runner.os }}-${{ hashFiles('lakefile.lean', 'lake-manifest.json') }}
-          restore-keys: lake-${{ runner.os }}-
-
-      - name: Install DuckDB
-        run: |
-          curl -fsSL https://github.com/duckdb/duckdb/releases/download/v1.2.2/libduckdb-linux-amd64.zip -o /tmp/duckdb.zip
-          unzip /tmp/duckdb.zip -d /tmp/duckdb
-          sudo cp /tmp/duckdb/libduckdb.so /usr/local/lib/
-          sudo ldconfig
+          key: lake-arch-${{ hashFiles('lakefile.lean', 'lake-manifest.json') }}
+          restore-keys: lake-arch-
 
       - name: Remove stale binaries
         run: rm -f .lake/build/bin/tc .lake/build/bin/test
@@ -36,7 +33,7 @@ jobs:
         run: lake build tc test
 
       - name: Install prqlc
-        run: curl -fsSL https://github.com/PRQL/prql/releases/download/0.13.10/prqlc-0.13.10-x86_64-unknown-linux-musl.tar.gz | sudo tar xz -C /usr/local/bin ./prqlc
+        run: curl -fsSL https://github.com/PRQL/prql/releases/download/0.13.10/prqlc-0.13.10-x86_64-unknown-linux-musl.tar.gz | tar xz -C /usr/local/bin ./prqlc
 
       - name: Copy funcs.prql
         run: cp Tc/Data/ADBC/funcs.prql .lake/build/bin/
