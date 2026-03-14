@@ -502,6 +502,8 @@ static void build_sel_bits(b_lean_obj_arg arr, size_t n, uint64_t* bits) {
 #define IS_SEL(bits, v) ((v) < 256 && ((bits)[(v)/64] & (1ULL << ((v)%64))))
 
 // | Heatmap: 5-stop blue→red gradient (256-color indices)
+// Snap to nearest stop rather than interpolate — 256-color mode's 6×6×6 cube
+// produces muddy intermediate colors. 5 hand-picked stops give clean, distinct bands.
 static uint32_t heat_color(double t) {
     static const uint32_t stops[] = {27, 39, 77, 220, 196};
     if (t <= 0.0) return stops[0];
@@ -734,7 +736,8 @@ lean_obj_res lean_render_table(
         }
     }
 
-    // heatmap: per-column min/max for visible numeric columns
+    // heatmap: per-column min/max over visible rows (not full column) —
+    // adapts contrast to what's on screen and avoids scanning all rows for ADBC tables
     double colMin[MAX_HEAT_COLS], colMax[MAX_HEAT_COLS];
     int colHeat[MAX_HEAT_COLS];  // 1 if numeric with range
     if (heatOn && nVisCols <= MAX_HEAT_COLS) {
