@@ -327,14 +327,14 @@ def distinct (t : AdbcTable) (col : Nat) : IO (Array String) := do
   pure result
 
 -- | Find row from starting position, forward or backward (with wrap).
---   Uses PRQL row_number (sort-aware) instead of raw SQL ROW_NUMBER.
+--   PRQL row_number is 1-based; we subtract 1 here for 0-based Lean array indexing.
 def findRow (t : AdbcTable) (col : Nat) (val : String) (start : Nat) (fwd : Bool) : IO (Option Nat) := do
   let colName := Prql.quote (t.colNames.getD col "")
-  let some qr ← Prql.query s!"{t.query.render} | derive \{_rn0 = row_number this} | derive \{_rn = _rn0 - 1} | filter ({colName} == '{escSql val}') | select \{_rn}" | return none
+  let some qr ← Prql.query s!"{t.query.render} | derive \{_rn = row_number this} | filter ({colName} == '{escSql val}') | select \{_rn}" | return none
   let nr ← Adbc.nrows qr
   let mut rows : Array Nat := #[]
   for i in [:nr.toNat] do
-    rows := rows.push (← Adbc.cellInt qr i.toUInt64 0).toNat
+    rows := rows.push ((← Adbc.cellInt qr i.toUInt64 0).toNat - 1)
   if rows.isEmpty then return none
   -- find first row >= start (forward) or last row < start (backward), with wrap
   if fwd then

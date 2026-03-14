@@ -64,7 +64,7 @@ select `column with spaces`                                  # quoted identifier
 | **math** `col`     | `abs` `floor` `ceil` `sqrt` `exp` `ln` `log10` `pi` `sin` `cos` `tan` `asin` `acos` `atan` `degrees` `radians` |
 | **math** `n col`   | `round n c` · `pow b c` · `log b c`                                                                            |
 | **agg** `col`      | `min` `max` `sum` `average` `stddev` `count` `count_distinct` `any` `all` `concat_array`                       |
-| **window** `col`   | `first` `last` `rank` `rank_dense` `row_number` · `lag n c` · `lead n c`                                       |
+| **window** `col`   | `first` `last` `rank` `rank_dense` `row_number` (1-based) · `lag n c` · `lead n c`                               |
 | **file** `path`    | `read_parquet` `read_csv` `read_json` · **date**: `date.to_text fmt col`                                       |
 ## date format (`date.to_text fmt col`)
 | Spec | Example    | Spec | Example   | Spec | Example              |
