@@ -4,6 +4,7 @@
 #include <lean/lean.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
@@ -348,6 +349,7 @@ lean_obj_res lean_tb_render_col(uint32_t x, uint32_t w, uint32_t y0,
 // | Minimum header text width (chars shown before truncation)
 #define MIN_HDR_WIDTH 3
 #define MAX_DISP_WIDTH 50
+#define MAX_HEAT_COLS 256
 
 // | VisiData-style type chars from Arrow format
 // # int, % float, ? bool, @ date, space string
@@ -436,6 +438,23 @@ static int col_is_num(lean_obj_arg col) {
     return tag == COL_INTS || tag == COL_FLOATS;
 }
 
+// | Extract numeric value from Column at row. Returns 1 if valid, 0 if NaN/non-numeric.
+static int col_num_val(lean_obj_arg col, size_t row, double *out) {
+    unsigned tag = lean_obj_tag(col);
+    lean_obj_arg data = lean_ctor_get(col, 0);
+    if (tag == COL_INTS) {
+        *out = (double)(int64_t)lean_unbox_uint64(lean_array_get_core(data, row));
+        return 1;
+    } else if (tag == COL_FLOATS) {
+        lean_obj_arg fbox = lean_array_get_core(data, row);
+        double v = lean_ctor_get_float(fbox, 0);
+        if (isnan(v)) return 0;
+        *out = v;
+        return 1;
+    }
+    return 0;
+}
+
 // | Compute column data width (not including header)
 static int compute_data_width(lean_obj_arg col, size_t r0, size_t r1, int precAdj) {
     int w = 1;  // minimum 1 char
@@ -482,6 +501,17 @@ static void build_sel_bits(b_lean_obj_arg arr, size_t n, uint64_t* bits) {
 }
 #define IS_SEL(bits, v) ((v) < 256 && ((bits)[(v)/64] & (1ULL << ((v)%64))))
 
+// | Heatmap: 5-stop blue→red gradient (256-color indices)
+static uint32_t heat_color(double t) {
+    static const uint32_t stops[] = {27, 39, 77, 220, 196};
+    if (t <= 0.0) return stops[0];
+    if (t >= 1.0) return stops[4];
+    double pos = t * 4.0;
+    int lo = (int)pos;
+    if (lo >= 4) lo = 3;
+    return (pos - lo < 0.5) ? stops[lo] : stops[lo + 1];
+}
+
 // | Unified table render - reads Column directly, computes widths if needed
 // allCols: Array Column (ALL columns)
 // fmts: Array Char - format chars for type indicators (empty = use Column tag)
@@ -508,6 +538,7 @@ lean_obj_res lean_render_table(
     b_lean_obj_arg styles,
     int64_t precAdj,          // precision adjustment for floats
     int64_t widthAdj,         // column width offset
+    uint8_t heatOn,           // heatmap toggle
     lean_obj_arg world)
 {
     int screenW = screen_w();
@@ -703,6 +734,26 @@ lean_obj_res lean_render_table(
         }
     }
 
+    // heatmap: per-column min/max for visible numeric columns
+    double colMin[MAX_HEAT_COLS], colMax[MAX_HEAT_COLS];
+    int colHeat[MAX_HEAT_COLS];  // 1 if numeric with range
+    if (heatOn && nVisCols <= MAX_HEAT_COLS) {
+        for (size_t c = 0; c < nVisCols; c++) {
+            size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, dispIdxs[c]));
+            lean_obj_arg col = lean_array_get_core(allCols, origIdx);
+            colHeat[c] = 0;
+            if (!col_is_num(col)) continue;
+            double mn = 1e308, mx = -1e308;
+            for (size_t ri = 0; ri < nRows; ri++) {
+                double v;
+                if (!col_num_val(col, r0 + ri, &v)) continue;
+                if (v < mn) mn = v;
+                if (v > mx) mx = v;
+            }
+            if (mx > mn) { colMin[c] = mn; colMax[c] = mx; colHeat[c] = 1; }
+        }
+    }
+
     // render data rows (r0..r1 in original table, 0..nRows in screen)
     for (size_t ri = 0; ri < nRows; ri++) {
         uint64_t row = r0 + ri;  // original table row
@@ -757,6 +808,17 @@ lean_obj_res lean_render_table(
             }
 
             lean_obj_arg col = lean_array_get_core(allCols, origIdx);
+
+            // heatmap bg override (non-cursor/selection numeric cells)
+            if (heatOn && c < MAX_HEAT_COLS && colHeat[c]
+                && si != STYLE_CURSOR && si != STYLE_SEL_ROW && si != STYLE_SEL_CUR) {
+                double v;
+                if (col_num_val(col, row, &v)) {
+                    double t = (v - colMin[c]) / (colMax[c] - colMin[c]);
+                    bg = heat_color(t);
+                    fg = 16;  // black text on colored bg
+                }
+            }
             format_col_cell(col, row, buf, sizeof(buf), (int)precAdj);
             // leading space
             tb_set_cell(xs[c], y, ' ', fg, bg);

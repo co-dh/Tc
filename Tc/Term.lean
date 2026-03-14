@@ -124,7 +124,7 @@ opaque printPadC : UInt32 → UInt32 → UInt32 → UInt32 → UInt32 → @& Str
 opaque renderTable : @& Array Column → @& Array String → @& Array Char → @& Array Nat
                    → @& Array Nat → UInt64 → UInt64 → UInt64 → UInt64 → UInt64 → UInt64 → UInt64
                    → Int64 → @& Array Nat → @& Array Nat → @& Array Nat → @& Array UInt32
-                   → Int64 → Int64 → IO (Array Nat)
+                   → Int64 → Int64 → UInt8 → IO (Array Nat)
 
 -- | Print string at position (for backwards compat)
 def print (x y : UInt32) (fg bg : UInt32) (s : String) : IO Unit :=
