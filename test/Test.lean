@@ -593,25 +593,23 @@ def test_transpose_pop : IO Unit := do
 
 -- === Join tests ===
 
--- test_join_inner: open folder, enter left, key id, swap to folder, enter right, key id,
---   swap+pop folder, J → inner join on id
+-- test_join_inner: sort folder by name, enter left, key id, swap, enter right, key id, join
 def test_join_inner : IO Unit := do
   log "join_inner"
-  -- folder: row0=.., row1=left.csv, row2=right.csv
-  -- j<ret> enter left, ! key id, S swap to folder, j<ret> enter right, ! key id, S swap, q pop folder, J join
-  let output ← run "j<ret><key>Sj<ret><key>SqJ" "data/join_test"
-  -- Column headers may be truncated (e.g. "sco#" for "score")
+  -- [ sorts asc → row0=.., row1=left.csv, row2=right.csv (alphabetical)
+  -- j<ret> enter left, ! key id, S swap (cursor stays row1), j<ret> enter right, ! key id, S swap, q pop, J join
+  let output ← run "[j<ret><key>Sj<ret><key>SqJ" "data/join_test"
   assert (contains output "alice") "J shows alice from left table"
   assert (contains output "90") "J shows score=90 from right table"
   let (_, status) := footer output
   assert (contains status "r0/2") "Inner join has 2 rows (id=1,3)"
 
--- test_join_union: open folder, enter left.csv, swap, enter left.csv again, swap+pop, J → union
+-- test_join_union: sort folder, enter left.csv twice, union
 def test_join_union : IO Unit := do
   log "join_union"
-  -- row0=.., row1=left.csv. j→left, <ret>→open, S→swap back to folder (cursor stays at row1),
+  -- [ sorts asc → row0=.., row1=left.csv. j→left, <ret>→open, S→swap (cursor stays at row1),
   -- <ret>→open left again, S→swap, q→pop folder, J→union left∪left
-  let output ← run "j<ret>S<ret>SqJ" "data/join_test"
+  let output ← run "[j<ret>S<ret>SqJ" "data/join_test"
   assert (contains output "name") "Union shows name column"
   let (_, status) := footer output
   assert (contains status "r0/6") "Union of same 3-row table = 6 rows"
