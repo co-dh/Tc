@@ -49,10 +49,15 @@ def Op.render : Op → String
     s!"group \{{", ".intercalate (keys.map quote).toList}} (aggregate \{{", ".intercalate as.toList}})"
   | .take n => s!"take {n}"
 
+-- | Render just the ops portion (no base/from clause)
+def Query.renderOps (q : Query) : String :=
+  if q.ops.isEmpty then ""
+  else " | ".intercalate (q.ops.map Op.render).toList
+
 -- | Render full query to PRQL string
 def Query.render (q : Query) : String :=
-  if q.ops.isEmpty then q.base
-  else q.base ++ " | " ++ " | ".intercalate (q.ops.map Op.render).toList
+  let ops := q.renderOps
+  if ops.isEmpty then q.base else q.base ++ " | " ++ ops
 
 -- | Pipe: append operation to query
 def Query.pipe (q : Query) (op : Op) : Query := { q with ops := q.ops.push op }
