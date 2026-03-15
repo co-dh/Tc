@@ -140,9 +140,7 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
     | some s' => mainLoop { a with stk := s', vs := .default, sparklines := #[] } test ks'
     | none => mainLoop a test ks'
   else if isKey ev 'W' then do
-    match ← Session.pickSaveName with
-    | some name => if !name.isEmpty then Session.save a.stk name
-    | none => pure ()
+    if let some name ← Session.pickSaveName then Session.save a.stk name
     mainLoop a test ks'
   else if isKey ev 'L' then do
     match ← Session.pickLoadName with
@@ -285,13 +283,15 @@ def appMain (args : List String) : IO Unit := do
     return
   -- session restore: -s name
   if let some sessName := cli.session then
-    match ← Session.load sessName with
-    | some stk =>
-      let _ ← Term.init
-      let _ ← mainLoop { stk, vs := .default, theme, info := {} } testMode keys
-      if !testMode then Term.shutdown
-      return
-    | none => IO.eprintln s!"Session not found: {sessName}"; return
+    try
+      match ← Session.load sessName with
+      | some stk =>
+        let _ ← Term.init
+        let _ ← mainLoop { stk, vs := .default, theme, info := {} } testMode keys
+        if !testMode then Term.shutdown
+      | none => IO.eprintln s!"Session not found: {sessName}"
+    finally AdbcTable.shutdown; Tc.cleanupTmp
+    return
   if pipeMode && path?.isNone then
     if let some a ← runTsv (← Tc.TextParse.fromStdin) "stdin" true testMode theme keys then
       outputTable a
