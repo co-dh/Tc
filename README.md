@@ -24,6 +24,7 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 - Theme support
 - Stdin pipe mode (`cat data.csv | tc`)
 - Session save/load (persist filters, sorts, derives across sessions)
+- Replay ops on tab line (shows PRQL pipeline; replay with `tc file -p "ops"`)
 - Zero-copy rendering via C FFI (termbox2)
 
 ## Build
