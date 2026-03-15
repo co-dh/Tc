@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     volumes:
-      - .:/workspace
+      - ${PWD:-.}:/workspace
       # Persist .lake cache across runs
       - lake-cache:/workspace/.lake
     working_dir: /workspace

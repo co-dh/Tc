@@ -141,7 +141,8 @@ Exports to `~/tc_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows
 | `Ps` | Scatter plot |
 | `Ph` | Histogram |
 | `Pb` | Boxplot |
-| `+`/`-` | Change downsampling interval |
+| `+`/`-` | Change downsampling interval (in plot view) |
+| `h`/`l` | Cycle plot type (in plot view) |
 
 #### How it works
 
@@ -170,13 +171,19 @@ Y-axis is always the column under the cursor (must be numeric).
 
 #### Interactive controls
 
-After rendering, the plot enters an interactive mode:
+The plot renders in-place and responds to keys immediately — no dialog, just re-renders the image:
 
-- `+`/`=` — coarser downsampling (fewer points, broader time buckets)
-- `-`/`_` — finer downsampling (more points, narrower time buckets)
-- Any other key — exit back to the table
+| Key | Action |
+|-----|--------|
+| `+`/`=` | Coarser downsampling (fewer points, broader time buckets) |
+| `-`/`_` | Finer downsampling (more points, narrower time buckets) |
+| `l` | Next plot type (line → scatter → bar → box) |
+| `h` | Previous plot type |
+| `q`/any other | Exit back to the table |
 
 For time-series data, intervals cycle through `1s → 1m → 1h → 1d`. For non-time data, the step multiplier increases (`1x → 2x → 4x → 8x → 16x`).
+
+Switching plot type with `h`/`l` re-renders instantly with the same data — no need to exit and re-enter.
 
 #### Display
 
