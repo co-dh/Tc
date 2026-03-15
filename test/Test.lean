@@ -228,13 +228,13 @@ def test_folder_prefix : IO Unit := do
 -- Sort by non-first column: l moves to val, [ sorts asc → val=1 first
 def test_sort_excludes_key : IO Unit := do
   log "sort_excludes_key"
-  let first := (dataLines (← run "Il[" "data/grp_sort.csv")).headD ""
+  let first := (dataLines (← run "l[" "data/grp_sort.csv")).headD ""
   assert (contains first " 1 ") "sort by val: val=1 first"
 
 -- Sort on group column is no-op: ! groups grp, cursor stays on grp, [ → no sort
 def test_sort_selected_not_key : IO Unit := do
   log "sort_on_key_noop"
-  let lines := dataLines (← run "I![" "data/grp_sort.csv")
+  let lines := dataLines (← run "![" "data/grp_sort.csv")
   let first := lines.headD ""
   -- within filtered group, original order preserved (val=3 first for A, val=6 for B)
   assert (contains first " 3 " || contains first " 6 ") "sort on key col is no-op"
@@ -452,7 +452,7 @@ def test_osquery_sort_enter : IO Unit := do
 def test_last_col_no_stretch : IO Unit := do
   log "last_col_no_stretch"
   -- I hides info overlay so header helper picks up table header, not overlay text
-  let output ← run "I" "data/basic.csv"
+  let output ← run "" "data/basic.csv"
   let hdr := header output
   -- basic.csv has 2 narrow columns (a, b); header should be short, not padded to 80
   assert (hdr.length < 30) s!"last col should not stretch to 80: got {hdr.length} chars"
