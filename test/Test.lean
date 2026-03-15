@@ -554,6 +554,29 @@ def test_derive : IO Unit := do
   assert (contains hdr "a") "derive: original columns should remain"
   assert (!(contains hdr "_1")) "derive: no derived column without name = expr"
 
+-- === Split tests ===
+
+-- | Split: press ':' on string column, fzf picks first suggestion "-" → splits tag into parts
+def test_split : IO Unit := do
+  log "split"
+  let out ← run ":" "data/split_test.csv"
+  let (tab, status) := footer out
+  -- split adds 4 columns (max parts in "x-y-z-w"), total = original 2 + 4 = 6
+  assert (contains status "c2/6") "split: 6 columns after split"
+  assert (contains tab ":tag") "split: tab shows :tag"
+  -- split column data visible (first parts from "a-b-c" and "d-e-f")
+  let lines := dataLines out
+  assert (lines.any (contains · " a ")) "split: part 'a' visible"
+  assert (lines.any (contains · " d ")) "split: part 'd' visible"
+
+-- | Split no-op on non-string column: ':' on int column does nothing
+def test_split_noop : IO Unit := do
+  log "split_noop"
+  let out ← run "l:" "data/split_test.csv"
+  let (_, status) := footer out
+  -- cursor on "value" (int column), split should be no-op — still 2 columns
+  assert (contains status "c1/2") "split: no split on int column"
+
 -- === Export tests ===
 
 -- | Export: press 'e', fzf auto-selects csv, verify file created with correct content
@@ -753,6 +776,9 @@ def tests : Array (String × IO Unit) := #[
   -- Transpose tests
   ("transpose", test_transpose),
   ("transpose_pop", test_transpose_pop),
+  -- Split tests
+  ("split", test_split),
+  ("split_noop", test_split_noop),
   -- Derive tests
   ("derive", test_derive),
   -- Join tests

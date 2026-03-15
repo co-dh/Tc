@@ -20,6 +20,7 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 - Status bar aggregation (sum/avg/count for current column)
 - Heatmap coloring for numeric columns (`m` key)
 - Sparkline distribution row for numeric columns (`Z` key)
+- Regex column split (`:` key — split column by delimiter/regex into new columns)
 - Theme support
 - Stdin pipe mode (`cat data.csv | tc`)
 - Session save/load (persist filters, sorts, derives across sessions)
@@ -100,12 +101,14 @@ Exports to `~/tc_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows
 | `Shift+←/→` | Reorder key columns (for join ordering) |
 | `H` | Toggle hide column |
 
-### Sorting and Editing
+### Sorting and Transforms
 
 | Key | Action |
 |-----|--------|
 | `[` | Sort ascending |
 | `]` | Sort descending |
+| `=` | Derive column (PRQL expression) |
+| `:` | Split column by delimiter/regex |
 
 ### Search
 

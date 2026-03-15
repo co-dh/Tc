@@ -12,6 +12,7 @@ import Tc.Key
 import Tc.Render
 import Tc.Runner
 import Tc.Derive
+import Tc.Split
 import Tc.Term
 import Tc.Theme
 import Tc.UI.Info
@@ -136,6 +137,10 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
     let s' ← match ← (Derive.run a.stk).toBaseIO with
       | .ok s' => pure s' | .error e => Log.error e.toString; errorPopup e.toString; pure a.stk
     mainLoop { a with stk := s', vs := .default } test ks'
+  else if isKey ev ':' then do
+    let s' ← match ← (Split.run a.stk).toBaseIO with
+      | .ok s' => pure s' | .error e => Log.error e.toString; errorPopup e.toString; pure a.stk
+    mainLoop { a with stk := s', vs := .default, sparklines := #[] } test ks'
   else if isKey ev 'e' then do
     match ← Export.pickFmt with
     | some fmt => mainLoop (← runEffect a (.export fmt)) test ks'
