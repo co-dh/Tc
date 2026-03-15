@@ -16,8 +16,8 @@ structure ViewState where
 -- Default ViewState
 def ViewState.default : ViewState := ⟨0, 0⟩
 
--- Reserved lines: 1 header + 1 footer + 1 tab + 1 status
-def reservedLines : Nat := 4
+-- Reserved lines: 1 header + 1 footer + 1 tab + 1 status (+ 1 sparkline when active)
+def reservedLines (sparkOn : Bool := false) : Nat := if sparkOn then 5 else 4
 
 -- Max visible rows (no terminal should exceed this)
 def maxVisRows : Nat := 200
@@ -44,16 +44,18 @@ def renderCols (cols : Array Column) (names : Array String) (fmts : Array Char)
     0 nVisible.toUInt64 adjCur.toUInt64 ctx.curCol.toUInt64
     ctx.moveDir.toInt64 ctx.selColIdxs adjSel ctx.hiddenIdxs
     ctx.styles ctx.precAdj.toInt64 ctx.widthAdj.toInt64
-    (if ctx.heatOn then 1 else 0)
+    (if ctx.heatOn then 1 else 0) ctx.sparklines
 
 -- | Render table to terminal, returns (ViewState, widths)
 -- Calls TblOps.render with NavState fields unpacked
 def render {nRows nCols : Nat} {t : Type} [TblOps t]
     (nav : NavState nRows nCols t) (view : ViewState) (inWidths : Array Nat)
-    (styles : Array UInt32) (precAdj widthAdj : Int) (vkind : ViewKind := .tbl) (heatOn : Bool := false) : IO (ViewState × Array Nat) := do
+    (styles : Array UInt32) (precAdj widthAdj : Int) (vkind : ViewKind := .tbl)
+    (heatOn : Bool := false) (sparklines : Array String := #[]) : IO (ViewState × Array Nat) := do
   Term.clear
   let h ← Term.height; let w ← Term.width
-  let visRows := min maxVisRows (h.toNat - reservedLines)
+  let sparkOn := sparklines.any (!·.isEmpty)
+  let visRows := min maxVisRows (h.toNat - reservedLines sparkOn)
   let rowOff := adjOff nav.row.cur.val view.rowOff visRows
   let moveDir := if nav.curColIdx > view.lastCol then 1 else if nav.curColIdx < view.lastCol then -1 else 0
   let ctx : RenderCtx := {
@@ -61,7 +63,7 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
     r0 := rowOff, r1 := min nRows (rowOff + visRows),
     curRow := nav.row.cur.val, curCol := nav.curColIdx, moveDir,
     selColIdxs := nav.selColIdxs, rowSels := nav.row.sels,
-    hiddenIdxs := nav.hiddenIdxs, styles, precAdj, widthAdj, heatOn }
+    hiddenIdxs := nav.hiddenIdxs, styles, precAdj, widthAdj, heatOn, sparklines }
   let outWidths ← TblOps.render nav.tbl ctx
   let widths := outWidths  -- C returns base widths (no widthAdj), store as-is
   -- status line: colName left, stats right
@@ -70,7 +72,7 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
     | .freqV _ t => t
     | _ => TblOps.totalRows nav.tbl
   let colName := nav.colNames.getD nav.curColIdx ""
-  let adj := (if heatOn then " [heat]" else "") ++ (if precAdj != 0 then s!" p{precAdj}" else "") ++ (if widthAdj != 0 then s!" w{widthAdj}" else "")
+  let adj := (if heatOn then " [heat]" else "") ++ (if sparkOn then " [spark]" else "") ++ (if precAdj != 0 then s!" p{precAdj}" else "") ++ (if widthAdj != 0 then s!" w{widthAdj}" else "")
   let right := s!"c{nav.curColIdx}/{nCols} grp={nav.grp.size} sel={nav.row.sels.size}{adj} r{nav.row.cur.val}/{total}"
   let pad := w.toNat - colName.length - right.length
   Term.print 0 (h - 1) Term.cyan Term.default (colName ++ "".pushn ' ' (max 1 pad) ++ right)

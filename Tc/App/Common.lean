@@ -18,6 +18,7 @@ import Tc.UI.Info
 import Tc.UI.Preview
 import Tc.Data.Text
 import Tc.View
+import Tc.Sparkline
 
 open Tc
 
@@ -29,6 +30,7 @@ structure AppState where
   info  : UI.Info.State
   prevScroll : Nat := 0
   heatOn : Bool := false
+  sparklines : Array String := #[]  -- per-column sparkline strings (empty = off)
   statusCache : String × String × String := ("", "", "")  -- (path, col, desc) — avoids per-frame DB query
 
 namespace AppState
@@ -85,11 +87,13 @@ where
   | .themeLoad d => do let th ← a.theme.runEffect d; pure { a with theme := th }
   | _ => do
     let s ← Runner.runStackEffect a.stk e
-    pure { a with stk := s, vs := if e.isNone then a.vs else .default }
+    let vs' := if e.isNone then a.vs else .default
+    let sp := if e.isNone then a.sparklines else #[]
+    pure { a with stk := s, vs := vs', sparklines := sp }
 
 -- main loop: render → input → update → effect → loop
 partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppState := do
-  let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles a.heatOn
+  let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles a.heatOn a.sparklines
   let a := { a with stk := a.stk.setCur v', vs := vs' }
   renderTabLine a.stk.tabNames 0
   -- Show column description on status line from DuckDB column comments (cached)
@@ -132,13 +136,18 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
     | none => mainLoop a test ks'
   else if isKey ev 'X' then do
     match ← Transpose.push a.stk with
-    | some s' => mainLoop { a with stk := s', vs := .default } test ks'
+    | some s' => mainLoop { a with stk := s', vs := .default, sparklines := #[] } test ks'
     | none => mainLoop a test ks'
   else if isKey ev 'J' then do
     match ← Join.run a.stk with
-    | some s' => mainLoop { a with stk := s', vs := .default } test ks'
+    | some s' => mainLoop { a with stk := s', vs := .default, sparklines := #[] } test ks'
     | none => mainLoop a test ks'
   else if isKey ev 'm' then mainLoop { a with heatOn := !a.heatOn } test ks'
+  else if isKey ev 'Z' then do
+    -- Toggle sparklines: compute on first enable, clear on disable
+    let sparks ← if a.sparklines.any (!·.isEmpty) then pure #[]
+      else Sparkline.compute a.stk.tbl
+    mainLoop { a with sparklines := sparks } test ks'
   else if isKey ev '{' then mainLoop { a with prevScroll := a.prevScroll - min a.prevScroll 5 } test ks'
   else if isKey ev '}' then mainLoop { a with prevScroll := a.prevScroll + 5 } test ks'
   else match evToCmd ev a.stk.cur.vkind with
@@ -148,6 +157,8 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
       | some (a', e) =>
         if e == .quit then pure a'
         else let a'' ← if e.isNone then pure a' else runEffect a' e
+             -- Clear sparklines when view content changes (filter/sort/stack ops)
+             let a'' := if e.isNone then a'' else { a'' with sparklines := #[] }
              mainLoop { a'' with prevScroll := 0 } test ks'
 
 -- parsed CLI arguments

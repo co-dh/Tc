@@ -508,6 +508,7 @@ lean_obj_res lean_render_table(
     int64_t precAdj,          // precision adjustment for floats
     int64_t widthAdj,         // column width offset
     uint8_t heatOn,           // heatmap toggle
+    b_lean_obj_arg sparklines, // Array String - sparkline strings per column (empty = off)
     lean_obj_arg world)
 {
     int screenW = screen_w();
@@ -516,6 +517,14 @@ lean_obj_res lean_render_table(
     size_t nRows = r1 - r0;  // visible row count
     size_t nFmts = lean_array_size(fmts);  // format chars available?
     char buf[256];
+
+    // sparkline: active if array is non-empty and has at least one non-empty string
+    size_t nSparklines = lean_array_size(sparklines);
+    int sparkOn = 0;
+    for (size_t i = 0; i < nSparklines && !sparkOn; i++) {
+        const char *sp = lean_string_cstr(lean_array_get_core(sparklines, i));
+        if (sp[0]) sparkOn = 1;
+    }
 
     // extract styles
     uint32_t stFg[NUM_STYLES], stBg[NUM_STYLES];
@@ -703,6 +712,27 @@ lean_obj_res lean_render_table(
         }
     }
 
+    // sparkline row at y=1 (below header, above data)
+    if (sparkOn) {
+        uint32_t spFg = stFg[STYLE_HEADER];
+        uint32_t spBg = stBg[STYLE_DEFAULT];
+        for (size_t c = 0; c < nVisCols; c++) {
+            size_t dispIdx = dispIdxs[c];
+            size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, dispIdx));
+            const char *sp = (origIdx < nSparklines)
+                ? lean_string_cstr(lean_array_get_core(sparklines, origIdx)) : "";
+            print_pad(xs[c], 1, ws[c], spFg, spBg, sp, 0);
+            // separator
+            int sX = xs[c] + ws[c];
+            if (sX < screenW) {
+                uint32_t sc = (c + 1 == visKeys) ? 0x2551 : 0x2502;
+                tb_set_cell(sX, 1, sc, stFg[STYLE_DEFAULT], stBg[STYLE_DEFAULT]);
+            }
+        }
+    }
+
+    int dataY0 = sparkOn ? 2 : 1;  // data rows start after sparkline row
+
     HeatCol hcols[MAX_HEAT_COLS] = {{0}};
     if (heatOn && nVisCols <= MAX_HEAT_COLS)
         heat_scan(allCols, colIdxs, dispIdxs, nVisCols, nRows, r0, hcols);
@@ -710,7 +740,7 @@ lean_obj_res lean_render_table(
     // render data rows (r0..r1 in original table, 0..nRows in screen)
     for (size_t ri = 0; ri < nRows; ri++) {
         uint64_t row = r0 + ri;  // original table row
-        int y = ri + 1;          // screen y
+        int y = ri + dataY0;     // screen y (shifted down when sparklines active)
         int isSelRow = IS_SEL(rowBits, row);
         int isCurRow = (row == curRow);
 
