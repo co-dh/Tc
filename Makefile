@@ -10,8 +10,10 @@ build:
 	lake build tc test
 	cp Tc/Data/ADBC/funcs.prql .lake/build/bin/
 
+ARGS ?=
+
 test: build
-	.lake/build/bin/test || (cat test.log; exit 1)
+	.lake/build/bin/test $(ARGS) || (cat test.log; exit 1)
 
 # CI: install Ubuntu packages
 deps:
