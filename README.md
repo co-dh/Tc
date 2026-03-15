@@ -17,6 +17,7 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 - Column grouping (key columns pinned left)
 - Row/column selection, hidden columns
 - Plotting via ggplot2: line, bar, scatter, histogram, boxplot — with faceting
+- Status bar aggregation (sum/avg/count for current column)
 - Heatmap coloring for numeric columns (`m` key)
 - Sparkline distribution row for numeric columns (`Z` key)
 - Theme support
