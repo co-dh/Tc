@@ -1,6 +1,7 @@
-// Heatmap: numeric column coloring by value
+// Heatmap: column coloring by value (numeric gradient, string categorical)
 #include "heat.h"
 #include <math.h>
+#include <string.h>
 
 // style indices that suppress heatmap (must match term_shim.c STYLE_* defines)
 #define STYLE_CURSOR   0
@@ -21,6 +22,14 @@ int col_num_val(lean_obj_arg col, size_t row, double *out) {
         return 1;
     }
     return 0;
+}
+
+// FNV-1a hash → [0, 1] for categorical string coloring.
+// Same string always gets same color.
+static double str_hash01(const char *s) {
+    uint32_t h = 2166136261u;
+    while (*s) { h ^= (unsigned char)*s++; h *= 16777619u; }
+    return (double)(h & 0xFFFF) / 65535.0;
 }
 
 uint32_t heat_color(double t) {
@@ -44,37 +53,53 @@ uint32_t heat_color(double t) {
     return (pos - lo < 0.5) ? ramp[lo] : ramp[lo + 1];
 }
 
-static int col_is_num(lean_obj_arg col) {
-    unsigned tag = lean_obj_tag(col);
-    return tag == COL_INTS || tag == COL_FLOATS;
-}
-
 void heat_scan(b_lean_obj_arg allCols, b_lean_obj_arg colIdxs,
                size_t *dispIdxs, size_t nVisCols, size_t nRows, uint64_t r0,
                HeatCol *cols) {
     for (size_t c = 0; c < nVisCols && c < MAX_HEAT_COLS; c++) {
         size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, dispIdxs[c]));
         lean_obj_arg col = lean_array_get_core(allCols, origIdx);
-        cols[c].active = 0;
-        if (!col_is_num(col)) continue;
-        double mn = 1e308, mx = -1e308;
-        for (size_t ri = 0; ri < nRows; ri++) {
-            double v;
-            if (!col_num_val(col, r0 + ri, &v)) continue;
-            if (v < mn) mn = v;
-            if (v > mx) mx = v;
+        cols[c].kind = HEAT_NONE;
+        unsigned tag = lean_obj_tag(col);
+        if (tag == COL_INTS || tag == COL_FLOATS) {
+            double mn = 1e308, mx = -1e308;
+            for (size_t ri = 0; ri < nRows; ri++) {
+                double v;
+                if (!col_num_val(col, r0 + ri, &v)) continue;
+                if (v < mn) mn = v;
+                if (v > mx) mx = v;
+            }
+            if (mx > mn) { cols[c].mn = mn; cols[c].mx = mx; cols[c].kind = HEAT_NUM; }
+        } else if (tag == COL_STRS) {
+            // Check that column has at least 2 distinct values (skip single-value columns)
+            lean_obj_arg data = lean_ctor_get(col, 0);
+            const char *first = NULL;
+            int diverse = 0;
+            for (size_t ri = 0; ri < nRows && !diverse; ri++) {
+                const char *s = lean_string_cstr(lean_array_get_core(data, r0 + ri));
+                if (!first) first = s;
+                else if (strcmp(first, s) != 0) diverse = 1;
+            }
+            if (diverse) cols[c].kind = HEAT_STR;
         }
-        if (mx > mn) { cols[c].mn = mn; cols[c].mx = mx; cols[c].active = 1; }
     }
 }
 
 int heat_cell_bg(lean_obj_arg col, uint64_t row, size_t c,
                  int si, const HeatCol *cols, uint32_t *bg) {
-    if (c >= MAX_HEAT_COLS || !cols[c].active) return 0;
+    if (c >= MAX_HEAT_COLS || cols[c].kind == HEAT_NONE) return 0;
     if (si == STYLE_CURSOR || si == STYLE_SEL_ROW || si == STYLE_SEL_CUR) return 0;
-    double v;
-    if (!col_num_val(col, row, &v)) return 0;
-    double t = (v - cols[c].mn) / (cols[c].mx - cols[c].mn);
+    double t;
+    if (cols[c].kind == HEAT_NUM) {
+        double v;
+        if (!col_num_val(col, row, &v)) return 0;
+        t = (v - cols[c].mn) / (cols[c].mx - cols[c].mn);
+    } else {  // HEAT_STR
+        lean_obj_arg data = lean_ctor_get(col, 0);
+        const char *s = lean_string_cstr(lean_array_get_core(data, row));
+        if (!s[0]) return 0;  // skip empty strings
+        t = str_hash01(s);
+    }
     *bg = heat_color(t);
     return 1;
 }
