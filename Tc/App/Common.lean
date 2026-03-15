@@ -12,6 +12,7 @@ import Tc.Key
 import Tc.Render
 import Tc.Runner
 import Tc.Derive
+import Tc.Split
 import Tc.Term
 import Tc.Theme
 import Tc.UI.Info
@@ -22,6 +23,7 @@ import Tc.Sparkline
 import Tc.Session
 import Tc.Diff
 import Tc.StatusAgg
+import Tc.Replay
 
 open Tc
 
@@ -99,7 +101,7 @@ where
 partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppState := do
   let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles a.heatOn a.sparklines
   let a := { a with stk := a.stk.setCur v', vs := vs' }
-  renderTabLine a.stk.tabNames 0
+  renderTabLine a.stk.tabNames 0 (Replay.opsStr a.stk.cur)
   -- Show column description on status line from DuckDB column comments (cached)
   let colName := a.stk.cur.nav.colNames.getD a.stk.cur.nav.curColIdx ""
   let (cachedPath, cachedCol, _) := a.statusCache
@@ -137,6 +139,10 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
     let s' ← match ← (Derive.run a.stk).toBaseIO with
       | .ok s' => pure s' | .error e => Log.error e.toString; errorPopup e.toString; pure a.stk
     mainLoop { a with stk := s', vs := .default } test ks'
+  else if isKey ev ':' then do
+    let s' ← match ← (Split.run a.stk).toBaseIO with
+      | .ok s' => pure s' | .error e => Log.error e.toString; errorPopup e.toString; pure a.stk
+    mainLoop { a with stk := s', vs := .default, sparklines := #[] } test ks'
   else if isKey ev 'e' then do
     match ← Export.pickFmt with
     | some fmt => mainLoop (← runEffect a (.export fmt)) test ks'
