@@ -94,7 +94,7 @@ int heat_cell_bg(lean_obj_arg col, uint64_t row, size_t c,
         double v;
         if (!col_num_val(col, row, &v)) return 0;
         t = (v - cols[c].mn) / (cols[c].mx - cols[c].mn);
-    } else {  // HEAT_STR
+    } else if (cols[c].kind == HEAT_STR) {
         lean_obj_arg data = lean_ctor_get(col, 0);
         const char *s = lean_string_cstr(lean_array_get_core(data, row));
         if (!s[0]) return 0;  // skip empty strings

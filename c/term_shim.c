@@ -341,8 +341,7 @@ lean_obj_res lean_tb_render_col(uint32_t x, uint32_t w, uint32_t y0,
 #define STYLE_GROUP      8   // group/key column background
 #define NUM_STYLES       9
 
-// COL_INTS, COL_FLOATS defined in heat.h
-#define COL_STRS   2
+// COL_INTS, COL_FLOATS, COL_STRS defined in heat.h
 
 // | Minimum header text width (chars shown before truncation)
 #define MIN_HDR_WIDTH 3
