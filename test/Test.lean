@@ -640,19 +640,11 @@ def test_join_union : IO Unit := do
 
 -- === Sparkline tests ===
 
--- | Sparkline: Z toggles sparkline row with Unicode block chars for numeric columns
-def test_sparkline_toggle : IO Unit := do
-  log "sparkline_toggle"
-  let output ← run "Z" "data/basic.csv"
-  let (_, status) := footer output
-  assert (contains status "[spark]") "Z shows [spark] indicator in status"
-
--- | Sparkline: ZZ toggles sparklines off (second Z clears them)
-def test_sparkline_off : IO Unit := do
-  log "sparkline_off"
-  let output ← run "ZZ" "data/basic.csv"
-  let (_, status) := footer output
-  assert (!contains status "[spark]") "ZZ turns off sparklines"
+-- | Sparklines always on: sparkline row with block chars visible
+def test_sparkline_on : IO Unit := do
+  log "sparkline_on"
+  let output ← run "" "data/basic.csv"
+  assert (output.any (fun c => c.toNat >= 0x2581 && c.toNat <= 0x2588)) "sparklines always on (block chars visible)"
 
 -- === Status bar aggregation tests ===
 
@@ -699,7 +691,7 @@ def test_session_load : IO Unit := do
   let json := s!"\{\"version\":1,\"views\":[\{\"path\":\"{absPath}\",\"vkind\":\{\"kind\":\"tbl\"},\"disp\":\"\",\"precAdj\":0,\"widthAdj\":0,\"row\":0,\"col\":0,\"grp\":[],\"hidden\":[],\"colSels\":[],\"search\":null,\"query\":\{\"base\":\"from `{absPath}`\",\"ops\":[\{\"type\":\"sort\",\"cols\":[[\"a\",true]]}]}}]}"
   IO.FS.writeFile s!"{dir}/test_session.json" json
   -- Load the session via -s flag
-  let out ← IO.Process.output { cmd := bin, args := #["-s", "test_session", "-c", ""] }
+  let out ← IO.Process.output { cmd := bin, args := #["-s", "test_session", "-c", "I"] }
   assert (out.exitCode == 0) s!"session load exit code: {out.exitCode}"
   assert (contains out.stdout "a") "session load: shows column a"
   let (_, status) := footer out.stdout
@@ -720,7 +712,7 @@ def test_session_save_load : IO Unit := do
   let saved ← hasFile s!"{dir}/basic.json"
   assert saved "W should create basic.json session file"
   -- Load the session via -s and verify sort is preserved (first data row should be 1)
-  let out ← IO.Process.output { cmd := bin, args := #["-s", "basic", "-c", ""] }
+  let out ← IO.Process.output { cmd := bin, args := #["-s", "basic", "-c", "I"] }
   assert (out.exitCode == 0) s!"session round-trip exit code: {out.exitCode}"
   let first := (dataLines out.stdout).headD ""
   assert (contains first " 1 " || first.startsWith "1 ") "session round-trip: sort preserved (first row = 1)"
@@ -852,8 +844,7 @@ def tests : Array (String × IO Unit) := #[
   ("join_inner", test_join_inner),
   ("join_union", test_join_union),
   -- Sparkline tests
-  ("sparkline_toggle", test_sparkline_toggle),
-  ("sparkline_off", test_sparkline_off),
+  ("sparkline_on", test_sparkline_on),
   -- Key column reorder tests
   ("key_shift", test_key_shift),
   -- Status bar aggregation tests

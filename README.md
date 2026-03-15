@@ -18,8 +18,8 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 - Row/column selection, hidden columns
 - Plotting via ggplot2: line, bar, scatter, histogram, boxplot — with faceting
 - Status bar aggregation (sum/avg/count for current column)
-- Heatmap coloring for numeric columns (`m` key)
-- Sparkline distribution row for numeric columns (`Z` key)
+- Heatmap coloring for numeric columns (on by default, `m` to toggle)
+- Sparkline distribution row for numeric columns (on by default, `Z` to toggle)
 - Regex column split (`:` key — split column by delimiter/regex into new columns)
 - Theme support
 - Stdin pipe mode (`cat data.csv | tc`)
@@ -139,8 +139,6 @@ Exports to `~/tc_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows
 | `Space p .`/`,` | Increase/decrease decimal precision |
 | `Space w .`/`,` | Widen/narrow columns |
 | `Space T .`/`,` | Cycle themes |
-| `m` | Toggle heatmap (numeric columns) |
-| `Z` | Toggle sparkline row (distribution bars for numeric columns) |
 | `I` | Toggle info overlay (context-specific hints) |
 
 ### Plot
