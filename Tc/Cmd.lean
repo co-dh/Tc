@@ -54,7 +54,7 @@ inductive Cmd where
   | metaV (v : Verb)   -- metaV c=push, -/0=selNull, +/1=selSingle, ~=enter
   | freq (v : Verb)    -- freq c=push, ~=filter
   | fld (v : Verb)     -- fld c=push, +/-=depth, ~=enter dir/file
-  | plot (v : Verb)    -- plot +=line, -=bar
+  | plot (v : Verb)    -- plot: line/bar/scatter/hist/box via PlotKind
   | colShift (v : Verb) -- colShift +=right, -=left (reorder key columns)
   deriving Repr, BEq, DecidableEq
 
@@ -104,7 +104,10 @@ inductive QueryEffect where
   deriving Repr, BEq
 inductive FolderEffect where | push | enter | del | depth (delta : Int) deriving Repr, BEq
 inductive SearchEffect where | next | prev deriving Repr, BEq
-inductive PlotEffect where | line | bar deriving Repr, BEq
+inductive PlotKind where | line | bar | scatter | hist | box deriving Repr, BEq
+
+instance : ToString PlotKind where
+  toString | .line => "line" | .bar => "bar" | .scatter => "scatter" | .hist => "hist" | .box => "box"
 inductive MetaEffect where | selNull | selSingle | setKey deriving Repr, BEq
 inductive ExportFmt where | csv | parquet | json | ndjson deriving Repr, BEq
 
@@ -115,7 +118,7 @@ inductive Effect where
   | query : QueryEffect → Effect
   | folder : FolderEffect → Effect
   | search : SearchEffect → Effect
-  | plot : PlotEffect → Effect
+  | plot : PlotKind → Effect
   | colMeta : MetaEffect → Effect
   | themeLoad (delta : Int)
   | fetchMore

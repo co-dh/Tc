@@ -84,8 +84,7 @@ def runStackEffect (s : ViewStack AdbcTable) (eff : Effect) : IO (ViewStack Adbc
   | .folder .enter => opt (Folder.enter s)
   | .folder .del => opt (Folder.del s)
   | .folder (.depth d) => opt (Folder.setDepth s d)
-  | .plot .line => opt (Plot.run s false)
-  | .plot .bar => opt (Plot.run s true)
+  | .plot kind => opt (Plot.run s kind)
   | .colMeta .selNull => Meta.selNull s
   | .colMeta .selSingle => Meta.selSingle s
   | .colMeta .setKey => opt (Meta.setKey s)
