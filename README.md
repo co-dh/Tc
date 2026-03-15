@@ -71,6 +71,7 @@ cat data.csv | tc                  # Pipe mode (stdin)
 | `Enter`     | Enter (open file in folder, filter from freq, set key from meta) |
 | `q` / `Esc` | Pop view (quit if last)                                          |
 | `X`         | Transpose (swap rows and columns)                                |
+| `J`         | Join top 2 views (inner/left/right join, union, set diff)        |
 | `S`         | Swap top two views                                               |
 | `Q`         | Quit                                                             |
 

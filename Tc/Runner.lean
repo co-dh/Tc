@@ -97,7 +97,7 @@ def runStackEffect (s : ViewStack AdbcTable) (eff : Effect) : IO (ViewStack Adbc
       | none => pure s
     | none => pure s
   | .export fmt => Export.run s fmt
-  | .quit | .themeLoad _ => pure s
+  | .join | .quit | .themeLoad _ => pure s
 
 end Runner
 end Tc

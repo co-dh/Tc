@@ -6,6 +6,7 @@ import Tc.TmpDir
 import Tc.Meta
 import Tc.Plot
 import Tc.Transpose
+import Tc.Join
 import Tc.Fzf
 import Tc.Key
 import Tc.Render
@@ -131,6 +132,10 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
     | none => mainLoop a test ks'
   else if isKey ev 'X' then do
     match ← Transpose.push a.stk with
+    | some s' => mainLoop { a with stk := s', vs := .default } test ks'
+    | none => mainLoop a test ks'
+  else if isKey ev 'J' then do
+    match ← Join.run a.stk with
     | some s' => mainLoop { a with stk := s', vs := .default } test ks'
     | none => mainLoop a test ks'
   else if isKey ev 'm' then mainLoop { a with heatOn := !a.heatOn } test ks'
