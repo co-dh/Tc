@@ -36,6 +36,7 @@ def viewHints : ViewKind → Array (String × String)
     ("t/T", "sel"), ("H", "hide"), ("!", "group"), ("S-←→", "key order"),
     ("\\", "filter"), ("s", "col jump"), ("X", "transpose"),
     ("M", "meta"), ("F", "freq"), ("D", "folder"),
+    ("W", "save sess"), ("L", "load sess"),
     ("I", "info"), ("SPC", "cmd mode")]
 
 -- | Render info overlay at bottom-right

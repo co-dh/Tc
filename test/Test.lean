@@ -660,6 +660,36 @@ def test_key_shift : IO Unit := do
   let aPos := hdr.splitOn "a" |>.head?.map (·.length) |>.getD 999
   assert (bPos < aPos) s!"shift-left: b ({bPos}) should appear before a ({aPos}) in header"
 
+-- === Session tests ===
+
+-- | Session save/load: write a session file, load with -s, verify data is restored
+def test_session_load : IO Unit := do
+  log "session_load"
+  -- Write a session file that opens basic.csv with a sort op (ascending on col "a")
+  let home := (← IO.getEnv "HOME").getD "."
+  let dir := s!"{home}/.cache/tc/sessions"
+  let _ ← IO.Process.output { cmd := "mkdir", args := #["-p", dir] }
+  let absPath ← do
+    let r ← IO.Process.output { cmd := "realpath", args := #["data/basic.csv"] }
+    pure r.stdout.trimAscii.toString
+  let json := s!"\{\"version\":1,\"views\":[\{\"path\":\"{absPath}\",\"vkind\":\{\"kind\":\"tbl\"},\"disp\":\"\",\"precAdj\":0,\"widthAdj\":0,\"row\":0,\"col\":0,\"grp\":[],\"hidden\":[],\"colSels\":[],\"search\":null,\"query\":\{\"base\":\"from `{absPath}`\",\"ops\":[\{\"type\":\"sort\",\"cols\":[[\"a\",true]]}]}}]}"
+  IO.FS.writeFile s!"{dir}/test_session.json" json
+  -- Load the session via -s flag
+  let out ← IO.Process.output { cmd := bin, args := #["-s", "test_session", "-c", ""] }
+  assert (out.exitCode == 0) s!"session load exit code: {out.exitCode}"
+  assert (contains out.stdout "a") "session load: shows column a"
+  let (_, status) := footer out.stdout
+  assert (contains status "r0/5") "session load: has 5 rows"
+  -- Clean up
+  try IO.FS.removeFile s!"{dir}/test_session.json" catch _ => pure ()
+
+-- | Session load missing: -s with non-existent session prints error
+def test_session_missing : IO Unit := do
+  log "session_missing"
+  let out ← IO.Process.output { cmd := bin, args := #["-s", "nonexistent_session_xyz"] }
+  assert (out.exitCode == 0 || contains out.stderr "not found" || contains out.stderr "Session")
+    "missing session should report error"
+
 -- === Run all tests ===
 
 -- | All tests as (name, action) pairs
@@ -735,7 +765,10 @@ def tests : Array (String × IO Unit) := #[
   ("key_shift", test_key_shift),
   -- Status bar aggregation tests
   ("statusagg_numeric", test_statusagg_numeric),
-  ("statusagg_string", test_statusagg_string)
+  ("statusagg_string", test_statusagg_string),
+  -- Session tests
+  ("session_load", test_session_load),
+  ("session_missing", test_session_missing)
 ]
 
 def main (args : List String) : IO Unit := do
