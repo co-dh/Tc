@@ -20,6 +20,7 @@ import Tc.Data.Text
 import Tc.View
 import Tc.Sparkline
 import Tc.Session
+import Tc.StatusAgg
 
 open Tc
 
@@ -33,6 +34,7 @@ structure AppState where
   heatOn : Bool := false
   sparklines : Array String := #[]  -- per-column sparkline strings (empty = off)
   statusCache : String × String × String := ("", "", "")  -- (path, col, desc) — avoids per-frame DB query
+  aggCache : StatusAgg.Cache := StatusAgg.Cache.empty
 
 namespace AppState
 
@@ -111,6 +113,9 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
     let maxLen := w.toNat * 2 / 3
     let label := if label.length > maxLen then (label.take maxLen).toString ++ "…" else label
     Term.print 0 (ht - 1) Term.cyan Term.default label
+  -- Column aggregation stats (sum/avg/count) cached per column
+  let aggCache ← StatusAgg.update a.aggCache a.stk.tbl a.stk.cur.path a.stk.cur.nav.curColIdx
+  let a := { a with aggCache }
   if a.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat a.stk.cur.vkind
   -- Preview box for truncated cell text (skip in test mode)
   if !test then do

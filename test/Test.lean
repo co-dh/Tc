@@ -630,6 +630,24 @@ def test_sparkline_off : IO Unit := do
   let (_, status) := footer output
   assert (!contains status "[spark]") "ZZ turns off sparklines"
 
+-- === Status bar aggregation tests ===
+
+-- | Numeric column shows sum/avg/count on status bar (a: 1,2,3,4,5 → Σ15 μ3 #5)
+def test_statusagg_numeric : IO Unit := do
+  log "statusagg_numeric"
+  let output ← run "" "data/basic.csv"
+  -- cursor starts on column a (numeric) — status bar shows Σ and #
+  assert (contains output "Σ") "Numeric column shows sum (Σ)"
+  assert (contains output "#5") "Numeric column shows count (#5)"
+
+-- | String column shows only count on status bar (b: x,y,x,z,x → #5)
+def test_statusagg_string : IO Unit := do
+  log "statusagg_string"
+  let output ← run "l" "data/basic.csv"
+  -- l moves to column b (string) — status bar shows # but no Σ
+  assert (contains output "#5") "String column shows count"
+  assert (!contains output "Σ") "String column has no sum"
+
 -- === Key column reorder tests ===
 
 -- | Shift+Arrow reorders key columns: !l! groups a,b; <S-left> swaps b before a
@@ -745,6 +763,9 @@ def tests : Array (String × IO Unit) := #[
   ("sparkline_off", test_sparkline_off),
   -- Key column reorder tests
   ("key_shift", test_key_shift),
+  -- Status bar aggregation tests
+  ("statusagg_numeric", test_statusagg_numeric),
+  ("statusagg_string", test_statusagg_string),
   -- Session tests
   ("session_load", test_session_load),
   ("session_missing", test_session_missing)
