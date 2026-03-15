@@ -3,7 +3,7 @@
   X-axis = first group column, category = second group column (optional),
   Y-axis = current column under cursor (must be numeric).
   Facet = third group column (optional, small multiples).
-  Interactive: after display, +/− keys change downsampling interval.
+  Interactive: in-place re-rendering with interval and plot type cycling.
 -/
 import Tc.View
 import Tc.Term
@@ -63,12 +63,21 @@ private def showPng (png : String) : IO Unit := do
   if ← tryDisplay "viu" #[png] then return
   let _ ← tryDisplay "xdg-open" #[png]
 
--- | Read one key from /dev/tty
-private def readKey : IO Char := do
+-- | ANSI: clear screen and move cursor to top-left
+private def clearScreen : IO Unit := IO.print "\x1b[2J\x1b[H"
+
+-- | Set terminal to raw mode (single keypress without Enter)
+private def setRaw : IO Unit := do
   let _ ← Log.run "stty" "stty" #["-F", "/dev/tty", "raw", "-echo"]
+
+-- | Restore terminal to normal mode
+private def setSane : IO Unit := do
+  let _ ← Log.run "stty" "stty" #["-F", "/dev/tty", "sane"]
+
+-- | Read one byte from /dev/tty (caller must be in raw mode)
+private def readKeyRaw : IO Char := do
   let tty ← IO.FS.Handle.mk "/dev/tty" .read
   let buf ← tty.read 1
-  let _ ← Log.run "stty" "stty" #["-F", "/dev/tty", "sane"]
   pure (if buf.size > 0 then Char.ofNat buf[0]!.toNat else 'q')
 
 private def err (s : ViewStack T) (msg : String) : IO (Option (ViewStack T)) := do
@@ -77,16 +86,27 @@ private def err (s : ViewStack T) (msg : String) : IO (Option (ViewStack T)) := 
 private def isNumericType (typ : String) : Bool :=
   typ == "int" || typ == "float" || typ == "decimal"
 
+-- | Plot types that share the same x/y/cat data (cycleable with h/l)
+private def cyclableKinds : Array PlotKind := #[.line, .scatter, .bar, .box]
+
+private def nextKind (k : PlotKind) : PlotKind :=
+  match cyclableKinds.idxOf? k with
+  | some i => cyclableKinds.getD ((i + 1) % cyclableKinds.size) .line
+  | none => .line
+
+private def prevKind (k : PlotKind) : PlotKind :=
+  match cyclableKinds.idxOf? k with
+  | some i => cyclableKinds.getD ((i + cyclableKinds.size - 1) % cyclableKinds.size) .line
+  | none => .line
+
 -- | Generate R script for ggplot2 rendering
 private def rScript (dataPath pngPath : String) (kind : PlotKind)
     (xName yName : String) (hasCat : Bool) (catName : String)
     (hasFacet : Bool) (facetName : String) (xIsTime : Bool) : String :=
-  -- R backtick-quote column names (handles spaces/special chars)
   let rq (s : String) := s!"`{s}`"
   let xR := rq xName; let yR := rq yName; let catR := rq catName; let facetR := rq facetName
   let readData := s!"d <- read.delim('{dataPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n"
   let convY := s!"d[['{yName}']] <- as.numeric(d[['{yName}']])\n"
-  -- try numeric conversion for x-axis; R's tryCatch avoids errors on non-numeric
   let convX := if xIsTime then s!"d[['{xName}']] <- as.POSIXct(d[['{xName}']])\n"
     else if kind != .hist then
       "tryCatch(d[['" ++ xName ++ "']] <- as.numeric(d[['" ++ xName ++ "']]), warning=function(w) NULL)\n"
@@ -104,11 +124,10 @@ private def rScript (dataPath pngPath : String) (kind : PlotKind)
     | .hist => "geom_histogram(fill = '#4682B4', color = 'white', bins = 30)"
     | .box => "geom_boxplot()"
   let facet := if hasFacet then s!" + facet_wrap(vars({facetR}), scales = 'free_y')" else ""
-  let script := "library(ggplot2)\n" ++ readData ++ convY ++ convX ++
+  "library(ggplot2)\n" ++ readData ++ convY ++ convX ++
     s!"p <- ggplot(d, {aes}{colorAes}{fillAes}) + {geom}{facet} + " ++
     s!"labs(x = '{xName}', y = '{yName}') + theme_minimal()\n" ++
     s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
-  script
 
 -- | Run Rscript to render plot
 private def renderR (script : String) : IO Bool := do
@@ -121,7 +140,6 @@ private def renderR (script : String) : IO Bool := do
   return true
 
 -- | Export plot data with headers for R (prepends column names to plotExport output)
--- When faceting, the 3rd group col is passed as catName to plotExport (reuses existing 3-col format)
 private def exportWithHeaders (t : T) (xName yName : String) (catName? : Option String)
     (xIsTime : Bool) (step truncLen : Nat) : IO (Option (Array String)) := do
   let cats ← TblOps.plotExport t xName yName catName? xIsTime step truncLen
@@ -134,7 +152,20 @@ private def exportWithHeaders (t : T) (xName yName : String) (catName? : Option 
   IO.FS.writeFile datPath (header ++ "\n" ++ content)
   return some cats
 
--- | Run plot with interactive interval control
+-- | Render plot image and status bar in-place (clear → image → status)
+private def renderFrame (pngPath : String) (kind : PlotKind)
+    (xName yName : String) (intervals : Array Interval) (idx : Nat)
+    (ok : Bool) : IO Unit := do
+  clearScreen
+  if ok then showPng pngPath
+  else IO.println s!"plot error (see {← Log.path})"
+  -- status bar
+  let ivBar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
+    if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
+  IO.println s!"\x1b[1m─── x={xName}  y={yName}  {kind} ───\x1b[0m"
+  IO.print s!"{ivBar}   +/-:interval  h/l:type  q:exit "
+
+-- | Run plot with interactive controls (in-place re-rendering)
 def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   Log.write "plot" s!"run entered, kind={repr kind}"
   let n := s.cur.nav
@@ -146,7 +177,6 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
     let yType := TblOps.colType n.tbl yIdx
     if !isNumericType yType then return ← err s "histogram needs a numeric column"
     Term.shutdown
-    -- export y values via getCols (no downsampling — ggplot2 bins it)
     let datPath ← Tc.tmpPath "plot.dat"
     let pngPath ← Tc.tmpPath "plot.png"
     let nr := min (TblOps.nRows n.tbl) maxPoints
@@ -155,23 +185,24 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
       | .strs vs => vs | .ints vs => vs.map toString | .floats vs => vs.map toString
     IO.FS.writeFile datPath (yName ++ "\n" ++ "\n".intercalate (vals.filter (!·.isEmpty)).toList ++ "\n")
     let script := rScript datPath pngPath kind "" yName false "" false "" false
-    if ← renderR script then showPng pngPath
+    let ok ← renderR script
+    clearScreen
+    if ok then showPng pngPath
     else IO.println s!"plot error (see {← Log.path})"
-    IO.println s!"─── histogram: {yName} ───"
-    IO.print "any key: exit "
-    let _ ← readKey
-    IO.println ""
+    IO.println s!"\x1b[1m─── histogram: {yName} ───\x1b[0m"
+    IO.print "q: exit "
+    setRaw
+    let _ ← readKeyRaw
+    setSane
     let _ ← Term.init
     return some s
   -- all other plots need at least 1 group column
   if n.grp.isEmpty then return ← err s "group a column first (!)"
   let xName := n.grp.getD 0 ""
   let some xIdx := names.idxOf? xName | return ← err s s!"x-axis column '{xName}' not found"
-  -- 2 groups: x + color(2nd).  3 groups: x + facet(2nd) + color(3rd).
   let hasFacet := n.grp.size > 2
   let facetName := if hasFacet then n.grp.getD 1 "" else ""
   let catName := if hasFacet then n.grp.getD 2 "" else n.grp.getD 1 ""
-  -- for plotExport: pass the grouping column (cat or facet) as the 3rd TSV column
   let exportCatName? := if n.grp.size > 2 then some facetName
     else if n.grp.size > 1 then some catName else none
   let yIdx := colIdxAt n.grp names n.col.cur.val
@@ -179,7 +210,6 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   if n.grp.contains yName then return ← err s "move cursor to a non-group column"
   let nr := TblOps.nRows n.tbl
   let xType0 := TblOps.colType n.tbl xIdx
-  -- infer date/time from string values
   let xType ← do
     if xType0 != "str" then pure xType0
     else
@@ -196,38 +226,35 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   Log.write "plot" s!"xType={xType} (raw={xType0}) xIdx={xIdx} xName={xName}"
   let xIsTime := isTimeType xType
   let baseStep := if nr > maxPoints then nr / maxPoints else 1
-  let hasCat := n.grp.size > 1 && !hasFacet  -- color only when no faceting
+  let hasCat := n.grp.size > 1 && !hasFacet
   let intervals := getIntervals xType baseStep
+  let maxIdx := intervals.size - 1
+  -- enter plot mode: shutdown TUI, set raw mode once
   Term.shutdown
+  setRaw
   let mut idx : Nat := 0
+  let mut curKind := kind
   let mut continue_ := true
   while continue_ do
     let iv := intervals.getD idx default
-    Log.write "plot" s!"interval={iv.label} truncLen={iv.truncLen} idx={idx}"
+    Log.write "plot" s!"kind={curKind} interval={iv.label} truncLen={iv.truncLen} idx={idx}"
     let ok ← do
       if let some _cats := ← exportWithHeaders n.tbl xName yName exportCatName? xIsTime baseStep iv.truncLen then
         let datPath ← Tc.tmpPath "plot.dat"
         let pngPath ← Tc.tmpPath "plot.png"
-        let script := rScript datPath pngPath kind xName yName hasCat catName hasFacet facetName xIsTime
-        if ← renderR script then showPng pngPath; pure true
-        else pure false
+        let script := rScript datPath pngPath curKind xName yName hasCat catName hasFacet facetName xIsTime
+        renderR script
       else pure false
-    if !ok then IO.println s!"plot error (see {← Log.path})"
-    let maxIdx := intervals.size - 1
-    let kindName := toString kind
-    let ivLabels := intervals.map (·.label)
-    let ivBar := String.intercalate " " (ivLabels.toList.mapIdx fun i l =>
-      if i == idx then s!"\x1b[1;7m {l} \x1b[0m" else s!" {l} ")
-    IO.println s!"─── x={xName}  y={yName}  {kindName} ───"
-    IO.print s!"{ivBar}  +\x2f-: interval  any key: exit "
-    let key ← readKey
-    IO.println ""
-    if key == '+' || key == '=' then
-      idx := min (idx + 1) maxIdx
-    else if key == '-' || key == '_' then
-      idx := if idx > 0 then idx - 1 else 0
-    else
-      continue_ := false
+    let pngPath ← Tc.tmpPath "plot.png"
+    renderFrame pngPath curKind xName yName intervals idx ok
+    let key ← readKeyRaw
+    if key == '+' || key == '=' then idx := min (idx + 1) maxIdx
+    else if key == '-' || key == '_' then idx := if idx > 0 then idx - 1 else 0
+    else if key == 'l' then curKind := nextKind curKind
+    else if key == 'h' then curKind := prevKind curKind
+    else continue_ := false
+  -- exit plot mode: restore terminal, re-init TUI
+  setSane
   let _ ← Term.init
   pure (some s)
 
