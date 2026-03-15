@@ -134,17 +134,59 @@ Exports to `~/tc_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows
 
 | Key | Action |
 |-----|--------|
-| `P.` | Line plot (y=cursor col, x=first group col) |
+| `P.` | Line plot |
 | `P,` | Bar plot |
-| `Ps` | Scatter plot (x=first group col, y=cursor col) |
-| `Ph` | Histogram (cursor col, no group needed) |
-| `Pb` | Boxplot (x=group col, y=cursor col) |
-| `+` | Coarser interval (1s→1m→1h→1d) |
-| `-` | Finer interval (1d→1h→1m→1s) |
+| `Ps` | Scatter plot |
+| `Ph` | Histogram |
+| `Pb` | Boxplot |
+| `+`/`-` | Change downsampling interval |
 
-Group columns control plot axes: 1st group = x-axis, 2nd group = color, 3rd group = facet (small multiples). After plotting, `+`/`-` cycle the downsampling interval and re-render in place. Any other key exits.
+#### How it works
 
-Display: kitty graphics protocol (kitty/WezTerm/ghostty) → viu → xdg-open.
+Plots use group columns (`!`) to define axes:
+
+| Groups set | X-axis | Color | Facet |
+|------------|--------|-------|-------|
+| 0 groups | — | — | — |
+| 1 group | 1st group col | — | — |
+| 2 groups | 1st group col | 2nd group col | — |
+| 3 groups | 1st group col | 3rd group col | 2nd group col |
+
+Y-axis is always the column under the cursor (must be numeric).
+
+**Histogram** (`Ph`) is special — it doesn't need any group columns. Just move the cursor to a numeric column and press `Ph`. R/ggplot2 auto-bins the values.
+
+**All other plot types** require at least 1 group column for the x-axis. Example workflow:
+
+1. Move to the column you want as x-axis, press `!` to group it
+2. Move cursor to the numeric column you want as y-axis
+3. Press `P.` for line, `P,` for bar, `Ps` for scatter, `Pb` for boxplot
+
+**Adding color**: group a second column with `!`. Each unique value in that column gets a different color.
+
+**Adding facets** (small multiples): group a third column. The plot splits into sub-charts, one per unique value of the 2nd group column. The 3rd group column becomes the color.
+
+#### Interactive controls
+
+After rendering, the plot enters an interactive mode:
+
+- `+`/`=` — coarser downsampling (fewer points, broader time buckets)
+- `-`/`_` — finer downsampling (more points, narrower time buckets)
+- Any other key — exit back to the table
+
+For time-series data, intervals cycle through `1s → 1m → 1h → 1d`. For non-time data, the step multiplier increases (`1x → 2x → 4x → 8x → 16x`).
+
+#### Display
+
+Plot images are displayed using the best available method:
+
+1. **Kitty graphics** (`kitten icat`) — pixel-perfect, works in kitty/WezTerm/ghostty
+2. **viu** — half-block ANSI rendering, works in most terminals
+3. **xdg-open** — opens in system image viewer
+
+#### Requirements
+
+Install R with ggplot2: `Rscript -e 'install.packages("ggplot2")'`
 
 ## Dependencies
 
