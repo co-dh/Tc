@@ -20,6 +20,7 @@ import Tc.Data.Text
 import Tc.View
 import Tc.Sparkline
 import Tc.Session
+import Tc.Diff
 import Tc.StatusAgg
 
 open Tc
@@ -157,6 +158,16 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
     match ← Join.run a.stk with
     | some s' => mainLoop { a with stk := s', vs := .default, sparklines := #[] } test ks'
     | none => mainLoop a test ks'
+  else if isKey ev 'V' then do
+    if a.stk.cur.sameHide.isEmpty then
+      -- No sameHide → run diff on top 2 views
+      match ← Diff.run a.stk with
+      | some s' => mainLoop { a with stk := s', vs := .default, sparklines := #[] } test ks'
+      | none => mainLoop a test ks'
+    else
+      -- Has sameHide → toggle: reveal same columns
+      let v' := Diff.showSame a.stk.cur
+      mainLoop { a with stk := a.stk.setCur v', vs := .default } test ks'
   else if isKey ev 'm' then mainLoop { a with heatOn := !a.heatOn } test ks'
   else if isKey ev 'Z' then do
     -- Toggle sparklines: compute on first enable, clear on disable
