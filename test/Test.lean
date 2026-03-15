@@ -615,19 +615,13 @@ def test_join_union : IO Unit := do
 
 -- === Sparkline tests ===
 
--- | Sparkline: Z toggles sparkline row with Unicode block chars for numeric columns
-def test_sparkline_toggle : IO Unit := do
-  log "sparkline_toggle"
-  let output ← run "Z" "data/basic.csv"
-  let (_, status) := footer output
-  assert (contains status "[spark]") "Z shows [spark] indicator in status"
-
--- | Sparkline: ZZ toggles sparklines off (second Z clears them)
-def test_sparkline_off : IO Unit := do
-  log "sparkline_off"
-  let output ← run "ZZ" "data/basic.csv"
-  let (_, status) := footer output
-  assert (!contains status "[spark]") "ZZ turns off sparklines"
+-- | Sparkline: distribution row appears automatically for numeric columns
+def test_sparkline_auto : IO Unit := do
+  log "sparkline_auto"
+  let output ← run "" "data/basic.csv"
+  -- Sparkline row uses Unicode block chars (▁▂▃▄▅▆▇█); check for any
+  let hasBlock := output.any fun c => c.toNat >= 0x2581 && c.toNat <= 0x2588
+  assert hasBlock "sparkline row shows block chars for numeric column"
 
 -- === Key column reorder tests ===
 
@@ -710,8 +704,7 @@ def tests : Array (String × IO Unit) := #[
   ("join_inner", test_join_inner),
   ("join_union", test_join_union),
   -- Sparkline tests
-  ("sparkline_toggle", test_sparkline_toggle),
-  ("sparkline_off", test_sparkline_off),
+  ("sparkline_auto", test_sparkline_auto),
   -- Key column reorder tests
   ("key_shift", test_key_shift)
 ]

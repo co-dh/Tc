@@ -72,7 +72,7 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
     | .freqV _ t => t
     | _ => TblOps.totalRows nav.tbl
   let colName := nav.colNames.getD nav.curColIdx ""
-  let adj := (if heatOn then " [heat]" else "") ++ (if sparkOn then " [spark]" else "") ++ (if precAdj != 0 then s!" p{precAdj}" else "") ++ (if widthAdj != 0 then s!" w{widthAdj}" else "")
+  let adj := (if precAdj != 0 then s!" p{precAdj}" else "") ++ (if widthAdj != 0 then s!" w{widthAdj}" else "")
   let right := s!"c{nav.curColIdx}/{nCols} grp={nav.grp.size} sel={nav.row.sels.size}{adj} r{nav.row.cur.val}/{total}"
   let pad := w.toNat - colName.length - right.length
   Term.print 0 (h - 1) Term.cyan Term.default (colName ++ "".pushn ' ' (max 1 pad) ++ right)
