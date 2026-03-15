@@ -12,8 +12,8 @@ namespace Tc.Diff
 private def isNumeric (typ : String) : Bool :=
   typ == "int" || typ == "float" || typ == "decimal"
 
--- | DuckDB double-quoted identifier (for raw SQL, not PRQL)
-private def dq (s : String) : String := s!"\"{escSql s}\""
+-- | DuckDB double-quoted identifier (escapes " → "" for identifiers)
+private def dq (s : String) : String := "\"" ++ s.replace "\"" "\"\"" ++ "\""
 
 -- | Find columns present in both tables with same name and type
 private def commonCols (left right : AdbcTable) : Array (String × String) :=
@@ -66,7 +66,7 @@ def run (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let leftOnlySel := leftOnly.map fun n => s!"L.{dq n} AS {dq (n ++ "_left")}"
   let rightOnlySel := rightOnly.map fun n => s!"R.{dq n} AS {dq (n ++ "_right")}"
   let allSel := keySel ++ valSel ++ leftOnlySel ++ rightOnlySel
-  let joinCond := allKeys.map fun k => s!"L.{dq k} = R.{dq k}"
+  let joinCond := allKeys.map fun k => s!"L.{dq k} IS NOT DISTINCT FROM R.{dq k}"
   let joinCondStr := " AND ".intercalate joinCond.toList
   let tblName := s!"tc_diff_{n}"
   let sql := s!"CREATE OR REPLACE TEMP TABLE {tblName} AS SELECT {", ".intercalate allSel.toList} FROM {lName} L FULL OUTER JOIN {rName} R ON {joinCondStr}"
@@ -74,7 +74,6 @@ def run (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let _ ← Adbc.query sql
   let q : Prql.Query := { base := s!"from {tblName}" }
   let total ← AdbcTable.queryCount q
-  let some _ ← AdbcTable.requery q total | return none
   -- Detect same-value columns: for each value col pair, check if all values match
   let mut sameHide : Array String := #[]
   for v in valCols do
@@ -96,8 +95,7 @@ def run (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
     renameExprs := renameExprs.push s!"ALTER TABLE {tblName} RENAME COLUMN {dq (v ++ "_right")} TO {dq ("Δ" ++ v ++ "_R")}"
   for expr in renameExprs do
     let _ ← Adbc.query expr
-  -- Update sameHide to match (non-renamed columns keep original names)
-  -- Re-read the table after renames
+  -- Re-read table after column renames
   let some adbc ← AdbcTable.requery q total | return none
   -- Pop current view, replace parent with diff result
   let some s' := s.pop | return none
