@@ -168,10 +168,12 @@ def test_folder_tab : IO Unit := do
   let dirName := cwd.toString.splitOn "/" |>.getLast?.getD ""
   assert (contains tab s!"/{dirName}]") s!"Folder tab ends with /{dirName}]"
 
+-- enter subdir from data/test_folder → pushes new folder view with alphanumeric tab
 def test_folder_enter : IO Unit := do
   log "folder_enter_dir"
-  let (tab, status) := footer (← run "<ret>")
-  assert (contains tab "[/") "Enter on dir pushes new folder view"
+  -- row0=.., row1=file1.txt, row2=subdir; jj → subdir
+  let (tab, status) := footer (← run "jj<ret>" "data/test_folder")
+  assert (contains tab "subdir") "Enter on dir pushes new folder view"
   assert (contains status "r0/") "Entered directory has rows"
 
 def test_folder_relative : IO Unit := do
@@ -604,10 +606,11 @@ def test_join_inner : IO Unit := do
   let (_, status) := footer output
   assert (contains status "r0/2") "Inner join has 2 rows (id=1,3)"
 
--- test_join_union: open folder, enter left, swap, enter left again (same file), swap+pop, J → union
+-- test_join_union: open folder, enter left.csv, swap, enter left.csv again, swap+pop, J → union
 def test_join_union : IO Unit := do
   log "join_union"
-  -- No keys set → only union/diff offered; fzf auto-selects first = union
+  -- row0=.., row1=left.csv. j→left, <ret>→open, S→swap back to folder (cursor stays at row1),
+  -- <ret>→open left again, S→swap, q→pop folder, J→union left∪left
   let output ← run "j<ret>S<ret>SqJ" "data/join_test"
   assert (contains output "name") "Union shows name column"
   let (_, status) := footer output
