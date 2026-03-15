@@ -138,6 +138,7 @@ structure RenderCtx where
   precAdj    : Int
   widthAdj   : Int
   heatOn     : Bool := false
+  sparklines : Array String := #[]
 
 -- | Build PRQL filter expression from fzf result (default for TblOps.buildFilter)
 -- With --print-query: line 0 = query, lines 1+ = selections

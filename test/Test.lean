@@ -613,6 +613,22 @@ def test_join_union : IO Unit := do
   let (_, status) := footer output
   assert (contains status "r0/6") "Union of same 3-row table = 6 rows"
 
+-- === Sparkline tests ===
+
+-- | Sparkline: Z toggles sparkline row with Unicode block chars for numeric columns
+def test_sparkline_toggle : IO Unit := do
+  log "sparkline_toggle"
+  let output ← run "Z" "data/basic.csv"
+  let (_, status) := footer output
+  assert (contains status "[spark]") "Z shows [spark] indicator in status"
+
+-- | Sparkline: ZZ toggles sparklines off (second Z clears them)
+def test_sparkline_off : IO Unit := do
+  log "sparkline_off"
+  let output ← run "ZZ" "data/basic.csv"
+  let (_, status) := footer output
+  assert (!contains status "[spark]") "ZZ turns off sparklines"
+
 -- === Key column reorder tests ===
 
 -- | Shift+Arrow reorders key columns: !l! groups a,b; <S-left> swaps b before a
@@ -693,6 +709,9 @@ def tests : Array (String × IO Unit) := #[
   -- Join tests
   ("join_inner", test_join_inner),
   ("join_union", test_join_union),
+  -- Sparkline tests
+  ("sparkline_toggle", test_sparkline_toggle),
+  ("sparkline_off", test_sparkline_off),
   -- Key column reorder tests
   ("key_shift", test_key_shift)
 ]

@@ -19,7 +19,7 @@ lean_lib Tc where
   roots := #[`Tc.Cmd, `Tc.Nav, `Tc.Render, `Tc.Key, `Tc.App.Common,
              `Tc.Term, `Tc.Types, `Tc.Error, `Tc.TmpDir, `Tc.View,
              `Tc.Meta, `Tc.Fzf, `Tc.Filter, `Tc.Folder,
-             `Tc.Theme, `Tc.Plot, `Tc.Export, `Tc.Transpose, `Tc.Join, `Tc.Derive, `Tc.UI.Info, `Tc.UI.Preview, `Tc.Runner, `Tc.Remote, `Tc.SourceConfig,
+             `Tc.Theme, `Tc.Plot, `Tc.Export, `Tc.Transpose, `Tc.Join, `Tc.Derive, `Tc.Sparkline, `Tc.UI.Info, `Tc.UI.Preview, `Tc.Runner, `Tc.Remote, `Tc.SourceConfig,
              `Tc.Data.Text, `Tc.Data.ADBC.Prql,
              `Tc.Data.ADBC.Table, `Tc.Data.ADBC.Ops]
 
