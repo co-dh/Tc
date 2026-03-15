@@ -16,16 +16,23 @@ private def sessDir : IO String := do
   let _ ← IO.Process.output { cmd := "mkdir", args := #["-p", dir] }
   pure dir
 
--- | Session file path
+-- | Sanitize session name: keep only alphanumeric, dash, underscore, dot
+private def sanitize (name : String) : String :=
+  String.ofList (name.toList.filter fun c => c.isAlphanum || c == '-' || c == '_' || c == '.')
+
+-- | Session file path (name is sanitized to prevent path traversal)
 private def sessPath (name : String) : IO String := do
-  pure s!"{← sessDir}/{name}.json"
+  let safe := sanitize name
+  if safe.isEmpty then throw (.userError "invalid session name")
+  pure s!"{← sessDir}/{safe}.json"
 
 /-! ## Serialization: View → JSON lines -/
 
--- | Escape string for JSON (quotes and backslashes)
+-- | Escape string for JSON (quotes, backslashes, control chars)
 private def jsonStr (s : String) : String :=
   let s := (s.replace "\\" "\\\\").replace "\"" "\\\""
-  let s := s.replace "\n" "\\n"
+  let s := (s.replace "\n" "\\n").replace "\r" "\\r"
+  let s := s.replace "\t" "\\t"
   "\"" ++ s ++ "\""
 
 -- | Serialize Op to JSON object string
@@ -84,23 +91,26 @@ private inductive JVal where
   | obj (kvs : Array (String × JVal))
   deriving Inhabited
 
+-- | Get char at byte position
+private def charAt (s : String) (i : Nat) : Char :=
+  if i < s.length then String.Pos.Raw.get s ⟨i⟩ else '\x00'
+
 private partial def skipWS (s : String) (i : Nat) : Nat :=
-  if h : i < s.length then
-    let c := s.toList[i]
+  if i < s.length then
+    let c := charAt s i
     if c == ' ' || c == '\n' || c == '\r' || c == '\t' then skipWS s (i + 1) else i
   else i
 
 -- | Parse a JSON string literal starting at position i (after opening quote)
 private partial def parseStr (s : String) (i : Nat) : String × Nat := Id.run do
-  let chars := s.toList
   let mut result : List Char := []
   let mut j := i
-  while h : j < chars.length do
-    let c := chars[j]
+  while j < s.length do
+    let c := charAt s j
     if c == '"' then return (String.ofList result.reverse, j + 1)
-    else if c == '\\' && j + 1 < chars.length then
-      let nc := chars[j + 1]!
-      let escaped := if nc == 'n' then '\n' else if nc == 't' then '\t' else nc
+    else if c == '\\' && j + 1 < s.length then
+      let nc := charAt s (j + 1)
+      let escaped := if nc == 'n' then '\n' else if nc == 't' then '\t' else if nc == 'r' then '\r' else nc
       result := escaped :: result
       j := j + 2
     else
@@ -110,12 +120,11 @@ private partial def parseStr (s : String) (i : Nat) : String × Nat := Id.run do
 
 -- | Parse a JSON number starting at position i
 private def parseNum (s : String) (i : Nat) : Int × Nat := Id.run do
-  let chars := s.toList
-  let neg := i < chars.length && chars[i]! == '-'
+  let neg := i < s.length && charAt s i == '-'
   let mut j := if neg then i + 1 else i
   let mut n : Nat := 0
-  while h : j < chars.length do
-    let c := chars[j]
+  while j < s.length do
+    let c := charAt s j
     if c.isDigit then n := n * 10 + (c.toNat - '0'.toNat); j := j + 1
     else break
   let v : Int := if neg then -n else n
@@ -124,9 +133,8 @@ private def parseNum (s : String) (i : Nat) : Int × Nat := Id.run do
 -- | Parse a JSON value
 private partial def parseVal (s : String) (i : Nat) : JVal × Nat :=
   let i := skipWS s i
-  let chars := s.toList
-  if i >= chars.length then (.null, i)
-  else match chars[i]! with
+  if i >= s.length then (.null, i)
+  else match charAt s i with
   | '"' => let (str, j) := parseStr s (i + 1); (.str str, j)
   | 't' => (.bool true, i + 4)
   | 'f' => (.bool false, i + 5)
@@ -137,25 +145,25 @@ private partial def parseVal (s : String) (i : Nat) : JVal × Nat :=
 where
   parseArr (s : String) (j : Nat) (vs : Array JVal) : JVal × Nat :=
     if j >= s.length then (.arr vs, j)
-    else if s.toList.getD j ' ' == ']' then (.arr vs, j + 1)
+    else if charAt s j == ']' then (.arr vs, j + 1)
     else
       let (v, j') := parseVal s j
       let j'' := skipWS s j'
-      let j''' := if s.toList.getD j'' ' ' == ',' then skipWS s (j'' + 1) else j''
+      let j''' := if charAt s j'' == ',' then skipWS s (j'' + 1) else j''
       parseArr s j''' (vs.push v)
   parseObj (s : String) (j : Nat) (kvs : Array (String × JVal)) : JVal × Nat :=
     if j >= s.length then (.obj kvs, j)
-    else if s.toList.getD j ' ' == '}' then (.obj kvs, j + 1)
+    else if charAt s j == '}' then (.obj kvs, j + 1)
     else
       let j' := skipWS s j
-      if s.toList.getD j' ' ' != '"' then (.obj kvs, j')
+      if charAt s j' != '"' then (.obj kvs, j')
       else
         let (key, j'') := parseStr s (j' + 1)
         let j''' := skipWS s j''
-        let j'''' := if s.toList.getD j''' ' ' == ':' then j''' + 1 else j'''
+        let j'''' := if charAt s j''' == ':' then j''' + 1 else j'''
         let (val, j5) := parseVal s j''''
         let j6 := skipWS s j5
-        let j7 := if s.toList.getD j6 ' ' == ',' then skipWS s (j6 + 1) else j6
+        let j7 := if charAt s j6 == ',' then skipWS s (j6 + 1) else j6
         parseObj s j7 (kvs.push (key, val))
 
 -- | Lookup key in JSON object
@@ -218,7 +226,8 @@ private def parseVkind (v : JVal) : ViewKind :=
     .fld path depth
   | _ => .tbl
 
--- | Restore a single view from JSON, re-executing the query pipeline
+-- | Restore a single view from JSON, re-executing the query pipeline.
+--   Errors are caught per-view so partial restoration works.
 private def restoreView (v : JVal) : IO (Option (View AdbcTable)) := do
   let path := (v.get? "path" |>.map JVal.asStr |>.getD "")
   if path.isEmpty then return none
@@ -230,6 +239,7 @@ private def restoreView (v : JVal) : IO (Option (View AdbcTable)) := do
   let col := (v.get? "col" |>.map JVal.asInt |>.getD 0).toNat
   let grp := (v.get? "grp" |>.map JVal.asArr |>.getD #[]).map JVal.asStr
   let hidden := (v.get? "hidden" |>.map JVal.asArr |>.getD #[]).map JVal.asStr
+  let colSels := (v.get? "colSels" |>.map JVal.asArr |>.getD #[]).map JVal.asStr
   let search := do
     let s ← v.get? "search"
     match s with
@@ -241,7 +251,8 @@ private def restoreView (v : JVal) : IO (Option (View AdbcTable)) := do
   let ops := (qObj.get? "ops" |>.map JVal.asArr |>.getD #[]).filterMap parseOp
   let query : Prql.Query := { base, ops }
   -- Re-execute: folder views use Folder.mkView, table views replay query
-  let tbl? ← match vkind with
+  let tbl? ← try
+    match vkind with
     | .fld p depth => do
       match ← Folder.mkView p depth with
       | some fv => pure (some fv.nav.tbl)
@@ -249,20 +260,23 @@ private def restoreView (v : JVal) : IO (Option (View AdbcTable)) := do
     | _ => do
       let total ← AdbcTable.queryCount query
       AdbcTable.requery query total
+  catch e =>
+    Log.write "session" s!"skip view: {path} ({e})"
+    pure none
   match tbl? with
   | none =>
     Log.write "session" s!"skip view: {path} (query failed)"
     pure none
   | some tbl =>
-    -- Clamp cursor to table bounds
     let nRows := TblOps.nRows tbl
     let nCols := (TblOps.colNames tbl).size
+    if nRows == 0 || nCols == 0 then return none
     let row' := min row (nRows - 1)
     let col' := min col (nCols - 1)
     match View.fromTbl tbl path col' grp row' with
     | some view => pure (some { view with
         vkind, disp, precAdj, widthAdj, search
-        nav := { view.nav with hidden } })
+        nav := { view.nav with hidden, col := { view.nav.col with sels := colSels } } })
     | none => pure none
 
 /-! ## Public API -/
@@ -308,7 +322,6 @@ def pickSaveName : IO (Option String) := do
   -- --print-query lets user type a new name or select existing
   Fzf.fzf #["--prompt=session name: ", "--print-query"] input |>.map (·.map fun s =>
     let lines := s.splitOn "\n" |>.filter (!·.isEmpty)
-    -- If user selected an existing name, use it; otherwise use typed query
     lines.getLast?.getD (lines.headD ""))
 
 -- | Prompt user to pick a session to load
