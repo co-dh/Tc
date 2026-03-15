@@ -16,7 +16,7 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 - Multi-column sorting (asc/desc)
 - Column grouping (key columns pinned left)
 - Row/column selection, hidden columns
-- Line/bar plot export with downsampling (via gnuplot)
+- Plotting via ggplot2: line, bar, scatter, histogram, boxplot — with faceting
 - Heatmap coloring for numeric columns (`m` key)
 - Theme support
 - Stdin pipe mode (`cat data.csv | tc`)
@@ -135,11 +135,16 @@ Exports to `~/tc_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows
 | Key | Action |
 |-----|--------|
 | `.` | Line plot (y=cursor col, x=first group col) |
-| `,` | Bar plot |
+| `P,` | Bar plot |
+| `Ps` | Scatter plot (x=first group col, y=cursor col) |
+| `Ph` | Histogram (cursor col, no group needed) |
+| `Pb` | Boxplot (x=group col, y=cursor col) |
 | `+` | Coarser interval (1s→1m→1h→1d) |
 | `-` | Finer interval (1d→1h→1m→1s) |
 
-After plotting, `+`/`-` cycle the downsampling interval and re-render in place. Any other key exits back to the table.
+Group columns control plot axes: 1st group = x-axis, 2nd group = color, 3rd group = facet (small multiples). After plotting, `+`/`-` cycle the downsampling interval and re-render in place. Any other key exits.
+
+Display: kitty graphics protocol (kitty/WezTerm/ghostty) → viu → xdg-open.
 
 ## Dependencies
 
@@ -155,7 +160,8 @@ Optional (feature-specific):
 
 | Tool        | Feature                                | Fallback         |
 |------       |---------                               |----------        |
-| `gnuplot`   | Line/bar plot generation               | plot disabled    |
+| `Rscript`   | ggplot2 plot rendering                 | plot disabled    |
+| `kitten`    | Kitty graphics protocol display        | `viu`            |
 | `viu`       | Display plot PNG in terminal           | `xdg-open`       |
 | `xdg-open`  | Open plot PNG in GUI viewer            | none             |
 | `aws`       | S3 bucket browsing & download          | S3 disabled      |

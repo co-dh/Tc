@@ -92,7 +92,7 @@ def objMenu : Array (Char × String × (Verb → Cmd)) := #[
   ('M', "metaV  : meta view",            .metaV),
   ('F', "freq   : frequency view",       .freq),
   ('D', "fld    : folder view",          .fld),
-  ('P', "plot   : gnuplot chart",       .plot),
+  ('P', "plot   : ggplot2 chart",       .plot),
   ('K', "colShift : reorder key cols", .colShift)
 ]
 
@@ -122,7 +122,7 @@ def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
     | .freqV _ _ => #[('~', "filter by row", .ent), ('c', "push freq", .dup)]
     | _ => #[('c', "push freq", .dup)]
   | 'D' => #[(',', "depth--", .dec), ('.', "depth++", .inc), ('~', "enter", .ent), ('d', "trash", .del), ('c', "push folder", .dup)]
-  | 'P' => #[('.', "line chart", .inc), (',', "bar chart", .dec)]
+  | 'P' => #[('.', "line chart", .inc), (',', "bar chart", .dec), ('s', "scatter", .ent), ('h', "histogram", .del), ('b', "boxplot", .dup)]
   | 'K' => #[(',', "shift left", .dec), ('.', "shift right", .inc)]
   | _   => #[]
 
