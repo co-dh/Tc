@@ -123,6 +123,8 @@ inductive Effect where
   | themeLoad (delta : Int)
   | fetchMore
   | export : ExportFmt → Effect
+  | sessionSave
+  | sessionLoad
   | join
   deriving Repr, BEq
 

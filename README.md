@@ -21,6 +21,7 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 - Sparkline distribution row for numeric columns (`Z` key)
 - Theme support
 - Stdin pipe mode (`cat data.csv | tc`)
+- Session save/load (persist filters, sorts, derives across sessions)
 - Zero-copy rendering via C FFI (termbox2)
 
 ## Build
@@ -43,6 +44,7 @@ tc hf://datasets/user/dataset      # HuggingFace Hub dataset
 tc osquery://                      # Browse osquery tables
 tc osquery://processes             # Query osquery table directly
 cat data.csv | tc                  # Pipe mode (stdin)
+tc -s mysession                    # Restore saved session
 ```
 
 ## Keybindings
@@ -75,6 +77,8 @@ cat data.csv | tc                  # Pipe mode (stdin)
 | `X`         | Transpose (swap rows and columns)                                |
 | `J`         | Join top 2 views (inner/left/right join, union, set diff)        |
 | `S`         | Swap top two views                                               |
+| `W`         | Save session (view stack to `~/.cache/tc/sessions/`)             |
+| `L`         | Load session (restore saved view stack)                          |
 | `Q`         | Quit                                                             |
 
 ### Export

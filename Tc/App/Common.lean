@@ -19,6 +19,7 @@ import Tc.UI.Preview
 import Tc.Data.Text
 import Tc.View
 import Tc.Sparkline
+import Tc.Session
 
 open Tc
 
@@ -138,6 +139,17 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
     match ← Transpose.push a.stk with
     | some s' => mainLoop { a with stk := s', vs := .default, sparklines := #[] } test ks'
     | none => mainLoop a test ks'
+  else if isKey ev 'W' then do
+    match ← Session.pickSaveName with
+    | some name => if !name.isEmpty then Session.save a.stk name
+    | none => pure ()
+    mainLoop a test ks'
+  else if isKey ev 'L' then do
+    match ← Session.pickLoadName with
+    | some name => match ← Session.load name with
+      | some stk' => mainLoop { a with stk := stk', vs := .default, sparklines := #[] } test ks'
+      | none => statusMsg s!"session load failed: {name}"; mainLoop a test ks'
+    | none => mainLoop a test ks'
   else if isKey ev 'J' then do
     match ← Join.run a.stk with
     | some s' => mainLoop { a with stk := s', vs := .default, sparklines := #[] } test ks'
@@ -163,29 +175,31 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
 
 -- parsed CLI arguments
 structure CliArgs where
-  path   : Option String := none
-  keys   : Array Char := #[]
-  test   : Bool := false
-  noSign : Bool := false
-  prql   : Option String := none   -- -p "prql" script mode
+  path    : Option String := none
+  keys    : Array Char := #[]
+  test    : Bool := false
+  noSign  : Bool := false
+  prql    : Option String := none   -- -p "prql" script mode
+  session : Option String := none   -- -s "name" session restore
 
--- extract -p flag and its argument, return (prql?, remaining args)
-private def extractPrql : List String → Option String × List String
-  | "-p" :: v :: rest => (some v, rest)
-  | x :: rest => let (p, r) := extractPrql rest; (p, x :: r)
-  | [] => (none, [])
+-- extract flag with value, return (value?, remaining args)
+private def extractFlag (flag : String) : List String → Option String × List String
+  | f :: v :: rest => if f == flag then (some v, rest)
+    else let (r, rest') := extractFlag flag (v :: rest); (r, f :: rest')
+  | other => (none, other)
 
--- parse args: path?, -c keys?, test mode, +n, -p prql
+-- parse args: path?, -c keys?, test mode, +n, -p prql, -s session
 def parseArgs (args : List String) : CliArgs :=
   let noSign := args.any (· == "+n")
   let args := args.filter (· != "+n")
-  let (prql, args) := extractPrql args
+  let (prql, args) := extractFlag "-p" args
+  let (session, args) := extractFlag "-s" args
   let toK s := (parseKeys s).toList.toArray
   match args with
-  | "-c" :: k :: _ => { path := none, keys := toK k, test := true, noSign, prql }
-  | p :: "-c" :: k :: _ => { path := some p, keys := toK k, test := true, noSign, prql }
-  | p :: _ => { path := some p, noSign, prql }
-  | [] => { noSign, prql }
+  | "-c" :: k :: _ => { path := none, keys := toK k, test := true, noSign, prql, session }
+  | p :: "-c" :: k :: _ => { path := some p, keys := toK k, test := true, noSign, prql, session }
+  | p :: _ => { path := some p, noSign, prql, session }
+  | [] => { noSign, prql, session }
 
 -- run app with view
 def runApp (v : View AdbcTable) (pipe test : Bool) (th : Theme.State) (ks : Array Char) : IO AppState := do
@@ -269,6 +283,15 @@ def appMain (args : List String) : IO Unit := do
     try runScript path prqlOps
     finally AdbcTable.shutdown; Tc.cleanupTmp
     return
+  -- session restore: -s name
+  if let some sessName := cli.session then
+    match ← Session.load sessName with
+    | some stk =>
+      let _ ← Term.init
+      let _ ← mainLoop { stk, vs := .default, theme, info := {} } testMode keys
+      if !testMode then Term.shutdown
+      return
+    | none => IO.eprintln s!"Session not found: {sessName}"; return
   if pipeMode && path?.isNone then
     if let some a ← runTsv (← Tc.TextParse.fromStdin) "stdin" true testMode theme keys then
       outputTable a
