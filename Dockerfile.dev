@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/root/.elan/bin:${PATH}"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates git gcc make unzip \
+    curl ca-certificates git gcc libc6-dev make unzip \
     && rm -rf /var/lib/apt/lists/*
 
 COPY Makefile /tmp/Makefile
