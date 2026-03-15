@@ -735,6 +735,33 @@ def test_session_missing : IO Unit := do
   assert (out.exitCode == 0 || contains out.stderr "not found" || contains out.stderr "Session")
     "missing session should report error"
 
+-- === Diff tests ===
+
+-- | Diff: open before.csv and after.csv, press V to diff.
+--   cost column is same across all rows → hidden (sameHide).
+--   sales column differs → visible with Δ prefix.
+def test_diff : IO Unit := do
+  log "diff"
+  -- [ sorts asc → row0=.., row1=after.csv, row2=before.csv
+  -- j<ret> enter after, S swap, jj<ret> enter before, S swap, q pop folder, V diff
+  let output ← run "[j<ret>Sjj<ret>SqV" "data/diff_test"
+  let (tab, status) := footer output
+  assert (contains tab "diff") "V shows diff in tab"
+  assert (contains status "r0/3") "diff has 3 rows"
+  -- Δ prefix marks changed columns
+  assert (contains output "Δ") "diff columns have Δ prefix"
+  -- Key columns (name, region) should be visible; region may be truncated
+  assert (contains output "name") "diff shows key column name"
+  assert (contains output "regi") "diff shows key column region (truncated)"
+
+-- | Diff show same: V on diff view reveals hidden same-value columns
+def test_diff_show_same : IO Unit := do
+  log "diff_show_same"
+  -- Same as above but press V again to reveal sameHide columns
+  let output ← run "[j<ret>Sjj<ret>SqVV" "data/diff_test"
+  -- After second V, cost columns should expand (no longer hidden width=1)
+  assert (contains output "cos") "VV reveals same-value cost columns"
+
 -- === Replay ops tests ===
 
 -- | Replay: sort adds "sort" to tab line (PRQL ops shown right-aligned)
@@ -835,6 +862,9 @@ def tests : Array (String × IO Unit) := #[
   ("session_load", test_session_load),
   ("session_save_load", test_session_save_load),
   ("session_missing", test_session_missing),
+  -- Diff tests
+  ("diff", test_diff),
+  ("diff_show_same", test_diff_show_same),
   -- Replay ops tests
   ("replay_sort", test_replay_sort),
   ("replay_empty", test_replay_empty)

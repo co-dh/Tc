@@ -23,6 +23,7 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 - Regex column split (`:` key — split column by delimiter/regex into new columns)
 - Theme support
 - Stdin pipe mode (`cat data.csv | tc`)
+- Table diff (compare top 2 views, auto-key categorical columns, hide same-value columns)
 - Session save/load (persist filters, sorts, derives across sessions)
 - Replay ops on tab line (shows PRQL pipeline; replay with `tc file -p "ops"`)
 - Zero-copy rendering via C FFI (termbox2)
@@ -79,6 +80,7 @@ tc -s mysession                    # Restore saved session
 | `q` / `Esc` | Pop view (quit if last)                                          |
 | `X`         | Transpose (swap rows and columns)                                |
 | `J`         | Join top 2 views (inner/left/right join, union, set diff)        |
+| `V`         | Diff top 2 views (auto-key, hide same columns, Δ prefix diffs)  |
 | `S`         | Swap top two views                                               |
 | `W`         | Save session (view stack to `~/.cache/tc/sessions/`)             |
 | `L`         | Load session (restore saved view stack)                          |

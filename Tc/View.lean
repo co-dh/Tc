@@ -19,6 +19,7 @@ structure View (T : Type) [TblOps T] where
   widthAdj : Int := 0        -- width adjustment offset (-=narrower, +=wider)
   widths : Array Nat := #[]  -- cached column widths (per-view for type safety)
   search : Option (Nat × String) := none  -- last search: (colIdx, value)
+  sameHide : Array String := #[]  -- diff: columns with identical values (hidden separately from user hide)
 
 namespace View
 
@@ -26,7 +27,7 @@ variable {T : Type} [TblOps T]
 
 -- | Create from NavState + path
 def new {nr nc : Nat} (nav : NavState nr nc T) (path : String) : View T :=
-  ⟨nr, nc, nav, path, .tbl, "", 0, 0, #[], none⟩
+  ⟨nr, nc, nav, path, .tbl, "", 0, 0, #[], none, #[]⟩
 
 -- | Tab display name: custom disp or filename from path
 @[inline] def tabName (v : View T) : String :=
@@ -37,7 +38,9 @@ def new {nr nc : Nat} (nav : NavState nr nc T) (path : String) : View T :=
 -- | Render the view, returns (ViewState, updated View with new widths)
 @[inline] def doRender (v : View T) (vs : ViewState) (styles : Array UInt32)
     (heatOn : Bool := false) (sparklines : Array String := #[]) : IO (ViewState × View T) := do
-  let (vs', widths) ← render v.nav vs v.widths styles v.precAdj v.widthAdj v.vkind heatOn sparklines
+  let names := TblOps.colNames v.nav.tbl
+  let extraHidden := v.sameHide.filterMap names.idxOf?
+  let (vs', widths) ← render v.nav vs v.widths styles v.precAdj v.widthAdj v.vkind heatOn sparklines extraHidden
   pure (vs', { v with widths })
 
 -- | Create View from table + path (returns none if empty)
