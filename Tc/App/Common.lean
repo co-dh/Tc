@@ -34,8 +34,7 @@ structure AppState where
   theme : Theme.State
   info  : UI.Info.State
   prevScroll : Nat := 0
-  heatOn : Bool := false
-  sparklines : Array String := #[]  -- per-column sparkline strings (empty = off)
+  sparklines : Array String := #[]  -- per-column sparkline cache (empty = recompute)
   statusCache : String × String × String := ("", "", "")  -- (path, col, desc) — avoids per-frame DB query
   aggCache : StatusAgg.Cache := StatusAgg.Cache.empty
 
@@ -99,7 +98,12 @@ where
 
 -- main loop: render → input → update → effect → loop
 partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppState := do
-  let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles a.heatOn a.sparklines
+  -- Lazy sparkline computation: recompute when enabled but cache is empty
+  -- Lazy sparkline computation: recompute when cache is empty
+  let a ← if a.sparklines.isEmpty then
+    pure { a with sparklines := ← Sparkline.compute a.stk.tbl }
+  else pure a
+  let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles true a.sparklines
   let a := { a with stk := a.stk.setCur v', vs := vs' }
   renderTabLine a.stk.tabNames 0 (Replay.opsStr a.stk.cur)
   -- Show column description on status line from DuckDB column comments (cached)
@@ -174,12 +178,6 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
       -- Has sameHide → toggle: reveal same columns
       let v' := Diff.showSame a.stk.cur
       mainLoop { a with stk := a.stk.setCur v', vs := .default } test ks'
-  else if isKey ev 'm' then mainLoop { a with heatOn := !a.heatOn } test ks'
-  else if isKey ev 'Z' then do
-    -- Toggle sparklines: compute on first enable, clear on disable
-    let sparks ← if a.sparklines.any (!·.isEmpty) then pure #[]
-      else Sparkline.compute a.stk.tbl
-    mainLoop { a with sparklines := sparks } test ks'
   else if isKey ev '{' then mainLoop { a with prevScroll := a.prevScroll - min a.prevScroll 5 } test ks'
   else if isKey ev '}' then mainLoop { a with prevScroll := a.prevScroll + 5 } test ks'
   else match evToCmd ev a.stk.cur.vkind with
