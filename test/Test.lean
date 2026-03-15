@@ -676,6 +676,21 @@ def test_key_shift : IO Unit := do
   let aPos := hdr.splitOn "a" |>.head?.map (·.length) |>.getD 999
   assert (bPos < aPos) s!"shift-left: b ({bPos}) should appear before a ({aPos}) in header"
 
+-- | Arrow keys move cursor one step (not page). Verifies arrow→hjkl mapping.
+def test_arrow_nav : IO Unit := do
+  log "arrow_nav"
+  -- <down> should move cursor to r1 (same as j)
+  let s1 := (footer (← run "<down>" "data/basic.csv")).2
+  assert (contains s1 "r1/") "arrow down moves to r1"
+  -- j should also move to r1
+  let s2 := (footer (← run "j" "data/basic.csv")).2
+  assert (contains s2 "r1/") "j moves to r1"
+  -- <right> then check we moved (col index changes)
+  let h1 := header (← run "<right>" "data/basic.csv")
+  let h2 := header (← run "l" "data/basic.csv")
+  -- Both should produce same cursor position
+  assert (h1 == h2) s!"arrow right == l: '{h1}' vs '{h2}'"
+
 -- === Session tests ===
 
 -- | Session save/load: write a session file, load with -s, verify data is restored
@@ -846,7 +861,7 @@ def tests : Array (String × IO Unit) := #[
   -- Sparkline tests
   ("sparkline_on", test_sparkline_on),
   -- Key column reorder tests
-  ("key_shift", test_key_shift),
+  ("key_shift", test_key_shift), ("arrow_nav", test_arrow_nav),
   -- Status bar aggregation tests
   ("statusagg_numeric", test_statusagg_numeric),
   ("statusagg_string", test_statusagg_string),

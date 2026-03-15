@@ -1514,10 +1514,10 @@ static struct {
     {"\x1b[24$",     TB_KEY_F12,         TB_MOD_SHIFT                           },
 
     // linux console/putty arrows
-    {"\x1b[A",       TB_KEY_ARROW_UP,    TB_MOD_SHIFT                           },
-    {"\x1b[B",       TB_KEY_ARROW_DOWN,  TB_MOD_SHIFT                           },
-    {"\x1b[C",       TB_KEY_ARROW_RIGHT, TB_MOD_SHIFT                           },
-    {"\x1b[D",       TB_KEY_ARROW_LEFT,  TB_MOD_SHIFT                           },
+    {"\x1b[A",       TB_KEY_ARROW_UP,    0                                      },
+    {"\x1b[B",       TB_KEY_ARROW_DOWN,  0                                      },
+    {"\x1b[C",       TB_KEY_ARROW_RIGHT, 0                                      },
+    {"\x1b[D",       TB_KEY_ARROW_LEFT,  0                                      },
 
     // more putty arrows
     {"\x1bOA",       TB_KEY_ARROW_UP,    TB_MOD_CTRL                            },
@@ -3562,10 +3562,56 @@ static int extract_event(struct tb_event *event) {
     return TB_ERR;
 }
 
+// Parse CSI sequences with extended modifiers (kitty keyboard protocol).
+// Handles \x1b[1;129B etc. where modifier includes lock-state bits
+// that termbox2's cap trie can't match.
+static int extract_esc_csi(struct tb_event *event) {
+    struct bytebuf *in = &global.in;
+    if (in->len < 3 || in->buf[0] != '\x1b' || in->buf[1] != '[')
+        return TB_ERR;
+    size_t i = 2;
+    while (i < in->len && ((in->buf[i] >= '0' && in->buf[i] <= '9') || in->buf[i] == ';'))
+        i++;
+    if (i >= in->len) return TB_ERR_NEED_MORE;
+    char final = in->buf[i];
+    int mod_param = 0;
+    for (size_t j = 2; j < i; j++) {
+        if (in->buf[j] == ';') {
+            for (size_t k = j + 1; k < i; k++)
+                mod_param = mod_param * 10 + (in->buf[k] - '0');
+            break;
+        }
+    }
+    uint16_t key = 0;
+    switch (final) {
+    case 'A': key = TB_KEY_ARROW_UP;    break;
+    case 'B': key = TB_KEY_ARROW_DOWN;  break;
+    case 'C': key = TB_KEY_ARROW_RIGHT; break;
+    case 'D': key = TB_KEY_ARROW_LEFT;  break;
+    case 'H': key = TB_KEY_HOME;        break;
+    case 'F': key = TB_KEY_END;         break;
+    default: return TB_ERR;
+    }
+    uint8_t mod = 0;
+    if (mod_param > 0) {
+        int flags = mod_param - 1;
+        if (flags & 1)  mod |= TB_MOD_SHIFT;
+        if (flags & 2)  mod |= TB_MOD_ALT;
+        if (flags & 4)  mod |= TB_MOD_CTRL;
+    }
+    event->type = TB_EVENT_KEY;
+    event->ch = 0;
+    event->key = key;
+    event->mod = mod;
+    bytebuf_shift(in, i + 1);
+    return TB_OK;
+}
+
 static int extract_esc(struct tb_event *event) {
     int rv;
     if_ok_or_need_more_return(rv, extract_esc_user(event, 0));
     if_ok_or_need_more_return(rv, extract_esc_cap(event));
+    if_ok_or_need_more_return(rv, extract_esc_csi(event));
     if_ok_or_need_more_return(rv, extract_esc_mouse(event));
     if_ok_or_need_more_return(rv, extract_esc_user(event, 1));
     return TB_ERR;

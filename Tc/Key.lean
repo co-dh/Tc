@@ -155,6 +155,7 @@ def evToCmd (ev : Term.Event) (vk : ViewKind) : Option Cmd :=
   else lookup KeyMap.char c <|> navCmd c shift <|> lookup KeyMap.special ev.key <|> lookup KeyMap.ctrl ev.key
 
 -- | Parse key notation: <ret> → \r, <C-d> → Ctrl-D, etc.
+-- Arrow keys use \x1c-\x1f (FS/GS/RS/US — unmapped control chars)
 def parseKeys (s : String) : String :=
   s.replace "<ret>" "\r"
    |>.replace "<esc>" "\x1b"
@@ -162,15 +163,24 @@ def parseKeys (s : String) : String :=
    |>.replace "<C-u>" "\x15"
    |>.replace "<S-left>" "\x11"
    |>.replace "<S-right>" "\x12"
+   |>.replace "<down>" "\x1c"
+   |>.replace "<up>" "\x1d"
+   |>.replace "<right>" "\x1e"
+   |>.replace "<left>" "\x1f"
    |>.replace "<backslash>" "\\"
    |>.replace "<key>" "!"
 
 -- | Convert char to synthetic Term.Event (matches termbox behavior)
 def charToEvent (c : Char) : Term.Event :=
   let ch := c.toNat.toUInt32
-  -- Synthetic shift+arrow for test mode (\x11/\x12 shadow Ctrl-Q/R — neither is mapped)
+  -- Synthetic shift+arrow for test mode (\x11/\x12 shadow Ctrl-Q/R)
   if ch == 0x11 then ⟨Term.eventKey, Term.modShift, Term.keyArrowLeft, 0, 0, 0⟩
   else if ch == 0x12 then ⟨Term.eventKey, Term.modShift, Term.keyArrowRight, 0, 0, 0⟩
+  -- Synthetic arrow keys (\x1c-\x1f)
+  else if ch == 0x1c then ⟨Term.eventKey, 0, Term.keyArrowDown, 0, 0, 0⟩
+  else if ch == 0x1d then ⟨Term.eventKey, 0, Term.keyArrowUp, 0, 0, 0⟩
+  else if ch == 0x1e then ⟨Term.eventKey, 0, Term.keyArrowRight, 0, 0, 0⟩
+  else if ch == 0x1f then ⟨Term.eventKey, 0, Term.keyArrowLeft, 0, 0, 0⟩
   -- Ctrl chars: termbox reports key=ctrl_code, ch=0, mod=2
   else if ch < 32 then ⟨Term.eventKey, 2, ch.toUInt16, 0, 0, 0⟩
   else ⟨Term.eventKey, 0, 0, ch, 0, 0⟩

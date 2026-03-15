@@ -86,6 +86,22 @@ theorem enter_meta : evToCmd (charToEvent '\r') .colMeta = some (.metaV .ent)   
 theorem enter_fld  : evToCmd (charToEvent '\r') (.fld "/tmp" 1) = some (.fld .ent)      := by native_decide
 theorem enter_tbl  : evToCmd (charToEvent '\r') .tbl = none                             := by native_decide
 
+-- Unmodified arrow keys → single-step nav, not page (bug: termbox2 tagged \x1b[A-D as shift)
+theorem key_arrow_down : evToCmd ⟨Term.eventKey, 0, Term.keyArrowDown, 0, 0, 0⟩ .tbl
+    = some (.row .inc) := by native_decide
+theorem key_arrow_up : evToCmd ⟨Term.eventKey, 0, Term.keyArrowUp, 0, 0, 0⟩ .tbl
+    = some (.row .dec) := by native_decide
+theorem key_arrow_right : evToCmd ⟨Term.eventKey, 0, Term.keyArrowRight, 0, 0, 0⟩ .tbl
+    = some (.col .inc) := by native_decide
+theorem key_arrow_left : evToCmd ⟨Term.eventKey, 0, Term.keyArrowLeft, 0, 0, 0⟩ .tbl
+    = some (.col .dec) := by native_decide
+
+-- Synthetic arrow chars (\x1c-\x1f) via charToEvent → single-step nav
+theorem key_synth_down : evToCmd (charToEvent '\x1c') .tbl = some (.row .inc) := by native_decide
+theorem key_synth_up : evToCmd (charToEvent '\x1d') .tbl = some (.row .dec) := by native_decide
+theorem key_synth_right : evToCmd (charToEvent '\x1e') .tbl = some (.col .inc) := by native_decide
+theorem key_synth_left : evToCmd (charToEvent '\x1f') .tbl = some (.col .dec) := by native_decide
+
 -- Shift+Arrow keys (from test_key_shift: reorder key columns)
 -- Synthetic shift+arrow events: mod=4 (modShift), key=arrow code
 theorem key_shift_left : evToCmd ⟨Term.eventKey, Term.modShift, Term.keyArrowLeft, 0, 0, 0⟩ .tbl
