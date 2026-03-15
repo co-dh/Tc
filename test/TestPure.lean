@@ -11,6 +11,7 @@ import Tc.Filter
 import Tc.Folder
 import Tc.Data.Text
 import Tc.Remote
+import Tc.Session
 
 namespace PureTest2
 
@@ -851,5 +852,76 @@ section IdxOfTests
 #guard (#[10, 20, 30]).idxOf? 30 == some 2
 
 end IdxOfTests
+
+/-! ## Session Serialization Round-Trip Tests
+    Verify opToJson/parseOp and vkindToJson/parseVkind are inverses
+    on the pure JSON layer (no IO). -/
+
+section SessionRoundTrip
+
+open Tc.Session
+
+-- | Helper: serialize Op to JSON string, parse back to JVal, then parseOp
+private def opRoundTrip (op : Op) : Option Op :=
+  let json := opToJson op
+  let (jval, _) := parseVal json 0
+  parseOp jval
+
+-- | Helper: serialize ViewKind to JSON string, parse back to JVal, then parseVkind
+private def vkindRoundTrip (vk : ViewKind) : ViewKind :=
+  let json := vkindToJson vk
+  let (jval, _) := parseVal json 0
+  parseVkind jval
+
+-- Op.filter round-trips
+#guard opRoundTrip (.filter "age > 20") == some (.filter "age > 20")
+#guard opRoundTrip (.filter "name == 'O\\'Brien'") == some (.filter "name == 'O\\'Brien'")
+#guard opRoundTrip (.filter "") == some (.filter "")
+
+-- Op.sort round-trips
+#guard opRoundTrip (.sort #[("col1", true), ("col2", false)]) == some (.sort #[("col1", true), ("col2", false)])
+#guard opRoundTrip (.sort #[]) == some (.sort #[])
+
+-- Op.sel round-trips
+#guard opRoundTrip (.sel #["a", "b", "c"]) == some (.sel #["a", "b", "c"])
+#guard opRoundTrip (.sel #[]) == some (.sel #[])
+
+-- Op.derive round-trips
+#guard opRoundTrip (.derive #[("pct", "amount / total")]) == some (.derive #[("pct", "amount / total")])
+
+-- Op.take round-trips
+#guard opRoundTrip (.take 100) == some (.take 100)
+#guard opRoundTrip (.take 0) == some (.take 0)
+
+-- Op.group round-trips
+#guard opRoundTrip (.group #["region"] #[(.count, "n", "id"), (.sum, "total", "amount")])
+  == some (.group #["region"] #[(.count, "n", "id"), (.sum, "total", "amount")])
+
+-- ViewKind.tbl round-trips
+#guard vkindRoundTrip .tbl == .tbl
+
+-- ViewKind.colMeta round-trips
+#guard vkindRoundTrip .colMeta == .colMeta
+
+-- ViewKind.freqV round-trips
+#guard vkindRoundTrip (.freqV #["a", "b"] 42) == .freqV #["a", "b"] 42
+
+-- ViewKind.fld round-trips
+#guard vkindRoundTrip (.fld "/tmp/data" 3) == .fld "/tmp/data" 3
+#guard vkindRoundTrip (.fld "s3://bucket/key" 1) == .fld "s3://bucket/key" 1
+
+-- JSON escaping round-trips for strings with special chars
+#guard opRoundTrip (.filter "col == \"hello\"") == some (.filter "col == \"hello\"")
+#guard opRoundTrip (.filter "a\nb") == some (.filter "a\nb")
+#guard opRoundTrip (.filter "a\tb") == some (.filter "a\tb")
+
+-- autoName derives name from tab
+-- (can't test without AdbcTable, but sanitize is testable)
+#guard Tc.Session.sanitize "basic.csv" == "basic.csv"
+#guard Tc.Session.sanitize "../../../etc/passwd" == "......etcpasswd"
+#guard Tc.Session.sanitize "hello world!" == "helloworld"
+#guard Tc.Session.sanitize "" == ""
+
+end SessionRoundTrip
 
 end PureTest2

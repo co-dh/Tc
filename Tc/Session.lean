@@ -18,7 +18,7 @@ private def sessDir : IO String := do
   pure dir.toString
 
 -- | Sanitize session name: keep only alphanumeric, dash, underscore, dot
-private def sanitize (name : String) : String :=
+def sanitize (name : String) : String :=
   String.ofList (name.toList.filter fun c => c.isAlphanum || c == '-' || c == '_' || c == '.')
 
 -- | Session file path (name is sanitized to prevent path traversal)
@@ -42,7 +42,7 @@ private def kv (k : String) (v : String) : String := s!"\"{k}\":{v}"
 -- | JSON array from string list
 private def jsonArr (xs : List String) : String := s!"[{",".intercalate xs}]"
 
-private def opToJson : Op → String
+def opToJson : Op → String
   | .filter e => s!"\{{kv "type" (jsonStr "filter")},{kv "expr" (jsonStr e)}}"
   | .sort cols =>
     let cs := cols.map fun (c, asc) => s!"[{jsonStr c},{asc}]"
@@ -57,7 +57,7 @@ private def opToJson : Op → String
     s!"\{{kv "type" (jsonStr "group")},{kv "keys" (jsonArr ks.toList)},{kv "aggs" (jsonArr as.toList)}}"
   | .take n => s!"\{{kv "type" (jsonStr "take")},{kv "n" s!"{n}"}}"
 
-private def vkindToJson : ViewKind → String
+def vkindToJson : ViewKind → String
   | .tbl => s!"\{{kv "kind" (jsonStr "tbl")}}"
   | .freqV cols total =>
     s!"\{{kv "kind" (jsonStr "freqV")},{kv "cols" (jsonArr (cols.map jsonStr).toList)},{kv "total" s!"{total}"}}"
@@ -124,7 +124,7 @@ private def parseNum (s : String) (i : Nat) : Int × Nat := Id.run do
     if c.isDigit then n := n * 10 + (c.toNat - '0'.toNat); j := j + 1 else break
   (if neg then (-(n : Int), j) else (n, j))
 
-private partial def parseVal (s : String) (i : Nat) : JVal × Nat :=
+partial def parseVal (s : String) (i : Nat) : JVal × Nat :=
   let i := skipWS s i
   if i >= s.length then (.null, i)
   else match charAt s i with
@@ -171,7 +171,7 @@ private def parseAgg : String → Agg
   | "count" => .count | "sum" => .sum | "avg" => .avg
   | "min" => .min | "max" => .max | "stddev" => .stddev | "dist" => .dist | _ => .count
 
-private def parseOp (v : JVal) : Option Op := do
+def parseOp (v : JVal) : Option Op := do
   match (← v.get? "type").asStr with
   | "filter" => some (.filter (← v.get? "expr").asStr)
   | "sort" =>
@@ -189,7 +189,7 @@ private def parseOp (v : JVal) : Option Op := do
   | "take" => some (.take (← v.get? "n").asInt.toNat)
   | _ => none
 
-private def parseVkind (v : JVal) : ViewKind :=
+def parseVkind (v : JVal) : ViewKind :=
   match v.strD "kind" with
   | "freqV" => .freqV (v.arrD "cols" |>.map JVal.asStr) (v.intD "total").toNat
   | "colMeta" => .colMeta
@@ -234,7 +234,13 @@ private def restoreView (v : JVal) : IO (Option (View AdbcTable)) := do
 
 /-! ## Public API -/
 
-def save (stk : ViewStack AdbcTable) (name : String) : IO Unit := do
+-- | Derive session name from view stack (like export uses tabName)
+def autoName (stk : ViewStack AdbcTable) : String :=
+  let name := stk.cur.tabName.replace "/" "_" |>.replace " " "_"
+  let stem := (name.splitOn ".").head?.filter (!·.isEmpty) |>.getD name
+  sanitize stem
+
+def save (stk : ViewStack AdbcTable) (name : String := autoName stk) : IO Unit := do
   let path ← sessPath name
   IO.FS.writeFile path (stackToJson stk)
   Log.write "session" s!"saved {(stk.hd :: stk.tl).length} view(s) to {path}"

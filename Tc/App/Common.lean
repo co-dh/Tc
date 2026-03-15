@@ -145,7 +145,7 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
     | some s' => mainLoop { a with stk := s', vs := .default, sparklines := #[] } test ks'
     | none => mainLoop a test ks'
   else if isKey ev 'W' then do
-    if let some name ← Session.pickSaveName then Session.save a.stk name
+    Session.save a.stk
     mainLoop a test ks'
   else if isKey ev 'L' then do
     match ← Session.pickLoadName with

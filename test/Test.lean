@@ -683,6 +683,28 @@ def test_session_load : IO Unit := do
   -- Clean up
   try IO.FS.removeFile s!"{dir}/test_session.json" catch _ => pure ()
 
+-- | Session save+load round-trip: W saves session, -s loads it back
+def test_session_save_load : IO Unit := do
+  log "session_save_load"
+  let home := (← IO.getEnv "HOME").getD "."
+  let dir := s!"{home}/.cache/tc/sessions"
+  -- W auto-names from tab (basic.csv → "basic"); clean up any prior session
+  try IO.FS.removeFile s!"{dir}/basic.json" catch _ => pure ()
+  -- Open basic.csv, sort asc, then press W to save session
+  let _ ← run "[W" "data/basic.csv"
+  -- Verify session file was created
+  let saved ← hasFile s!"{dir}/basic.json"
+  assert saved "W should create basic.json session file"
+  -- Load the session via -s and verify sort is preserved (first data row should be 1)
+  let out ← IO.Process.output { cmd := bin, args := #["-s", "basic", "-c", ""] }
+  assert (out.exitCode == 0) s!"session round-trip exit code: {out.exitCode}"
+  let first := (dataLines out.stdout).headD ""
+  assert (contains first " 1 " || first.startsWith "1 ") "session round-trip: sort preserved (first row = 1)"
+  let (_, status) := footer out.stdout
+  assert (contains status "r0/5") "session round-trip: has 5 rows"
+  -- Clean up
+  try IO.FS.removeFile s!"{dir}/basic.json" catch _ => pure ()
+
 -- | Session load missing: -s with non-existent session prints error
 def test_session_missing : IO Unit := do
   log "session_missing"
@@ -768,6 +790,7 @@ def tests : Array (String × IO Unit) := #[
   ("statusagg_string", test_statusagg_string),
   -- Session tests
   ("session_load", test_session_load),
+  ("session_save_load", test_session_save_load),
   ("session_missing", test_session_missing)
 ]
 

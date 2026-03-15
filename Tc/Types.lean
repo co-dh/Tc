@@ -238,7 +238,7 @@ inductive Op where
   | derive (bindings : Array (String × String))
   | group (keys : Array String) (aggs : Array (Agg × String × String))
   | take (n : Nat)
-  deriving Inhabited
+  deriving Inhabited, BEq
 
 -- | View kind: how to render/interact (used by key mapping for context-sensitive verbs)
 inductive ViewKind where
