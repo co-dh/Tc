@@ -107,7 +107,7 @@ static struct AdbcDatabase g_db = {0};
 static struct AdbcConnection g_conn = {0};
 static int g_initialized = 0;
 static FILE* g_log = NULL;
-static char g_log_path[256] = "tmp/tc.log";
+static char g_log_path[256] = ""; /* set by Lean setLogPath at init */
 
 lean_obj_res lean_set_log_path(b_lean_obj_arg path, lean_obj_arg w) {
     const char* s = lean_string_cstr(path);

@@ -4,8 +4,14 @@
 
 namespace Log
 
--- | Log file path (single source of truth for Lean + C)
-def path : String := "tmp/tc.log"
+-- | Log dir — ~/.cache/tc/, works from any cwd (including CI)
+initialize logDir : IO.Ref String ← do
+  let home := (← IO.getEnv "HOME").getD "/tmp"
+  let dir := s!"{home}/.cache/tc"
+  let _ ← IO.Process.output { cmd := "mkdir", args := #["-p", dir] }
+  IO.mkRef dir
+
+def path : IO String := return s!"{← logDir.get}/tc.log"
 
 @[extern "lean_set_log_path"]
 opaque setLogPath : @& String → IO Unit
@@ -18,7 +24,7 @@ def timestamp : IO String := localTimestamp
 
 -- | Write log entry
 def write (tag msg : String) : IO Unit := do
-  let h ← IO.FS.Handle.mk path .append
+  let h ← IO.FS.Handle.mk (← path) .append
   h.putStrLn s!"[{←timestamp}] [{tag}] {msg}"
 
 -- | Log error message

@@ -55,6 +55,7 @@ inductive Cmd where
   | freq (v : Verb)    -- freq c=push, ~=filter
   | fld (v : Verb)     -- fld c=push, +/-=depth, ~=enter dir/file
   | plot (v : Verb)    -- plot +=line, -=bar
+  | colShift (v : Verb) -- colShift +=right, -=left (reorder key columns)
   deriving Repr, BEq, DecidableEq
 
 namespace Cmd
@@ -64,7 +65,7 @@ private def objs : Array (Char × (Verb → Cmd)) := #[
   ('r', .row), ('c', .col), ('R', .rowSel), ('C', .colSel), ('g', .grp), ('s', .stk),
   ('h', .hPage), ('v', .vPage), ('H', .hor), ('V', .ver), ('p', .prec), ('w', .width),
   ('T', .thm), ('i', .info), ('M', .metaV), ('F', .freq), ('D', .fld),
-  ('P', .plot)
+  ('P', .plot), ('K', .colShift)
 ]
 
 -- | Get obj char for Cmd
@@ -74,12 +75,13 @@ private def objChar : Cmd → Char
   | .hPage _ => 'h' | .vPage _ => 'v' | .hor _ => 'H' | .ver _ => 'V'
   | .prec _ => 'p' | .width _ => 'w' | .thm _ => 'T' | .info _ => 'i'
   | .metaV _ => 'M' | .freq _ => 'F' | .fld _ => 'D' | .plot _ => 'P'
+  | .colShift _ => 'K'
 
 -- | Get verb from Cmd
 private def verb : Cmd → Verb
   | .row v | .col v | .rowSel v | .colSel v | .grp v | .stk v => v
   | .hor v | .ver v | .hPage v | .vPage v | .prec v | .width v => v
-  | .thm v | .info v | .metaV v | .freq v | .fld v | .plot v => v
+  | .thm v | .info v | .metaV v | .freq v | .fld v | .plot v | .colShift v => v
 
 instance : ToString Cmd where toString c := s!"{c.objChar}{c.verb.toChar}"
 

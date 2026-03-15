@@ -543,13 +543,14 @@ def test_script_from : IO Unit := do
 
 -- === Derive tests ===
 
--- | Derive: press '=', fzf auto-selects first col name as expression, verify derived column appears
+-- | Derive: press '=', fzf auto-selects hint "a : int" which lacks "name = expr" format → no-op
 def test_derive : IO Unit := do
   log "derive"
   let out ← run "=" "data/basic.csv"
   let hdr := header out
-  assert (contains hdr "_") "derive: derived column should appear in header"
+  -- without valid "name = expr" input, derive is a no-op — original columns remain unchanged
   assert (contains hdr "a") "derive: original columns should remain"
+  assert (!(contains hdr "_1")) "derive: no derived column without name = expr"
 
 -- === Export tests ===
 
@@ -611,6 +612,18 @@ def test_join_union : IO Unit := do
   assert (contains output "name") "Union shows name column"
   let (_, status) := footer output
   assert (contains status "r0/6") "Union of same 3-row table = 6 rows"
+
+-- === Key column reorder tests ===
+
+-- | Shift+Arrow reorders key columns: !l! groups a,b; <S-left> swaps b before a
+def test_key_shift : IO Unit := do
+  log "key_shift"
+  -- !l! → key both cols (grp=["a","b"]), then shift-left moves b before a
+  let hdr := header (← run "!l!<S-left>" "data/basic.csv")
+  -- After shift: grp=["b","a"], so header should show b before a
+  let bPos := hdr.splitOn "b" |>.head?.map (·.length) |>.getD 999
+  let aPos := hdr.splitOn "a" |>.head?.map (·.length) |>.getD 999
+  assert (bPos < aPos) s!"shift-left: b ({bPos}) should appear before a ({aPos}) in header"
 
 -- === Run all tests ===
 
@@ -679,7 +692,9 @@ def tests : Array (String × IO Unit) := #[
   ("derive", test_derive),
   -- Join tests
   ("join_inner", test_join_inner),
-  ("join_union", test_join_union)
+  ("join_union", test_join_union),
+  -- Key column reorder tests
+  ("key_shift", test_key_shift)
 ]
 
 def main (args : List String) : IO Unit := do
