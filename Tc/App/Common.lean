@@ -22,6 +22,7 @@ import Tc.View
 import Tc.Sparkline
 import Tc.Session
 import Tc.StatusAgg
+import Tc.Replay
 
 open Tc
 
@@ -99,7 +100,7 @@ where
 partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppState := do
   let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles a.heatOn a.sparklines
   let a := { a with stk := a.stk.setCur v', vs := vs' }
-  renderTabLine a.stk.tabNames 0
+  renderTabLine a.stk.tabNames 0 (Replay.opsStr a.stk.cur)
   -- Show column description on status line from DuckDB column comments (cached)
   let colName := a.stk.cur.nav.colNames.getD a.stk.cur.nav.curColIdx ""
   let (cachedPath, cachedCol, _) := a.statusCache

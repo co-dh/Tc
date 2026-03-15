@@ -735,6 +735,23 @@ def test_session_missing : IO Unit := do
   assert (out.exitCode == 0 || contains out.stderr "not found" || contains out.stderr "Session")
     "missing session should report error"
 
+-- === Replay ops tests ===
+
+-- | Replay: sort adds "sort" to tab line (PRQL ops shown right-aligned)
+def test_replay_sort : IO Unit := do
+  log "replay_sort"
+  let out ← run "[" "data/unsorted.csv"
+  let (tab, _) := footer out
+  assert (contains tab "sort") "replay: sort op shown on tab line after ["
+
+-- | Replay: no ops on fresh open (tab line has no PRQL ops)
+def test_replay_empty : IO Unit := do
+  log "replay_empty"
+  let out ← run "" "data/basic.csv"
+  let (tab, _) := footer out
+  assert (!(contains tab "sort")) "replay: no sort on fresh view"
+  assert (!(contains tab "filter")) "replay: no filter on fresh view"
+
 -- === Run all tests ===
 
 -- | All tests as (name, action) pairs
@@ -817,7 +834,10 @@ def tests : Array (String × IO Unit) := #[
   -- Session tests
   ("session_load", test_session_load),
   ("session_save_load", test_session_save_load),
-  ("session_missing", test_session_missing)
+  ("session_missing", test_session_missing),
+  -- Replay ops tests
+  ("replay_sort", test_replay_sort),
+  ("replay_empty", test_replay_empty)
 ]
 
 def main (args : List String) : IO Unit := do

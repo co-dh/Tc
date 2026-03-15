@@ -78,15 +78,21 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
   Term.print 0 (h - 1) Term.cyan Term.default (colName ++ "".pushn ' ' (max 1 pad) ++ right)
   pure (⟨rowOff, nav.curColIdx⟩, widths)
 
--- | Render tab line: parent2 │ parent1 │ [current] (stack top on right)
-def renderTabLine (tabs : Array String) (curIdx : Nat) : IO Unit := do
+-- | Render tab line: parent2 │ parent1 │ [current]  replay_ops (stack top on right)
+def renderTabLine (tabs : Array String) (curIdx : Nat) (replay : String := "") : IO Unit := do
   let h ← Term.height
   let w ← Term.width
   let marked := tabs.mapIdx fun i t => if i == curIdx then s!"[{t}]" else t
   let line := marked.toList.reverse |> String.intercalate " │ "
   Term.print 0 (h - 2) Term.white Term.blue line
-  -- pad rest of line with bg color
-  if line.length < w.toNat then
+  -- replay ops right-aligned (dim text on blue bg)
+  let gap := w.toNat - line.length
+  if !replay.isEmpty && gap > replay.length + 2 then
+    let rpad := gap - replay.length - 1
+    Term.print (line.length).toUInt32 (h - 2) Term.white Term.blue ("".pushn ' ' rpad)
+    Term.print (w.toNat - replay.length - 1).toUInt32 (h - 2) Term.brBlack Term.blue replay
+    Term.print (w.toNat - 1).toUInt32 (h - 2) Term.white Term.blue " "
+  else if line.length < w.toNat then
     Term.print line.length.toUInt32 (h - 2) Term.white Term.blue ("".pushn ' ' (w.toNat - line.length))
 
 -- | Wait for 'q' key press
