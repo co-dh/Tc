@@ -120,6 +120,7 @@ inductive Effect where
   | themeLoad (delta : Int)
   | fetchMore
   | export : ExportFmt → Effect
+  | join
   deriving Repr, BEq
 
 namespace Effect

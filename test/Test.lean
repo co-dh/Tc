@@ -589,6 +589,30 @@ def test_transpose_pop : IO Unit := do
   let (_, status) := footer output
   assert (contains status "r0/5") "q pops back to original 5-row view"
 
+-- === Join tests ===
+
+-- test_join_inner: open folder, enter left, key id, swap to folder, enter right, key id,
+--   swap+pop folder, J → inner join on id
+def test_join_inner : IO Unit := do
+  log "join_inner"
+  -- folder: row0=.., row1=left.csv, row2=right.csv
+  -- j<ret> enter left, ! key id, S swap to folder, j<ret> enter right, ! key id, S swap, q pop folder, J join
+  let output ← run "j<ret><key>Sj<ret><key>SqJ" "data/join_test"
+  -- Column headers may be truncated (e.g. "sco#" for "score")
+  assert (contains output "alice") "J shows alice from left table"
+  assert (contains output "90") "J shows score=90 from right table"
+  let (_, status) := footer output
+  assert (contains status "r0/2") "Inner join has 2 rows (id=1,3)"
+
+-- test_join_union: open folder, enter left, swap, enter left again (same file), swap+pop, J → union
+def test_join_union : IO Unit := do
+  log "join_union"
+  -- No keys set → only union/diff offered; fzf auto-selects first = union
+  let output ← run "j<ret>S<ret>SqJ" "data/join_test"
+  assert (contains output "name") "Union shows name column"
+  let (_, status) := footer output
+  assert (contains status "r0/6") "Union of same 3-row table = 6 rows"
+
 -- === Key column reorder tests ===
 
 -- | Shift+Arrow reorders key columns: !l! groups a,b; <S-left> swaps b before a
@@ -666,6 +690,9 @@ def tests : Array (String × IO Unit) := #[
   ("transpose_pop", test_transpose_pop),
   -- Derive tests
   ("derive", test_derive),
+  -- Join tests
+  ("join_inner", test_join_inner),
+  ("join_union", test_join_union),
   -- Key column reorder tests
   ("key_shift", test_key_shift)
 ]
