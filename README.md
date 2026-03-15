@@ -134,7 +134,7 @@ Exports to `~/tc_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows
 
 | Key | Action |
 |-----|--------|
-| `.` | Line plot (y=cursor col, x=first group col) |
+| `P.` | Line plot (y=cursor col, x=first group col) |
 | `P,` | Bar plot |
 | `Ps` | Scatter plot (x=first group col, y=cursor col) |
 | `Ph` | Histogram (cursor col, no group needed) |
