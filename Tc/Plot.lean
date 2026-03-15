@@ -89,14 +89,10 @@ private def isNumericType (typ : String) : Bool :=
 -- | Plot types that share the same x/y/cat data (cycleable with h/l)
 private def cyclableKinds : Array PlotKind := #[.line, .scatter, .bar, .box]
 
-private def nextKind (k : PlotKind) : PlotKind :=
+private def cycleKind (k : PlotKind) (delta : Nat) : PlotKind :=
+  let n := cyclableKinds.size
   match cyclableKinds.idxOf? k with
-  | some i => cyclableKinds.getD ((i + 1) % cyclableKinds.size) .line
-  | none => .line
-
-private def prevKind (k : PlotKind) : PlotKind :=
-  match cyclableKinds.idxOf? k with
-  | some i => cyclableKinds.getD ((i + cyclableKinds.size - 1) % cyclableKinds.size) .line
+  | some i => cyclableKinds.getD ((i + delta) % n) .line
   | none => .line
 
 -- | Generate R script for ggplot2 rendering
@@ -232,26 +228,31 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   -- enter plot mode: shutdown TUI, set raw mode once
   Term.shutdown
   setRaw
+  let datPath ← Tc.tmpPath "plot.dat"
+  let pngPath ← Tc.tmpPath "plot.png"
   let mut idx : Nat := 0
   let mut curKind := kind
+  let mut needExport := true  -- skip re-export when only plot type changes
   let mut continue_ := true
   while continue_ do
     let iv := intervals.getD idx default
     Log.write "plot" s!"kind={curKind} interval={iv.label} truncLen={iv.truncLen} idx={idx}"
     let ok ← do
-      if let some _cats := ← exportWithHeaders n.tbl xName yName exportCatName? xIsTime baseStep iv.truncLen then
-        let datPath ← Tc.tmpPath "plot.dat"
-        let pngPath ← Tc.tmpPath "plot.png"
+      if needExport then
+        if let some _cats := ← exportWithHeaders n.tbl xName yName exportCatName? xIsTime baseStep iv.truncLen then
+          pure true
+        else pure false
+      else pure true
+    let ok ← if ok then
         let script := rScript datPath pngPath curKind xName yName hasCat catName hasFacet facetName xIsTime
         renderR script
       else pure false
-    let pngPath ← Tc.tmpPath "plot.png"
     renderFrame pngPath curKind xName yName intervals idx ok
     let key ← readKeyRaw
-    if key == '+' || key == '=' then idx := min (idx + 1) maxIdx
-    else if key == '-' || key == '_' then idx := if idx > 0 then idx - 1 else 0
-    else if key == 'l' then curKind := nextKind curKind
-    else if key == 'h' then curKind := prevKind curKind
+    if key == '+' || key == '=' then idx := min (idx + 1) maxIdx; needExport := true
+    else if key == '-' || key == '_' then idx := if idx > 0 then idx - 1 else 0; needExport := true
+    else if key == 'l' then curKind := cycleKind curKind 1; needExport := false
+    else if key == 'h' then curKind := cycleKind curKind (cyclableKinds.size - 1); needExport := false
     else continue_ := false
   -- exit plot mode: restore terminal, re-init TUI
   setSane
