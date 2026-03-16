@@ -734,7 +734,7 @@ lean_obj_res lean_render_table(
 
     HeatCol hcols[MAX_HEAT_COLS] = {{0}};
     if (heatOn && nVisCols <= MAX_HEAT_COLS)
-        heat_scan(allCols, colIdxs, dispIdxs, nVisCols, nRows, r0, hcols);
+        heat_scan(allCols, colIdxs, dispIdxs, nVisCols, nRows, r0, fmts, nFmts, hcols);
 
     // render data rows (r0..r1 in original table, 0..nRows in screen)
     for (size_t ri = 0; ri < nRows; ri++) {

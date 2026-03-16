@@ -32,6 +32,22 @@ static double str_hash01(const char *s) {
     return (double)(h & 0xFFFF) / 65535.0;
 }
 
+// Extract digits from date/time string → monotonic double.
+// "2026-03-13 18:17:48" → 20260313181748.0
+static double date_to_num(const char *s) {
+    double v = 0;
+    while (*s) {
+        if (*s >= '0' && *s <= '9') v = v * 10 + (*s - '0');
+        s++;
+    }
+    return v;
+}
+
+// Check if format char indicates date/time type
+static int is_date_fmt(char fmt) {
+    return fmt == 't';  // Arrow date/time/timestamp all use 't' prefix
+}
+
 uint32_t heat_color(double t) {
     // Viridis-inspired purple→teal→green→yellow ramp via xterm-256 cube.
     // Each adjacent pair differs by one RGB channel step → clean transitions.
@@ -55,12 +71,16 @@ uint32_t heat_color(double t) {
 
 void heat_scan(b_lean_obj_arg allCols, b_lean_obj_arg colIdxs,
                size_t *dispIdxs, size_t nVisCols, size_t nRows, uint64_t r0,
+               b_lean_obj_arg fmts, size_t nFmts,
                HeatCol *cols) {
     for (size_t c = 0; c < nVisCols && c < MAX_HEAT_COLS; c++) {
         size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, dispIdxs[c]));
         lean_obj_arg col = lean_array_get_core(allCols, origIdx);
         cols[c].kind = HEAT_NONE;
         unsigned tag = lean_obj_tag(col);
+        char fmt = (origIdx < nFmts)
+            ? (char)lean_unbox_uint32(lean_array_get_core(fmts, origIdx)) : 0;
+        cols[c].date = 0;
         if (tag == COL_INTS || tag == COL_FLOATS) {
             double mn = 1e308, mx = -1e308;
             for (size_t ri = 0; ri < nRows; ri++) {
@@ -70,8 +90,20 @@ void heat_scan(b_lean_obj_arg allCols, b_lean_obj_arg colIdxs,
                 if (v > mx) mx = v;
             }
             if (mx > mn) { cols[c].mn = mn; cols[c].mx = mx; cols[c].kind = HEAT_NUM; }
+        } else if (tag == COL_STRS && is_date_fmt(fmt)) {
+            // Date/time strings: extract digits → numeric gradient
+            lean_obj_arg data = lean_ctor_get(col, 0);
+            double mn = 1e308, mx = -1e308;
+            for (size_t ri = 0; ri < nRows; ri++) {
+                const char *s = lean_string_cstr(lean_array_get_core(data, r0 + ri));
+                if (!s[0]) continue;
+                double v = date_to_num(s);
+                if (v < mn) mn = v;
+                if (v > mx) mx = v;
+            }
+            if (mx > mn) { cols[c].mn = mn; cols[c].mx = mx; cols[c].kind = HEAT_NUM; cols[c].date = 1; }
         } else if (tag == COL_STRS) {
-            // Check that column has at least 2 distinct values (skip single-value columns)
+            // Regular strings: categorical hash coloring
             lean_obj_arg data = lean_ctor_get(col, 0);
             const char *first = NULL;
             int diverse = 0;
@@ -92,13 +124,22 @@ int heat_cell_bg(lean_obj_arg col, uint64_t row, size_t c,
     double t;
     if (cols[c].kind == HEAT_NUM) {
         double v;
-        if (!col_num_val(col, row, &v)) return 0;
+        if (cols[c].date) {
+            lean_obj_arg data = lean_ctor_get(col, 0);
+            const char *s = lean_string_cstr(lean_array_get_core(data, row));
+            if (!s[0]) return 0;
+            v = date_to_num(s);
+        } else {
+            if (!col_num_val(col, row, &v)) return 0;
+        }
         t = (v - cols[c].mn) / (cols[c].mx - cols[c].mn);
     } else if (cols[c].kind == HEAT_STR) {
         lean_obj_arg data = lean_ctor_get(col, 0);
         const char *s = lean_string_cstr(lean_array_get_core(data, row));
-        if (!s[0]) return 0;  // skip empty strings
+        if (!s[0]) return 0;
         t = str_hash01(s);
+    } else {
+        return 0;
     }
     *bg = heat_color(t);
     return 1;
