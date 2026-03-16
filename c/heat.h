@@ -45,7 +45,8 @@ void heat_scan(b_lean_obj_arg allCols, b_lean_obj_arg colIdxs,
 
 // Return heatmap bg color for a cell. Returns 1 if color applied, 0 otherwise.
 // si: style index (cursor/selection styles suppress heatmap).
+// mode: 1=numeric only, 2=categorical only, 3=both.
 int heat_cell_bg(lean_obj_arg col, uint64_t row, size_t c,
-                 int si, const HeatCol *cols, uint32_t *bg);
+                 int si, uint8_t mode, const HeatCol *cols, uint32_t *bg);
 
 #endif

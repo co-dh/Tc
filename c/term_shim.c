@@ -506,7 +506,7 @@ lean_obj_res lean_render_table(
     b_lean_obj_arg styles,
     int64_t precAdj,          // precision adjustment for floats
     int64_t widthAdj,         // column width offset
-    uint8_t heatOn,           // heatmap toggle
+    uint8_t heatMode,         // 0=off, 1=numeric, 2=categorical, 3=both
     b_lean_obj_arg sparklines, // Array String - sparkline strings per column (empty = off)
     lean_obj_arg world)
 {
@@ -733,7 +733,7 @@ lean_obj_res lean_render_table(
     int dataY0 = sparkOn ? 2 : 1;  // data rows start after sparkline row
 
     HeatCol hcols[MAX_HEAT_COLS] = {{0}};
-    if (heatOn && nVisCols <= MAX_HEAT_COLS)
+    if (heatMode && nVisCols <= MAX_HEAT_COLS)
         heat_scan(allCols, colIdxs, dispIdxs, nVisCols, nRows, r0, fmts, nFmts, hcols);
 
     // render data rows (r0..r1 in original table, 0..nRows in screen)
@@ -791,7 +791,7 @@ lean_obj_res lean_render_table(
 
             lean_obj_arg col = lean_array_get_core(allCols, origIdx);
 
-            if (heatOn && heat_cell_bg(col, row, c, si, hcols, &bg))
+            if (heatMode && heat_cell_bg(col, row, c, si, heatMode, hcols, &bg))
                 fg = HEAT_FG;
             format_col_cell(col, row, buf, sizeof(buf), (int)precAdj);
             // leading space

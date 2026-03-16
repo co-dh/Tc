@@ -44,14 +44,14 @@ def renderCols (cols : Array Column) (names : Array String) (fmts : Array Char)
     0 nVisible.toUInt64 adjCur.toUInt64 ctx.curCol.toUInt64
     ctx.moveDir.toInt64 ctx.selColIdxs adjSel ctx.hiddenIdxs
     ctx.styles ctx.precAdj.toInt64 ctx.widthAdj.toInt64
-    (if ctx.heatOn then 1 else 0) ctx.sparklines
+    ctx.heatMode ctx.sparklines
 
 -- | Render table to terminal, returns (ViewState, widths)
 -- Calls TblOps.render with NavState fields unpacked
 def render {nRows nCols : Nat} {t : Type} [TblOps t]
     (nav : NavState nRows nCols t) (view : ViewState) (inWidths : Array Nat)
     (styles : Array UInt32) (precAdj widthAdj : Int) (vkind : ViewKind := .tbl)
-    (heatOn : Bool := false) (sparklines : Array String := #[])
+    (heatMode : UInt8 := 3) (sparklines : Array String := #[])
     (extraHidden : Array Nat := #[]) : IO (ViewState × Array Nat) := do
   Term.clear
   let h ← Term.height; let w ← Term.width
@@ -64,7 +64,7 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
     r0 := rowOff, r1 := min nRows (rowOff + visRows),
     curRow := nav.row.cur.val, curCol := nav.curColIdx, moveDir,
     selColIdxs := nav.selColIdxs, rowSels := nav.row.sels,
-    hiddenIdxs := nav.hiddenIdxs ++ extraHidden, styles, precAdj, widthAdj, heatOn, sparklines }
+    hiddenIdxs := nav.hiddenIdxs ++ extraHidden, styles, precAdj, widthAdj, heatMode, sparklines }
   let outWidths ← TblOps.render nav.tbl ctx
   let widths := outWidths  -- C returns base widths (no widthAdj), store as-is
   -- status line: colName left, stats right

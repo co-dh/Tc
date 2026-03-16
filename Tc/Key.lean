@@ -92,7 +92,8 @@ def objMenu : Array (Char × String × (Verb → Cmd)) := #[
   ('F', "freq   : frequency view",       .freq),
   ('D', "fld    : folder view",          .fld),
   ('P', "plot   : ggplot2 chart",       .plot),
-  ('K', "colShift : reorder key cols", .colShift)
+  ('K', "colShift : reorder key cols", .colShift),
+  ('m', "heat   : heatmap mode 0-3", .heat)
 ]
 
 -- | Verb menu for command mode, context-sensitive per object and view kind
@@ -123,6 +124,7 @@ def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
   | 'D' => #[(',', "depth--", .dec), ('.', "depth++", .inc), ('~', "enter", .ent), ('d', "trash", .del), ('c', "push folder", .dup)]
   | 'P' => #[('.', "line chart", .inc), (',', "bar chart", .dec), ('s', "scatter", .ent), ('h', "histogram", .del), ('b', "boxplot", .dup)]
   | 'K' => #[(',', "shift left", .dec), ('.', "shift right", .inc)]
+  | 'm' => #[(',', "less color", .dec), ('.', "more color", .inc)]
   | _   => #[]
 
 -- | Enter key → context-specific command based on view kind

@@ -693,6 +693,19 @@ def test_key_shift : IO Unit := do
   let aPos := hdr.splitOn "a" |>.head?.map (·.length) |>.getD 999
   assert (bPos < aPos) s!"shift-left: b ({bPos}) should appear before a ({aPos}) in header"
 
+-- | Heatmap mode cycling: space m , reduces mode, space m . increases
+def test_heat_mode : IO Unit := do
+  log "heat_mode"
+  -- space m , reduces mode from 3→2; verify rendering still works
+  let output ← run " m," "data/basic.csv"
+  assert (contains output "a") "heat mode dec: still shows column a"
+  -- space m , , , reduces to 0 (off); verify rendering still works
+  let output ← run " m,,," "data/basic.csv"
+  assert (contains output "a") "heat mode off: still shows column a"
+  -- space m . from mode 3 stays at 3 (clamped)
+  let output ← run " m." "data/basic.csv"
+  assert (contains output "a") "heat mode inc from max: still shows column a"
+
 -- | Arrow keys move cursor one step (not page). Verifies arrow→hjkl mapping.
 def test_arrow_nav : IO Unit := do
   log "arrow_nav"
@@ -878,7 +891,7 @@ def tests : Array (String × IO Unit) := #[
   -- Sparkline tests
   ("sparkline_on", test_sparkline_on),
   -- Key column reorder tests
-  ("key_shift", test_key_shift), ("arrow_nav", test_arrow_nav),
+  ("key_shift", test_key_shift), ("arrow_nav", test_arrow_nav), ("heat_mode", test_heat_mode),
   -- Status bar aggregation tests
   ("statusagg_numeric", test_statusagg_numeric),
   ("statusagg_string", test_statusagg_string),
