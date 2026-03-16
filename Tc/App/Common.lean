@@ -34,6 +34,7 @@ structure AppState where
   theme : Theme.State
   info  : UI.Info.State
   prevScroll : Nat := 0
+  heatMode : UInt8 := 3  -- 0=off, 1=numeric, 2=categorical, 3=both
   sparklines : Array String := #[]  -- per-column sparkline cache (empty = recompute)
   statusCache : String × String × String := ("", "", "")  -- (path, col, desc) — avoids per-frame DB query
   aggCache : StatusAgg.Cache := StatusAgg.Cache.empty
@@ -57,6 +58,8 @@ private def liftStk (a : AppState) (cmd : Cmd) (r : Option (ViewStack AdbcTable 
 def update (a : AppState) (cmd : Cmd) : Option (AppState × Effect) :=
   let viewUp := View.update a.stk.cur cmd 20 |>.map fun (v', e) => (withStk a cmd (a.stk.setCur v'), e)
   match cmd with
+  | .heat v   => let m := a.heatMode; let m' := if v == .inc then min 3 (m + 1) else if m > 0 then m - 1 else 0
+                  some ({ a with heatMode := m' }, .none)
   | .thm _    => a.theme.update cmd |>.map fun (t', e) => ({ a with theme := t' }, e)
   | .info _   => a.info.update cmd |>.map fun (i', e) => ({ a with info := i' }, e)
   | .stk _    => liftStk a cmd (ViewStack.update a.stk cmd)
@@ -103,7 +106,7 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   let a ← if a.sparklines.isEmpty then
     pure { a with sparklines := ← Sparkline.compute a.stk.tbl }
   else pure a
-  let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles true a.sparklines
+  let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles a.heatMode a.sparklines
   let a := { a with stk := a.stk.setCur v', vs := vs' }
   renderTabLine a.stk.tabNames 0 (Replay.opsStr a.stk.cur)
   -- Show column description on status line from DuckDB column comments (cached)

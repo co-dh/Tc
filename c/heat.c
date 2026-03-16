@@ -118,9 +118,12 @@ void heat_scan(b_lean_obj_arg allCols, b_lean_obj_arg colIdxs,
 }
 
 int heat_cell_bg(lean_obj_arg col, uint64_t row, size_t c,
-                 int si, const HeatCol *cols, uint32_t *bg) {
+                 int si, uint8_t mode, const HeatCol *cols, uint32_t *bg) {
     if (c >= MAX_HEAT_COLS || cols[c].kind == HEAT_NONE) return 0;
     if (si == STYLE_CURSOR || si == STYLE_SEL_ROW || si == STYLE_SEL_CUR) return 0;
+    // mode: 1=numeric(HEAT_NUM), 2=categorical(HEAT_STR), 3=both
+    if (cols[c].kind == HEAT_NUM && !(mode & 1)) return 0;
+    if (cols[c].kind == HEAT_STR && !(mode & 2)) return 0;
     double t;
     if (cols[c].kind == HEAT_NUM) {
         double v;

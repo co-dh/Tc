@@ -37,10 +37,10 @@ def new {nr nc : Nat} (nav : NavState nr nc T) (path : String) : View T :=
 
 -- | Render the view, returns (ViewState, updated View with new widths)
 @[inline] def doRender (v : View T) (vs : ViewState) (styles : Array UInt32)
-    (heatOn : Bool := false) (sparklines : Array String := #[]) : IO (ViewState × View T) := do
+    (heatMode : UInt8 := 3) (sparklines : Array String := #[]) : IO (ViewState × View T) := do
   let names := TblOps.colNames v.nav.tbl
   let extraHidden := v.sameHide.filterMap names.idxOf?
-  let (vs', widths) ← render v.nav vs v.widths styles v.precAdj v.widthAdj v.vkind heatOn sparklines extraHidden
+  let (vs', widths) ← render v.nav vs v.widths styles v.precAdj v.widthAdj v.vkind heatMode sparklines extraHidden
   pure (vs', { v with widths })
 
 -- | Create View from table + path (returns none if empty)
