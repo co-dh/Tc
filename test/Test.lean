@@ -149,6 +149,23 @@ def test_col_search : IO Unit := do
   log "col_search"
   assert (contains (footer (← run "s" "data/basic.csv")).2 "c0/") "s col search jumps to column"
 
+-- | Sort on "type" column in folder view — "type" is a PRQL keyword
+def test_folder_sort_type : IO Unit := do
+  log "folder_sort_type"
+  -- Navigate to type column (3rd from name), sort ascending
+  let output ← run "lll[" "data/"
+  let lines := dataLines output
+  -- After sort on type, dirs should group together (alphabetically "dir" < "file")
+  -- Check that the sort didn't silently fail (no error popup, data is sorted)
+  let (_, status) := footer output
+  assert (contains status "r0/") "sort on type column should not error"
+  -- Verify dirs come before files in ascending sort
+  let types := lines.map fun l => if contains l " dir " then "d"
+    else if contains l " symlink " then "s" else "f"
+  let firstFile := types.findIdx? (· == "f") |>.getD 999
+  let lastDir := types.reverse.findIdx? (· == "d") |>.map (types.length - 1 - ·) |>.getD 0
+  assert (lastDir < firstFile) s!"ascending sort: dirs ({lastDir}) before files ({firstFile})"
+
 -- === Folder tests ===
 
 def test_folder_no_args : IO Unit := do
@@ -874,7 +891,9 @@ def tests : Array (String × IO Unit) := #[
   ("diff_show_same", test_diff_show_same),
   -- Replay ops tests
   ("replay_sort", test_replay_sort),
-  ("replay_empty", test_replay_empty)
+  ("replay_empty", test_replay_empty),
+  -- Folder sort on PRQL keyword column
+  ("folder_sort_type", test_folder_sort_type)
 ]
 
 def main (args : List String) : IO Unit := do

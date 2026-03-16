@@ -15,17 +15,8 @@ structure Query where
   ops  : Array Op := #[]
   deriving Inhabited
 
--- | Reserved PRQL names needing this. prefix
-def reserved : Array String :=
-  #["count", "sum", "avg", "min", "max", "average", "group", "sort",
-    "filter", "select", "derive", "from", "take", "date", "time"]
-
--- | Quote column name (backticks for special chars, this. for reserved)
-def quote (s : String) : String :=
-  let needsBacktick := s.any fun c => !c.isAlphanum && c != '_'
-  if needsBacktick then s!"`{s}`"
-  else if reserved.contains s then s!"this.{s}"
-  else s
+-- | Quote column name — always backtick to avoid PRQL keyword collisions
+def quote (s : String) : String := s!"`{s}`"
 
 -- | Render sort column (asc = col, desc = -col)
 def renderSort (col : String) (asc : Bool) : String :=
