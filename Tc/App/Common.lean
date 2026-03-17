@@ -246,9 +246,8 @@ def parseArgs (args : List String) : CliArgs :=
 
 -- | Init/shutdown socket + terminal around a mainLoop call
 private def withTui (test : Bool) (f : IO α) : IO α := do
-  if !test then Socket.init
-  let r ← f
-  if !test then do Socket.shutdown; Term.shutdown
+  let r ← Socket.bracket test f
+  if !test then Term.shutdown
   pure r
 
 -- run app with view

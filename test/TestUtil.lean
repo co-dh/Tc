@@ -46,4 +46,9 @@ def hasFile (path : String) : IO Bool :=
   try let _ ← IO.FS.Handle.mk path .read; pure true
   catch _ => pure false
 
+-- | Check if a command is available (via `command -v`)
+def hasCmd (cmd : String) : IO Bool := do
+  let r ← IO.Process.output { cmd := "sh", args := #["-c", s!"command -v {cmd}"] }
+  pure (r.exitCode == 0)
+
 end TestUtil

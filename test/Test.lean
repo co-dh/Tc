@@ -11,6 +11,7 @@ import Tc.UI.Info
 import Tc.Types
 import Tc.Remote
 import Tc.Data.Text
+import Tc.Socket
 import test.TestPure
 import test.TestUtil
 
@@ -394,9 +395,7 @@ def test_pg_enter : IO Unit := do
 
 -- === Osquery tests ===
 
-def hasOsquery : IO Bool := do
-  let r ← IO.Process.output { cmd := "which", args := #["osqueryi"] }
-  pure (r.exitCode == 0)
+def hasOsquery : IO Bool := hasCmd "osqueryi"
 
 def test_osquery_list : IO Unit := do
   log "osquery_list"
@@ -717,8 +716,25 @@ def test_flat_menu : IO Unit := do
   let output ← run "  " "data/basic.csv"
   assert (contains output "a") "flat menu: double space still renders"
 
--- Socket command channel: cannot test via -c keys (requires external socket connection)
--- Verified manually: echo "m+" | socat - UNIX-CONNECT:$TC_SOCK
+-- | Socket command channel: init → send command via socat → pollCmd → verify → shutdown
+def test_socket : IO Unit := do
+  log "socket"
+  unless (← hasCmd "socat") do log "  skip (no socat)"; return
+  Socket.init
+  try
+    let path ← Socket.getPath
+    if path.isEmpty then do log "  skip (socket init failed)"; return
+    let _ ← IO.Process.output { cmd := "bash", args := #["-c", s!"printf 'm+' | socat - UNIX-CONNECT:{path}"] }
+    -- Poll with retry — listener thread may need time to process
+    let mut got := none
+    for _ in List.range 10 do
+      got ← Socket.pollCmd
+      if got.isSome then break
+      IO.sleep 10
+    match got with
+    | some cmd => assert (cmd == "m+") s!"socket: expected 'm+', got '{cmd}'"
+    | none => assert false "socket: pollCmd returned none"
+  finally Socket.shutdown
 
 -- | Arrow keys move cursor one step (not page). Verifies arrow→hjkl mapping.
 def test_arrow_nav : IO Unit := do
@@ -905,7 +921,7 @@ def tests : Array (String × IO Unit) := #[
   -- Sparkline tests
   ("sparkline_on", test_sparkline_on),
   -- Key column reorder tests
-  ("key_shift", test_key_shift), ("arrow_nav", test_arrow_nav), ("heat_mode", test_heat_mode), ("flat_menu", test_flat_menu),
+  ("key_shift", test_key_shift), ("arrow_nav", test_arrow_nav), ("heat_mode", test_heat_mode), ("flat_menu", test_flat_menu), ("socket", test_socket),
   -- Status bar aggregation tests
   ("statusagg_numeric", test_statusagg_numeric),
   ("statusagg_string", test_statusagg_string),
