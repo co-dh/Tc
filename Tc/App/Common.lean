@@ -24,6 +24,7 @@ import Tc.Session
 import Tc.Diff
 import Tc.StatusAgg
 import Tc.Replay
+import Tc.Socket
 
 open Tc
 
@@ -87,7 +88,10 @@ partial def runEffect (a : AppState) (e : Effect) : IO AppState := do
 where
   runEffectCore (a : AppState) (e : Effect) : IO AppState := match e with
   | .none | .quit => pure a
-  | .fzf .cmd => do match ← Fzf.cmdMode a.stk.cur.vkind with
+  | .fzf .cmd => do
+    let cmd ← Fzf.cmdMode a.stk.cur.vkind
+    let _ ← Socket.pollCmd  -- drain stale preview command from fzf focus
+    match cmd with
     | some c => match a.update c with
       | some (a', e') => if e'.isNone then pure a' else runEffect a' e'
       | none => pure a
@@ -98,6 +102,16 @@ where
     let vs' := if e.isNone then a.vs else .default
     let sp := if e.isNone then a.sparklines else #[]
     pure { a with stk := s, vs := vs', sparklines := sp }
+
+-- | Dispatch a command string: parse → update → run effect
+private partial def dispatchCmd (a : AppState) (cmdStr : String) : IO AppState := do
+  match (Parse.parse? cmdStr : Option Cmd) with
+  | some cmd => match a.update cmd with
+    | some (a', e) =>
+      let a'' ← if e.isNone then pure a' else runEffect a' e
+      pure (if e.isNone then a'' else { a'' with sparklines := #[], prevScroll := 0 })
+    | none => pure a
+  | none => pure a
 
 -- main loop: render → input → update → effect → loop
 partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppState := do
@@ -140,6 +154,14 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   Term.present
   if test && ks.isEmpty then IO.print (← Term.bufferStr); return a
   let (ev, ks') ← nextEvent ks
+  -- Socket commands from external tools
+  let a ← if !test then
+    match ← Socket.pollCmd with
+    | some cmdStr => dispatchCmd a cmdStr
+    | none => pure a
+  else pure a
+  -- Empty event (socket wake-up with no key press) → re-render and loop
+  if ev.type == 0 then return ← mainLoop a test ks'
   if isKey ev 'Q' then return a
   if isKey ev ' ' then mainLoop (← runEffect a (.fzf .cmd)) test ks'
   else if isKey ev '=' then do
@@ -222,13 +244,18 @@ def parseArgs (args : List String) : CliArgs :=
   | p :: _ => { path := some p, noSign, prql, session }
   | [] => { noSign, prql, session }
 
+-- | Init/shutdown socket + terminal around a mainLoop call
+private def withTui (test : Bool) (f : IO α) : IO α := do
+  if !test then Socket.init
+  let r ← f
+  if !test then do Socket.shutdown; Term.shutdown
+  pure r
+
 -- run app with view
 def runApp (v : View AdbcTable) (pipe test : Bool) (th : Theme.State) (ks : Array Char) : IO AppState := do
   if pipe then let _ ← Term.reopenTty
   let _ ← Term.init
-  let a' ← mainLoop { stk := ⟨v, []⟩, vs := .default, theme := th, info := {} } test ks
-  if !test then Term.shutdown
-  pure a'
+  withTui test (mainLoop { stk := ⟨v, []⟩, vs := .default, theme := th, info := {} } test ks)
 
 -- run from TSV string result
 def runTsv (r : Except String String) (nm : String) (pipe test : Bool)
@@ -310,8 +337,7 @@ def appMain (args : List String) : IO Unit := do
       match ← Session.load sessName with
       | some stk =>
         let _ ← Term.init
-        let _ ← mainLoop { stk, vs := .default, theme, info := {} } testMode keys
-        if !testMode then Term.shutdown
+        let _ ← withTui testMode (mainLoop { stk, vs := .default, theme, info := {} } testMode keys)
       | none => IO.eprintln s!"Session not found: {sessName}"
     finally AdbcTable.shutdown; Tc.cleanupTmp
     return

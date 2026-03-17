@@ -706,6 +706,20 @@ def test_heat_mode : IO Unit := do
   let output ← run " m." "data/basic.csv"
   assert (contains output "a") "heat mode inc from max: still shows column a"
 
+-- | Flat command menu: space triggers single-level fzf menu (test mode picks first item)
+-- Verifies the 2-level menu → flat menu refactor doesn't break menu dispatch
+def test_flat_menu : IO Unit := do
+  log "flat_menu"
+  -- In test mode, space → cmdMode picks first flat item → row .dec (cursor up from r0 = no-op)
+  let output ← run " " "data/basic.csv"
+  assert (contains output "a") "flat menu: table renders after first menu item"
+  -- Two space presses: each picks first flat item, table still intact
+  let output ← run "  " "data/basic.csv"
+  assert (contains output "a") "flat menu: double space still renders"
+
+-- Socket command channel: cannot test via -c keys (requires external socket connection)
+-- Verified manually: echo "m+" | socat - UNIX-CONNECT:$TC_SOCK
+
 -- | Arrow keys move cursor one step (not page). Verifies arrow→hjkl mapping.
 def test_arrow_nav : IO Unit := do
   log "arrow_nav"
@@ -891,7 +905,7 @@ def tests : Array (String × IO Unit) := #[
   -- Sparkline tests
   ("sparkline_on", test_sparkline_on),
   -- Key column reorder tests
-  ("key_shift", test_key_shift), ("arrow_nav", test_arrow_nav), ("heat_mode", test_heat_mode),
+  ("key_shift", test_key_shift), ("arrow_nav", test_arrow_nav), ("heat_mode", test_heat_mode), ("flat_menu", test_flat_menu),
   -- Status bar aggregation tests
   ("statusagg_numeric", test_statusagg_numeric),
   ("statusagg_string", test_statusagg_string),

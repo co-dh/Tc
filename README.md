@@ -2,6 +2,8 @@
 
 VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 
+![tc demo](doc/demo.gif)
+
 ## Features
 
 - CSV, Parquet, JSON, DuckDB file support (via DuckDB)
@@ -18,7 +20,8 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 - Row/column selection, hidden columns
 - Plotting via ggplot2: line, bar, scatter, histogram, boxplot — with faceting
 - Status bar aggregation (sum/avg/count for current column)
-- Heatmap coloring for all column types: numeric gradient, string categorical (`space m ,/.` cycles mode: 0=off, 1=numeric, 2=categorical, 3=both)
+- Heatmap coloring for all column types: numeric gradient, string categorical (`space m </>` cycles mode: 0=off, 1=numeric, 2=categorical, 3=both)
+- Unix socket command channel (`$TC_SOCK`) — external tools send 2-char commands for live control
 - Sparkline distribution row for numeric columns (on by default, `Z` to toggle)
 - Regex column split (`:` key — split column by delimiter/regex into new columns)
 - Theme support
@@ -122,7 +125,7 @@ Exports to `~/tc_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows
 | `N` | Previous match |
 | `\` | Filter expression (PRQL) |
 | `s` | Column jump (fzf) |
-| `Space` | Command palette (fzf) |
+| `Space` | Command palette (flat fzf menu, bottom-anchored) |
 
 ### Meta View (M)
 
@@ -136,9 +139,9 @@ Exports to `~/tc_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows
 
 | Key | Action |
 |-----|--------|
-| `Space p .`/`,` | Increase/decrease decimal precision |
-| `Space w .`/`,` | Widen/narrow columns |
-| `Space T .`/`,` | Cycle themes |
+| `Space p >`/`<` | Increase/decrease decimal precision |
+| `Space w >`/`<` | Widen/narrow columns |
+| `Space T >`/`<` | Cycle themes |
 | `I` | Toggle info overlay (context-specific hints) |
 
 ### Plot
@@ -236,6 +239,23 @@ Optional (feature-specific):
 | `python3`   | Osquery table metadata setup           | osquery disabled |
 | `realpath`  | Resolve folder paths                   | —                |
 | `tmux`      | fzf popup mode (`--tmux`)              | fullscreen fzf   |
+| `socat`     | Socket preview in command palette       | preview disabled |
+
+## Socket Command Channel
+
+tc starts a Unix domain socket at `$TC_SOCK` (e.g. `/tmp/tc-12345.sock`).
+External tools can send 2-char commands to control tc:
+
+```bash
+echo "m+" | socat - UNIX-CONNECT:$TC_SOCK   # heatmap: more color
+echo "T+" | socat - UNIX-CONNECT:$TC_SOCK   # theme: next
+echo "C+" | socat - UNIX-CONNECT:$TC_SOCK   # sort ascending
+```
+
+Command format: `{obj}{verb}` where obj is a single char (e.g. `m`=heat, `T`=theme, `C`=colSel)
+and verb is `+`=inc, `-`=dec, `~`=toggle, `c`=dup, `d`=del.
+
+The socket is per-process and cleaned up on exit.
 
 ## Known Limitations
 

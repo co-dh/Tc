@@ -20,15 +20,15 @@ def setTestMode (b : Bool) : IO Unit := testMode.set b
 def getTestMode : IO Bool := testMode.get
 
 -- | Core fzf: testMode returns first line, else spawn fzf
--- Uses --tmux popup if in tmux (keeps table visible), otherwise fullscreen
+-- Uses --tmux popup if in tmux (keeps table visible), otherwise compact at bottom
 def fzfCore (opts : Array String) (input : String) : IO String := do
   if ← getTestMode then
     pure (input.splitOn "\n" |>.filter (!·.isEmpty) |>.headD "")
   else
     let inTmux := (← IO.getEnv "TMUX").isSome
     let baseArgs := if inTmux
-      then #["--tmux=center,50%,50%", "--layout=reverse"]  -- popup over table
-      else #["--height=100%", "--layout=reverse"]           -- fullscreen fallback
+      then #["--tmux=bottom,80%,~15", "--layout=reverse"]  -- compact popup at bottom
+      else #["--height=~15", "--layout=reverse"]            -- compact inline at bottom
     if !inTmux then Term.shutdown
     let child ← IO.Process.spawn { cmd := "fzf", args := baseArgs ++ opts, stdin := .piped, stdout := .piped }
     child.stdin.putStr input
@@ -55,39 +55,38 @@ def fzfIdx (opts : Array String) (items : Array String) : IO (Option Nat) := do
     | some n => return some n
     | none => return none
 
--- | Build fzf args for 1-char selection using jump mode
--- jump-labels shows keys as labels, load:jump enters jump mode when list ready, jump:accept selects
-private def jumpArgs (keys : Array Char) : Array String :=
-  let labels := String.ofList keys.toList
-  #[s!"--jump-labels={labels}", "--bind=load:jump,jump:accept"]
+-- | Build flat menu items: "{!?}{objChar}{verbChar}\t{objName} > {verbLabel}"
+-- ! prefix marks previewable commands (theme, heat, width, prec)
+private def flatItems (vk : ViewKind) : Array String :=
+  objMenu.foldl (fun acc (objKey, objLabel, mk) =>
+    let objName := ((objLabel.splitOn ":").headD objLabel).trimAscii.toString
+    (verbsFor objKey vk).foldl (fun acc (_, verbLabel, verb) =>
+      let cmd := mk verb
+      let pfx := if cmd.isPreviewable then "!" else ""
+      acc.push s!"{pfx}{cmd}\t{objName} > {verbLabel}"
+    ) acc
+  ) #[]
 
--- | Extract first char from fzf selection (same as toList.getD 0)
-def selKey (s : String) : Char := s.toList.getD 0 ' '
+-- | Parse flat selection: strip ! prefix, extract 2-char Cmd code before \t
+def parseFlatSel (sel : String) : Option Cmd :=
+  let cmdStr := (sel.splitOn "\t").headD ""
+  let cmdStr := if cmdStr.startsWith "!" then (cmdStr.drop 1).toString else cmdStr
+  (Parse.parse? cmdStr : Option Cmd)
 
--- | Pure cmdMode: given fzf object/verb selections and view kind, compute resulting Cmd
--- Uses >>= (bind) for Kleisli composition: find obj → find verb → construct Cmd
-def cmdModePure (objSel verbSel : String) (vk : ViewKind) : Option Cmd :=
-  objMenu.find? (·.2.1 == objSel) >>= fun (objKey, _, mk) =>
-    (verbsFor objKey vk).find? (·.2.1 == verbSel) |>.map fun (_, _, verb) => mk verb
-
--- | Command mode: space → select object → select verb → return Cmd
+-- | Command mode: space → flat fzf menu → return Cmd
 -- vk = current view kind, for context-sensitive verb filtering
 def cmdMode (vk : ViewKind) : IO (Option Cmd) := do
-  -- step 1: select object (1-char select via jump mode)
-  let objKeys := objMenu.map (·.1)
-  let objItems := objMenu.map fun (_, desc, _) => desc  -- no prefix, jump label shows key
-  let objInput := "\n".intercalate objItems.toList
-  let some objSel ← fzf (#["--prompt=obj "] ++ jumpArgs objKeys) objInput | return none
-  -- find by matching description (jump label not in output)
-  let some (objKey, _, mk) := objMenu.find? (·.2.1 == objSel) | return none
-  -- step 2: select verb (1-char select via jump mode, context-sensitive per view)
-  let verbs := verbsFor objKey vk
-  if verbs.isEmpty then return none
-  let verbKeys := verbs.map (·.1)
-  let verbItems := verbs.map fun (_, desc, _) => desc  -- no prefix, jump label shows key
-  let verbInput := "\n".intercalate verbItems.toList
-  let some verbSel ← fzf (#["--prompt=verb "] ++ jumpArgs verbKeys) verbInput | return none
-  let some (_, _, verb) := verbs.find? (·.2.1 == verbSel) | return none
-  pure (some (mk verb))
+  let items := flatItems vk
+  if items.isEmpty then return none
+  let input := "\n".intercalate items.toList
+  -- Build fzf args: hide cmd prefix, show only label
+  let sockPath := (← IO.getEnv "TC_SOCK").getD ""
+  let previewBind := if sockPath.isEmpty then #[]
+    else
+      -- fzf focus bind: extract 2-char cmd prefix, send previewable (!) commands via socket
+      let bind := "--bind=focus:execute-silent(line={};cmd=${line%%\\t*};[ \"${cmd:0:1}\" = \"!\" ]&&printf '%s\\n' \"${cmd:1:2}\"|socat - UNIX-CONNECT:" ++ sockPath ++ " 2>/dev/null)"
+      #[bind]
+  let some sel ← fzf (#["--with-nth=2..", "--prompt=cmd "] ++ previewBind) input | return none
+  pure (parseFlatSel sel)
 
 end Tc.Fzf

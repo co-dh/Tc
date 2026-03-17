@@ -100,31 +100,31 @@ def objMenu : Array (Char × String × (Verb → Cmd)) := #[
 def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
   match obj with
   -- navigation
-  | 'r' => #[(',', "up",    .dec), ('.', "down",  .inc)]
-  | 'c' => #[(',', "left",  .dec), ('.', "right", .inc), ('~', "fzf jump", .ent)]
-  | 'v' => #[(',', "page up",   .dec), ('.', "page down",  .inc)]
-  | 'h' => #[(',', "page left", .dec), ('.', "page right", .inc)]
-  | 'V' => #[(',', "top",    .dec), ('.', "bottom", .inc)]
-  | 'H' => #[(',', "first",  .dec), ('.', "last",   .inc)]
+  | 'r' => #[('<', "up",    .dec), ('>', "down",  .inc)]
+  | 'c' => #[('<', "left",  .dec), ('>', "right", .inc), ('~', "fzf jump", .ent)]
+  | 'v' => #[('<', "page up",   .dec), ('>', "page down",  .inc)]
+  | 'h' => #[('<', "page left", .dec), ('>', "page right", .inc)]
+  | 'V' => #[('<', "top",    .dec), ('>', "bottom", .inc)]
+  | 'H' => #[('<', "first",  .dec), ('>', "last",   .inc)]
   -- selection
-  | 'R' => #[(',', "filter", .dec), ('.', "search", .inc), ('~', "toggle", .ent)]
-  | 'C' => #[(',', "sort desc", .dec), ('.', "sort asc", .inc), ('~', "toggle", .ent), ('h', "hide", .dup)]
-  | 'g' => #[(',', "prev match", .dec), ('.', "next match", .inc), ('~', "toggle group", .ent)]
+  | 'R' => #[('<', "filter", .dec), ('>', "search", .inc), ('~', "toggle", .ent)]
+  | 'C' => #[('<', "sort desc", .dec), ('>', "sort asc", .inc), ('~', "toggle", .ent), ('h', "hide", .dup)]
+  | 'g' => #[('<', "prev match", .dec), ('>', "next match", .inc), ('~', "toggle group", .ent)]
   -- options
-  | 's' => #[(',', "pop", .dec), ('~', "swap", .ent), ('c', "dup", .dup)]
-  | 'p' => #[(',', "less digits",  .dec), ('.', "more digits",  .inc)]
-  | 'w' => #[(',', "narrower",     .dec), ('.', "wider",        .inc)]
-  | 'T' => #[(',', "prev theme",   .dec), ('.', "next theme",   .inc)]
+  | 's' => #[('<', "pop", .dec), ('~', "swap", .ent), ('c', "dup", .dup)]
+  | 'p' => #[('<', "less digits",  .dec), ('>', "more digits",  .inc)]
+  | 'w' => #[('<', "narrower",     .dec), ('>', "wider",        .inc)]
+  | 'T' => #[('<', "prev theme",   .dec), ('>', "next theme",   .inc)]
   | 'i' => #[('~', "toggle info", .ent)]
   -- views
-  | 'M' => #[(',', "sel nulls", .dec), ('.', "sel singles", .inc), ('~', "enter", .ent), ('c', "push meta", .dup)]
+  | 'M' => #[('<', "sel nulls", .dec), ('>', "sel singles", .inc), ('~', "enter", .ent), ('c', "push meta", .dup)]
   | 'F' => match vk with
     | .freqV _ _ => #[('~', "filter by row", .ent), ('c', "push freq", .dup)]
     | _ => #[('c', "push freq", .dup)]
-  | 'D' => #[(',', "depth--", .dec), ('.', "depth++", .inc), ('~', "enter", .ent), ('d', "trash", .del), ('c', "push folder", .dup)]
-  | 'P' => #[('.', "line chart", .inc), (',', "bar chart", .dec), ('s', "scatter", .ent), ('h', "histogram", .del), ('b', "boxplot", .dup)]
-  | 'K' => #[(',', "shift left", .dec), ('.', "shift right", .inc)]
-  | 'm' => #[(',', "less color", .dec), ('.', "more color", .inc)]
+  | 'D' => #[('<', "depth--", .dec), ('>', "depth++", .inc), ('~', "enter", .ent), ('d', "trash", .del), ('c', "push folder", .dup)]
+  | 'P' => #[('>', "line chart", .inc), ('<', "bar chart", .dec), ('s', "scatter", .ent), ('h', "histogram", .del), ('b', "boxplot", .dup)]
+  | 'K' => #[('<', "shift left", .dec), ('>', "shift right", .inc)]
+  | 'm' => #[('<', "less color", .dec), ('>', "more color", .inc)]
   | _   => #[]
 
 -- | Enter key → context-specific command based on view kind

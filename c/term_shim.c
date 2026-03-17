@@ -180,13 +180,24 @@ lean_obj_res lean_tb_set_cell(uint32_t x, uint32_t y, uint32_t ch,
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+// Defined in sock_shim.c — non-zero when a socket command is pending
+extern volatile char g_sock_cmd[256];
+
 // tb_poll_event() -> Event
+// Uses peek loop (100ms) so socket commands can interrupt blocking wait
 lean_obj_res lean_tb_poll_event(lean_obj_arg world) {
     struct tb_event ev;
     memset(&ev, 0, sizeof(ev));
-    int rc = tb_poll_event(&ev);
-    // If poll returns error or empty event, sleep briefly to avoid spin loop
-    if (rc < 0 || ev.type == 0) usleep(16000);  // ~60fps cap
+    if (headless) {
+        usleep(16000);  // headless: no terminal events, just sleep briefly
+    } else {
+        // Loop: peek with timeout, break on real event or socket command
+        for (;;) {
+            int rc = tb_peek_event(&ev, 100);
+            if (rc > 0 && ev.type != 0) break;
+            if (g_sock_cmd[0]) break;
+        }
+    }
 
     // Create Event structure
     // Lean 4 sorts scalars by SIZE DESC, then declaration order

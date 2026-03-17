@@ -93,6 +93,11 @@ instance : Parse Cmd where
     let (_, mk) ← objs.find? (·.1 == o)
     pure (mk v)
 
+-- | Previewable: pure visual commands safe for live preview (no IO/DB)
+def isPreviewable : Cmd → Bool
+  | .thm _ | .heat _ | .width _ | .prec _ => true
+  | _ => false
+
 end Cmd
 
 -- | Effect sub-types (grouped by domain)
