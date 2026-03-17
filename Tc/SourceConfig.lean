@@ -211,7 +211,10 @@ private def cacheLookup (path : String) : IO (Option AdbcTable) :=
   return (← listCache.get).findSome? fun (k, v) => if k == path then some v else none
 
 private def cacheStore (path : String) (tbl : AdbcTable) : IO Unit :=
-  listCache.modify (·.push (path, tbl))
+  listCache.modify fun arr =>
+    let arr := arr.filter (·.1 != path)  -- replace existing entry
+    if arr.size >= 64 then arr.extract 32 arr.size |>.push (path, tbl)
+    else arr.push (path, tbl)
 
 -- | Allocate a fresh temp table name
 private def freshTbl : IO String := do
