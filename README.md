@@ -7,7 +7,7 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 ## Features
 
 - CSV, Parquet, JSON, DuckDB file support (via DuckDB)
-- S3 bucket browsing (`s3://bucket/path`)
+- S3 bucket browsing (`s3://bucket/path`) with auto-caching for slow listings
 - HuggingFace Hub datasets (`hf://datasets/user/dataset`)
 - Osquery table browser (`osquery://`)
 - Folder browser with recursive depth control
