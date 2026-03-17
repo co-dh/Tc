@@ -204,6 +204,15 @@ def runSetup (cfg : Config) : IO Unit := do
     let _ ← Adbc.query sql
   setupDone.modify (·.push cfg.pfx)
 
+-- | Cache for slow listings (> 3s). Keyed by path.
+initialize listCache : IO.Ref (Array (String × AdbcTable)) ← IO.mkRef #[]
+
+private def cacheLookup (path : String) : IO (Option AdbcTable) :=
+  return (← listCache.get).findSome? fun (k, v) => if k == path then some v else none
+
+private def cacheStore (path : String) (tbl : AdbcTable) : IO Unit :=
+  listCache.modify (·.push (path, tbl))
+
 -- | Allocate a fresh temp table name
 private def freshTbl : IO String := do
   let n ← memTblCounter.modifyGet fun n => (n, n + 1)
@@ -248,12 +257,17 @@ private def Config.attachSql (cfg : Config) (connStr : String) : IO String := do
   pure s!"{ddl};\n{sql}"
 
 -- | Run listing: CLI cmd → JSON → listSql, or direct SQL mode
+-- Results are cached in-memory when listing takes > 3 seconds (e.g. slow S3 buckets).
 def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
+  if let some cached ← cacheLookup path then
+    Log.write "src" s!"runList cache hit: {path}"
+    return some cached
   Log.write "src" s!"runList: pfx={cfg.pfx} path={path} listCmd={cfg.listCmd}"
   statusMsg s!"Loading {path} ..."
+  let t0 ← IO.monoMsNow
   runSetup cfg
   let tbl ← freshTbl
-  if cfg.listCmd.isEmpty then
+  let result ← if cfg.listCmd.isEmpty then
     -- Auto-generate attach SQL if attach=true and no custom listSql
     let sql ← if cfg.attach && cfg.listSql.isEmpty then do
       let connStr := if cfg.pfx.isEmpty then path
@@ -302,6 +316,13 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
       catch _ => pure ()
     try IO.FS.removeFile tmpFile catch _ => pure ()
     fromTbl tbl
+  -- Cache slow listings (> 3s) so navigating back is instant
+  if let some adbc := result then
+    let elapsed := (← IO.monoMsNow) - t0
+    if elapsed > 3000 then
+      Log.write "src" s!"runList cached ({elapsed}ms): {path}"
+      cacheStore path adbc
+  return result
 
 -- | Download a remote file to local temp path
 def Config.runDownload (cfg : Config) (path : String) : IO String := do
