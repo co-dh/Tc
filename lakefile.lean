@@ -25,7 +25,7 @@ lean_lib Tc where
 
 -- | Main executable
 @[default_target]
-lean_exe tc where
+lean_exe tv where
   root := `Tc.App.Common
 
 -- | Test library (pure + runtime + screen backup tests)
@@ -44,14 +44,14 @@ lean_exe test where
 lean_exe testlarge where
   root := `test.TestLargeData
 
--- | Copy funcs.prql next to tc binary (runtime dependency)
+-- | Copy funcs.prql next to tv binary (runtime dependency)
 def copyFuncsPrql : IO Unit := do
   IO.FS.writeFile ".lake/build/bin/funcs.prql" (← IO.FS.readFile "Tc/Data/ADBC/funcs.prql")
 
--- | Build test + tc, then run tests (test shells out to tc binary)
+-- | Build test + tv, then run tests (test shells out to tv binary)
 script runscreen args do
   let build ← IO.Process.spawn {
-    cmd := "lake", args := #["build", "testscreen", "tc"]
+    cmd := "lake", args := #["build", "testscreen", "tv"]
     stdin := .inherit, stdout := .inherit, stderr := .inherit
   }
   if (← build.wait) != 0 then return 1
@@ -65,7 +65,7 @@ script runscreen args do
 
 script runlarge args do
   let build ← IO.Process.spawn {
-    cmd := "lake", args := #["build", "testlarge", "tc"]
+    cmd := "lake", args := #["build", "testlarge", "tv"]
     stdin := .inherit, stdout := .inherit, stderr := .inherit
   }
   if (← build.wait) != 0 then return 1
@@ -79,7 +79,7 @@ script runlarge args do
 
 script runtest args do
   let build ← IO.Process.spawn {
-    cmd := "lake", args := #["build", "test", "tc"]
+    cmd := "lake", args := #["build", "test", "tv"]
     stdin := .inherit, stdout := .inherit, stderr := .inherit
   }
   if (← build.wait) != 0 then return 1

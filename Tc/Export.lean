@@ -35,7 +35,7 @@ def run (s : ViewStack AdbcTable) (fmt : ExportFmt) : IO (ViewStack AdbcTable) :
   let name := s.cur.tabName.replace "/" "_" |>.replace " " "_"
   let stem := (name.splitOn ".").head?.filter (!·.isEmpty) |>.getD name
   let home := (← IO.getEnv "HOME").getD "."
-  let path := s!"{home}/tc_export_{stem}.{fmt.ext}"
+  let path := s!"{home}/tv_export_{stem}.{fmt.ext}"
   exportView s.tbl path fmt
   statusMsg s!"exported {path}"
   pure s

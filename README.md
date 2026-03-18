@@ -1,8 +1,8 @@
-# tc - Terminal Table Viewer
+# tv - Terminal Table Viewer
 
 VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 
-![tc demo](doc/demo.gif)
+![tv demo](doc/demo.gif)
 
 ## Features
 
@@ -21,37 +21,37 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 - Plotting via ggplot2: line, bar, scatter, histogram, boxplot — with faceting
 - Status bar aggregation (sum/avg/count for current column)
 - Heatmap coloring for all column types: numeric gradient, string categorical (`space m </>` cycles mode: 0=off, 1=numeric, 2=categorical, 3=both)
-- Unix socket command channel (`$TC_SOCK`) — external tools send 2-char commands for live control
+- Unix socket command channel (`$TV_SOCK`) — external tools send 2-char commands for live control
 - Sparkline distribution row for numeric columns (on by default, `Z` to toggle)
 - Regex column split (`:` key — split column by delimiter/regex into new columns)
 - Theme support
-- Stdin pipe mode (`cat data.csv | tc`)
+- Stdin pipe mode (`cat data.csv | tv`)
 - Table diff (compare top 2 views, auto-key categorical columns, hide same-value columns)
 - Session save/load (persist filters, sorts, derives across sessions)
-- Replay ops on tab line (shows PRQL pipeline; replay with `tc file -p "ops"`)
+- Replay ops on tab line (shows PRQL pipeline; replay with `tv file -p "ops"`)
 - Zero-copy rendering via C FFI (termbox2)
 
 ## Build
 
 ```bash
-lake build tc
+lake build tv
 ```
 
 ## Run
 
 ```bash
-tc data.csv                        # CSV file
-tc data.parquet                    # Parquet file
-tc data.duckdb                     # DuckDB file (list tables)
-tc .                               # Browse current directory
-tc s3://bucket/prefix              # Browse S3 bucket
-tc s3://bucket/path/file.csv       # Open S3 file directly
-tc s3://bucket/prefix +n           # S3 public bucket (no credentials)
-tc hf://datasets/user/dataset      # HuggingFace Hub dataset
-tc osquery://                      # Browse osquery tables
-tc osquery://processes             # Query osquery table directly
-cat data.csv | tc                  # Pipe mode (stdin)
-tc -s mysession                    # Restore saved session
+tv data.csv                        # CSV file
+tv data.parquet                    # Parquet file
+tv data.duckdb                     # DuckDB file (list tables)
+tv .                               # Browse current directory
+tv s3://bucket/prefix              # Browse S3 bucket
+tv s3://bucket/path/file.csv       # Open S3 file directly
+tv s3://bucket/prefix +n           # S3 public bucket (no credentials)
+tv hf://datasets/user/dataset      # HuggingFace Hub dataset
+tv osquery://                      # Browse osquery tables
+tv osquery://processes             # Query osquery table directly
+cat data.csv | tv                  # Pipe mode (stdin)
+tv -s mysession                    # Restore saved session
 ```
 
 ## Keybindings
@@ -85,7 +85,7 @@ tc -s mysession                    # Restore saved session
 | `J`         | Join top 2 views (inner/left/right join, union, set diff)        |
 | `V`         | Diff top 2 views (auto-key, hide same columns, Δ prefix diffs)  |
 | `S`         | Swap top two views                                               |
-| `W`         | Save session (view stack to `~/.cache/tc/sessions/`)             |
+| `W`         | Save session (view stack to `~/.cache/tv/sessions/`)             |
 | `L`         | Load session (restore saved view stack)                          |
 | `Q`         | Quit                                                             |
 
@@ -95,7 +95,7 @@ tc -s mysession                    # Restore saved session
 |-----|--------|
 | `e` | Export current view (fzf picker: csv, parquet, json) |
 
-Exports to `~/tc_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows.
+Exports to `~/tv_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows.
 
 ### Selection and Grouping
 
@@ -243,13 +243,13 @@ Optional (feature-specific):
 
 ## Socket Command Channel
 
-tc starts a Unix domain socket at `$TC_SOCK` (e.g. `/tmp/tc-12345.sock`).
-External tools can send 2-char commands to control tc:
+tv starts a Unix domain socket at `$TV_SOCK` (e.g. `/tmp/tv-12345.sock`).
+External tools can send 2-char commands to control tv:
 
 ```bash
-echo "m+" | socat - UNIX-CONNECT:$TC_SOCK   # heatmap: more color
-echo "T+" | socat - UNIX-CONNECT:$TC_SOCK   # theme: next
-echo "C+" | socat - UNIX-CONNECT:$TC_SOCK   # sort ascending
+echo "m+" | socat - UNIX-CONNECT:$TV_SOCK   # heatmap: more color
+echo "T+" | socat - UNIX-CONNECT:$TV_SOCK   # theme: next
+echo "C+" | socat - UNIX-CONNECT:$TV_SOCK   # sort ascending
 ```
 
 Command format: `{obj}{verb}` where obj is a single char (e.g. `m`=heat, `T`=theme, `C`=colSel)

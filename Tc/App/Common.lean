@@ -310,7 +310,7 @@ def runScript (path : String) (prqlOps : String) : IO Unit := do
 def appMain (args : List String) : IO Unit := do
   let cli := parseArgs args
   let (path?, keys, testMode, noSign) := (cli.path, cli.keys, cli.test, cli.noSign)
-  let envTest := (← IO.getEnv "TC_TEST_MODE").isSome
+  let envTest := (← IO.getEnv "TV_TEST_MODE").isSome
   Fzf.setTestMode (testMode || envTest)
   SourceConfig.setNoSign noSign
   let pipeMode ← if testMode then pure false else (! ·) <$> Term.isattyStdin
@@ -325,7 +325,7 @@ def appMain (args : List String) : IO Unit := do
   -- script mode: run PRQL against file and exit
   if let some prqlOps := cli.prql then
     let path := path?.getD ""
-    if path.isEmpty then IO.eprintln "tc -p requires a file argument"; return
+    if path.isEmpty then IO.eprintln "tv -p requires a file argument"; return
     try runScript path prqlOps
     finally AdbcTable.shutdown; Tc.cleanupTmp
     return
@@ -349,7 +349,7 @@ def appMain (args : List String) : IO Unit := do
     let isDir ← (path : System.FilePath).isDir
     if path.isEmpty || srcCfg.isSome || isDir then
       let p := if path.isEmpty then "." else path
-      -- Config-driven direct entry (e.g. tc osquery://groups)
+      -- Config-driven direct entry (e.g. tv osquery://groups)
       if let some cfg := srcCfg then
         if !cfg.script.isEmpty && !cfg.pfx.isEmpty then
           let rest := (p.drop cfg.pfx.length).toString

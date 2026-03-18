@@ -1,6 +1,6 @@
 /-
   SourceConfig: config-driven file/folder handling for remote sources.
-  Each source is a row in cfg/sources.duckdb (tc_sources table).
+  Each source is a row in cfg/sources.duckdb (tv_sources table).
 
   Flow: CLI cmd → JSON → tmp file → list_sql → DuckDB temp table
   Or:   setup_cmd → setup_sql → list_sql directly (no CLI, e.g. HF root)
@@ -147,7 +147,7 @@ private def configFromRow (qr : Adbc.QueryResult) (row : Nat) : IO Config := do
 -- | Find config for a path by prefix match (longest prefix wins)
 def findSource (path : String) : IO (Option Config) := do
   try
-    let qr ← Adbc.queryParam "SELECT * FROM src.tc_sources WHERE pfx != '' AND $1 LIKE pfx || '%' ORDER BY length(pfx) DESC LIMIT 1" path
+    let qr ← Adbc.queryParam "SELECT * FROM src.tv_sources WHERE pfx != '' AND $1 LIKE pfx || '%' ORDER BY length(pfx) DESC LIMIT 1" path
     let n ← Adbc.nrows qr
     if n == 0 then return none
     some <$> configFromRow qr 0

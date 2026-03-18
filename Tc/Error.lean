@@ -4,14 +4,14 @@
 
 namespace Log
 
--- | Log dir — ~/.cache/tc/, works from any cwd (including CI)
+-- | Log dir — ~/.cache/tv/, works from any cwd (including CI)
 initialize logDir : IO.Ref String ← do
   let home := (← IO.getEnv "HOME").getD "/tmp"
-  let dir := s!"{home}/.cache/tc"
+  let dir := s!"{home}/.cache/tv"
   let _ ← IO.Process.output { cmd := "mkdir", args := #["-p", dir] }
   IO.mkRef dir
 
-def path : IO String := return s!"{← logDir.get}/tc.log"
+def path : IO String := return s!"{← logDir.get}/tv.log"
 
 @[extern "lean_set_log_path"]
 opaque setLogPath : @& String → IO Unit

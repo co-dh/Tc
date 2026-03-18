@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Populate ~/.cache/tc/hf_datasets.duckdb with Hugging Face dataset listing.
+Populate ~/.cache/tv/hf_datasets.duckdb with Hugging Face dataset listing.
 
 Creates a `listing` table with: id, author, downloads, likes, description,
 created, modified, tags (semicolon-separated), license, task, language.
@@ -18,7 +18,7 @@ import sys
 import time
 from pathlib import Path
 
-CACHE_DIR = Path.home() / ".cache" / "tc"
+CACHE_DIR = Path.home() / ".cache" / "tv"
 DUCKDB_PATH = CACHE_DIR / "hf_datasets.duckdb"
 TMP_JSON = CACHE_DIR / "tmp_hf_listing.json"
 CACHE_MAX_AGE = 24 * 3600  # 24 hours

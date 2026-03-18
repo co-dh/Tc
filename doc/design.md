@@ -356,7 +356,7 @@ TESTS
 
 | Executable | Use case |
 |------------|----------|
-| `tc`       | Full (CSV, parquet, JSON, DuckDB, S3, HF, osquery) |
+| `tv`       | Full (CSV, parquet, JSON, DuckDB, S3, HF, osquery) |
 | `test`     | Integration tests (headless `-c` mode) |
 
 Generic code (View, Meta, etc.) uses typeclasses (`TblOps`, `ModifyTable`).

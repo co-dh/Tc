@@ -80,7 +80,7 @@ def cmdMode (vk : ViewKind) : IO (Option Cmd) := do
   if items.isEmpty then return none
   let input := "\n".intercalate items.toList
   -- Build fzf args: hide cmd prefix, show only label
-  let sockPath := (← IO.getEnv "TC_SOCK").getD ""
+  let sockPath := (← IO.getEnv "TV_SOCK").getD ""
   let previewBind := if sockPath.isEmpty then #[]
     else
       -- fzf focus bind: extract 2-char cmd prefix, send previewable (!) commands via socket
