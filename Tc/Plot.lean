@@ -92,7 +92,7 @@ private def isNumericType (typ : String) : Bool :=
   typ == "int" || typ == "float" || typ == "decimal"
 
 -- | Plot types that share the same x/y/cat data (cycleable with h/l)
-def cyclableKinds : Array PlotKind := #[.line, .scatter, .bar, .box]
+def cyclableKinds : Array PlotKind := #[.line, .scatter, .bar, .box, .area, .step, .violin]
 
 private def cycleKind (k : PlotKind) (delta : Nat) : PlotKind :=
   let n := cyclableKinds.size
@@ -130,17 +130,22 @@ private def rScript (dataPath pngPath : String) (kind : PlotKind)
       "tryCatch(d[['" ++ xName ++ "']] <- as.numeric(d[['" ++ xName ++ "']]), warning=function(w) NULL)\n"
     else ""
   let aes := match kind with
-    | .hist => s!"aes(x = {yR})"
-    | .box => if hasCat then s!"aes(x = {catR}, y = {yR})" else s!"aes(x = factor(''), y = {yR})"
+    | .hist | .density => s!"aes(x = {yR})"
+    | .box | .violin => if hasCat then s!"aes(x = {catR}, y = {yR})" else s!"aes(x = factor(''), y = {yR})"
     | _ => s!"aes(x = {xR}, y = {yR})"
-  let colorAes := if hasCat && kind != .box then s!", color = {catR}" else ""
-  let fillAes := if hasCat && kind == .box then s!", fill = {catR}" else ""
+  let colorAes := if hasCat && kind != .box && kind != .violin then s!", color = {catR}" else ""
+  let fillAes := if hasCat && (kind == .box || kind == .violin || kind == .area) then s!", fill = {catR}"
+    else if kind == .area && !hasCat then s!", fill = {yR}" else ""
   let geom := match kind with
     | .line => "geom_line(linewidth = 0.5)"
     | .bar => "geom_col()"
     | .scatter => "geom_point(size = 1.5, alpha = 0.7)"
     | .hist => "geom_histogram(bins = 30, fill = 'steelblue', color = 'white')"
     | .box => "geom_boxplot()"
+    | .area => "geom_area(alpha = 0.4)"
+    | .density => "geom_density(fill = 'steelblue', alpha = 0.5)"
+    | .step => "geom_step(linewidth = 0.5)"
+    | .violin => "geom_violin() + geom_boxplot(width = 0.1, fill = 'white')"
   let facet := if hasFacet then s!" + facet_wrap(vars({facetR}), scales = 'free_y')" else ""
   "library(ggplot2)\n" ++ readData ++ convY ++ convX ++
     s!"p <- ggplot(d, {aes}{colorAes}{fillAes}) + {geom}{facet} + " ++
@@ -195,12 +200,12 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   Log.write "plot" s!"run entered, kind={repr kind}"
   let n := s.cur.nav
   let names := TblOps.colNames n.tbl
-  -- histogram: no group col needed, just cursor col
-  if kind == .hist then
+  -- histogram/density: no group col needed, just cursor col
+  if kind == .hist || kind == .density then
     let yIdx := colIdxAt n.grp names n.col.cur.val
     let yName := names.getD yIdx ""
     let yType := TblOps.colType n.tbl yIdx
-    if !isNumericType yType then return ← err s "histogram needs a numeric column"
+    if !isNumericType yType then return ← err s s!"{kind} needs a numeric column"
     Term.shutdown
     enterAltScreen
     let datPath ← Tc.tmpPath "plot.dat"
@@ -215,7 +220,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
     clearScreen
     if err?.isNone then showPng pngPath
     else IO.println (err?.getD "plot error")
-    IO.println s!"\x1b[1m─── histogram: {yName} ───\x1b[0m"
+    IO.println s!"\x1b[1m─── {kind}: {yName} ───\x1b[0m"
     IO.print "q:exit "
     setRaw
     let mut done := false
@@ -309,6 +314,7 @@ def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   | .plot .ent => some (s, .plot .scatter)
   | .plot .del => some (s, .plot .hist)
   | .plot .dup => some (s, .plot .box)
+  | .plot .up  => some (s, .plot .area)
   | _ => none
 
 end Tc.Plot
