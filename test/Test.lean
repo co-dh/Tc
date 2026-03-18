@@ -205,6 +205,13 @@ def test_folder_pop : IO Unit := do
   -- fixture dir: [sort, jjj → row 3 = subdir (dir), enter, q pops back
   assert (contains (← run "[jjj<ret>q" "data/test_folder") "[/") "q pops back to parent folder"
 
+-- backspace in folder view navigates to parent directory (same as selecting "..")
+def test_folder_backspace : IO Unit := do
+  log "folder_backspace"
+  -- enter subdir then backspace → should be back at parent folder
+  let output ← run "[jjj<ret><bs>" "data/test_folder"
+  assert (contains output "test_folder") "backspace returns to parent folder"
+
 def test_folder_enter_symlink : IO Unit := do
   log "folder_enter_symlink"
   -- fixture dir: [sort, jj → row 2 = link_to_subdir (symlink to dir), enter it
@@ -870,6 +877,7 @@ def tests : Array (String × IO Unit) := #[
   ("folder_no_args", test_folder_no_args), ("folder_D", test_folder_D),
   ("folder_tab", test_folder_tab), ("folder_enter", test_folder_enter),
   ("folder_relative", test_folder_relative), ("folder_pop", test_folder_pop),
+  ("folder_backspace", test_folder_backspace),
   ("folder_enter_symlink", test_folder_enter_symlink),
   ("duckdb_list", test_duckdb_list), ("duckdb_enter", test_duckdb_enter),
   ("duckdb_primary_key", test_duckdb_primary_key),

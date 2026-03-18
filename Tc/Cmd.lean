@@ -14,18 +14,19 @@ inductive Verb where
   | dup               -- copy/dup (info: select single-val cols)
   | del               -- delete
   | ent               -- toggle/enter (col:s, rowSel:T, grp:!)
+  | up                -- go up/parent (fld: backspace → parent dir)
   deriving Repr, BEq, DecidableEq
 
 namespace Verb
 
 -- | Verb to char
 def toChar : Verb → Char
-  | .inc => '+' | .dec => '-' | .ent => '~' | .del => 'd' | .dup => 'c'
+  | .inc => '+' | .dec => '-' | .ent => '~' | .del => 'd' | .dup => 'c' | .up => '^'
 
 -- | Char to verb
 def ofChar? : Char → Option Verb
   | '+' => some .inc | '-' => some .dec | '~' => some .ent
-  | 'd' => some .del | 'c' => some .dup | _ => none
+  | 'd' => some .del | 'c' => some .dup | '^' => some .up | _ => none
 
 instance : ToString Verb where toString v := v.toChar.toString
 instance : Parse Verb where parse? s := s.toList.head?.bind ofChar?
@@ -108,7 +109,7 @@ inductive QueryEffect where
   | filter (expr : String)
   | sort (colIdx : Nat) (sels : Array Nat) (grp : Array Nat) (asc : Bool)
   deriving Repr, BEq
-inductive FolderEffect where | push | enter | del | depth (delta : Int) deriving Repr, BEq
+inductive FolderEffect where | push | enter | del | parent | depth (delta : Int) deriving Repr, BEq
 inductive SearchEffect where | next | prev deriving Repr, BEq
 inductive PlotKind where | line | bar | scatter | hist | box deriving Repr, BEq
 
