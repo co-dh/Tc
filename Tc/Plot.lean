@@ -95,8 +95,12 @@ private def isNumericType (typ : String) : Bool :=
 private def isSingleColPlot (kind : PlotKind) : Bool :=
   kind == .hist || kind == .density
 
+-- | Plot types that use category column as the x-axis (box/violin)
+private def usesCategoryAsX (kind : PlotKind) : Bool :=
+  kind == .box || kind == .violin
+
 -- | Plot types that use fill instead of color for category aesthetics
-private def usesFillForCat (kind : PlotKind) : Bool :=
+private def addsFill (kind : PlotKind) : Bool :=
   kind == .box || kind == .violin || kind == .area
 
 -- | Plot types that share the same x/y/cat data (cycleable with h/l)
@@ -138,11 +142,11 @@ private def rScript (dataPath pngPath : String) (kind : PlotKind)
       "tryCatch(d[['" ++ xName ++ "']] <- as.numeric(d[['" ++ xName ++ "']]), warning=function(w) NULL)\n"
     else ""
   let aes := if isSingleColPlot kind then s!"aes(x = {yR})"
-    else if usesFillForCat kind && kind != .area then
+    else if usesCategoryAsX kind then
       if hasCat then s!"aes(x = {catR}, y = {yR})" else s!"aes(x = factor(''), y = {yR})"
     else s!"aes(x = {xR}, y = {yR})"
-  let colorAes := if hasCat && !usesFillForCat kind then s!", color = {catR}" else ""
-  let fillAes := if usesFillForCat kind then
+  let colorAes := if hasCat && !addsFill kind then s!", color = {catR}" else ""
+  let fillAes := if addsFill kind then
       s!", fill = {if hasCat then catR else yR}"
     else ""
   let geom := match kind with
