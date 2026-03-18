@@ -240,14 +240,7 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
       return some (s.push v)
   match ← curType s.cur, ← curPath s.cur with
   | some 'd', some p =>
-    if p == ".." || p.endsWith "/.." then
-      match cfg with
-      | some c => match c.parent curDir with
-        | some par => tryView s par 1 false
-        | none => pure (some s)
-      | none => match s.pop with
-        | some s' => pure (some s')
-        | none => tryView s ".." (curDepth s) false
+    if p == ".." || p.endsWith "/.." then goParent s
     else
       let fullPath := match cfg with
         | some c => joinPath curDir (if c.dirSuffix then p ++ "/" else p)
