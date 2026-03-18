@@ -67,6 +67,10 @@ private def showPng (png : String) : IO Unit := do
 -- | ANSI: clear screen and move cursor to top-left
 private def clearScreen : IO Unit := IO.print "\x1b[2J\x1b[H"
 
+-- | Enter/leave alternate screen buffer so plot output doesn't bleed into other panes
+private def enterAltScreen : IO Unit := IO.print "\x1b[?1049h\x1b[2J\x1b[H"
+private def leaveAltScreen : IO Unit := IO.print "\x1b[?1049l"
+
 -- | Set terminal to raw mode (single keypress without Enter)
 private def setRaw : IO Unit := do
   let _ ← Log.run "stty" "stty" #["-F", "/dev/tty", "raw", "-echo"]
@@ -181,6 +185,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
     let yType := TblOps.colType n.tbl yIdx
     if !isNumericType yType then return ← err s "histogram needs a numeric column"
     Term.shutdown
+    enterAltScreen
     let datPath ← Tc.tmpPath "plot.dat"
     let pngPath ← Tc.tmpPath "plot.png"
     let nr := min (TblOps.nRows n.tbl) maxPoints
@@ -198,6 +203,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
     setRaw
     let _ ← readKeyRaw
     setSane
+    leaveAltScreen
     let _ ← Term.init
     return some s
   -- all other plots need at least 1 group column
@@ -235,8 +241,9 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   let hasCat := n.grp.size > 1 && !hasFacet
   let intervals := getIntervals xType baseStep
   let maxIdx := intervals.size - 1
-  -- enter plot mode: shutdown TUI, set raw mode once
+  -- enter plot mode: shutdown TUI, alternate screen, raw mode
   Term.shutdown
+  enterAltScreen
   setRaw
   let datPath ← Tc.tmpPath "plot.dat"
   let pngPath ← Tc.tmpPath "plot.png"
@@ -266,8 +273,9 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
     else if key == 'l' then curKind := cycleKind curKind 1; needExport := false
     else if key == 'h' then curKind := cycleKind curKind (cyclableKinds.size - 1); needExport := false
     else needExport := false  -- ignore unknown keys
-  -- exit plot mode: restore terminal, re-init TUI
+  -- exit plot mode: restore terminal, leave alternate screen, re-init TUI
   setSane
+  leaveAltScreen
   let _ ← Term.init
   pure (some s)
 
