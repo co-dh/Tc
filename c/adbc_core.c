@@ -201,9 +201,8 @@ fail:;
 
 /* === DuckDB Driver === */
 
-// | DuckDB driver paths to try
+// | DuckDB driver paths: /usr/local/lib first (make duckdb installs there with ADBC)
 static const char* DUCKDB_PATHS[] = {
-    "/usr/lib/libduckdb.so",
     "/usr/local/lib/libduckdb.so",
     "libduckdb.so",
     NULL

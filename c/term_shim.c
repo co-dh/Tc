@@ -194,7 +194,7 @@ lean_obj_res lean_tb_poll_event(lean_obj_arg world) {
         // Loop: peek with timeout, break on real event or socket command
         for (;;) {
             int rc = tb_peek_event(&ev, 100);
-            if (rc > 0 && ev.type != 0) break;
+            if (rc == 0 && ev.type != 0) break;  // 0 = success
             if (g_sock_cmd[0]) break;
         }
     }

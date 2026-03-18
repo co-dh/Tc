@@ -115,7 +115,6 @@ private partial def dispatchCmd (a : AppState) (cmdStr : String) : IO AppState :
 
 -- main loop: render → input → update → effect → loop
 partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppState := do
-  -- Lazy sparkline computation: recompute when enabled but cache is empty
   -- Lazy sparkline computation: recompute when cache is empty
   let a ← if a.sparklines.isEmpty then
     pure { a with sparklines := ← Sparkline.compute a.stk.tbl }
