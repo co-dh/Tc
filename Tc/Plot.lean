@@ -126,15 +126,16 @@ private def rScript (dataPath pngPath : String) (kind : PlotKind)
     s!"labs(x = '{xName}', y = '{yName}') + theme_minimal()\n" ++
     s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
 
--- | Run Rscript to render plot
-private def renderR (script : String) : IO Bool := do
+-- | Run Rscript to render plot; returns error message on failure
+private def renderR (script : String) : IO (Option String) := do
   let rPath ← Tc.tmpPath "plot.R"
   IO.FS.writeFile rPath script
   let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
   if r.exitCode != 0 then
-    Log.write "plot" s!"Rscript failed: {r.stderr.trimAscii.toString}"
-    return false
-  return true
+    let msg := s!"Rscript failed: {r.stderr.trimAscii.toString}"
+    Log.write "plot" msg
+    return some msg
+  return none
 
 -- | Export plot data with headers for R (prepends column names to plotExport output)
 private def exportWithHeaders (t : T) (xName yName : String) (catName? : Option String)
@@ -152,10 +153,10 @@ private def exportWithHeaders (t : T) (xName yName : String) (catName? : Option 
 -- | Render plot image and status bar in-place (clear → image → status)
 private def renderFrame (pngPath : String) (kind : PlotKind)
     (xName yName : String) (intervals : Array Interval) (idx : Nat)
-    (ok : Bool) : IO Unit := do
+    (err? : Option String) : IO Unit := do
   clearScreen
-  if ok then showPng pngPath
-  else IO.println s!"plot error (see {← Log.path})"
+  if err?.isNone then showPng pngPath
+  else IO.println (err?.getD "plot error")
   -- status bar
   let ivBar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
     if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
@@ -182,10 +183,10 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
       | .strs vs => vs | .ints vs => vs.map toString | .floats vs => vs.map toString
     IO.FS.writeFile datPath (yName ++ "\n" ++ "\n".intercalate (vals.filter (!·.isEmpty)).toList ++ "\n")
     let script := rScript datPath pngPath kind "" yName false "" false "" false
-    let ok ← renderR script
+    let err? ← renderR script
     clearScreen
-    if ok then showPng pngPath
-    else IO.println s!"plot error (see {← Log.path})"
+    if err?.isNone then showPng pngPath
+    else IO.println (err?.getD "plot error")
     IO.println s!"\x1b[1m─── histogram: {yName} ───\x1b[0m"
     IO.print "q: exit "
     setRaw
@@ -238,17 +239,16 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   while continue_ do
     let iv := intervals.getD idx default
     Log.write "plot" s!"kind={curKind} interval={iv.label} truncLen={iv.truncLen} idx={idx}"
-    let ok ← do
+    let exportOk ← do
       if needExport then
         if let some _cats := ← exportWithHeaders n.tbl xName yName exportCatName? xIsTime baseStep iv.truncLen then
           pure true
         else pure false
       else pure true
-    let ok ← if ok then
-        let script := rScript datPath pngPath curKind xName yName hasCat catName hasFacet facetName xIsTime
-        renderR script
-      else pure false
-    renderFrame pngPath curKind xName yName intervals idx ok
+    let err? ← if exportOk then
+        renderR (rScript datPath pngPath curKind xName yName hasCat catName hasFacet facetName xIsTime)
+      else pure (some "export failed")
+    renderFrame pngPath curKind xName yName intervals idx err?
     let key ← readKeyRaw
     if key == '+' || key == '=' then idx := min (idx + 1) maxIdx; needExport := true
     else if key == '-' || key == '_' then idx := if idx > 0 then idx - 1 else 0; needExport := true
