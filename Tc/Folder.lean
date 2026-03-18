@@ -218,7 +218,7 @@ def goParent (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
     | none => pure (some s)
   | none => match s.pop with
     | some s' => pure (some s')
-    | none => tryView s ".." (curDepth s) false
+    | none => tryView s (curDir ++ "/..") (curDepth s) false
 
 -- | Enter directory or view file based on current row
 def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
