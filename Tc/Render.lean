@@ -51,7 +51,7 @@ def renderCols (cols : Array Column) (names : Array String) (fmts : Array Char)
 def render {nRows nCols : Nat} {t : Type} [TblOps t]
     (nav : NavState nRows nCols t) (view : ViewState) (inWidths : Array Nat)
     (styles : Array UInt32) (precAdj widthAdj : Int) (vkind : ViewKind := .tbl)
-    (heatMode : UInt8 := 3) (sparklines : Array String := #[])
+    (heatMode : UInt8 := 1) (sparklines : Array String := #[])
     (extraHidden : Array Nat := #[]) : IO (ViewState × Array Nat) := do
   Term.clear
   let h ← Term.height; let w ← Term.width
