@@ -830,6 +830,18 @@ def test_diff_show_same : IO Unit := do
   -- After second V, cost columns should expand (no longer hidden width=1)
   assert (contains output "cos") "VV reveals same-value cost columns"
 
+-- === Plot tests ===
+
+-- | plotExport with string column as y should not crash.
+--   Regression: ds_nth's `y != 0` filter caused DuckDB to cast string cols to INT.
+def test_plot_export_string_col : IO Unit := do
+  log "plot_export_string_col"
+  -- mixed.csv: x(int), y(float), cat(str) — passing string col "cat" as yName triggers the bug
+  let some tbl ← Tc.AdbcTable.fromFile "data/plot/mixed.csv" | throw (IO.userError "failed to open mixed.csv")
+  -- xName=x, yName=cat (string!), no category, xIsTime=false, step=1, truncLen=1
+  let result ← Tc.AdbcTable.plotExport tbl "x" "cat" none false 1 1
+  assert result.isSome "plotExport with string y column should not crash with type cast error"
+
 -- === Replay ops tests ===
 
 -- | Replay: sort adds "sort" to tab line (PRQL ops shown right-aligned)
@@ -932,6 +944,8 @@ def tests : Array (String × IO Unit) := #[
   -- Diff tests
   ("diff", test_diff),
   ("diff_show_same", test_diff_show_same),
+  -- Plot tests
+  ("plot_export_string_col", test_plot_export_string_col),
   -- Replay ops tests
   ("replay_sort", test_replay_sort),
   ("replay_empty", test_replay_empty),
