@@ -192,8 +192,7 @@ Once in plot view, keys control the chart in-place (no dialog, instant re-render
 | Key | Action |
 |-----|--------|
 | `h`/`l` | Cycle plot type (line → scatter → bar → box) |
-| `+`/`=` | Coarser downsampling (fewer points, broader time buckets) |
-| `-`/`_` | Finer downsampling (more points, narrower time buckets) |
+| `.`/`,` | Coarser/finer downsampling (shown only for large data) |
 | `q` | Exit back to the table |
 
 For time-series x-axis, intervals cycle `1s → 1m → 1h → 1d`. For numeric x-axis, step multiplier increases `1x → 2x → 4x → 8x → 16x`.

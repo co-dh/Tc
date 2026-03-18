@@ -91,7 +91,7 @@ def objMenu : Array (Char × String × (Verb → Cmd)) := #[
   ('M', "metaV  : meta view",            .metaV),
   ('F', "freq   : frequency view",       .freq),
   ('D', "fld    : folder view",          .fld),
-  ('P', "plot   : ggplot2 (! any→x, cursor numeric→y)", .plot),
+  ('P', "plot   : ggplot2 chart (group ! for x-axis, cursor on numeric y)", .plot),
   ('K', "colShift : reorder key cols", .colShift),
   ('m', "heat   : heatmap mode 0-3", .heat)
 ]
@@ -122,7 +122,7 @@ def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
     | .freqV _ _ => #[('~', "filter by row", .ent), ('c', "push freq", .dup)]
     | _ => #[('c', "push freq", .dup)]
   | 'D' => #[('<', "depth--", .dec), ('>', "depth++", .inc), ('~', "enter", .ent), ('d', "trash", .del), ('c', "push folder", .dup)]
-  | 'P' => #[('>', "line (! any→x, cursor numeric→y)", .inc), ('<', "bar (! any→x, cursor numeric→y)", .dec), ('s', "scatter (! any→x, cursor numeric→y)", .ent), ('h', "histogram (cursor numeric→y, no ! needed)", .del), ('b', "boxplot (! any→x, cursor numeric→y)", .dup)]
+  | 'P' => #[('>', "line — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .inc), ('<', "bar — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .dec), ('s', "scatter — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .ent), ('h', "histogram — just put cursor on a numeric column, no grouping needed", .del), ('b', "boxplot — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .dup)]
   | 'K' => #[('<', "shift left", .dec), ('>', "shift right", .inc)]
   | 'm' => #[('<', "less color", .dec), ('>', "more color", .inc)]
   | _   => #[]

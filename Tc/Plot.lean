@@ -118,12 +118,12 @@ private def rScript (dataPath pngPath : String) (kind : PlotKind)
     | .line => "geom_line(linewidth = 0.5)"
     | .bar => "geom_col()"
     | .scatter => "geom_point(size = 1.5, alpha = 0.7)"
-    | .hist => "geom_histogram(fill = '#4682B4', color = 'white', bins = 30)"
+    | .hist => "geom_histogram(bins = 30)"
     | .box => "geom_boxplot()"
   let facet := if hasFacet then s!" + facet_wrap(vars({facetR}), scales = 'free_y')" else ""
   "library(ggplot2)\n" ++ readData ++ convY ++ convX ++
     s!"p <- ggplot(d, {aes}{colorAes}{fillAes}) + {geom}{facet} + " ++
-    s!"labs(x = '{xName}', y = '{yName}') + theme_minimal()\n" ++
+    s!"labs(x = '{xName}', y = '{yName}') + theme_bw() + scale_color_brewer(palette = 'Set2') + scale_fill_brewer(palette = 'Set2')\n" ++
     s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
 
 -- | Run Rscript to render plot; returns error message on failure
@@ -160,10 +160,13 @@ private def renderFrame (pngPath : String) (kind : PlotKind)
   -- status bar: show all plot types with current highlighted
   let typeBar := String.intercalate " " (cyclableKinds.toList.map fun k =>
     if k == kind then s!"\x1b[1;7m {k} \x1b[0m" else s!" {k} ")
-  let ivBar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
-    if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
   IO.println s!"\x1b[1m─── x={xName}  y={yName} ───\x1b[0m"
-  IO.println s!"h/l:{typeBar}  +/-:{ivBar}"
+  let ivLine := if intervals.size > 1 then
+    let ivBar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
+      if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
+    s!"  ,/.:downsample {ivBar}"
+  else ""
+  IO.println s!"h/l:{typeBar}{ivLine}"
   IO.print "q:exit "
 
 -- | Run plot with interactive controls (in-place re-rendering)
@@ -258,8 +261,8 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
     renderFrame pngPath curKind xName yName intervals idx err?
     let key ← readKeyRaw
     if key == 'q' then continue_ := false
-    else if key == '+' || key == '=' then idx := min (idx + 1) maxIdx; needExport := true
-    else if key == '-' || key == '_' then idx := if idx > 0 then idx - 1 else 0; needExport := true
+    else if key == '.' || key == '>' then idx := min (idx + 1) maxIdx; needExport := true
+    else if key == ',' || key == '<' then idx := if idx > 0 then idx - 1 else 0; needExport := true
     else if key == 'l' then curKind := cycleKind curKind 1; needExport := false
     else if key == 'h' then curKind := cycleKind curKind (cyclableKinds.size - 1); needExport := false
     else needExport := false  -- ignore unknown keys
