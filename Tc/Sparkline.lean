@@ -33,7 +33,11 @@ def compute (t : AdbcTable) (nBars : Nat := 20) : IO (Array String) := do
       parts := parts.push s!"SELECT {i} AS col_idx, bucket, cnt FROM ({sql})"
       numIdxs := numIdxs.push i
   if parts.isEmpty then return empty
-  let some baseSql ← Prql.compile t.query.base
+  -- Sample for sparklines: DuckDB can't use parquet metadata for histogram bucketing,
+  -- so a full scan on large files is catastrophic. LIMIT is fast (sequential read).
+  let prql := if t.totalRows > Tc.prqlLimit then s!"{t.query.render} | take {Tc.prqlLimit}"
+    else t.query.render
+  let some baseSql ← Prql.compile prql
     | Log.error "sparkline: PRQL compile failed"; return empty
   let unionSql := "WITH __src AS (" ++ (baseSql.trimAsciiEnd).toString ++ ") " ++
     " UNION ALL ".intercalate parts.toList
