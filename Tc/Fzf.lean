@@ -20,23 +20,20 @@ def setTestMode (b : Bool) : IO Unit := testMode.set b
 def getTestMode : IO Bool := testMode.get
 
 -- | Core fzf: testMode returns first line, else spawn fzf
--- Uses --tmux popup if in tmux (keeps table visible), otherwise compact at bottom
+-- Renders inline (--height) so it stays within the current pane, not overlapping other tmux panes
 def fzfCore (opts : Array String) (input : String) : IO String := do
   if ← getTestMode then
     pure (input.splitOn "\n" |>.filter (!·.isEmpty) |>.headD "")
   else
-    let inTmux := (← IO.getEnv "TMUX").isSome
-    let baseArgs := if inTmux
-      then #["--tmux=bottom,80%,40%", "--layout=reverse"]  -- compact popup at bottom
-      else #["--height=~15", "--layout=reverse"]            -- compact inline at bottom
-    if !inTmux then Term.shutdown
+    let baseArgs := #["--height=~15", "--layout=reverse"]
+    Term.shutdown
     let child ← IO.Process.spawn { cmd := "fzf", args := baseArgs ++ opts, stdin := .piped, stdout := .piped }
     child.stdin.putStr input
     child.stdin.flush
     let (_, child') ← child.takeStdin
     let out ← child'.stdout.readToEnd
     let _ ← child'.wait
-    if !inTmux then let _ ← Term.init; pure ()
+    let _ ← Term.init
     pure out.trimAscii.toString
 
 -- | Single select: returns none if empty/cancelled
