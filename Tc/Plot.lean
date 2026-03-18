@@ -123,7 +123,7 @@ private def rScript (dataPath pngPath : String) (kind : PlotKind)
   let facet := if hasFacet then s!" + facet_wrap(vars({facetR}), scales = 'free_y')" else ""
   "library(ggplot2)\n" ++ readData ++ convY ++ convX ++
     s!"p <- ggplot(d, {aes}{colorAes}{fillAes}) + {geom}{facet} + " ++
-    s!"labs(x = '{xName}', y = '{yName}') + theme_bw() + scale_color_brewer(palette = 'Set2') + scale_fill_brewer(palette = 'Set2')\n" ++
+    s!"labs(x = '{xName}', y = '{yName}') + theme_gray() + scale_color_viridis_d() + scale_fill_viridis_d()\n" ++
     s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
 
 -- | Run Rscript to render plot; returns error message on failure
