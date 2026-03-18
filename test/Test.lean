@@ -865,9 +865,7 @@ def test_plot_export_cat : IO Unit := do
   assert (cats.size == 2) s!"expected 2 categories (A,B), got {cats.size}"
 
 -- | Check Rscript is installed
-def hasRscript : IO Bool := do
-  let r ← IO.Process.output { cmd := "sh", args := #["-c", "command -v Rscript"] }
-  pure (r.exitCode == 0)
+def hasRscript : IO Bool := hasCmd "Rscript"
 
 -- | Check ggplot2 is installed in R
 def hasGgplot2 : IO Bool := do
@@ -905,8 +903,9 @@ def test_plot_render_line : IO Unit := do
   let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
   assert (r.exitCode == 0) s!"Rscript failed: {r.stderr.trimAscii.toString}"
   -- verify PNG was created and is non-empty
-  let png ← IO.FS.readBinFile pngPath
-  assert (png.size > 0) "plot PNG should be non-empty"
+  let h ← IO.FS.Handle.mk pngPath .read
+  let buf ← h.read 1
+  assert (buf.size > 0) "plot PNG should be non-empty"
 
 -- | R scatter plot with category column renders correctly
 def test_plot_render_scatter_cat : IO Unit := do
@@ -929,8 +928,9 @@ def test_plot_render_scatter_cat : IO Unit := do
   IO.FS.writeFile rPath script
   let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
   assert (r.exitCode == 0) s!"Rscript scatter+cat failed: {r.stderr.trimAscii.toString}"
-  let png ← IO.FS.readBinFile pngPath
-  assert (png.size > 0) "scatter+cat PNG should be non-empty"
+  let h ← IO.FS.Handle.mk pngPath .read
+  let buf ← h.read 1
+  assert (buf.size > 0) "scatter+cat PNG should be non-empty"
 
 -- | Histogram R script renders from single numeric column
 def test_plot_render_histogram : IO Unit := do
@@ -949,8 +949,9 @@ def test_plot_render_histogram : IO Unit := do
   IO.FS.writeFile rPath script
   let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
   assert (r.exitCode == 0) s!"Rscript histogram failed: {r.stderr.trimAscii.toString}"
-  let png ← IO.FS.readBinFile pngPath
-  assert (png.size > 0) "histogram PNG should be non-empty"
+  let h ← IO.FS.Handle.mk pngPath .read
+  let buf ← h.read 1
+  assert (buf.size > 0) "histogram PNG should be non-empty"
 
 -- === Replay ops tests ===
 
