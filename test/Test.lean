@@ -1000,6 +1000,101 @@ def test_plot_render_histogram : IO Unit := do
   let buf ← h.read 1
   assert (buf.size > 0) "histogram PNG should be non-empty"
 
+-- | Area chart R script renders from line-like data
+def test_plot_render_area : IO Unit := do
+  log "plot_render_area"
+  unless (← hasRscript) do log "  skip (no Rscript)"; return
+  unless (← hasGgplot2) do log "  skip (no ggplot2)"; return
+  let some tbl ← Tc.AdbcTable.fromFile "data/plot/line.csv" | throw (IO.userError "failed to open line.csv")
+  let _ ← Tc.AdbcTable.plotExport tbl "x" "y" none false 1 1
+  let datPath ← Tc.tmpPath "plot.dat"
+  let content ← IO.FS.readFile datPath
+  IO.FS.writeFile datPath (s!"x\ty\n" ++ content)
+  let pngPath ← Tc.tmpPath "plot_test_area.png"
+  let script := "library(ggplot2)\n" ++
+    s!"d <- read.delim('{datPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n" ++
+    s!"d[['y']] <- as.numeric(d[['y']])\n" ++
+    s!"tryCatch(d[['x']] <- as.numeric(d[['x']]), warning=function(w) NULL)\n" ++
+    s!"p <- ggplot(d, aes(x = `x`, y = `y`, fill = `y`)) + geom_area(alpha = 0.4) + theme_minimal() + scale_fill_viridis_d()\n" ++
+    s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
+  let rPath ← Tc.tmpPath "plot_test_area.R"
+  IO.FS.writeFile rPath script
+  let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
+  assert (r.exitCode == 0) s!"Rscript area failed: {r.stderr.trimAscii.toString}"
+  let h ← IO.FS.Handle.mk pngPath .read
+  let buf ← h.read 1
+  assert (buf.size > 0) "area PNG should be non-empty"
+
+-- | Density plot R script renders from single numeric column
+def test_plot_render_density : IO Unit := do
+  log "plot_render_density"
+  unless (← hasRscript) do log "  skip (no Rscript)"; return
+  unless (← hasGgplot2) do log "  skip (no ggplot2)"; return
+  let datPath ← Tc.tmpPath "plot.dat"
+  IO.FS.writeFile datPath "y\n10.5\n20.3\n15.7\n25.1\n30.0\n12.2\n18.9\n22.4\n17.6\n14.3\n"
+  let pngPath ← Tc.tmpPath "plot_test_density.png"
+  let script := "library(ggplot2)\n" ++
+    s!"d <- read.delim('{datPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n" ++
+    s!"d[['y']] <- as.numeric(d[['y']])\n" ++
+    s!"p <- ggplot(d, aes(x = `y`)) + geom_density(fill = 'steelblue', alpha = 0.5) + theme_minimal()\n" ++
+    s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
+  let rPath ← Tc.tmpPath "plot_test_density.R"
+  IO.FS.writeFile rPath script
+  let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
+  assert (r.exitCode == 0) s!"Rscript density failed: {r.stderr.trimAscii.toString}"
+  let h ← IO.FS.Handle.mk pngPath .read
+  let buf ← h.read 1
+  assert (buf.size > 0) "density PNG should be non-empty"
+
+-- | Step chart R script renders from line-like data
+def test_plot_render_step : IO Unit := do
+  log "plot_render_step"
+  unless (← hasRscript) do log "  skip (no Rscript)"; return
+  unless (← hasGgplot2) do log "  skip (no ggplot2)"; return
+  let some tbl ← Tc.AdbcTable.fromFile "data/plot/line.csv" | throw (IO.userError "failed to open line.csv")
+  let _ ← Tc.AdbcTable.plotExport tbl "x" "y" none false 1 1
+  let datPath ← Tc.tmpPath "plot.dat"
+  let content ← IO.FS.readFile datPath
+  IO.FS.writeFile datPath (s!"x\ty\n" ++ content)
+  let pngPath ← Tc.tmpPath "plot_test_step.png"
+  let script := "library(ggplot2)\n" ++
+    s!"d <- read.delim('{datPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n" ++
+    s!"d[['y']] <- as.numeric(d[['y']])\n" ++
+    s!"tryCatch(d[['x']] <- as.numeric(d[['x']]), warning=function(w) NULL)\n" ++
+    s!"p <- ggplot(d, aes(x = `x`, y = `y`)) + geom_step(linewidth = 0.5) + theme_minimal()\n" ++
+    s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
+  let rPath ← Tc.tmpPath "plot_test_step.R"
+  IO.FS.writeFile rPath script
+  let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
+  assert (r.exitCode == 0) s!"Rscript step failed: {r.stderr.trimAscii.toString}"
+  let h ← IO.FS.Handle.mk pngPath .read
+  let buf ← h.read 1
+  assert (buf.size > 0) "step PNG should be non-empty"
+
+-- | Violin plot R script renders from categorical + numeric data
+def test_plot_render_violin : IO Unit := do
+  log "plot_render_violin"
+  unless (← hasRscript) do log "  skip (no Rscript)"; return
+  unless (← hasGgplot2) do log "  skip (no ggplot2)"; return
+  let some tbl ← Tc.AdbcTable.fromFile "data/plot/mixed.csv" | throw (IO.userError "failed to open mixed.csv")
+  let _ ← Tc.AdbcTable.plotExport tbl "x" "y" (some "cat") false 1 1
+  let datPath ← Tc.tmpPath "plot.dat"
+  let content ← IO.FS.readFile datPath
+  IO.FS.writeFile datPath (s!"x\ty\tcat\n" ++ content)
+  let pngPath ← Tc.tmpPath "plot_test_violin.png"
+  let script := "library(ggplot2)\n" ++
+    s!"d <- read.delim('{datPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n" ++
+    s!"d[['y']] <- as.numeric(d[['y']])\n" ++
+    s!"p <- ggplot(d, aes(x = `cat`, y = `y`, fill = `cat`)) + geom_violin() + geom_boxplot(width = 0.1, fill = 'white') + theme_minimal() + scale_fill_viridis_d()\n" ++
+    s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
+  let rPath ← Tc.tmpPath "plot_test_violin.R"
+  IO.FS.writeFile rPath script
+  let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
+  assert (r.exitCode == 0) s!"Rscript violin failed: {r.stderr.trimAscii.toString}"
+  let h ← IO.FS.Handle.mk pngPath .read
+  let buf ← h.read 1
+  assert (buf.size > 0) "violin PNG should be non-empty"
+
 -- === Replay ops tests ===
 
 -- | Replay: sort adds "sort" to tab line (PRQL ops shown right-aligned)
@@ -1114,6 +1209,10 @@ def tests : Array (String × IO Unit) := #[
   ("plot_render_line", test_plot_render_line),
   ("plot_render_scatter_cat", test_plot_render_scatter_cat),
   ("plot_render_histogram", test_plot_render_histogram),
+  ("plot_render_area", test_plot_render_area),
+  ("plot_render_density", test_plot_render_density),
+  ("plot_render_step", test_plot_render_step),
+  ("plot_render_violin", test_plot_render_violin),
   -- Replay ops tests
   ("replay_sort", test_replay_sort),
   ("replay_empty", test_replay_empty),
