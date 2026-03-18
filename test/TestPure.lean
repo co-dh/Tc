@@ -86,6 +86,11 @@ theorem enter_meta : evToCmd (charToEvent '\r') .colMeta = some (.metaV .ent)   
 theorem enter_fld  : evToCmd (charToEvent '\r') (.fld "/tmp" 1) = some (.fld .ent)      := by native_decide
 theorem enter_tbl  : evToCmd (charToEvent '\r') .tbl = none                             := by native_decide
 
+-- Backspace in folder view → parent (from test_folder_backspace)
+theorem bs_fld : evToCmd (charToEvent '\x7f') (.fld "/tmp" 1) = some (.fld .up)        := by native_decide
+-- Backspace outside folder view → no action
+theorem bs_tbl : evToCmd (charToEvent '\x7f') .tbl = none                               := by native_decide
+
 -- Unmodified arrow keys → single-step nav, not page (bug: termbox2 tagged \x1b[A-D as shift)
 theorem key_arrow_down : evToCmd ⟨Term.eventKey, 0, Term.keyArrowDown, 0, 0, 0⟩ .tbl
     = some (.row .inc) := by native_decide

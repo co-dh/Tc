@@ -522,6 +522,14 @@ def test_hf_enter_parquet : IO Unit := do
   assert (contains output "question") "HF parquet has question column"
   assert (contains output "answer") "HF parquet has answer column"
 
+-- backspace in HF folder view navigates to parent directory
+def test_hf_backspace : IO Unit := do
+  log "hf_backspace"
+  unless (← hasHfAccess) do log "  skip (no HF access)"; return
+  -- enter main/ subdir then backspace → should return to repo root listing
+  let output ← run "jj<ret><bs>" "hf://datasets/openai/gsm8k"
+  assert (contains output "gsm8k") "backspace returns to HF repo root"
+
 -- === Script mode (-p) tests ===
 
 -- | -p with implicit from: filter rows where a > 2
@@ -905,6 +913,7 @@ def tests : Array (String × IO Unit) := #[
   -- HF tests
   ("hf_readme", test_hf_readme),
   ("hf_enter_parquet", test_hf_enter_parquet),
+  ("hf_backspace", test_hf_backspace),
   -- Rendering tests
   ("last_col_no_stretch", test_last_col_no_stretch),
   ("width_grows_on_scroll", test_width_grows_on_scroll),
