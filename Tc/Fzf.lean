@@ -20,18 +20,32 @@ def setTestMode (b : Bool) : IO Unit := testMode.set b
 def getTestMode : IO Bool := testMode.get
 
 -- | Core fzf: testMode returns first line, else spawn fzf
--- Renders inline (--height) so it stays within the current pane, not overlapping other tmux panes
-def fzfCore (opts : Array String) (input : String) : IO String := do
+-- Uses --tmux popup if in tmux (keeps table visible), otherwise compact at bottom
+-- poll: optional callback invoked in loop while fzf runs (tmux only, for live socket dispatch)
+def fzfCore (opts : Array String) (input : String) (poll : IO Unit := pure ()) : IO String := do
   if ← getTestMode then
     pure (input.splitOn "\n" |>.filter (!·.isEmpty) |>.headD "")
   else
-    let baseArgs := #["--height=~15", "--layout=reverse"]
-    Term.shutdown
+    let inTmux := (← IO.getEnv "TMUX").isSome
+    let baseArgs := if inTmux
+      then #["--tmux=bottom,80%,40%", "--layout=reverse", "--exact", "+i"]  -- compact popup at bottom
+      else #["--height=~15", "--layout=reverse", "--exact", "+i"]            -- compact inline at bottom
+    if !inTmux then Term.shutdown
     let child ← IO.Process.spawn { cmd := "fzf", args := baseArgs ++ opts, stdin := .piped, stdout := .piped }
     child.stdin.putStr input
     child.stdin.flush
     let (_, child') ← child.takeStdin
-    let out ← child'.stdout.readToEnd
+    -- Read stdout in background; poll socket while fzf popup is open
+    let done ← IO.mkRef false
+    let outRef ← IO.mkRef ""
+    let _ ← IO.asTask (prio := .dedicated) do
+      let out ← child'.stdout.readToEnd
+      outRef.set out
+      done.set true
+    while !(← done.get) do
+      if inTmux then poll
+      IO.sleep 30
+    let out ← outRef.get
     let _ ← child'.wait
     let _ ← Term.init
     pure out.trimAscii.toString
@@ -52,15 +66,24 @@ def fzfIdx (opts : Array String) (items : Array String) : IO (Option Nat) := do
     | some n => return some n
     | none => return none
 
--- | Build flat menu items: "{!?}{objChar}{verbChar}\t{objName} > {verbLabel}"
--- ! prefix marks previewable commands (theme, heat, width, prec)
+-- | Build flat menu items: "{!?}{objChar}{verbChar}\t{label}"
+-- </> verbs collapsed into one entry per obj (cycled via fzf <> key binds).
+-- Non-</> verbs are separate entries. ! prefix marks previewable commands.
 private def flatItems (vk : ViewKind) : Array String :=
   objMenu.foldl (fun acc (objKey, objLabel, mk) =>
-    let objName := ((objLabel.splitOn ":").headD objLabel).trimAscii.toString
-    (verbsFor objKey vk).foldl (fun acc (_, verbLabel, verb) =>
-      let cmd := mk verb
+    let verbs := verbsFor objKey vk
+    let hasLtGt := verbs.any (fun (k, _, _) => k == '<' || k == '>')
+    let acc := if hasLtGt then
+      let cmd := mk .inc
       let pfx := if cmd.isPreviewable then "!" else ""
-      acc.push s!"{pfx}{cmd}\t{objName} > {verbLabel}"
+      acc.push s!"{pfx}{cmd}\t{objLabel}"
+    else acc
+    verbs.foldl (fun acc (verbKey, verbLabel, verb) =>
+      if verbKey == '<' || verbKey == '>' then acc
+      else
+        let cmd := mk verb
+        let pfx := if cmd.isPreviewable then "!" else ""
+        acc.push s!"{pfx}{cmd}\t{objLabel} {verbLabel}"
     ) acc
   ) #[]
 
@@ -71,19 +94,21 @@ def parseFlatSel (sel : String) : Option Cmd :=
   (Parse.parse? cmdStr : Option Cmd)
 
 -- | Command mode: space → flat fzf menu → return Cmd
--- vk = current view kind, for context-sensitive verb filtering
-def cmdMode (vk : ViewKind) : IO (Option Cmd) := do
+-- poll: callback invoked while fzf popup is open (for live socket dispatch + re-render)
+def cmdMode (vk : ViewKind) (poll : IO Unit := pure ()) : IO (Option Cmd) := do
   let items := flatItems vk
   if items.isEmpty then return none
   let input := "\n".intercalate items.toList
-  -- Build fzf args: hide cmd prefix, show only label
   let sockPath := (← IO.getEnv "TV_SOCK").getD ""
-  let previewBind := if sockPath.isEmpty then #[]
+  let sockBinds := if sockPath.isEmpty then #[]
     else
-      -- fzf focus bind: extract 2-char cmd prefix, send previewable (!) commands via socket
-      let bind := "--bind=focus:execute-silent(line={};cmd=${line%%\\t*};[ \"${cmd:0:1}\" = \"!\" ]&&printf '%s\\n' \"${cmd:1:2}\"|socat - UNIX-CONNECT:" ++ sockPath ++ " 2>/dev/null)"
-      #[bind]
-  let some sel ← fzf (#["--with-nth=2..", "--prompt=cmd "] ++ previewBind) input | return none
-  pure (parseFlatSel sel)
+      let sock := sockPath
+      -- Shell template: extract cmd prefix, send to socket if previewable (! prefix)
+      let mkBind (key expr : String) := "--bind=" ++ key ++ ":execute-silent(line={};cmd=${line%%\\t*};[ \"${cmd:0:1}\" = \"!\" ]&&printf '%s\\n' \"" ++ expr ++ "\"|socat - UNIX-CONNECT:" ++ sock ++ " 2>/dev/null)"
+      #[mkBind "focus" "${cmd:1:2}", mkBind "<" "${cmd:1:1}-", mkBind ">" "${cmd:1:1}+", "--header=< dec  > inc"]
+  let opts := #["--with-nth=2..", "--prompt=cmd "] ++ sockBinds
+  let out ← fzfCore opts input poll
+  if out.isEmpty then return none
+  pure (parseFlatSel out)
 
 end Tc.Fzf

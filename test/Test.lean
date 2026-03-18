@@ -760,7 +760,46 @@ def test_socket : IO Unit := do
     match got with
     | some cmd => assert (cmd == "m+") s!"socket: expected 'm+', got '{cmd}'"
     | none => assert false "socket: pollCmd returned none"
+    -- Verify r-/r+/T-/T+ roundtrip through socket (used by <> cycling)
+    for (send, expect) in #[("r-", "r-"), ("r+", "r+"), ("T-", "T-"), ("T+", "T+")] do
+      let _ ← IO.Process.output { cmd := "bash", args := #["-c", s!"printf '{send}' | socat - UNIX-CONNECT:{path}"] }
+      let mut res : Option String := none
+      for _ in List.range 10 do
+        res ← Socket.pollCmd
+        if res.isSome then break
+        IO.sleep 10
+      match res with
+      | some cmd => assert (cmd == expect) s!"socket {send}: expected '{expect}', got '{cmd}'"
+      | none => assert false s!"socket {send}: pollCmd returned none"
   finally Socket.shutdown
+
+-- | End-to-end: send socket command to running tv, verify it affects screen output.
+-- Spawns tv -c with keys that include a sleep gap; injects r- via socat mid-flight.
+-- jjj = 3 rows down → socket r- = 1 row up → net position = row 2
+def test_socket_dispatch : IO Unit := do
+  log "socket_dispatch"
+  unless (← hasCmd "socat") do log "  skip (no socat)"; return
+  let tmpdir := (← IO.getEnv "TMPDIR").getD "/tmp"
+  -- Spawn tv in background: j (down) × 3, then pause to let socket command arrive
+  let keys := "Ijjj" ++ String.ofList ['\x16', '\x16', '\x16']  -- jjj + 3 wait pauses
+  let cfg : IO.Process.SpawnArgs := { cmd := bin, args := #["data/basic.csv", "-c", keys], stdin := .null, stdout := .piped, stderr := .piped }
+  let child ← IO.Process.spawn cfg
+  let pid := child.pid
+  let sockPath := s!"{tmpdir}/tv-{pid}.sock"
+  -- Wait for socket to be ready
+  let mut ready := false
+  for _ in List.range 50 do
+    if ← hasFile sockPath then ready := true; break
+    IO.sleep 20
+  unless ready do log "  skip (socket not ready)"; return
+  -- Send r- (row up) via socket — should move cursor from r3 to r2
+  let _ ← IO.Process.output { cmd := "bash", args := #["-c", s!"printf 'r-' | socat - UNIX-CONNECT:{sockPath}"] }
+  IO.sleep 50  -- let poll pick it up
+  let out ← child.stdout.readToEnd
+  let _ ← child.wait
+  let ft := footer out
+  -- Footer shows cursor position; after jjj + r- should be at r2
+  assert (contains ft.2 "r2/") s!"socket dispatch: expected r2, got '{ft.2}'"
 
 -- | Arrow keys move cursor one step (not page). Verifies arrow→hjkl mapping.
 def test_arrow_nav : IO Unit := do
@@ -1094,7 +1133,7 @@ def tests : Array (String × IO Unit) := #[
   -- Sparkline tests
   ("sparkline_on", test_sparkline_on),
   -- Key column reorder tests
-  ("key_shift", test_key_shift), ("arrow_nav", test_arrow_nav), ("heat_mode", test_heat_mode), ("flat_menu", test_flat_menu), ("socket", test_socket),
+  ("key_shift", test_key_shift), ("arrow_nav", test_arrow_nav), ("heat_mode", test_heat_mode), ("flat_menu", test_flat_menu), ("socket", test_socket), ("socket_dispatch", test_socket_dispatch),
   -- Status bar aggregation tests
   ("statusagg_numeric", test_statusagg_numeric),
   ("statusagg_string", test_statusagg_string),

@@ -50,9 +50,9 @@ def shutdown : IO Unit := do
   sockPath.set ""
 
 -- | Run action with socket active (init before, shutdown after)
-def bracket (test : Bool) (f : IO α) : IO α := do
-  if !test then init
+def bracket (_test : Bool) (f : IO α) : IO α := do
+  init
   try f
-  finally if !test then shutdown
+  finally shutdown
 
 end Socket
