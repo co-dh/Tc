@@ -150,7 +150,7 @@ The architecture separates pure state logic from IO effects:
 | metaV  | M    | meta view                        |
 | freq   | F    | frequency view                   |
 | fld    | D    | folder view                      |
-| plot   | P    | gnuplot chart (line/bar)         |
+| plot   | P    | R/ggplot2 chart (line/bar/scatter/hist/box) |
 
 ### Isomorphism
 
@@ -242,7 +242,7 @@ Interactive plot with interval control. After display, `+`/`-` cycles intervals:
 │  4. Term.shutdown                                        │
 │  5. Loop:                                                │
 │     export data (DB-side or Lean fallback)              │
-│     gnuplot → PNG → viu                                 │
+│     Rscript (ggplot2) → PNG → viu                       │
 │     show interval selector: [1d] 1M 1Y                  │
 │     read key: +/- → change interval, else → exit        │
 │  6. Term.init                                            │

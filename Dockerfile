@@ -21,9 +21,10 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    fzf findutils bat less gnuplot-nox \
+    fzf findutils bat less r-base \
     coreutils trash-cli curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && Rscript -e 'install.packages("ggplot2", repos="https://cloud.r-project.org")'
 
 COPY --from=build /usr/local/lib/libduckdb.so /usr/local/lib/
 RUN ldconfig
