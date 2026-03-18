@@ -91,6 +91,14 @@ private def err (s : ViewStack T) (msg : String) : IO (Option (ViewStack T)) := 
 private def isNumericType (typ : String) : Bool :=
   typ == "int" || typ == "float" || typ == "decimal"
 
+-- | Single-column plots: no group needed, just cursor on a numeric column
+private def isSingleColPlot (kind : PlotKind) : Bool :=
+  kind == .hist || kind == .density
+
+-- | Plot types that use fill instead of color for category aesthetics
+private def usesFillForCat (kind : PlotKind) : Bool :=
+  kind == .box || kind == .violin || kind == .area
+
 -- | Plot types that share the same x/y/cat data (cycleable with h/l)
 def cyclableKinds : Array PlotKind := #[.line, .scatter, .bar, .box, .area, .step, .violin]
 
@@ -126,16 +134,17 @@ private def rScript (dataPath pngPath : String) (kind : PlotKind)
   let readData := s!"d <- read.delim('{dataPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n"
   let convY := s!"d[['{yName}']] <- as.numeric(d[['{yName}']])\n"
   let convX := if xIsTime then s!"d[['{xName}']] <- as.POSIXct(d[['{xName}']])\n"
-    else if kind != .hist then
+    else if !isSingleColPlot kind then
       "tryCatch(d[['" ++ xName ++ "']] <- as.numeric(d[['" ++ xName ++ "']]), warning=function(w) NULL)\n"
     else ""
-  let aes := match kind with
-    | .hist | .density => s!"aes(x = {yR})"
-    | .box | .violin => if hasCat then s!"aes(x = {catR}, y = {yR})" else s!"aes(x = factor(''), y = {yR})"
-    | _ => s!"aes(x = {xR}, y = {yR})"
-  let colorAes := if hasCat && kind != .box && kind != .violin then s!", color = {catR}" else ""
-  let fillAes := if hasCat && (kind == .box || kind == .violin || kind == .area) then s!", fill = {catR}"
-    else if kind == .area && !hasCat then s!", fill = {yR}" else ""
+  let aes := if isSingleColPlot kind then s!"aes(x = {yR})"
+    else if usesFillForCat kind && kind != .area then
+      if hasCat then s!"aes(x = {catR}, y = {yR})" else s!"aes(x = factor(''), y = {yR})"
+    else s!"aes(x = {xR}, y = {yR})"
+  let colorAes := if hasCat && !usesFillForCat kind then s!", color = {catR}" else ""
+  let fillAes := if usesFillForCat kind then
+      s!", fill = {if hasCat then catR else yR}"
+    else ""
   let geom := match kind with
     | .line => "geom_line(linewidth = 0.5)"
     | .bar => "geom_col()"
@@ -200,8 +209,8 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   Log.write "plot" s!"run entered, kind={repr kind}"
   let n := s.cur.nav
   let names := TblOps.colNames n.tbl
-  -- histogram/density: no group col needed, just cursor col
-  if kind == .hist || kind == .density then
+  -- single-column plots (histogram/density): no group col needed, just cursor col
+  if isSingleColPlot kind then
     let yIdx := colIdxAt n.grp names n.col.cur.val
     let yName := names.getD yIdx ""
     let yType := TblOps.colType n.tbl yIdx
