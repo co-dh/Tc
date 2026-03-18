@@ -209,6 +209,8 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   let yIdx := colIdxAt n.grp names n.col.cur.val
   let yName := names.getD yIdx ""
   if n.grp.contains yName then return ← err s "move cursor to a non-group column"
+  let yType := TblOps.colType n.tbl yIdx
+  if !isNumericType yType then return ← err s s!"y-axis '{yName}' must be numeric (got {yType})"
   let nr := TblOps.nRows n.tbl
   let xType0 := TblOps.colType n.tbl xIdx
   let xType ← do
@@ -242,15 +244,17 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   while continue_ do
     let iv := intervals.getD idx default
     Log.write "plot" s!"kind={curKind} interval={iv.label} truncLen={iv.truncLen} idx={idx}"
-    let exportOk ← do
+    let exportResult ← do
       if needExport then
-        if let some _cats := ← exportWithHeaders n.tbl xName yName exportCatName? xIsTime baseStep iv.truncLen then
-          pure true
-        else pure false
-      else pure true
-    let err? ← if exportOk then
-        renderR (rScript datPath pngPath curKind xName yName hasCat catName hasFacet facetName xIsTime)
-      else pure (some "export failed")
+        try
+          if let some _cats := ← exportWithHeaders n.tbl xName yName exportCatName? xIsTime baseStep iv.truncLen then
+            pure (none : Option String)
+          else pure (some "export returned no data")
+        catch e => pure (some e.toString)
+      else pure none
+    let err? ← match exportResult with
+      | some msg => pure (some msg)
+      | none => renderR (rScript datPath pngPath curKind xName yName hasCat catName hasFacet facetName xIsTime)
     renderFrame pngPath curKind xName yName intervals idx err?
     let key ← readKeyRaw
     if key == 'q' then continue_ := false

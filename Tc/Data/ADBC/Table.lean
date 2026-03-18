@@ -236,8 +236,9 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
   try
     let _ ← Adbc.query copySql
   catch e =>
-    Log.write "plot" s!"COPY failed: {e.toString}"
-    return none
+    let msg := s!"COPY failed: {e.toString}"
+    Log.write "plot" msg
+    throw (IO.userError msg)
   -- get distinct categories if needed
   match catName? with
   | some cn =>
