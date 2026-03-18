@@ -8,6 +8,7 @@
 import Tc.View
 import Tc.Term
 import Tc.Error
+import Tc.Render
 import Tc.TmpDir
 
 namespace Tc.Plot
@@ -81,7 +82,7 @@ private def readKeyRaw : IO Char := do
   pure (if buf.size > 0 then Char.ofNat buf[0]!.toNat else 'q')
 
 private def err (s : ViewStack T) (msg : String) : IO (Option (ViewStack T)) := do
-  Log.write "plot" msg; pure (some s)
+  Log.write "plot" msg; errorPopup msg; pure (some s)
 
 private def isNumericType (typ : String) : Bool :=
   typ == "int" || typ == "float" || typ == "decimal"
