@@ -16,6 +16,8 @@ def keyHome       : UInt16 := 0xFFFF - 25
 def keyEnd        : UInt16 := 0xFFFF - 26
 def keyEsc        : UInt16 := 0x1B
 def keyEnter      : UInt16 := 0x0D
+def keyBackspace  : UInt16 := 0x08
+def keyBackspace2 : UInt16 := 0x7f
 
 -- | Event types
 def eventKey : UInt8 := 1

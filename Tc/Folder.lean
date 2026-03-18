@@ -209,6 +209,17 @@ private def tryView (s : ViewStack AdbcTable) (path : String) (depth : Nat) (pus
 private def curDepth (s : ViewStack AdbcTable) : Nat :=
   match s.cur.vkind with | .fld _ d => d | _ => 1
 
+-- | Go to parent directory (backspace key) — works for all folder backends
+def goParent (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
+  let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
+  match ← SourceConfig.findSource curDir with
+  | some c => match c.parent curDir with
+    | some par => tryView s par 1 false
+    | none => pure (some s)
+  | none => match s.pop with
+    | some s' => pure (some s')
+    | none => tryView s (curDir ++ "/..") (curDepth s) false
+
 -- | Enter directory or view file based on current row
 def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
@@ -229,14 +240,7 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
       return some (s.push v)
   match ← curType s.cur, ← curPath s.cur with
   | some 'd', some p =>
-    if p == ".." || p.endsWith "/.." then
-      match cfg with
-      | some c => match c.parent curDir with
-        | some par => tryView s par 1 false
-        | none => pure (some s)
-      | none => match s.pop with
-        | some s' => pure (some s')
-        | none => tryView s ".." (curDepth s) false
+    if p == ".." || p.endsWith "/.." then goParent s
     else
       let fullPath := match cfg with
         | some c => joinPath curDir (if c.dirSuffix then p ++ "/" else p)
@@ -393,6 +397,8 @@ def update (s : ViewStack AdbcTable) (cmd : Cmd) : Option (ViewStack AdbcTable �
   | .fld .dec => some (s, .folder (.depth (-1)))
   | .colSel .del =>
     if s.cur.vkind matches .fld _ _ then some (s, .folder .del) else none
+  | .fld .up =>
+    if s.cur.vkind matches .fld _ _ then some (s, .folder .parent) else none
   | .fld .ent =>
     if s.cur.vkind matches .fld _ _ then some (s, .folder .enter) else none
   | _ => none

@@ -80,6 +80,7 @@ tv -s mysession                    # Restore saved session
 | `F`         | Frequency view (group by key + cursor column)                    |
 | `M`         | Column metadata view                                             |
 | `Enter`     | Enter (open file in folder, filter from freq, set key from meta) |
+| `Backspace`  | Go to parent directory (folder view)                             |
 | `q` / `Esc` | Pop view (quit if last)                                          |
 | `X`         | Transpose (swap rows and columns)                                |
 | `J`         | Join top 2 views (inner/left/right join, union, set diff)        |

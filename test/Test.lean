@@ -207,6 +207,22 @@ def test_folder_pop : IO Unit := do
   -- fixture dir: [sort, jjj → row 3 = subdir (dir), enter, q pops back
   assert (contains (← run "[jjj<ret>q" "data/test_folder") "[/") "q pops back to parent folder"
 
+-- backspace in folder view navigates to parent directory (same as selecting "..")
+def test_folder_backspace : IO Unit := do
+  log "folder_backspace"
+  -- enter subdir then backspace → should be back at parent folder
+  let output ← run "[jjj<ret><bs>" "data/test_folder"
+  assert (contains output "test_folder") "backspace returns to parent folder"
+
+-- double backspace navigates up two levels (regression: second backspace used CWD not curDir)
+def test_folder_backspace_twice : IO Unit := do
+  log "folder_backspace_twice"
+  -- open data/test_folder, enter subdir, backspace twice → should be at data/
+  let output ← run "[jjj<ret><bs><bs>" "data/test_folder"
+  let (path, _) := footer output
+  -- status bar shows [.../data] (parent of test_folder)
+  assert (path.endsWith "data]") "double backspace navigates to grandparent (data/)"
+
 def test_folder_enter_symlink : IO Unit := do
   log "folder_enter_symlink"
   -- fixture dir: [sort, jj → row 2 = link_to_subdir (symlink to dir), enter it
@@ -516,6 +532,14 @@ def test_hf_enter_parquet : IO Unit := do
   let output ← run "jj<ret>j<ret>" "hf://datasets/openai/gsm8k"
   assert (contains output "question") "HF parquet has question column"
   assert (contains output "answer") "HF parquet has answer column"
+
+-- backspace in HF folder view navigates to parent directory
+def test_hf_backspace : IO Unit := do
+  log "hf_backspace"
+  unless (← hasHfAccess) do log "  skip (no HF access)"; return
+  -- enter main/ subdir then backspace → should return to repo root listing
+  let output ← run "jj<ret><bs>" "hf://datasets/openai/gsm8k"
+  assert (contains output "gsm8k") "backspace returns to HF repo root"
 
 -- === Script mode (-p) tests ===
 
@@ -1016,6 +1040,8 @@ def tests : Array (String × IO Unit) := #[
   ("folder_no_args", test_folder_no_args), ("folder_D", test_folder_D),
   ("folder_tab", test_folder_tab), ("folder_enter", test_folder_enter),
   ("folder_relative", test_folder_relative), ("folder_pop", test_folder_pop),
+  ("folder_backspace", test_folder_backspace),
+  ("folder_backspace_twice", test_folder_backspace_twice),
   ("folder_enter_symlink", test_folder_enter_symlink),
   ("duckdb_list", test_duckdb_list), ("duckdb_enter", test_duckdb_enter),
   ("duckdb_primary_key", test_duckdb_primary_key),
@@ -1043,6 +1069,7 @@ def tests : Array (String × IO Unit) := #[
   -- HF tests
   ("hf_readme", test_hf_readme),
   ("hf_enter_parquet", test_hf_enter_parquet),
+  ("hf_backspace", test_hf_backspace),
   -- Rendering tests
   ("last_col_no_stretch", test_last_col_no_stretch),
   ("width_grows_on_scroll", test_width_grows_on_scroll),

@@ -148,7 +148,9 @@ theorem enterCmd_fld : ∀ p d, enterCmd (.fld p d) = some (.fld .ent) := by
 -- | Convert Term.Event to Cmd (view-aware for Enter key)
 def evToCmd (ev : Term.Event) (vk : ViewKind) : Option Cmd :=
   if ev.type != Term.eventKey then none else
-  if ev.key == Term.keyEnter then enterCmd vk else  -- context-sensitive Enter
+  if ev.key == Term.keyEnter then enterCmd vk else
+  -- Backspace in folder view → go to parent directory
+  if (ev.key == Term.keyBackspace || ev.key == Term.keyBackspace2) && vk matches .fld _ _ then some (.fld .up) else
   let c := evToChar ev
   let shift := ev.mod &&& Term.modShift != 0
   -- Shift+Arrow left/right → reorder key columns (before nav normalization)
@@ -169,6 +171,7 @@ def parseKeys (s : String) : String :=
    |>.replace "<up>" "\x1d"
    |>.replace "<right>" "\x1e"
    |>.replace "<left>" "\x1f"
+   |>.replace "<bs>" "\x7f"
    |>.replace "<backslash>" "\\"
    |>.replace "<key>" "!"
 
@@ -183,6 +186,8 @@ def charToEvent (c : Char) : Term.Event :=
   else if ch == 0x1d then ⟨Term.eventKey, 0, Term.keyArrowUp, 0, 0, 0⟩
   else if ch == 0x1e then ⟨Term.eventKey, 0, Term.keyArrowRight, 0, 0, 0⟩
   else if ch == 0x1f then ⟨Term.eventKey, 0, Term.keyArrowLeft, 0, 0, 0⟩
+  -- Backspace (0x7f): termbox reports key=0x7f, ch=0
+  else if ch == 0x7f then ⟨Term.eventKey, 0, Term.keyBackspace2, 0, 0, 0⟩
   -- Ctrl chars: termbox reports key=ctrl_code, ch=0, mod=2
   else if ch < 32 then ⟨Term.eventKey, 2, ch.toUInt16, 0, 0, 0⟩
   else ⟨Term.eventKey, 0, 0, ch, 0, 0⟩
