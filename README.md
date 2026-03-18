@@ -146,54 +146,56 @@ Exports to `~/tv_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows
 
 ### Plot
 
-| Key | Action |
-|-----|--------|
-| `P.` | Line plot |
-| `P,` | Bar plot |
-| `Ps` | Scatter plot |
-| `Ph` | Histogram |
-| `Pb` | Boxplot |
-| `+`/`-` | Change downsampling interval (in plot view) |
-| `h`/`l` | Cycle plot type (in plot view) |
+Renders charts via R/ggplot2. Data is exported from DuckDB, downsampled if large, and rendered to PNG.
 
-#### How it works
+#### Setup
 
-Plots use group columns (`!`) to define axes:
+| Column | How to set | Type |
+|--------|-----------|------|
+| **X-axis** | Group a column with `!` | any (numeric, time, string) |
+| **Y-axis** | Move cursor to it | numeric (int, float, decimal) |
+| **Color** (optional) | Group a 2nd column with `!` | categorical (string) |
+| **Facet** (optional) | Group a 3rd column with `!` | categorical (string) |
 
-| Groups set | X-axis | Color | Facet |
-|------------|--------|-------|-------|
-| 0 groups | — | — | — |
-| 1 group | 1st group col | — | — |
-| 2 groups | 1st group col | 2nd group col | — |
-| 3 groups | 1st group col | 3rd group col | 2nd group col |
+**Histogram** is the exception — no group columns needed, just cursor on a numeric column.
 
-Y-axis is always the column under the cursor (must be numeric).
+#### Keybindings
 
-**Histogram** (`Ph`) is special — it doesn't need any group columns. Just move the cursor to a numeric column and press `Ph`. R/ggplot2 auto-bins the values.
+| Key | Action | Columns needed |
+|-----|--------|----------------|
+| `P.` | Line plot | `!` x-axis + cursor on numeric y |
+| `P,` | Bar plot | `!` x-axis + cursor on numeric y |
+| `Ps` | Scatter plot | `!` x-axis + cursor on numeric y |
+| `Pb` | Boxplot | `!` x-axis + cursor on numeric y |
+| `Ph` | Histogram | cursor on numeric column (no `!` needed) |
 
-**All other plot types** require at least 1 group column for the x-axis. Example workflow:
+#### Example workflow
 
-1. Move to the column you want as x-axis, press `!` to group it
-2. Move cursor to the numeric column you want as y-axis
-3. Press `P.` for line, `P,` for bar, `Ps` for scatter, `Pb` for boxplot
+1. Press `!` on the column you want as x-axis (e.g. `Time`)
+2. Move cursor to a numeric column for y-axis (e.g. `Price`)
+3. Press `Ps` for scatter plot
 
-**Adding color**: group a second column with `!`. Each unique value in that column gets a different color.
+To add color by category: also press `!` on a string column (e.g. `Symbol`).
 
-**Adding facets** (small multiples): group a third column. The plot splits into sub-charts, one per unique value of the 2nd group column. The 3rd group column becomes the color.
+To add facets (small multiples): group a 3rd column — it becomes the facet, and the 2nd group becomes color.
+
+| Groups | X-axis | Color | Facet |
+|--------|--------|-------|-------|
+| 1 (`!`) | 1st group | — | — |
+| 2 (`!!`) | 1st group | 2nd group | — |
+| 3 (`!!!`) | 1st group | 3rd group | 2nd group |
 
 #### Interactive controls
 
-The plot renders in-place and responds to keys immediately — no dialog, just re-renders the image:
+Once in plot view, keys control the chart in-place (no dialog, instant re-render):
 
 | Key | Action |
 |-----|--------|
-| `+`/`=` | Coarser downsampling (fewer points, broader time buckets) |
-| `-`/`_` | Finer downsampling (more points, narrower time buckets) |
-| `l` | Next plot type (line → scatter → bar → box) |
-| `h` | Previous plot type |
-| `q`/any other | Exit back to the table |
+| `h`/`l` | Cycle plot type (line → scatter → bar → box) |
+| `.`/`,` | Coarser/finer downsampling (shown only for large data) |
+| `q` | Exit back to the table |
 
-For time-series data, intervals cycle through `1s → 1m → 1h → 1d`. For non-time data, the step multiplier increases (`1x → 2x → 4x → 8x → 16x`).
+For time-series x-axis, intervals cycle `1s → 1m → 1h → 1d`. For numeric x-axis, step multiplier increases `1x → 2x → 4x → 8x → 16x`.
 
 Switching plot type with `h`/`l` re-renders instantly with the same data — no need to exit and re-enter.
 

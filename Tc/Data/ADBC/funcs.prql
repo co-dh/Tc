@@ -39,10 +39,13 @@ let meta = func c tbl <relation> -> (
   aggregate {cnt = std.count c, dist = std.count_distinct c, total = std.count this, min = std.min c, max = std.max c}
 )
 
-# Downsample time series: last value per truncated time bucket, filter zeros/nulls
+# No `y != 0` in downsample filters: DuckDB applies the filter before select prunes
+# columns, so `!= 0` on a string column causes a cast-to-INT error.
+
+# Downsample time series: last value per truncated time bucket
 let ds_trunc = func x y len tbl <relation> -> (
   from tbl
-  filter (y != null && y != 0)
+  filter (y != null)
   derive {_sec = s"SUBSTRING(CAST({x} AS VARCHAR), 1, {len})"}
   group {_sec} (sort {-x} | take 1)
   sort {_sec}
@@ -52,17 +55,17 @@ let ds_trunc = func x y len tbl <relation> -> (
 # Downsample time series with category and parameterized truncation
 let ds_trunc_cat = func x y c len tbl <relation> -> (
   from tbl
-  filter (y != null && y != 0)
+  filter (y != null)
   derive {_sec = s"SUBSTRING(CAST({x} AS VARCHAR), 1, {len})"}
   group {_sec, c} (sort {-x} | take 1)
   sort {_sec}
   select {_sec, y, c}
 )
 
-# Downsample by sampling every Nth row, filter zeros/nulls
+# Downsample by sampling every Nth row
 let ds_nth = func y step tbl <relation> -> (
   from tbl
-  filter (y != null && y != 0)
+  filter (y != null)
   derive {_rn = row_number this}
   filter (_rn - 1) % step == 0
 )
@@ -70,7 +73,7 @@ let ds_nth = func y step tbl <relation> -> (
 # Downsample by sampling with category
 let ds_nth_cat = func y c step tbl <relation> -> (
   from tbl
-  filter (y != null && y != 0)
+  filter (y != null)
   derive {_rn = row_number this}
   filter (_rn - 1) % step == 0
 )

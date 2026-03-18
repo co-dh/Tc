@@ -8,6 +8,7 @@
 import Tc.View
 import Tc.Term
 import Tc.Error
+import Tc.Render
 import Tc.TmpDir
 
 namespace Tc.Plot
@@ -66,6 +67,10 @@ private def showPng (png : String) : IO Unit := do
 -- | ANSI: clear screen and move cursor to top-left
 private def clearScreen : IO Unit := IO.print "\x1b[2J\x1b[H"
 
+-- | Enter/leave alternate screen buffer so plot output doesn't bleed into other panes
+private def enterAltScreen : IO Unit := IO.print "\x1b[?1049h\x1b[2J\x1b[H"
+private def leaveAltScreen : IO Unit := IO.print "\x1b[?1049l"
+
 -- | Set terminal to raw mode (single keypress without Enter)
 private def setRaw : IO Unit := do
   let _ ← Log.run "stty" "stty" #["-F", "/dev/tty", "raw", "-echo"]
@@ -81,19 +86,36 @@ private def readKeyRaw : IO Char := do
   pure (if buf.size > 0 then Char.ofNat buf[0]!.toNat else 'q')
 
 private def err (s : ViewStack T) (msg : String) : IO (Option (ViewStack T)) := do
-  Log.write "plot" msg; pure (some s)
+  Log.write "plot" msg; errorPopup msg; pure (some s)
 
 private def isNumericType (typ : String) : Bool :=
   typ == "int" || typ == "float" || typ == "decimal"
 
 -- | Plot types that share the same x/y/cat data (cycleable with h/l)
-private def cyclableKinds : Array PlotKind := #[.line, .scatter, .bar, .box]
+def cyclableKinds : Array PlotKind := #[.line, .scatter, .bar, .box]
 
 private def cycleKind (k : PlotKind) (delta : Nat) : PlotKind :=
   let n := cyclableKinds.size
   match cyclableKinds.idxOf? k with
   | some i => cyclableKinds.getD ((i + delta) % n) .line
   | none => .line
+
+-- | Result of handling a keypress in interactive plot mode
+inductive KeyAction where
+  | quit                          -- q: exit plot mode
+  | interval (delta : Int)        -- ,/.: change downsample interval
+  | cycleType (delta : Nat)       -- h/l: cycle plot type
+  | noop                          -- unknown key: do nothing
+  deriving Repr, BEq
+
+-- | Pure key dispatch for interactive plot mode (testable)
+def handleKey (key : Char) : KeyAction :=
+  if key == 'q' then .quit
+  else if key == '.' || key == '>' then .interval 1
+  else if key == ',' || key == '<' then .interval (-1)
+  else if key == 'l' then .cycleType 1
+  else if key == 'h' then .cycleType (cyclableKinds.size - 1)
+  else .noop
 
 -- | Generate R script for ggplot2 rendering
 private def rScript (dataPath pngPath : String) (kind : PlotKind)
@@ -117,23 +139,24 @@ private def rScript (dataPath pngPath : String) (kind : PlotKind)
     | .line => "geom_line(linewidth = 0.5)"
     | .bar => "geom_col()"
     | .scatter => "geom_point(size = 1.5, alpha = 0.7)"
-    | .hist => "geom_histogram(fill = '#4682B4', color = 'white', bins = 30)"
+    | .hist => "geom_histogram(bins = 30, fill = 'steelblue', color = 'white')"
     | .box => "geom_boxplot()"
   let facet := if hasFacet then s!" + facet_wrap(vars({facetR}), scales = 'free_y')" else ""
   "library(ggplot2)\n" ++ readData ++ convY ++ convX ++
     s!"p <- ggplot(d, {aes}{colorAes}{fillAes}) + {geom}{facet} + " ++
-    s!"labs(x = '{xName}', y = '{yName}') + theme_minimal()\n" ++
+    s!"labs(x = '{xName}', y = '{yName}') + theme_gray() + scale_color_viridis_d() + scale_fill_viridis_d()\n" ++
     s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
 
--- | Run Rscript to render plot
-private def renderR (script : String) : IO Bool := do
+-- | Run Rscript to render plot; returns error message on failure
+private def renderR (script : String) : IO (Option String) := do
   let rPath ← Tc.tmpPath "plot.R"
   IO.FS.writeFile rPath script
   let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
   if r.exitCode != 0 then
-    Log.write "plot" s!"Rscript failed: {r.stderr.trimAscii.toString}"
-    return false
-  return true
+    let msg := s!"Rscript failed: {r.stderr.trimAscii.toString}"
+    Log.write "plot" msg
+    return some msg
+  return none
 
 -- | Export plot data with headers for R (prepends column names to plotExport output)
 private def exportWithHeaders (t : T) (xName yName : String) (catName? : Option String)
@@ -151,15 +174,21 @@ private def exportWithHeaders (t : T) (xName yName : String) (catName? : Option 
 -- | Render plot image and status bar in-place (clear → image → status)
 private def renderFrame (pngPath : String) (kind : PlotKind)
     (xName yName : String) (intervals : Array Interval) (idx : Nat)
-    (ok : Bool) : IO Unit := do
+    (err? : Option String) : IO Unit := do
   clearScreen
-  if ok then showPng pngPath
-  else IO.println s!"plot error (see {← Log.path})"
-  -- status bar
-  let ivBar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
-    if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
-  IO.println s!"\x1b[1m─── x={xName}  y={yName}  {kind} ───\x1b[0m"
-  IO.print s!"{ivBar}   +/-:interval  h/l:type  q:exit "
+  if err?.isNone then showPng pngPath
+  else IO.println (err?.getD "plot error")
+  -- status bar: show all plot types with current highlighted
+  let typeBar := String.intercalate " " (cyclableKinds.toList.map fun k =>
+    if k == kind then s!"\x1b[1;7m {k} \x1b[0m" else s!" {k} ")
+  IO.println s!"\x1b[1m─── x={xName}  y={yName} ───\x1b[0m"
+  let ivLine := if intervals.size > 1 then
+    let ivBar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
+      if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
+    s!"  ,/.:downsample {ivBar}"
+  else ""
+  IO.println s!"h/l:{typeBar}{ivLine}"
+  IO.print "q:exit "
 
 -- | Run plot with interactive controls (in-place re-rendering)
 def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
@@ -173,6 +202,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
     let yType := TblOps.colType n.tbl yIdx
     if !isNumericType yType then return ← err s "histogram needs a numeric column"
     Term.shutdown
+    enterAltScreen
     let datPath ← Tc.tmpPath "plot.dat"
     let pngPath ← Tc.tmpPath "plot.png"
     let nr := min (TblOps.nRows n.tbl) maxPoints
@@ -181,15 +211,19 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
       | .strs vs => vs | .ints vs => vs.map toString | .floats vs => vs.map toString
     IO.FS.writeFile datPath (yName ++ "\n" ++ "\n".intercalate (vals.filter (!·.isEmpty)).toList ++ "\n")
     let script := rScript datPath pngPath kind "" yName false "" false "" false
-    let ok ← renderR script
+    let err? ← renderR script
     clearScreen
-    if ok then showPng pngPath
-    else IO.println s!"plot error (see {← Log.path})"
+    if err?.isNone then showPng pngPath
+    else IO.println (err?.getD "plot error")
     IO.println s!"\x1b[1m─── histogram: {yName} ───\x1b[0m"
-    IO.print "q: exit "
+    IO.print "q:exit "
     setRaw
-    let _ ← readKeyRaw
+    let mut done := false
+    while !done do
+      let key ← readKeyRaw
+      if handleKey key == .quit then done := true
     setSane
+    leaveAltScreen
     let _ ← Term.init
     return some s
   -- all other plots need at least 1 group column
@@ -204,6 +238,8 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   let yIdx := colIdxAt n.grp names n.col.cur.val
   let yName := names.getD yIdx ""
   if n.grp.contains yName then return ← err s "move cursor to a non-group column"
+  let yType := TblOps.colType n.tbl yIdx
+  if !isNumericType yType then return ← err s s!"y-axis '{yName}' must be numeric (got {yType})"
   let nr := TblOps.nRows n.tbl
   let xType0 := TblOps.colType n.tbl xIdx
   let xType ← do
@@ -221,12 +257,14 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
       else pure xType0
   Log.write "plot" s!"xType={xType} (raw={xType0}) xIdx={xIdx} xName={xName}"
   let xIsTime := isTimeType xType
+  let needsDownsample := nr > maxPoints || xIsTime
   let baseStep := if nr > maxPoints then nr / maxPoints else 1
   let hasCat := n.grp.size > 1 && !hasFacet
-  let intervals := getIntervals xType baseStep
+  let intervals := if needsDownsample then getIntervals xType baseStep else #[⟨"all", 1⟩]
   let maxIdx := intervals.size - 1
-  -- enter plot mode: shutdown TUI, set raw mode once
+  -- enter plot mode: shutdown TUI, alternate screen, raw mode
   Term.shutdown
+  enterAltScreen
   setRaw
   let datPath ← Tc.tmpPath "plot.dat"
   let pngPath ← Tc.tmpPath "plot.png"
@@ -237,25 +275,29 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   while continue_ do
     let iv := intervals.getD idx default
     Log.write "plot" s!"kind={curKind} interval={iv.label} truncLen={iv.truncLen} idx={idx}"
-    let ok ← do
+    let exportResult ← do
       if needExport then
-        if let some _cats := ← exportWithHeaders n.tbl xName yName exportCatName? xIsTime baseStep iv.truncLen then
-          pure true
-        else pure false
-      else pure true
-    let ok ← if ok then
-        let script := rScript datPath pngPath curKind xName yName hasCat catName hasFacet facetName xIsTime
-        renderR script
-      else pure false
-    renderFrame pngPath curKind xName yName intervals idx ok
+        try
+          if let some _cats := ← exportWithHeaders n.tbl xName yName exportCatName? xIsTime baseStep iv.truncLen then
+            pure (none : Option String)
+          else pure (some "export returned no data")
+        catch e => pure (some e.toString)
+      else pure none
+    let err? ← match exportResult with
+      | some msg => pure (some msg)
+      | none => renderR (rScript datPath pngPath curKind xName yName hasCat catName hasFacet facetName xIsTime)
+    renderFrame pngPath curKind xName yName intervals idx err?
     let key ← readKeyRaw
-    if key == '+' || key == '=' then idx := min (idx + 1) maxIdx; needExport := true
-    else if key == '-' || key == '_' then idx := if idx > 0 then idx - 1 else 0; needExport := true
-    else if key == 'l' then curKind := cycleKind curKind 1; needExport := false
-    else if key == 'h' then curKind := cycleKind curKind (cyclableKinds.size - 1); needExport := false
-    else continue_ := false
-  -- exit plot mode: restore terminal, re-init TUI
+    match handleKey key with
+    | .quit => continue_ := false
+    | .interval d =>
+      if d > 0 then idx := min (idx + 1) maxIdx else idx := if idx > 0 then idx - 1 else 0
+      needExport := true
+    | .cycleType d => curKind := cycleKind curKind d; needExport := false
+    | .noop => needExport := false
+  -- exit plot mode: restore terminal, leave alternate screen, re-init TUI
   setSane
+  leaveAltScreen
   let _ ← Term.init
   pure (some s)
 

@@ -12,6 +12,8 @@ import Tc.Types
 import Tc.Remote
 import Tc.Data.Text
 import Tc.Socket
+import Tc.TmpDir
+import Tc.Plot
 import test.TestPure
 import test.TestUtil
 
@@ -830,6 +832,150 @@ def test_diff_show_same : IO Unit := do
   -- After second V, cost columns should expand (no longer hidden width=1)
   assert (contains output "cos") "VV reveals same-value cost columns"
 
+-- === Plot tests ===
+
+-- | Only 'q' exits interactive plot; other unlisted keys are noop
+def test_plot_key_dispatch : IO Unit := do
+  log "plot_key_dispatch"
+  -- q exits
+  assert (Tc.Plot.handleKey 'q' == .quit) "q should quit"
+  -- known keys are not quit
+  assert (Tc.Plot.handleKey '.' != .quit) ". should not quit"
+  assert (Tc.Plot.handleKey ',' != .quit) ", should not quit"
+  assert (Tc.Plot.handleKey 'h' != .quit) "h should not quit"
+  assert (Tc.Plot.handleKey 'l' != .quit) "l should not quit"
+  -- unknown keys are noop, not quit (including arrow key bytes and old +/- keys)
+  assert (Tc.Plot.handleKey 'x' == .noop) "x should be noop"
+  assert (Tc.Plot.handleKey 'a' == .noop) "a should be noop"
+  assert (Tc.Plot.handleKey ' ' == .noop) "space should be noop"
+  assert (Tc.Plot.handleKey '+' == .noop) "+ should be noop (old key, now ,/.)"
+  assert (Tc.Plot.handleKey '-' == .noop) "- should be noop (old key, now ,/.)"
+  assert (Tc.Plot.handleKey '\x1b' == .noop) "ESC (arrow key first byte) should be noop"
+  assert (Tc.Plot.handleKey '[' == .noop) "[ (arrow key second byte) should be noop"
+  assert (Tc.Plot.handleKey 'A' == .noop) "A (up arrow third byte) should be noop"
+  assert (Tc.Plot.handleKey 'j' == .noop) "j should be noop"
+  assert (Tc.Plot.handleKey 'k' == .noop) "k should be noop"
+
+-- | plotExport with string column as y should not crash.
+--   Regression: ds_nth's `y != 0` filter caused DuckDB to cast string cols to INT.
+def test_plot_export_string_col : IO Unit := do
+  log "plot_export_string_col"
+  -- mixed.csv: x(int), y(float), cat(str) — passing string col "cat" as yName triggers the bug
+  let some tbl ← Tc.AdbcTable.fromFile "data/plot/mixed.csv" | throw (IO.userError "failed to open mixed.csv")
+  -- xName=x, yName=cat (string!), no category, xIsTime=false, step=1, truncLen=1
+  let result ← Tc.AdbcTable.plotExport tbl "x" "cat" none false 1 1
+  assert result.isSome "plotExport with string y column should not crash with type cast error"
+
+-- | plotExport generates a valid TSV data file with correct columns
+def test_plot_export_data : IO Unit := do
+  log "plot_export_data"
+  let some tbl ← Tc.AdbcTable.fromFile "data/plot/mixed.csv" | throw (IO.userError "failed to open mixed.csv")
+  let result ← Tc.AdbcTable.plotExport tbl "x" "y" none false 1 1
+  assert result.isSome "plotExport should succeed for numeric y"
+  let datPath ← Tc.tmpPath "plot.dat"
+  let content ← IO.FS.readFile datPath
+  let lines := content.splitOn "\n" |>.filter (!·.isEmpty)
+  assert (lines.length > 0) "plot.dat should have data rows"
+  -- each line should have tab-separated x and y values
+  assert (lines.all fun l => (l.splitOn "\t").length >= 2) "plot.dat rows should be tab-separated x\\ty"
+
+-- | plotExport with category column returns distinct categories
+def test_plot_export_cat : IO Unit := do
+  log "plot_export_cat"
+  let some tbl ← Tc.AdbcTable.fromFile "data/plot/mixed.csv" | throw (IO.userError "failed to open mixed.csv")
+  let result ← Tc.AdbcTable.plotExport tbl "x" "y" (some "cat") false 1 1
+  let some cats := result | throw (IO.userError "plotExport with cat should succeed")
+  assert (cats.size == 2) s!"expected 2 categories (A,B), got {cats.size}"
+
+-- | Check Rscript is installed
+def hasRscript : IO Bool := hasCmd "Rscript"
+
+-- | Check ggplot2 is installed in R
+def hasGgplot2 : IO Bool := do
+  let r ← IO.Process.output { cmd := "Rscript", args := #["-e", "library(ggplot2)"] }
+  pure (r.exitCode == 0)
+
+-- | R + ggplot2 installed and loadable
+def test_plot_r_installed : IO Unit := do
+  log "plot_r_installed"
+  unless (← hasRscript) do log "  skip (no Rscript)"; return
+  assert (← hasGgplot2) "ggplot2 not installed — run: Rscript -e 'install.packages(\"ggplot2\")'"
+
+-- | R script generates a PNG from exported data (full pipeline)
+def test_plot_render_line : IO Unit := do
+  log "plot_render_line"
+  unless (← hasRscript) do log "  skip (no Rscript)"; return
+  unless (← hasGgplot2) do log "  skip (no ggplot2)"; return
+  let some tbl ← Tc.AdbcTable.fromFile "data/plot/line.csv" | throw (IO.userError "failed to open line.csv")
+  -- export data
+  let _ ← Tc.AdbcTable.plotExport tbl "x" "y" none false 1 1
+  let datPath ← Tc.tmpPath "plot.dat"
+  -- prepend header (plotExport writes raw, exportWithHeaders adds header in Plot.run)
+  let content ← IO.FS.readFile datPath
+  IO.FS.writeFile datPath (s!"x\ty\n" ++ content)
+  -- generate R script and run
+  let pngPath ← Tc.tmpPath "plot_test.png"
+  let script := "library(ggplot2)\n" ++
+    s!"d <- read.delim('{datPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n" ++
+    s!"d[['y']] <- as.numeric(d[['y']])\n" ++
+    s!"tryCatch(d[['x']] <- as.numeric(d[['x']]), warning=function(w) NULL)\n" ++
+    s!"p <- ggplot(d, aes(x = `x`, y = `y`)) + geom_line(linewidth = 0.5) + theme_minimal()\n" ++
+    s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
+  let rPath ← Tc.tmpPath "plot_test.R"
+  IO.FS.writeFile rPath script
+  let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
+  assert (r.exitCode == 0) s!"Rscript failed: {r.stderr.trimAscii.toString}"
+  -- verify PNG was created and is non-empty
+  let h ← IO.FS.Handle.mk pngPath .read
+  let buf ← h.read 1
+  assert (buf.size > 0) "plot PNG should be non-empty"
+
+-- | R scatter plot with category column renders correctly
+def test_plot_render_scatter_cat : IO Unit := do
+  log "plot_render_scatter_cat"
+  unless (← hasRscript) do log "  skip (no Rscript)"; return
+  unless (← hasGgplot2) do log "  skip (no ggplot2)"; return
+  let some tbl ← Tc.AdbcTable.fromFile "data/plot/mixed.csv" | throw (IO.userError "failed to open mixed.csv")
+  let _ ← Tc.AdbcTable.plotExport tbl "x" "y" (some "cat") false 1 1
+  let datPath ← Tc.tmpPath "plot.dat"
+  let content ← IO.FS.readFile datPath
+  IO.FS.writeFile datPath (s!"x\ty\tcat\n" ++ content)
+  let pngPath ← Tc.tmpPath "plot_test_cat.png"
+  let script := "library(ggplot2)\n" ++
+    s!"d <- read.delim('{datPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n" ++
+    s!"d[['y']] <- as.numeric(d[['y']])\n" ++
+    s!"tryCatch(d[['x']] <- as.numeric(d[['x']]), warning=function(w) NULL)\n" ++
+    s!"p <- ggplot(d, aes(x = `x`, y = `y`, color = `cat`)) + geom_point(size = 1.5, alpha = 0.7) + theme_minimal()\n" ++
+    s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
+  let rPath ← Tc.tmpPath "plot_test_cat.R"
+  IO.FS.writeFile rPath script
+  let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
+  assert (r.exitCode == 0) s!"Rscript scatter+cat failed: {r.stderr.trimAscii.toString}"
+  let h ← IO.FS.Handle.mk pngPath .read
+  let buf ← h.read 1
+  assert (buf.size > 0) "scatter+cat PNG should be non-empty"
+
+-- | Histogram R script renders from single numeric column
+def test_plot_render_histogram : IO Unit := do
+  log "plot_render_histogram"
+  unless (← hasRscript) do log "  skip (no Rscript)"; return
+  unless (← hasGgplot2) do log "  skip (no ggplot2)"; return
+  let datPath ← Tc.tmpPath "plot.dat"
+  IO.FS.writeFile datPath "y\n10.5\n20.3\n15.7\n25.1\n30.0\n12.2\n18.9\n"
+  let pngPath ← Tc.tmpPath "plot_test_hist.png"
+  let script := "library(ggplot2)\n" ++
+    s!"d <- read.delim('{datPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n" ++
+    s!"d[['y']] <- as.numeric(d[['y']])\n" ++
+    s!"p <- ggplot(d, aes(x = `y`)) + geom_histogram(fill = '#4682B4', color = 'white', bins = 30) + theme_minimal()\n" ++
+    s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
+  let rPath ← Tc.tmpPath "plot_test_hist.R"
+  IO.FS.writeFile rPath script
+  let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
+  assert (r.exitCode == 0) s!"Rscript histogram failed: {r.stderr.trimAscii.toString}"
+  let h ← IO.FS.Handle.mk pngPath .read
+  let buf ← h.read 1
+  assert (buf.size > 0) "histogram PNG should be non-empty"
+
 -- === Replay ops tests ===
 
 -- | Replay: sort adds "sort" to tab line (PRQL ops shown right-aligned)
@@ -932,6 +1078,15 @@ def tests : Array (String × IO Unit) := #[
   -- Diff tests
   ("diff", test_diff),
   ("diff_show_same", test_diff_show_same),
+  -- Plot tests
+  ("plot_key_dispatch", test_plot_key_dispatch),
+  ("plot_export_string_col", test_plot_export_string_col),
+  ("plot_export_data", test_plot_export_data),
+  ("plot_export_cat", test_plot_export_cat),
+  ("plot_r_installed", test_plot_r_installed),
+  ("plot_render_line", test_plot_render_line),
+  ("plot_render_scatter_cat", test_plot_render_scatter_cat),
+  ("plot_render_histogram", test_plot_render_histogram),
   -- Replay ops tests
   ("replay_sort", test_replay_sort),
   ("replay_empty", test_replay_empty),
