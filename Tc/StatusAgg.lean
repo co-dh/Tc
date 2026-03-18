@@ -14,7 +14,9 @@ def Cache.empty : Cache := ("", 0, "")
 
 -- | Aggregate stats for a single column: sum, avg, count (non-null).
 -- Returns formatted string like "Σ1234 μ12.3 #100" for numeric, "#100" for non-numeric.
+-- For large files, skip expensive SUM/AVG (no parquet shortcut) and show count only.
 private def compute (t : AdbcTable) (colIdx : Nat) : IO String := do
+  if t.totalRows > Tc.prqlLimit then return s!"#{t.totalRows}"
   let colName := t.colNames.getD colIdx ""
   let colType := t.colTypes.getD colIdx "?"
   let q := AdbcTable.quoteId colName
