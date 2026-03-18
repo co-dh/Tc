@@ -27,7 +27,7 @@ def fzfCore (opts : Array String) (input : String) : IO String := do
   else
     let inTmux := (← IO.getEnv "TMUX").isSome
     let baseArgs := if inTmux
-      then #["--tmux=bottom,80%,~15", "--layout=reverse"]  -- compact popup at bottom
+      then #["--tmux=bottom,80%,40%", "--layout=reverse"]  -- compact popup at bottom
       else #["--height=~15", "--layout=reverse"]            -- compact inline at bottom
     if !inTmux then Term.shutdown
     let child ← IO.Process.spawn { cmd := "fzf", args := baseArgs ++ opts, stdin := .piped, stdout := .piped }
