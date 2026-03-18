@@ -157,11 +157,14 @@ private def renderFrame (pngPath : String) (kind : PlotKind)
   clearScreen
   if err?.isNone then showPng pngPath
   else IO.println (err?.getD "plot error")
-  -- status bar
+  -- status bar: show all plot types with current highlighted
+  let typeBar := String.intercalate " " (cyclableKinds.toList.map fun k =>
+    if k == kind then s!"\x1b[1;7m {k} \x1b[0m" else s!" {k} ")
   let ivBar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
     if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
-  IO.println s!"\x1b[1m─── x={xName}  y={yName}  {kind} ───\x1b[0m"
-  IO.print s!"{ivBar}   +/-:interval  h/l:type  q:exit "
+  IO.println s!"\x1b[1m─── x={xName}  y={yName} ───\x1b[0m"
+  IO.println s!"h/l:{typeBar}  +/-:{ivBar}"
+  IO.print "q:exit "
 
 -- | Run plot with interactive controls (in-place re-rendering)
 def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
@@ -250,11 +253,12 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
       else pure (some "export failed")
     renderFrame pngPath curKind xName yName intervals idx err?
     let key ← readKeyRaw
-    if key == '+' || key == '=' then idx := min (idx + 1) maxIdx; needExport := true
+    if key == 'q' then continue_ := false
+    else if key == '+' || key == '=' then idx := min (idx + 1) maxIdx; needExport := true
     else if key == '-' || key == '_' then idx := if idx > 0 then idx - 1 else 0; needExport := true
     else if key == 'l' then curKind := cycleKind curKind 1; needExport := false
     else if key == 'h' then curKind := cycleKind curKind (cyclableKinds.size - 1); needExport := false
-    else continue_ := false
+    else needExport := false  -- ignore unknown keys
   -- exit plot mode: restore terminal, re-init TUI
   setSane
   let _ ← Term.init
