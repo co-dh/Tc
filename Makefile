@@ -4,13 +4,15 @@ PRQLC_VER := 0.13.10
 DUCKDB_VER := 1.4.4
 LEAN_VER := v4.28.0
 
-.PHONY: build test deps duckdb elan prqlc ci docker docker-dev dtest perf mem
+.PHONY: build test deps duckdb elan prqlc ci docker docker-dev dtest perf mem demo
 
 build:
 	lake build tc test
 	cp Tc/Data/ADBC/funcs.prql .lake/build/bin/
 
 ARGS ?=
+# Official DuckDB release (with ADBC) installed to /usr/local/lib via `make duckdb`
+export LD_LIBRARY_PATH := /usr/local/lib:$(LD_LIBRARY_PATH)
 
 test: build
 	.lake/build/bin/test $(ARGS) || (cat test.log; exit 1)
@@ -45,6 +47,10 @@ docker-dev:
 # Run make test inside dev container (source bind-mounted)
 dtest:
 	docker compose run --rm dev make test
+
+demo:
+	python3 scripts/gen_demo.py
+	agg doc/demo.cast doc/demo.gif --font-size 14 && rm doc/demo.cast
 
 perf:
 	.lake/build/bin/tc +n $(S3_PATH) &  PID=$$!; \

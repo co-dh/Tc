@@ -20,7 +20,7 @@ namespace Tc.Export
 -- | Prompt user for export format via fzf
 def pickFmt : IO (Option ExportFmt) := do
   match ← Fzf.fzf #["--prompt=export: "] "csv\nparquet\njson\nndjson" with
-  | some raw => pure (ExportFmt.ofString? raw.trim)
+  | some raw => pure (ExportFmt.ofString? raw.trimAscii.toString)
   | none => pure none
 
 -- | Export current view to file via DuckDB COPY
