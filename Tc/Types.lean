@@ -137,7 +137,7 @@ structure RenderCtx where
   styles     : Array UInt32
   precAdj    : Int
   widthAdj   : Int
-  heatMode   : UInt8 := 3  -- 0=off, 1=numeric, 2=categorical, 3=both
+  heatMode   : UInt8 := 1  -- 0=off, 1=numeric, 2=categorical, 3=both
   sparklines : Array String := #[]
 
 -- | Build PRQL filter expression from fzf result (default for TblOps.buildFilter)

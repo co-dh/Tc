@@ -692,18 +692,18 @@ def test_key_shift : IO Unit := do
   let aPos := hdr.splitOn "a" |>.head?.map (·.length) |>.getD 999
   assert (bPos < aPos) s!"shift-left: b ({bPos}) should appear before a ({aPos}) in header"
 
--- | Heatmap mode cycling: space m , reduces mode, space m . increases
+-- | Heatmap mode cycling: space m , reduces mode, space m . increases (default=1 numeric)
 def test_heat_mode : IO Unit := do
   log "heat_mode"
-  -- space m , reduces mode from 3→2; verify rendering still works
+  -- space m , reduces mode from 1→0 (off); verify rendering still works
   let output ← run " m," "data/basic.csv"
   assert (contains output "a") "heat mode dec: still shows column a"
-  -- space m , , , reduces to 0 (off); verify rendering still works
-  let output ← run " m,,," "data/basic.csv"
-  assert (contains output "a") "heat mode off: still shows column a"
-  -- space m . from mode 3 stays at 3 (clamped)
+  -- space m . increases mode from 1→2; verify rendering still works
   let output ← run " m." "data/basic.csv"
-  assert (contains output "a") "heat mode inc from max: still shows column a"
+  assert (contains output "a") "heat mode inc: still shows column a"
+  -- space m . . . increases to 3 (clamped max); verify rendering still works
+  let output ← run " m..." "data/basic.csv"
+  assert (contains output "a") "heat mode inc to max: still shows column a"
 
 -- | Flat command menu: space triggers single-level fzf menu (test mode picks first item)
 -- Verifies the 2-level menu → flat menu refactor doesn't break menu dispatch
