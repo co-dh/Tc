@@ -6,10 +6,11 @@ pkgdesc='Terminal table viewer (TUI) for parquet, CSV, DuckDB, kdb, S3, HuggingF
 arch=('x86_64')
 url='https://github.com/co-dh/Tc'
 license=('MIT')
-depends=('duckdb' 'fzf' 'bat' 'viu' 'gnuplot' 'trash-cli' 'curl')
+depends=('duckdb' 'fzf' 'bat' 'viu' 'r' 'trash-cli' 'curl')
 makedepends=('git' 'gcc' 'make')
 optdepends=('less: file preview fallback'
-            'prqlc: PRQL query compilation (install via cargo)')
+            'prqlc: PRQL query compilation (install via cargo)'
+            'r-ggplot2: ggplot2 plot rendering')
 source=("${pkgname}::git+file://${startdir}")
 sha256sums=('SKIP')
 options=('!strip')
