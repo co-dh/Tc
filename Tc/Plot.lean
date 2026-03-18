@@ -118,7 +118,7 @@ private def rScript (dataPath pngPath : String) (kind : PlotKind)
     | .line => "geom_line(linewidth = 0.5)"
     | .bar => "geom_col()"
     | .scatter => "geom_point(size = 1.5, alpha = 0.7)"
-    | .hist => "geom_histogram(bins = 30, fill = '#440154', color = 'white')"
+    | .hist => "geom_histogram(bins = 30, fill = 'steelblue', color = 'white')"
     | .box => "geom_boxplot()"
   let facet := if hasFacet then s!" + facet_wrap(vars({facetR}), scales = 'free_y')" else ""
   "library(ggplot2)\n" ++ readData ++ convY ++ convX ++
