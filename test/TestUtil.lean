@@ -4,7 +4,7 @@
 
 namespace TestUtil
 
-def bin := ".lake/build/bin/tc"
+def bin := ".lake/build/bin/tv"
 
 def log (msg : String) : IO Unit := do
   let h ← IO.FS.Handle.mk "test.log" .append

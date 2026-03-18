@@ -33,7 +33,7 @@ RUN curl -fsSL https://github.com/atanunq/viu/releases/download/v1.5.1/viu-x86_6
     -o /usr/local/bin/viu && chmod +x /usr/local/bin/viu
 
 WORKDIR /root/Tc
-COPY --from=build /root/Tc/.lake/build/bin/tc .lake/build/bin/tc
+COPY --from=build /root/Tc/.lake/build/bin/tv .lake/build/bin/tv
 RUN mkdir -p tmp
 
-ENTRYPOINT [".lake/build/bin/tc"]
+ENTRYPOINT [".lake/build/bin/tv"]

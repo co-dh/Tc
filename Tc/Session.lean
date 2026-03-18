@@ -1,5 +1,5 @@
 /-
-  Session: save/load view stack state to JSON files in ~/.cache/tc/sessions/.
+  Session: save/load view stack state to JSON files in ~/.cache/tv/sessions/.
   Serializes Prql.Query pipeline + view metadata; restores by re-executing queries.
   JSON parser assumes ASCII keys/values (session data is always ASCII).
 -/
@@ -10,10 +10,10 @@ import Tc.Folder
 
 namespace Tc.Session
 
--- | Session directory under ~/.cache/tc/
+-- | Session directory under ~/.cache/tv/
 private def sessDir : IO String := do
   let home := (← IO.getEnv "HOME").getD "/tmp"
-  let dir : System.FilePath := s!"{home}/.cache/tc/sessions"
+  let dir : System.FilePath := s!"{home}/.cache/tv/sessions"
   IO.FS.createDirAll dir
   pure dir.toString
 

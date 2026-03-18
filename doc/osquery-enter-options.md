@@ -4,10 +4,10 @@ Three approaches explored for querying osquery tables through DuckDB.
 
 ## Option 1: Script cmd (chosen)
 
-The `script` column in `tc_sources` holds a shell command template (e.g. `osqueryi --json "SELECT * FROM {name}"`). Lean runs it, loads the JSON stdout into a temp table, then applies `TRY_CAST` using column types from the DuckDB stub views. Status bar and meta enrich use generic `duckdb_columns()` comment lookup.
+The `script` column in `tv_sources` holds a shell command template (e.g. `osqueryi --json "SELECT * FROM {name}"`). Lean runs it, loads the JSON stdout into a temp table, then applies `TRY_CAST` using column types from the DuckDB stub views. Status bar and meta enrich use generic `duckdb_columns()` comment lookup.
 
 **Pros**: Simple, no new DuckDB extensions, stub views provide types + comments, setup is instant.
-**Cons**: Requires a `script` column in `tc_sources` (only used by osquery currently).
+**Cons**: Requires a `script` column in `tv_sources` (only used by osquery currently).
 
 ## Option 2: shellfs-backed DuckDB views
 

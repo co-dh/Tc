@@ -1,4 +1,4 @@
--- Default source configs for tc remote sources (S3, HF, REST, osquery, pg://).
+-- Default source configs for tv remote sources (S3, HF, REST, osquery, pg://).
 -- File formats (csv, parquet, arrow, xlsx, etc.) are handled in code, not here.
 -- Template placeholders: {1}..{9} = path parts, {N+} = parts N onward joined by /,
 -- {path}, {name}, {tmp}, {extra}, {dsn} = path with prefix stripped,
@@ -8,7 +8,7 @@
 --   DETACH/ATTACH/SELECT from attach_type and duckdb_ext.
 -- attach_type: TYPE clause for ATTACH (e.g. 'POSTGRES'). Empty = native DuckDB.
 
-CREATE TABLE IF NOT EXISTS tc_sources (
+CREATE TABLE IF NOT EXISTS tv_sources (
   pfx VARCHAR, min_parts INTEGER, list_cmd VARCHAR,
   list_sql VARCHAR, download_cmd VARCHAR, needs_download BOOLEAN,
   dir_suffix BOOLEAN, parent_fallback VARCHAR,
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS tc_sources (
   duckdb_ext VARCHAR, attach_type VARCHAR
 );
 
-INSERT INTO tc_sources VALUES
+INSERT INTO tv_sources VALUES
   -- S3: aws s3api JSON output, download via aws s3 cp
   ('s3://', 3,
    'aws s3api list-objects-v2 --bucket {1} --delimiter / --prefix {2+}/ {extra} --output json',
@@ -53,7 +53,7 @@ INSERT INTO tc_sources VALUES
    '',
    false, false, '',
    'python3 scripts/hf_datasets.py',
-   'ATTACH ''{home}/.cache/tc/hf_datasets.duckdb'' AS hf (READ_ONLY)',
+   'ATTACH ''{home}/.cache/tv/hf_datasets.duckdb'' AS hf (READ_ONLY)',
    'id', 'hf://datasets/{name}/',
    '', false, '', ''),
 
@@ -72,7 +72,7 @@ INSERT INTO tc_sources VALUES
    'SELECT name, safety, rows, description FROM osq.listing ORDER BY name',
    '', false, false, '',
    'python3 scripts/osquery_tables.py',
-   'ATTACH ''{home}/.cache/tc/osquery.duckdb'' AS osq (READ_ONLY)',
+   'ATTACH ''{home}/.cache/tv/osquery.duckdb'' AS osq (READ_ONLY)',
    'name', '',
    'osqueryi --json "SELECT * FROM {name}"', false, '', ''),
 

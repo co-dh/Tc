@@ -1,6 +1,6 @@
 /-
   Unix socket command channel: external tools send 2-char Cmd strings
-  Socket path: $TMPDIR/tc-$PID.sock (set as TC_SOCK env var for children)
+  Socket path: $TMPDIR/tv-$PID.sock (set as TV_SOCK env var for children)
 -/
 import Tc.Error
 
@@ -24,15 +24,15 @@ private opaque getPid : IO Nat
 -- | Global socket path
 initialize sockPath : IO.Ref String ← IO.mkRef ""
 
--- | Start socket listener, set TC_SOCK env var
+-- | Start socket listener, set TV_SOCK env var
 def init : IO Unit := do
   let tmp := (← IO.getEnv "TMPDIR").getD "/tmp"
   let pid ← getPid
-  let path := s!"{tmp}/tc-{pid}.sock"
+  let path := s!"{tmp}/tv-{pid}.sock"
   let ok ← sockStart path
   if ok then
     sockPath.set path
-    setEnv "TC_SOCK" path
+    setEnv "TV_SOCK" path
   else
     Log.write "socket" s!"failed to start: {path}"
 

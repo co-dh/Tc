@@ -600,7 +600,7 @@ def test_split_noop : IO Unit := do
 def test_export_csv : IO Unit := do
   log "export_csv"
   let home := (← IO.getEnv "HOME").getD "."
-  let path := s!"{home}/tc_export_sort_test.csv"
+  let path := s!"{home}/tv_export_sort_test.csv"
   try IO.FS.removeFile path catch _ => pure ()
   let out ← run "e" "data/sort_test.parquet"
   assert (contains out "name") "export_csv: table should render"
@@ -758,7 +758,7 @@ def test_session_load : IO Unit := do
   log "session_load"
   -- Write a session file that opens basic.csv with a sort op (ascending on col "a")
   let home := (← IO.getEnv "HOME").getD "."
-  let dir := s!"{home}/.cache/tc/sessions"
+  let dir := s!"{home}/.cache/tv/sessions"
   let _ ← IO.Process.output { cmd := "mkdir", args := #["-p", dir] }
   let absPath ← do
     let r ← IO.Process.output { cmd := "realpath", args := #["data/basic.csv"] }
@@ -778,7 +778,7 @@ def test_session_load : IO Unit := do
 def test_session_save_load : IO Unit := do
   log "session_save_load"
   let home := (← IO.getEnv "HOME").getD "."
-  let dir := s!"{home}/.cache/tc/sessions"
+  let dir := s!"{home}/.cache/tv/sessions"
   -- W auto-names from tab (basic.csv → "basic"); clean up any prior session
   try IO.FS.removeFile s!"{dir}/basic.json" catch _ => pure ()
   -- Open basic.csv, sort asc, then press W to save session

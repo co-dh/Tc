@@ -7,7 +7,7 @@ Three designs, terse to rich, all composable.
 Already half-built. `Cmd` is `Obj×Verb` = 2-char string (`"c+"` = col inc). Scriptability = accept a **pipe of these atoms** from stdin/CLI arg.
 
 ```
-tc data.parquet -e "c+c+C.C.c+"
+tv data.parquet -e "c+c+C.C.c+"
 ```
 
 meaning: right, right, sort asc, sort asc, right. Compound ops get single-char aliases:
@@ -44,7 +44,7 @@ Implementation: add a `:` command-line mode (fzf prompts already exist). Parse i
 This is the `Op` inductive made interactive. Script = newline-separated commands in a file:
 
 ```
-tc data.parquet -s script.tc
+tv data.parquet -s script.tv
 ```
 
 **Pros**: readable, named columns, composable pipeline matches the `Query` model exactly.
@@ -55,7 +55,7 @@ tc data.parquet -s script.tc
 Tc already compiles PRQL → SQL. Just let users pass raw PRQL ops:
 
 ```
-tc data.parquet -p "filter age > 30 | sort {-name} | take 20"
+tv data.parquet -p "filter age > 30 | sort {-name} | take 20"
 ```
 
 Or in-TUI via `:` mode, type PRQL fragments that get `Query.pipe`'d. `Op.render` already produces PRQL — make `Op.parse` the inverse. Round-trip: user types PRQL → parse to `Op` → pipe into `Query` → render → compile → execute.

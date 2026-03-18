@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Populate ~/.cache/tc/osquery.duckdb with osquery table metadata.
+Populate ~/.cache/tv/osquery.duckdb with osquery table metadata.
 
 Creates:
-  - listing table (name, safety, rows, description) — for tc folder view
+  - listing table (name, safety, rows, description) — for tv folder view
   - one view per osquery table in osq schema with COMMENT ON COLUMN for descriptions
 
 Column descriptions are queryable via: duckdb_columns() WHERE schema_name='osq'
@@ -32,7 +32,7 @@ SCHEMA_URL_BASE = (
     "source/src/data/osquery_schema_versions/"
 )
 
-CACHE_DIR = Path.home() / ".cache" / "tc"
+CACHE_DIR = Path.home() / ".cache" / "tv"
 SCHEMA_CACHE = CACHE_DIR / "osquery_schema.json"
 DUCKDB_PATH = CACHE_DIR / "osquery.duckdb"
 CACHE_MAX_AGE = 24 * 3600  # 24 hours for row counts
