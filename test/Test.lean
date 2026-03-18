@@ -13,6 +13,7 @@ import Tc.Remote
 import Tc.Data.Text
 import Tc.Socket
 import Tc.TmpDir
+import Tc.Plot
 import test.TestPure
 import test.TestUtil
 
@@ -833,6 +834,28 @@ def test_diff_show_same : IO Unit := do
 
 -- === Plot tests ===
 
+-- | Only 'q' exits interactive plot; other unlisted keys are noop
+def test_plot_key_dispatch : IO Unit := do
+  log "plot_key_dispatch"
+  -- q exits
+  assert (Tc.Plot.handleKey 'q' == .quit) "q should quit"
+  -- known keys are not quit
+  assert (Tc.Plot.handleKey '.' != .quit) ". should not quit"
+  assert (Tc.Plot.handleKey ',' != .quit) ", should not quit"
+  assert (Tc.Plot.handleKey 'h' != .quit) "h should not quit"
+  assert (Tc.Plot.handleKey 'l' != .quit) "l should not quit"
+  -- unknown keys are noop, not quit (including arrow key bytes and old +/- keys)
+  assert (Tc.Plot.handleKey 'x' == .noop) "x should be noop"
+  assert (Tc.Plot.handleKey 'a' == .noop) "a should be noop"
+  assert (Tc.Plot.handleKey ' ' == .noop) "space should be noop"
+  assert (Tc.Plot.handleKey '+' == .noop) "+ should be noop (old key, now ,/.)"
+  assert (Tc.Plot.handleKey '-' == .noop) "- should be noop (old key, now ,/.)"
+  assert (Tc.Plot.handleKey '\x1b' == .noop) "ESC (arrow key first byte) should be noop"
+  assert (Tc.Plot.handleKey '[' == .noop) "[ (arrow key second byte) should be noop"
+  assert (Tc.Plot.handleKey 'A' == .noop) "A (up arrow third byte) should be noop"
+  assert (Tc.Plot.handleKey 'j' == .noop) "j should be noop"
+  assert (Tc.Plot.handleKey 'k' == .noop) "k should be noop"
+
 -- | plotExport with string column as y should not crash.
 --   Regression: ds_nth's `y != 0` filter caused DuckDB to cast string cols to INT.
 def test_plot_export_string_col : IO Unit := do
@@ -1056,6 +1079,7 @@ def tests : Array (String × IO Unit) := #[
   ("diff", test_diff),
   ("diff_show_same", test_diff_show_same),
   -- Plot tests
+  ("plot_key_dispatch", test_plot_key_dispatch),
   ("plot_export_string_col", test_plot_export_string_col),
   ("plot_export_data", test_plot_export_data),
   ("plot_export_cat", test_plot_export_cat),

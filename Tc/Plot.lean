@@ -92,13 +92,30 @@ private def isNumericType (typ : String) : Bool :=
   typ == "int" || typ == "float" || typ == "decimal"
 
 -- | Plot types that share the same x/y/cat data (cycleable with h/l)
-private def cyclableKinds : Array PlotKind := #[.line, .scatter, .bar, .box]
+def cyclableKinds : Array PlotKind := #[.line, .scatter, .bar, .box]
 
 private def cycleKind (k : PlotKind) (delta : Nat) : PlotKind :=
   let n := cyclableKinds.size
   match cyclableKinds.idxOf? k with
   | some i => cyclableKinds.getD ((i + delta) % n) .line
   | none => .line
+
+-- | Result of handling a keypress in interactive plot mode
+inductive KeyAction where
+  | quit                          -- q: exit plot mode
+  | interval (delta : Int)        -- ,/.: change downsample interval
+  | cycleType (delta : Nat)       -- h/l: cycle plot type
+  | noop                          -- unknown key: do nothing
+  deriving Repr, BEq
+
+-- | Pure key dispatch for interactive plot mode (testable)
+def handleKey (key : Char) : KeyAction :=
+  if key == 'q' then .quit
+  else if key == '.' || key == '>' then .interval 1
+  else if key == ',' || key == '<' then .interval (-1)
+  else if key == 'l' then .cycleType 1
+  else if key == 'h' then .cycleType (cyclableKinds.size - 1)
+  else .noop
 
 -- | Generate R script for ggplot2 rendering
 private def rScript (dataPath pngPath : String) (kind : PlotKind)
@@ -199,9 +216,12 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
     if err?.isNone then showPng pngPath
     else IO.println (err?.getD "plot error")
     IO.println s!"\x1b[1m─── histogram: {yName} ───\x1b[0m"
-    IO.print "q: exit "
+    IO.print "q:exit "
     setRaw
-    let _ ← readKeyRaw
+    let mut done := false
+    while !done do
+      let key ← readKeyRaw
+      if handleKey key == .quit then done := true
     setSane
     leaveAltScreen
     let _ ← Term.init
@@ -267,12 +287,13 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
       | none => renderR (rScript datPath pngPath curKind xName yName hasCat catName hasFacet facetName xIsTime)
     renderFrame pngPath curKind xName yName intervals idx err?
     let key ← readKeyRaw
-    if key == 'q' then continue_ := false
-    else if key == '.' || key == '>' then idx := min (idx + 1) maxIdx; needExport := true
-    else if key == ',' || key == '<' then idx := if idx > 0 then idx - 1 else 0; needExport := true
-    else if key == 'l' then curKind := cycleKind curKind 1; needExport := false
-    else if key == 'h' then curKind := cycleKind curKind (cyclableKinds.size - 1); needExport := false
-    else needExport := false  -- ignore unknown keys
+    match handleKey key with
+    | .quit => continue_ := false
+    | .interval d =>
+      if d > 0 then idx := min (idx + 1) maxIdx else idx := if idx > 0 then idx - 1 else 0
+      needExport := true
+    | .cycleType d => curKind := cycleKind curKind d; needExport := false
+    | .noop => needExport := false
   -- exit plot mode: restore terminal, leave alternate screen, re-init TUI
   setSane
   leaveAltScreen
