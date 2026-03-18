@@ -257,9 +257,10 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
       else pure xType0
   Log.write "plot" s!"xType={xType} (raw={xType0}) xIdx={xIdx} xName={xName}"
   let xIsTime := isTimeType xType
+  let needsDownsample := nr > maxPoints || xIsTime
   let baseStep := if nr > maxPoints then nr / maxPoints else 1
   let hasCat := n.grp.size > 1 && !hasFacet
-  let intervals := getIntervals xType baseStep
+  let intervals := if needsDownsample then getIntervals xType baseStep else #[⟨"all", 1⟩]
   let maxIdx := intervals.size - 1
   -- enter plot mode: shutdown TUI, alternate screen, raw mode
   Term.shutdown
