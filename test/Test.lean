@@ -1015,7 +1015,7 @@ def test_plot_render_area : IO Unit := do
     s!"d <- read.delim('{datPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n" ++
     s!"d[['y']] <- as.numeric(d[['y']])\n" ++
     s!"tryCatch(d[['x']] <- as.numeric(d[['x']]), warning=function(w) NULL)\n" ++
-    s!"p <- ggplot(d, aes(x = `x`, y = `y`, fill = `y`)) + geom_area(alpha = 0.4) + theme_minimal() + scale_fill_viridis_d()\n" ++
+    s!"p <- ggplot(d, aes(x = `x`, y = `y`, fill = `y`)) + geom_area(alpha = 0.4) + theme_minimal() + scale_fill_viridis_c()\n" ++
     s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
   let rPath ← Tc.tmpPath "plot_test_area.R"
   IO.FS.writeFile rPath script

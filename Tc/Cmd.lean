@@ -115,7 +115,7 @@ inductive PlotKind where | line | bar | scatter | hist | box | area | density | 
 
 instance : ToString PlotKind where
   toString | .line => "line" | .bar => "bar" | .scatter => "scatter" | .hist => "hist" | .box => "box"
-    | .area => "area" | .density => "density" | .step => "step" | .violin => "violin"
+           | .area => "area" | .density => "density" | .step => "step" | .violin => "violin"
 inductive MetaEffect where | selNull | selSingle | setKey deriving Repr, BEq
 inductive ExportFmt where | csv | parquet | json | ndjson deriving Repr, BEq
 
