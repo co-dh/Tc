@@ -332,8 +332,6 @@ def appMain (args : List String) : IO Unit := do
   SourceConfig.setNoSign noSign
   let pipeMode ← if testMode then pure false else (! ·) <$> Term.isattyStdin
   let theme ← Theme.State.init
-  try Term.loadExtColors (← IO.FS.readFile "ext_colors.csv")
-  catch _ => pure ()  -- use C defaults if CSV not found
   Log.setLogPath (← Log.path)
   Log.write "init" s!"tmpdir={← Tc.tmpDir.get}"
   let err ← try AdbcTable.init catch e => IO.eprintln s!"Backend init error: {e}"; return
