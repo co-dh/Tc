@@ -48,13 +48,11 @@ jobs:
           curl -sL https://github.com/asciinema/agg/releases/latest/download/agg-x86_64-unknown-linux-gnu -o /usr/local/bin/agg
           chmod +x /usr/local/bin/agg
 
-      - name: Record and generate GIF
-        run: |
-          python3 scripts/gen_demo.py
-          agg doc/demo.cast doc/demo.gif --font-size 14
+      - name: Record and generate GIFs
+        run: python3 scripts/gen_demo.py
 
-      - name: Upload GIF
+      - name: Upload GIFs
         uses: actions/upload-artifact@v4
         with:
-          name: demo-gif
-          path: doc/demo.gif
+          name: demo-gifs
+          path: doc/*.gif

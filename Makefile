@@ -57,7 +57,6 @@ dtest:
 
 demo:
 	python3 scripts/gen_demo.py
-	agg doc/demo.cast doc/demo.gif --font-size 14 && rm doc/demo.cast
 
 perf:
 	.lake/build/bin/tv +n $(S3_PATH) &  PID=$$!; \

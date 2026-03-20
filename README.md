@@ -10,21 +10,64 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 - S3 bucket browsing (`s3://bucket/path`) with auto-caching for slow listings
 - HuggingFace Hub datasets (`hf://datasets/user/dataset`)
 - Osquery table browser (`osquery://`)
-- Folder browser with recursive depth control
-- Frequency view (group by + count/pct/bar)
-- Column metadata view (type, count, distinct, null%, min, max)
-- Filter expressions via PRQL (`col == val && col2 > 10`)
-- Fuzzy search via fzf (columns, rows, filter, commands)
-- Multi-column sorting (asc/desc)
+
+**Folder browser** with recursive depth control, sorting
+
+![folder](doc/folder.gif)
+
+**Sparkline** distribution row for numeric columns (on by default, `Z` to toggle)
+
+![sparkline](doc/sparkline.gif)
+
+**Frequency view** (group by + count/pct/bar)
+
+![freq](doc/freq.gif)
+
+**Heatmap** coloring for all column types: numeric gradient, string categorical
+
+![heatmap](doc/heatmap.gif)
+
+**Plotting** via ggplot2: line, bar, scatter, histogram, boxplot — with faceting
+
+![plot](doc/plot.gif)
+
+**Command palette** — fuzzy search via fzf (columns, rows, filter, commands)
+
+![fzf](doc/fzf.gif)
+
+**Theme** support — cycle through color schemes
+
+![theme](doc/theme.gif)
+
+**Column metadata** view (type, count, distinct, null%, min, max)
+
+![meta](doc/meta.gif)
+
+**Multi-column sorting** (asc/desc)
+
+![sort](doc/sort.gif)
+
+**Column split** by delimiter/regex (`:` key)
+
+![split](doc/split.gif)
+
+**Filter expressions** via PRQL (`col == val && col2 > 10`)
+
+![filter](doc/filter.gif)
+
+**Derive column** — computed columns via PRQL expressions (`=` key)
+
+![derive](doc/derive.gif)
+
+**Table diff** — compare top 2 views, auto-key categorical columns
+
+![diff](doc/diff.gif)
+
 - Column grouping (key columns pinned left)
 - Row/column selection, hidden columns
-- Plotting via ggplot2: line, bar, scatter, histogram, boxplot — with faceting
 - Status bar aggregation (sum/avg/count for current column)
-- Heatmap coloring for all column types: numeric gradient, string categorical (`space m </>` cycles mode: 0=off, 1=numeric, 2=categorical, 3=both; default=1 numeric)
 - Unix socket command channel (`$TV_SOCK`) — external tools send 2-char commands for live control
-- Sparkline distribution row for numeric columns (on by default, `Z` to toggle)
 - Regex column split (`:` key — split column by delimiter/regex into new columns)
-- Theme support
 - Stdin pipe mode (`cat data.csv | tv`)
 - Table diff (compare top 2 views, auto-key categorical columns, hide same-value columns)
 - Session save/load (persist filters, sorts, derives across sessions)
