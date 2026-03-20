@@ -1,0 +1,60 @@
+name: Demo GIF
+on:
+  push:
+    branches: [main, 'demo-*']
+    paths: [scripts/gen_demo.py]
+  pull_request:
+    paths: [scripts/gen_demo.py]
+
+jobs:
+  gif:
+    runs-on: ubuntu-latest
+    env:
+      PATH: /home/runner/.elan/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache tools
+        id: tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/libduckdb.so
+            /usr/local/bin/prqlc
+            ~/.elan
+          key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      - name: Install tools
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: |
+          sudo make duckdb prqlc
+          make elan
+
+      - name: ldconfig
+        run: sudo ldconfig
+
+      - name: Cache .lake
+        uses: actions/cache@v4
+        with:
+          path: .lake
+          key: lake-${{ runner.os }}-${{ hashFiles('lakefile.lean', 'lake-manifest.json') }}
+          restore-keys: lake-${{ runner.os }}-
+
+      - name: Build
+        run: make build
+
+      - name: Install agg
+        run: |
+          curl -sL https://github.com/asciinema/agg/releases/latest/download/agg-x86_64-unknown-linux-gnu -o /usr/local/bin/agg
+          chmod +x /usr/local/bin/agg
+
+      - name: Record and generate GIF
+        run: |
+          python3 scripts/gen_demo.py
+          agg doc/demo.cast doc/demo.gif --font-size 14
+
+      - name: Upload GIF
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-gif
+          path: doc/demo.gif
