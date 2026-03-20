@@ -27,73 +27,6 @@ static struct tb_cell *fake_buf = NULL;
 static int fake_w = 80, fake_h = 24;
 static int headless = 0;
 
-// Extension color map (loaded from ext_colors.csv)
-#define MAX_EXT_ENTRIES 512
-static struct { char ext[12]; uint32_t fg; } ext_map[MAX_EXT_ENTRIES];
-static int ext_map_n = 0;
-static uint32_t dir_fg = TB_CYAN | TB_BOLD;   // default fallback
-static uint32_t link_fg = TB_RED;              // default fallback
-
-// Load ext_colors.csv: "color,attr,ext1 ext2 ..."
-lean_obj_res lean_load_ext_colors(b_lean_obj_arg csv, lean_obj_arg world) {
-    const char *s = lean_string_cstr(csv);
-    ext_map_n = 0;
-    dir_fg = TB_CYAN | TB_BOLD;
-    link_fg = TB_RED;
-    char line[1024];
-    while (*s) {
-        // read one line
-        int i = 0;
-        while (*s && *s != '\n' && i < (int)sizeof(line)-1) line[i++] = *s++;
-        line[i] = 0;
-        if (*s == '\n') s++;
-        if (line[0] == '#' || line[0] == 0) continue;
-        // parse: color,attr,ext1 ext2 ...
-        char *p = line;
-        int color = (int)strtol(p, &p, 10);
-        if (*p != ',') continue; p++;
-        uint32_t attr = 0;
-        while (*p && *p != ',') {
-            if (*p == 'b') attr |= TB_BOLD;
-            if (*p == 'u') attr |= TB_UNDERLINE;
-            p++;
-        }
-        if (*p != ',') continue; p++;
-        uint32_t fg = (uint32_t)color | attr;
-        // parse space-separated extensions
-        while (*p) {
-            while (*p == ' ') p++;
-            if (!*p) break;
-            char ext[12]; int ei = 0;
-            while (*p && *p != ' ' && ei < 11) ext[ei++] = *p++;
-            ext[ei] = 0;
-            if (strcmp(ext, "di") == 0) { dir_fg = fg; continue; }
-            if (strcmp(ext, "ln") == 0) { link_fg = fg; continue; }
-            if (ext_map_n < MAX_EXT_ENTRIES) {
-                memcpy(ext_map[ext_map_n].ext, ext, 12);
-                ext_map[ext_map_n].fg = fg;
-                ext_map_n++;
-            }
-        }
-    }
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Lookup extension color for a filename
-static uint32_t ext_fg_color(const char *name) {
-    const char *dot = strrchr(name, '.');
-    if (!dot || dot == name || !dot[1]) return 0;
-    const char *e = dot + 1;
-    int len = (int)strlen(e);
-    if (len > 10) return 0;
-    char ext[12];
-    for (int i = 0; i <= len; i++)
-        ext[i] = (e[i] >= 'A' && e[i] <= 'Z') ? e[i] + 32 : e[i];
-    for (int i = 0; i < ext_map_n; i++)
-        if (strcmp(ext, ext_map[i].ext) == 0) return ext_map[i].fg;
-    return 0;
-}
-
 // | Check if stdin is a tty (false = piped input)
 lean_obj_res lean_isatty_stdin(lean_obj_arg world) {
     return lean_io_result_mk_ok(lean_box(isatty(STDIN_FILENO) ? 1 : 0));
@@ -543,16 +476,6 @@ lean_obj_res lean_render_table(
         stBg[s] = lean_unbox_uint32(lean_array_get_core(styles, s * 2 + 1));
     }
 
-    // detect folder view columns for coloring
-    int typeColIdx = -1, pathColIdx = -1, sizeColIdx = -1, modColIdx = -1;
-    for (size_t c = 0; c < nCols; c++) {
-        const char* nm = lean_string_cstr(lean_array_get_core(names, c));
-        if (strcmp(nm, "type") == 0) typeColIdx = (int)c;
-        else if (strcmp(nm, "path") == 0 || strcmp(nm, "name") == 0) pathColIdx = (int)c;
-        else if (strcmp(nm, "size") == 0) sizeColIdx = (int)c;
-        else if (strcmp(nm, "modified") == 0) modColIdx = (int)c;
-    }
-
     // build selection bitsets
     uint64_t colBits[4], rowBits[4];
     build_sel_bits(selCols, lean_array_size(selCols), colBits);
@@ -754,24 +677,6 @@ lean_obj_res lean_render_table(
         int isSelRow = IS_SEL(rowBits, row);
         int isCurRow = (row == curRow);
 
-        // folder view: read type column to color name (dir=cyan, symlink=red)
-        char typeChar = 0;
-        const char* pathStr = NULL;
-        if (typeColIdx >= 0) {
-            // read type string directly from Column data (COL_STRS)
-            lean_obj_arg typeCol = lean_array_get_core(allCols, typeColIdx);
-            lean_obj_arg typeData = lean_ctor_get(typeCol, 0);
-            const char* ts = lean_string_cstr(lean_array_get_core(typeData, row));
-            if (ts[0] == 'd') typeChar = 'd';
-            else if (ts[0] == 's') typeChar = 'l';  // "symlink"
-            else if (pathColIdx >= 0) {
-                // cache path string to avoid re-formatting for ext color lookup
-                lean_obj_arg pathCol = lean_array_get_core(allCols, pathColIdx);
-                lean_obj_arg pathData = lean_ctor_get(pathCol, 0);
-                pathStr = lean_string_cstr(lean_array_get_core(pathData, row));
-            }
-        }
-
         for (size_t c = 0; c < nVisCols; c++) {
             size_t dispIdx = dispIdxs[c];
             size_t origIdx = lean_unbox(lean_array_get_core(colIdxs, dispIdx));
@@ -781,24 +686,7 @@ lean_obj_res lean_render_table(
             int si = get_style(isCurRow && isCurCol, isSelRow, isSel, isCurRow, isCurCol);
             // group columns keep group bg even when selected (only change fg)
             uint32_t bg = isGrp ? stBg[STYLE_GROUP] : stBg[si];
-
-            // apply folder view column colors (preserve cursor/selection)
             uint32_t fg = stFg[si];
-            if (typeColIdx >= 0
-                && si != STYLE_CURSOR && si != STYLE_SEL_ROW && si != STYLE_SEL_CUR) {
-                if ((int)origIdx == pathColIdx && pathColIdx >= 0) {
-                    if (typeChar == 'd') fg = dir_fg;
-                    else if (typeChar == 'l') fg = link_fg;
-                    else if (pathStr) {
-                        uint32_t efg = ext_fg_color(pathStr);
-                        if (efg) fg = efg;
-                    }
-                } else if ((int)origIdx == sizeColIdx) {
-                    fg = 75;             // filesize: light blue
-                } else if ((int)origIdx == modColIdx) {
-                    fg = 105;            // datetime: purple/blue
-                }
-            }
 
             lean_obj_arg col = lean_array_get_core(allCols, origIdx);
 

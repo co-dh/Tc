@@ -103,10 +103,6 @@ opaque present : IO Unit
 @[extern "lean_tb_poll_event"]
 opaque pollEvent : IO Event
 
--- | Load extension color config (CSV string)
-@[extern "lean_load_ext_colors"]
-opaque loadExtColors : @& String → IO Unit
-
 -- | Read termbox internal cell buffer as string (rows separated by newlines)
 @[extern "lean_tb_buffer_str"]
 opaque bufferStr : IO String
