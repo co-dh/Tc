@@ -8,14 +8,23 @@ import os, pty, select, signal, struct, sys, json, time, fcntl, termios
 
 TC = ".lake/build/bin/tc"
 CAST = "doc/demo.cast"
-W, H = 120, 30
+W, H = 80, 24
 
 def title_escape(desc, keys):
-    """Overlay a title bar near the bottom showing description + keys."""
-    label = f"  {desc}  ({keys})" if keys else f"  {desc}"
-    label = label.ljust(W)
-    row = H - 1
-    return f"\x1b7\x1b[{row};1H\x1b[1;44;97m{label}\x1b[0m\x1b8"
+    """Centered movie-title overlay: 3-row box in the middle of the screen."""
+    text = f"{desc}  ({keys})" if keys else desc
+    pad = max(W - len(text), 0)
+    left = pad // 2
+    line = " " * left + text + " " * (pad - left)
+    blank = " " * W
+    row = H // 2 - 1  # vertically centered
+    esc = "\x1b[1;97;44m"  # bold white on blue
+    rst = "\x1b[0m"
+    return (f"\x1b7"
+            f"\x1b[{row};1H{esc}{blank}{rst}"
+            f"\x1b[{row+1};1H{esc}{line}{rst}"
+            f"\x1b[{row+2};1H{esc}{blank}{rst}"
+            f"\x1b8")
 
 # (description, keys_shown, keys_to_send, pause_seconds)
 STEPS = [
