@@ -6,6 +6,7 @@
 import Tc.Key
 import Tc.Term
 
+
 open Tc
 
 namespace Tc.Fzf
@@ -99,11 +100,25 @@ def cmdMode (vk : ViewKind) (poll : IO Unit := pure ()) : IO (Option Cmd) := do
   if items.isEmpty then return none
   let input := "\n".intercalate items.toList
   let sockPath := (← IO.getEnv "TV_SOCK").getD ""
-  let sockBinds := if sockPath.isEmpty then #[]
-    else
-      -- Shell template: extract cmd prefix, send to socket if previewable (! prefix)
-      let mkBind (key expr : String) := "--bind=" ++ key ++ ":execute-silent(line={};cmd=${line%%\\t*};[ \"${cmd:0:1}\" = \"!\" ]&&printf '%s\\n' \"" ++ expr ++ "\"|socat - UNIX-CONNECT:" ++ sockPath ++ " 2>/dev/null)"
-      #[mkBind "focus" "${cmd:1:2}", mkBind "<" "${cmd:1:1}-", mkBind ">" "${cmd:1:1}+", "--header=< dec  > inc"]
+  -- Helper script: extract cmd prefix from fzf item, send via socket if previewable.
+  -- Written to file because fzf --tmux corrupts special shell chars in execute-silent.
+  let tmp := (← IO.getEnv "TMPDIR").getD "/tmp"
+  let script := tmp ++ "/tv-fzf-send.sh"
+  let sockBinds ← if sockPath.isEmpty then pure #[]
+    else do
+      let lines := [
+        "#!/bin/sh",
+        "cmd=\"${1%%\t*}\"",  -- real tab: strip label after \t
+        "case \"$cmd\" in '!'*) ;; *) exit 0;; esac",
+        "code=\"${cmd#!}\"",
+        "if [ \"$2\" = f ]; then printf '%s\\n' \"$code\"",
+        "else printf '%s\\n' \"${code%?}$2\"",
+        "fi | socat - UNIX-CONNECT:" ++ sockPath ++ " 2>/dev/null"
+      ]
+      IO.FS.writeFile script (String.intercalate "\n" lines ++ "\n")
+      let _ ← IO.Process.output { cmd := "chmod", args := #["+x", script] }
+      let bind (key dir : String) := "--bind=" ++ key ++ ":execute-silent(" ++ script ++ " {} " ++ dir ++ ")"
+      pure #[bind "focus" "f", bind "left" "-", bind "right" "+", "--header=← dec  → inc"]
   let opts := #["--with-nth=2..", "--prompt=cmd "] ++ sockBinds
   let out ← fzfCore opts input poll
   if out.isEmpty then return none
