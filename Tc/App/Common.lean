@@ -89,7 +89,23 @@ where
   runEffectCore (a : AppState) (e : Effect) : IO AppState := match e with
   | .none | .quit => pure a
   | .fzf .cmd => do
-    let cmd ← Fzf.cmdMode a.stk.cur.vkind
+    -- Live dispatch: poll socket + apply previewable cmds while fzf popup is open
+    let ref ← IO.mkRef a
+    let poll : IO Unit := do
+      match ← Socket.pollCmd with
+      | some cmdStr =>
+        Log.write "sock" s!"poll cmd={cmdStr}"
+        match (Parse.parse? cmdStr : Option Cmd) with
+        | some cmd => match (← ref.get).update cmd with
+          | some (a', _) =>  -- Effect discarded: poll is preview-only (re-render suffices)
+            let (vs', v') ← a'.stk.cur.doRender a'.vs a'.theme.styles a'.heatMode a'.sparklines
+            ref.set { a' with stk := a'.stk.setCur v', vs := vs' }
+            Term.present
+          | none => pure ()  -- cmd doesn't apply to current view state
+        | none => Log.write "sock" s!"parse failed: {cmdStr}"
+      | none => pure ()
+    let cmd ← Fzf.cmdMode a.stk.cur.vkind poll
+    let a ← ref.get
     let _ ← Socket.pollCmd  -- drain stale preview command from fzf focus
     match cmd with
     | some c => match a.update c with
@@ -105,6 +121,7 @@ where
 
 -- | Dispatch a command string: parse → update → run effect
 private partial def dispatchCmd (a : AppState) (cmdStr : String) : IO AppState := do
+  Log.write "sock" s!"cmd={cmdStr}"
   match (Parse.parse? cmdStr : Option Cmd) with
   | some cmd => match a.update cmd with
     | some (a', e) =>
@@ -154,11 +171,11 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   if test && ks.isEmpty then IO.print (← Term.bufferStr); return a
   let (ev, ks') ← nextEvent ks
   -- Socket commands from external tools
-  let a ← if !test then
-    match ← Socket.pollCmd with
+  let a ← match ← Socket.pollCmd with
     | some cmdStr => dispatchCmd a cmdStr
     | none => pure a
-  else pure a
+  -- \x16 = <wait> test key: sleep to let socket commands arrive
+  if ev.type == 1 && ev.key == 0x16 then IO.sleep 50; return ← mainLoop a test ks'
   -- Empty event (socket wake-up with no key press) → re-render and loop
   if ev.type == 0 then return ← mainLoop a test ks'
   if isKey ev 'Q' then return a

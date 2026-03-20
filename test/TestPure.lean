@@ -239,6 +239,18 @@ section CmdRoundTripTests
 theorem cmd_roundtrip (c : Cmd) : @Parse.parse? Cmd _ (toString c) = some c := by
   cases c <;> rename_i v <;> cases v <;> native_decide
 
+-- Socket <> binds send "{obj}-"/"{obj}+" — verify these parse correctly
+#guard (@Parse.parse? Cmd _ "r-") == some (.row .dec)
+#guard (@Parse.parse? Cmd _ "r+") == some (.row .inc)
+#guard (@Parse.parse? Cmd _ "m-") == some (.heat .dec)
+#guard (@Parse.parse? Cmd _ "m+") == some (.heat .inc)
+#guard (@Parse.parse? Cmd _ "T-") == some (.thm .dec)
+#guard (@Parse.parse? Cmd _ "T+") == some (.thm .inc)
+#guard (@Parse.parse? Cmd _ "w-") == some (.width .dec)
+#guard (@Parse.parse? Cmd _ "w+") == some (.width .inc)
+#guard (@Parse.parse? Cmd _ "p-") == some (.prec .dec)
+#guard (@Parse.parse? Cmd _ "p+") == some (.prec .inc)
+
 end CmdRoundTripTests
 
 /-! ## parseKeys Tests -/

@@ -174,6 +174,7 @@ def parseKeys (s : String) : String :=
    |>.replace "<bs>" "\x7f"
    |>.replace "<backslash>" "\\"
    |>.replace "<key>" "!"
+   |>.replace "<wait>" "\x16"  -- test-only: pause for socket commands
 
 -- | Convert char to synthetic Term.Event (matches termbox behavior)
 def charToEvent (c : Char) : Term.Event :=
