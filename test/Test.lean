@@ -925,59 +925,45 @@ def test_plot_r_installed : IO Unit := do
   unless (← hasRscript) do log "  skip (no Rscript)"; return
   assert (← hasGgplot2) "ggplot2 not installed — run: Rscript -e 'install.packages(\"ggplot2\")'"
 
--- | R script generates a PNG from exported data (full pipeline)
+-- | Run rScript and assert PNG output is non-empty
+def runPlotR (kind : PlotKind) (datPath pngPath : String)
+    (xName yName : String) (hasCat : Bool) (catName : String) (xIsTime := false) : IO Unit := do
+  let script := Tc.Plot.rScript datPath pngPath kind xName yName hasCat catName false "" xIsTime
+  let rPath ← Tc.tmpPath "plot_test.R"
+  IO.FS.writeFile rPath script
+  let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
+  assert (r.exitCode == 0) s!"Rscript {kind} failed: {r.stderr.trimAscii.toString}"
+  let h ← IO.FS.Handle.mk pngPath .read
+  let buf ← h.read 1
+  assert (buf.size > 0) s!"{kind} PNG should be non-empty"
+
+-- | Prepare x/y data from plotExport (prepend header)
+def prepXY (file xName yName : String) (catName? : Option String := none) : IO String := do
+  let some tbl ← Tc.AdbcTable.fromFile file | throw (IO.userError s!"failed to open {file}")
+  let _ ← Tc.AdbcTable.plotExport tbl xName yName catName? false 1 1
+  let datPath ← Tc.tmpPath "plot.dat"
+  let content ← IO.FS.readFile datPath
+  let header := match catName? with | some cn => s!"{xName}\t{yName}\t{cn}" | none => s!"{xName}\t{yName}"
+  IO.FS.writeFile datPath (header ++ "\n" ++ content)
+  pure datPath
+
+-- | R script generates a PNG from exported data (full pipeline via rScript)
 def test_plot_render_line : IO Unit := do
   log "plot_render_line"
   unless (← hasRscript) do log "  skip (no Rscript)"; return
   unless (← hasGgplot2) do log "  skip (no ggplot2)"; return
-  let some tbl ← Tc.AdbcTable.fromFile "data/plot/line.csv" | throw (IO.userError "failed to open line.csv")
-  -- export data
-  let _ ← Tc.AdbcTable.plotExport tbl "x" "y" none false 1 1
-  let datPath ← Tc.tmpPath "plot.dat"
-  -- prepend header (plotExport writes raw, exportWithHeaders adds header in Plot.run)
-  let content ← IO.FS.readFile datPath
-  IO.FS.writeFile datPath (s!"x\ty\n" ++ content)
-  -- generate R script and run
+  let datPath ← prepXY "data/plot/line.csv" "x" "y"
   let pngPath ← Tc.tmpPath "plot_test.png"
-  let script := "library(ggplot2)\n" ++
-    s!"d <- read.delim('{datPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n" ++
-    s!"d[['y']] <- as.numeric(d[['y']])\n" ++
-    s!"tryCatch(d[['x']] <- as.numeric(d[['x']]), warning=function(w) NULL)\n" ++
-    s!"p <- ggplot(d, aes(x = `x`, y = `y`)) + geom_line(linewidth = 0.5) + theme_minimal()\n" ++
-    s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
-  let rPath ← Tc.tmpPath "plot_test.R"
-  IO.FS.writeFile rPath script
-  let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
-  assert (r.exitCode == 0) s!"Rscript failed: {r.stderr.trimAscii.toString}"
-  -- verify PNG was created and is non-empty
-  let h ← IO.FS.Handle.mk pngPath .read
-  let buf ← h.read 1
-  assert (buf.size > 0) "plot PNG should be non-empty"
+  runPlotR .line datPath pngPath "x" "y" false ""
 
 -- | R scatter plot with category column renders correctly
 def test_plot_render_scatter_cat : IO Unit := do
   log "plot_render_scatter_cat"
   unless (← hasRscript) do log "  skip (no Rscript)"; return
   unless (← hasGgplot2) do log "  skip (no ggplot2)"; return
-  let some tbl ← Tc.AdbcTable.fromFile "data/plot/mixed.csv" | throw (IO.userError "failed to open mixed.csv")
-  let _ ← Tc.AdbcTable.plotExport tbl "x" "y" (some "cat") false 1 1
-  let datPath ← Tc.tmpPath "plot.dat"
-  let content ← IO.FS.readFile datPath
-  IO.FS.writeFile datPath (s!"x\ty\tcat\n" ++ content)
+  let datPath ← prepXY "data/plot/mixed.csv" "x" "y" (some "cat")
   let pngPath ← Tc.tmpPath "plot_test_cat.png"
-  let script := "library(ggplot2)\n" ++
-    s!"d <- read.delim('{datPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n" ++
-    s!"d[['y']] <- as.numeric(d[['y']])\n" ++
-    s!"tryCatch(d[['x']] <- as.numeric(d[['x']]), warning=function(w) NULL)\n" ++
-    s!"p <- ggplot(d, aes(x = `x`, y = `y`, color = `cat`)) + geom_point(size = 1.5, alpha = 0.7) + theme_minimal()\n" ++
-    s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
-  let rPath ← Tc.tmpPath "plot_test_cat.R"
-  IO.FS.writeFile rPath script
-  let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
-  assert (r.exitCode == 0) s!"Rscript scatter+cat failed: {r.stderr.trimAscii.toString}"
-  let h ← IO.FS.Handle.mk pngPath .read
-  let buf ← h.read 1
-  assert (buf.size > 0) "scatter+cat PNG should be non-empty"
+  runPlotR .scatter datPath pngPath "x" "y" true "cat"
 
 -- | Histogram R script renders from single numeric column
 def test_plot_render_histogram : IO Unit := do
@@ -987,43 +973,16 @@ def test_plot_render_histogram : IO Unit := do
   let datPath ← Tc.tmpPath "plot.dat"
   IO.FS.writeFile datPath "y\n10.5\n20.3\n15.7\n25.1\n30.0\n12.2\n18.9\n"
   let pngPath ← Tc.tmpPath "plot_test_hist.png"
-  let script := "library(ggplot2)\n" ++
-    s!"d <- read.delim('{datPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n" ++
-    s!"d[['y']] <- as.numeric(d[['y']])\n" ++
-    s!"p <- ggplot(d, aes(x = `y`)) + geom_histogram(fill = '#4682B4', color = 'white', bins = 30) + theme_minimal()\n" ++
-    s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
-  let rPath ← Tc.tmpPath "plot_test_hist.R"
-  IO.FS.writeFile rPath script
-  let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
-  assert (r.exitCode == 0) s!"Rscript histogram failed: {r.stderr.trimAscii.toString}"
-  let h ← IO.FS.Handle.mk pngPath .read
-  let buf ← h.read 1
-  assert (buf.size > 0) "histogram PNG should be non-empty"
+  runPlotR .hist datPath pngPath "" "y" false ""
 
 -- | Area chart R script renders from line-like data
 def test_plot_render_area : IO Unit := do
   log "plot_render_area"
   unless (← hasRscript) do log "  skip (no Rscript)"; return
   unless (← hasGgplot2) do log "  skip (no ggplot2)"; return
-  let some tbl ← Tc.AdbcTable.fromFile "data/plot/line.csv" | throw (IO.userError "failed to open line.csv")
-  let _ ← Tc.AdbcTable.plotExport tbl "x" "y" none false 1 1
-  let datPath ← Tc.tmpPath "plot.dat"
-  let content ← IO.FS.readFile datPath
-  IO.FS.writeFile datPath (s!"x\ty\n" ++ content)
+  let datPath ← prepXY "data/plot/line.csv" "x" "y"
   let pngPath ← Tc.tmpPath "plot_test_area.png"
-  let script := "library(ggplot2)\n" ++
-    s!"d <- read.delim('{datPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n" ++
-    s!"d[['y']] <- as.numeric(d[['y']])\n" ++
-    s!"tryCatch(d[['x']] <- as.numeric(d[['x']]), warning=function(w) NULL)\n" ++
-    s!"p <- ggplot(d, aes(x = `x`, y = `y`, fill = `y`)) + geom_area(alpha = 0.4) + theme_minimal() + scale_fill_viridis_c()\n" ++
-    s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
-  let rPath ← Tc.tmpPath "plot_test_area.R"
-  IO.FS.writeFile rPath script
-  let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
-  assert (r.exitCode == 0) s!"Rscript area failed: {r.stderr.trimAscii.toString}"
-  let h ← IO.FS.Handle.mk pngPath .read
-  let buf ← h.read 1
-  assert (buf.size > 0) "area PNG should be non-empty"
+  runPlotR .area datPath pngPath "x" "y" false ""
 
 -- | Density plot R script renders from single numeric column
 def test_plot_render_density : IO Unit := do
@@ -1033,67 +992,25 @@ def test_plot_render_density : IO Unit := do
   let datPath ← Tc.tmpPath "plot.dat"
   IO.FS.writeFile datPath "y\n10.5\n20.3\n15.7\n25.1\n30.0\n12.2\n18.9\n22.4\n17.6\n14.3\n"
   let pngPath ← Tc.tmpPath "plot_test_density.png"
-  let script := "library(ggplot2)\n" ++
-    s!"d <- read.delim('{datPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n" ++
-    s!"d[['y']] <- as.numeric(d[['y']])\n" ++
-    s!"p <- ggplot(d, aes(x = `y`)) + geom_density(fill = 'steelblue', alpha = 0.5) + theme_minimal()\n" ++
-    s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
-  let rPath ← Tc.tmpPath "plot_test_density.R"
-  IO.FS.writeFile rPath script
-  let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
-  assert (r.exitCode == 0) s!"Rscript density failed: {r.stderr.trimAscii.toString}"
-  let h ← IO.FS.Handle.mk pngPath .read
-  let buf ← h.read 1
-  assert (buf.size > 0) "density PNG should be non-empty"
+  runPlotR .density datPath pngPath "" "y" false ""
 
 -- | Step chart R script renders from line-like data
 def test_plot_render_step : IO Unit := do
   log "plot_render_step"
   unless (← hasRscript) do log "  skip (no Rscript)"; return
   unless (← hasGgplot2) do log "  skip (no ggplot2)"; return
-  let some tbl ← Tc.AdbcTable.fromFile "data/plot/line.csv" | throw (IO.userError "failed to open line.csv")
-  let _ ← Tc.AdbcTable.plotExport tbl "x" "y" none false 1 1
-  let datPath ← Tc.tmpPath "plot.dat"
-  let content ← IO.FS.readFile datPath
-  IO.FS.writeFile datPath (s!"x\ty\n" ++ content)
+  let datPath ← prepXY "data/plot/line.csv" "x" "y"
   let pngPath ← Tc.tmpPath "plot_test_step.png"
-  let script := "library(ggplot2)\n" ++
-    s!"d <- read.delim('{datPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n" ++
-    s!"d[['y']] <- as.numeric(d[['y']])\n" ++
-    s!"tryCatch(d[['x']] <- as.numeric(d[['x']]), warning=function(w) NULL)\n" ++
-    s!"p <- ggplot(d, aes(x = `x`, y = `y`)) + geom_step(linewidth = 0.5) + theme_minimal()\n" ++
-    s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
-  let rPath ← Tc.tmpPath "plot_test_step.R"
-  IO.FS.writeFile rPath script
-  let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
-  assert (r.exitCode == 0) s!"Rscript step failed: {r.stderr.trimAscii.toString}"
-  let h ← IO.FS.Handle.mk pngPath .read
-  let buf ← h.read 1
-  assert (buf.size > 0) "step PNG should be non-empty"
+  runPlotR .step datPath pngPath "x" "y" false ""
 
 -- | Violin plot R script renders from categorical + numeric data
 def test_plot_render_violin : IO Unit := do
   log "plot_render_violin"
   unless (← hasRscript) do log "  skip (no Rscript)"; return
   unless (← hasGgplot2) do log "  skip (no ggplot2)"; return
-  let some tbl ← Tc.AdbcTable.fromFile "data/plot/mixed.csv" | throw (IO.userError "failed to open mixed.csv")
-  let _ ← Tc.AdbcTable.plotExport tbl "x" "y" (some "cat") false 1 1
-  let datPath ← Tc.tmpPath "plot.dat"
-  let content ← IO.FS.readFile datPath
-  IO.FS.writeFile datPath (s!"x\ty\tcat\n" ++ content)
+  let datPath ← prepXY "data/plot/mixed.csv" "x" "y" (some "cat")
   let pngPath ← Tc.tmpPath "plot_test_violin.png"
-  let script := "library(ggplot2)\n" ++
-    s!"d <- read.delim('{datPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n" ++
-    s!"d[['y']] <- as.numeric(d[['y']])\n" ++
-    s!"p <- ggplot(d, aes(x = `cat`, y = `y`, fill = `cat`)) + geom_violin() + geom_boxplot(width = 0.1, fill = 'white') + theme_minimal() + scale_fill_viridis_d()\n" ++
-    s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
-  let rPath ← Tc.tmpPath "plot_test_violin.R"
-  IO.FS.writeFile rPath script
-  let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
-  assert (r.exitCode == 0) s!"Rscript violin failed: {r.stderr.trimAscii.toString}"
-  let h ← IO.FS.Handle.mk pngPath .read
-  let buf ← h.read 1
-  assert (buf.size > 0) "violin PNG should be non-empty"
+  runPlotR .violin datPath pngPath "cat" "y" true "cat"
 
 -- === Replay ops tests ===
 

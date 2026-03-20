@@ -130,7 +130,7 @@ def handleKey (key : Char) : KeyAction :=
   else .noop
 
 -- | Generate R script for ggplot2 rendering
-private def rScript (dataPath pngPath : String) (kind : PlotKind)
+def rScript (dataPath pngPath : String) (kind : PlotKind)
     (xName yName : String) (hasCat : Bool) (catName : String)
     (hasFacet : Bool) (facetName : String) (xIsTime : Bool) : String :=
   let rq (s : String) := s!"`{s}`"
