@@ -94,15 +94,15 @@ where
     let poll : IO Unit := do
       match ← Socket.pollCmd with
       | some cmdStr =>
-        Log.write "sock" s!"cmd={cmdStr}"
+        Log.write "sock" s!"poll cmd={cmdStr}"
         match (Parse.parse? cmdStr : Option Cmd) with
         | some cmd => match (← ref.get).update cmd with
-          | some (a', _) =>
+          | some (a', _) =>  -- Effect discarded: poll is preview-only (re-render suffices)
             let (vs', v') ← a'.stk.cur.doRender a'.vs a'.theme.styles a'.heatMode a'.sparklines
             ref.set { a' with stk := a'.stk.setCur v', vs := vs' }
             Term.present
-          | none => pure ()
-        | none => pure ()
+          | none => pure ()  -- cmd doesn't apply to current view state
+        | none => Log.write "sock" s!"parse failed: {cmdStr}"
       | none => pure ()
     let cmd ← Fzf.cmdMode a.stk.cur.vkind poll
     let a ← ref.get
@@ -175,7 +175,7 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
     | some cmdStr => dispatchCmd a cmdStr
     | none => pure a
   -- \x16 = <wait> test key: sleep to let socket commands arrive
-  if ev.type == 1 && ev.ch == 0x16 then IO.sleep 50; return ← mainLoop a test ks'
+  if ev.type == 1 && ev.key == 0x16 then IO.sleep 50; return ← mainLoop a test ks'
   -- Empty event (socket wake-up with no key press) → re-render and loop
   if ev.type == 0 then return ← mainLoop a test ks'
   if isKey ev 'Q' then return a

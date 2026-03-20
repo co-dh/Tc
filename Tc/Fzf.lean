@@ -47,7 +47,7 @@ def fzfCore (opts : Array String) (input : String) (poll : IO Unit := pure ()) :
       IO.sleep 30
     let out ← outRef.get
     let _ ← child'.wait
-    let _ ← Term.init
+    if !inTmux then let _ ← Term.init; pure ()
     pure out.trimAscii.toString
 
 -- | Single select: returns none if empty/cancelled
@@ -67,23 +67,22 @@ def fzfIdx (opts : Array String) (items : Array String) : IO (Option Nat) := do
     | none => return none
 
 -- | Build flat menu items: "{!?}{objChar}{verbChar}\t{label}"
--- </> verbs collapsed into one entry per obj (cycled via fzf <> key binds).
--- Non-</> verbs are separate entries. ! prefix marks previewable commands.
+-- Previewable </> verbs collapsed into one entry (cycled live via fzf <> socket binds).
+-- Non-previewable </> keep separate entries. ! prefix marks previewable commands.
 private def flatItems (vk : ViewKind) : Array String :=
   objMenu.foldl (fun acc (objKey, objLabel, mk) =>
     let verbs := verbsFor objKey vk
-    let hasLtGt := verbs.any (fun (k, _, _) => k == '<' || k == '>')
-    let acc := if hasLtGt then
-      let cmd := mk .inc
-      let pfx := if cmd.isPreviewable then "!" else ""
-      acc.push s!"{pfx}{cmd}\t{objLabel}"
+    let previewable := (mk .inc).isPreviewable
+    -- Previewable <> objects: single collapsed entry, cycled live via socket
+    let acc := if previewable && verbs.any (fun (k, _, _) => k == '<' || k == '>') then
+      acc.push s!"!{mk .inc}\t{objLabel}"
     else acc
     verbs.foldl (fun acc (verbKey, verbLabel, verb) =>
-      if verbKey == '<' || verbKey == '>' then acc
+      -- Skip <> for previewable objects (already collapsed above)
+      if (verbKey == '<' || verbKey == '>') && previewable then acc
       else
         let cmd := mk verb
-        let pfx := if cmd.isPreviewable then "!" else ""
-        acc.push s!"{pfx}{cmd}\t{objLabel} {verbLabel}"
+        acc.push s!"{cmd}\t{objLabel} {verbLabel}"
     ) acc
   ) #[]
 
@@ -102,9 +101,8 @@ def cmdMode (vk : ViewKind) (poll : IO Unit := pure ()) : IO (Option Cmd) := do
   let sockPath := (← IO.getEnv "TV_SOCK").getD ""
   let sockBinds := if sockPath.isEmpty then #[]
     else
-      let sock := sockPath
       -- Shell template: extract cmd prefix, send to socket if previewable (! prefix)
-      let mkBind (key expr : String) := "--bind=" ++ key ++ ":execute-silent(line={};cmd=${line%%\\t*};[ \"${cmd:0:1}\" = \"!\" ]&&printf '%s\\n' \"" ++ expr ++ "\"|socat - UNIX-CONNECT:" ++ sock ++ " 2>/dev/null)"
+      let mkBind (key expr : String) := "--bind=" ++ key ++ ":execute-silent(line={};cmd=${line%%\\t*};[ \"${cmd:0:1}\" = \"!\" ]&&printf '%s\\n' \"" ++ expr ++ "\"|socat - UNIX-CONNECT:" ++ sockPath ++ " 2>/dev/null)"
       #[mkBind "focus" "${cmd:1:2}", mkBind "<" "${cmd:1:1}-", mkBind ">" "${cmd:1:1}+", "--header=< dec  > inc"]
   let opts := #["--with-nth=2..", "--prompt=cmd "] ++ sockBinds
   let out ← fzfCore opts input poll

@@ -781,7 +781,7 @@ def test_socket_dispatch : IO Unit := do
   unless (← hasCmd "socat") do log "  skip (no socat)"; return
   let tmpdir := (← IO.getEnv "TMPDIR").getD "/tmp"
   -- Spawn tv in background: j (down) × 3, then pause to let socket command arrive
-  let keys := "Ijjj" ++ String.ofList ['\x16', '\x16', '\x16']  -- jjj + 3 wait pauses
+  let keys := "jjj" ++ String.ofList ['\x16', '\x16', '\x16']  -- jjj + 3 wait pauses
   let cfg : IO.Process.SpawnArgs := { cmd := bin, args := #["data/basic.csv", "-c", keys], stdin := .null, stdout := .piped, stderr := .piped }
   let child ← IO.Process.spawn cfg
   let pid := child.pid
