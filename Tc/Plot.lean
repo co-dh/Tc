@@ -91,8 +91,20 @@ private def err (s : ViewStack T) (msg : String) : IO (Option (ViewStack T)) := 
 private def isNumericType (typ : String) : Bool :=
   typ == "int" || typ == "float" || typ == "decimal"
 
+-- | Single-column plots: no group needed, just cursor on a numeric column
+private def isSingleColPlot (kind : PlotKind) : Bool :=
+  kind == .hist || kind == .density
+
+-- | Plot types that use category column as the x-axis (box/violin)
+private def usesCategoryAsX (kind : PlotKind) : Bool :=
+  kind == .box || kind == .violin
+
+-- | Plot types that use fill instead of color for category aesthetics
+private def addsFill (kind : PlotKind) : Bool :=
+  kind == .box || kind == .violin || kind == .area
+
 -- | Plot types that share the same x/y/cat data (cycleable with h/l)
-def cyclableKinds : Array PlotKind := #[.line, .scatter, .bar, .box]
+def cyclableKinds : Array PlotKind := #[.line, .scatter, .bar, .box, .area, .step, .violin]
 
 private def cycleKind (k : PlotKind) (delta : Nat) : PlotKind :=
   let n := cyclableKinds.size
@@ -118,7 +130,7 @@ def handleKey (key : Char) : KeyAction :=
   else .noop
 
 -- | Generate R script for ggplot2 rendering
-private def rScript (dataPath pngPath : String) (kind : PlotKind)
+def rScript (dataPath pngPath : String) (kind : PlotKind)
     (xName yName : String) (hasCat : Bool) (catName : String)
     (hasFacet : Bool) (facetName : String) (xIsTime : Bool) : String :=
   let rq (s : String) := s!"`{s}`"
@@ -126,25 +138,32 @@ private def rScript (dataPath pngPath : String) (kind : PlotKind)
   let readData := s!"d <- read.delim('{dataPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n"
   let convY := s!"d[['{yName}']] <- as.numeric(d[['{yName}']])\n"
   let convX := if xIsTime then s!"d[['{xName}']] <- as.POSIXct(d[['{xName}']])\n"
-    else if kind != .hist then
+    else if !isSingleColPlot kind then
       "tryCatch(d[['" ++ xName ++ "']] <- as.numeric(d[['" ++ xName ++ "']]), warning=function(w) NULL)\n"
     else ""
-  let aes := match kind with
-    | .hist => s!"aes(x = {yR})"
-    | .box => if hasCat then s!"aes(x = {catR}, y = {yR})" else s!"aes(x = factor(''), y = {yR})"
-    | _ => s!"aes(x = {xR}, y = {yR})"
-  let colorAes := if hasCat && kind != .box then s!", color = {catR}" else ""
-  let fillAes := if hasCat && kind == .box then s!", fill = {catR}" else ""
+  let aes := if isSingleColPlot kind then s!"aes(x = {yR})"
+    else if usesCategoryAsX kind then
+      if hasCat then s!"aes(x = {catR}, y = {yR})" else s!"aes(x = factor(''), y = {yR})"
+    else s!"aes(x = {xR}, y = {yR})"
+  let colorAes := if hasCat && !addsFill kind then s!", color = {catR}" else ""
+  let fillAes := if addsFill kind then
+      s!", fill = {if hasCat then catR else yR}"
+    else ""
   let geom := match kind with
     | .line => "geom_line(linewidth = 0.5)"
     | .bar => "geom_col()"
     | .scatter => "geom_point(size = 1.5, alpha = 0.7)"
     | .hist => "geom_histogram(bins = 30, fill = 'steelblue', color = 'white')"
     | .box => "geom_boxplot()"
+    | .area => "geom_area(alpha = 0.4)"
+    | .density => "geom_density(fill = 'steelblue', alpha = 0.5)"
+    | .step => "geom_step(linewidth = 0.5)"
+    | .violin => "geom_violin() + geom_boxplot(width = 0.1, fill = 'white')"
   let facet := if hasFacet then s!" + facet_wrap(vars({facetR}), scales = 'free_y')" else ""
   "library(ggplot2)\n" ++ readData ++ convY ++ convX ++
     s!"p <- ggplot(d, {aes}{colorAes}{fillAes}) + {geom}{facet} + " ++
-    s!"labs(x = '{xName}', y = '{yName}') + theme_gray() + scale_color_viridis_d() + scale_fill_viridis_d()\n" ++
+    let fillScale := if addsFill kind && !hasCat then "scale_fill_viridis_c()" else "scale_fill_viridis_d()"
+    s!"labs(x = '{xName}', y = '{yName}') + theme_gray() + scale_color_viridis_d() + {fillScale}\n" ++
     s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
 
 -- | Run Rscript to render plot; returns error message on failure
@@ -195,12 +214,12 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   Log.write "plot" s!"run entered, kind={repr kind}"
   let n := s.cur.nav
   let names := TblOps.colNames n.tbl
-  -- histogram: no group col needed, just cursor col
-  if kind == .hist then
+  -- single-column plots (histogram/density): no group col needed, just cursor col
+  if isSingleColPlot kind then
     let yIdx := colIdxAt n.grp names n.col.cur.val
     let yName := names.getD yIdx ""
     let yType := TblOps.colType n.tbl yIdx
-    if !isNumericType yType then return ← err s "histogram needs a numeric column"
+    if !isNumericType yType then return ← err s s!"{kind} needs a numeric column"
     Term.shutdown
     enterAltScreen
     let datPath ← Tc.tmpPath "plot.dat"
@@ -215,7 +234,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
     clearScreen
     if err?.isNone then showPng pngPath
     else IO.println (err?.getD "plot error")
-    IO.println s!"\x1b[1m─── histogram: {yName} ───\x1b[0m"
+    IO.println s!"\x1b[1m─── {kind}: {yName} ───\x1b[0m"
     IO.print "q:exit "
     setRaw
     let mut done := false
@@ -309,6 +328,7 @@ def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   | .plot .ent => some (s, .plot .scatter)
   | .plot .del => some (s, .plot .hist)
   | .plot .dup => some (s, .plot .box)
+  | .plot .up  => some (s, .plot .area)
   | _ => none
 
 end Tc.Plot

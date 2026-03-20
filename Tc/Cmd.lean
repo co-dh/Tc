@@ -111,10 +111,11 @@ inductive QueryEffect where
   deriving Repr, BEq
 inductive FolderEffect where | push | enter | del | parent | depth (delta : Int) deriving Repr, BEq
 inductive SearchEffect where | next | prev deriving Repr, BEq
-inductive PlotKind where | line | bar | scatter | hist | box deriving Repr, BEq
+inductive PlotKind where | line | bar | scatter | hist | box | area | density | step | violin deriving Repr, BEq
 
 instance : ToString PlotKind where
   toString | .line => "line" | .bar => "bar" | .scatter => "scatter" | .hist => "hist" | .box => "box"
+           | .area => "area" | .density => "density" | .step => "step" | .violin => "violin"
 inductive MetaEffect where | selNull | selSingle | setKey deriving Repr, BEq
 inductive ExportFmt where | csv | parquet | json | ndjson deriving Repr, BEq
 
