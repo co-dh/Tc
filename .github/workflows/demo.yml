@@ -49,10 +49,11 @@ jobs:
           chmod +x /usr/local/bin/agg
 
       - name: Record and generate GIFs
-        run: python3 scripts/gen_demo.py
+        run: timeout 600 python3 scripts/gen_demo.py
 
       - name: Upload GIFs
         uses: actions/upload-artifact@v4
         with:
           name: demo-gifs
           path: doc/*.gif
+          retention-days: 7
