@@ -94,9 +94,11 @@ FEATURES = {
     ]),
 
     "filter": F(NYSE, [
+        ("Move to the Symbol column",                               "ll",  "ll",                        2.0),
         ("Press \\ to open the filter prompt",                      None,  None,                        2.0),
         ("",                                                        None,  "\\.....",                    3.0),  # \ opens fzf, dots absorb char loss
-        ("Type a PRQL expression\nPress Enter to apply the filter", None,  "\x15Symbol ~= 'AAP'\r",     4.0),
+        ("",                                                        None,  "\x15Symbol ~= 'AAP'\r",     2.0),  # ctrl-u + type + enter
+        ("Only rows matching AAP remain",                           None,  None,                        5.0),
     ]),
 
     # derive: pad with dots before real input — fzf eats first chars during startup.
@@ -249,6 +251,9 @@ def record(cli_args, steps, cast_path):
                 drain(0.1)
         except OSError:
             pass
+
+        # Linger on the last screen so the viewer can read the result
+        time.sleep(3.0)
 
         # Close cast file BEFORE killing child — SIGTERM triggers tb_shutdown
         # which exits alternate screen buffer, writing a black frame.
