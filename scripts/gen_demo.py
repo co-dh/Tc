@@ -14,7 +14,7 @@ FONT = 20
 BOX_W = int(W * 0.618)  # golden ratio title box
 
 NYSE = "data/nyse10k.parquet"
-_HIDE_INFO = ("", None, "I", 0.3)  # turn off info overlay silently
+_HIDE_INFO = ("", None, "I", 0.3)  # turn off info overlay
 
 def F(cli_args, steps):
     """Feature with info overlay disabled."""
@@ -55,7 +55,7 @@ FEATURES = {
     ]),
 
     "sparkline": F(NYSE, [
-        ("Sparkline distributions", None, None, 4.0),
+        ("Header sparklines show value distribution per column", None, None, 5.0),
     ]),
 
     "freq": F(NYSE, [
@@ -87,7 +87,10 @@ FEATURES = {
     ]),
 
     "meta": F(NYSE, [
-        ("Meta view", "M", "M", 4.0),
+        ("Column stats and types",     "M",     "M",  3.5),  # meta view: name, type, nulls, distinct
+        ("Select null columns",        "0",     "0",  3.0),  # 0 = highlight columns with nulls
+        ("Select single-value columns","1",     "1",  3.0),  # 1 = highlight columns with 1 unique value
+        ("Hide selected columns",      "Enter", "\r", 3.5),  # enter = set as group key (hides from main view)
     ]),
 
     "sort": F(NYSE, [
@@ -102,9 +105,9 @@ FEATURES = {
     ]),
 
     "filter": F(NYSE, [
-        ("PRQL filter",   "\\",  "\\",                2.0),  # \ opens fzf — separate step
-        ("",              None,  "Bid_Price > 100\r", 3.5),
-        ("Filtered rows", None,  None,                3.5),
+        ("PRQL filter",   "\\",  "\\",                3.0),  # \ opens fzf — separate step
+        ("",              None,  "Bid_Price > 100",   3.5),  # type expression
+        ("Filtered rows", None,  "\r",                3.5),  # submit
     ]),
 
     "derive": F(NYSE, [
@@ -137,8 +140,10 @@ FEATURES = {
     ]),
 
     "hf": F("hf://datasets/stanfordnlp/imdb", [
-        ("HuggingFace dataset", "tv hf://...imdb", None, 4.0),
-        ("Navigate",            "j j",             "jj", 3.5),
+        ("Browse HuggingFace dataset",   "tv hf://...imdb", None,  4.0),
+        ("Sort by popularity",           "]",               "l]",  3.5),
+        ("Open first dataset",           "Enter",           "\r",  4.0),
+        ("Browse dataset files",         None,              None,  3.5),
     ]),
 }
 
@@ -220,13 +225,20 @@ def record(cli_args, steps, cast_path):
                 sys.stdout.buffer.write(buf)
                 sys.stdout.buffer.flush()
 
+        # Warmup: wait for tv to call tb_init() and render first frame.
+        # tb_init uses TCSAFLUSH which discards pending pty input.
+        # drain catches the first render, then sleep ensures tb_poll_event is ready.
+        drain(2.0)
+        time.sleep(1.0)
+
         try:
             for desc, keys_shown, keys, pause in steps:
                 if child_dead:
                     break
                 if keys is not None:
+                    # No drain() between chars: reading pty output mid-keystroke
+                    # causes fzf to lose input chars (pty flow control issue).
                     for ch in keys:
-                        drain(0.05)
                         os.write(fd, ch.encode())
                         time.sleep(0.08)
                 drain(0.5)
