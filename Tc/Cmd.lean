@@ -58,6 +58,7 @@ inductive Cmd where
   | plot (v : Verb)    -- plot: line/bar/scatter/hist/box via PlotKind
   | colShift (v : Verb) -- colShift +=right, -=left (reorder key columns)
   | heat (v : Verb)     -- heat +=more color, -=less color (mode 0-3)
+  | yank (v : Verb)    -- yank ~=cell, +=row, -=col
   deriving Repr, BEq, DecidableEq
 
 namespace Cmd
@@ -67,7 +68,8 @@ private def objs : Array (Char × (Verb → Cmd)) := #[
   ('r', .row), ('c', .col), ('R', .rowSel), ('C', .colSel), ('g', .grp), ('s', .stk),
   ('h', .hPage), ('v', .vPage), ('H', .hor), ('V', .ver), ('p', .prec), ('w', .width),
   ('T', .thm), ('i', .info), ('M', .metaV), ('F', .freq), ('D', .fld),
-  ('P', .plot), ('K', .colShift), ('m', .heat)
+  ('P', .plot), ('K', .colShift), ('m', .heat),
+  ('y', .yank)
 ]
 
 -- | Get obj char for Cmd
@@ -77,13 +79,13 @@ private def objChar : Cmd → Char
   | .hPage _ => 'h' | .vPage _ => 'v' | .hor _ => 'H' | .ver _ => 'V'
   | .prec _ => 'p' | .width _ => 'w' | .thm _ => 'T' | .info _ => 'i'
   | .metaV _ => 'M' | .freq _ => 'F' | .fld _ => 'D' | .plot _ => 'P'
-  | .colShift _ => 'K' | .heat _ => 'm'
+  | .colShift _ => 'K' | .heat _ => 'm' | .yank _ => 'y'
 
 -- | Get verb from Cmd
 private def verb : Cmd → Verb
   | .row v | .col v | .rowSel v | .colSel v | .grp v | .stk v => v
   | .hor v | .ver v | .hPage v | .vPage v | .prec v | .width v => v
-  | .thm v | .info v | .metaV v | .freq v | .fld v | .plot v | .colShift v | .heat v => v
+  | .thm v | .info v | .metaV v | .freq v | .fld v | .plot v | .colShift v | .heat v | .yank v => v
 
 instance : ToString Cmd where toString c := s!"{c.objChar}{c.verb.toChar}"
 
@@ -117,6 +119,7 @@ instance : ToString PlotKind where
   toString | .line => "line" | .bar => "bar" | .scatter => "scatter" | .hist => "hist" | .box => "box"
 inductive MetaEffect where | selNull | selSingle | setKey deriving Repr, BEq
 inductive ExportFmt where | csv | parquet | json | ndjson deriving Repr, BEq
+inductive ClipEffect where | cell | row | col deriving Repr, BEq
 
 -- | Effect: describes an IO operation to perform (Runner interprets)
 inductive Effect where
@@ -127,6 +130,7 @@ inductive Effect where
   | search : SearchEffect → Effect
   | plot : PlotKind → Effect
   | colMeta : MetaEffect → Effect
+  | clip : ClipEffect → Effect
   | themeLoad (delta : Int)
   | fetchMore
   | export : ExportFmt → Effect
