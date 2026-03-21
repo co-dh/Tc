@@ -11,139 +11,151 @@ TC = ".lake/build/bin/tc"
 AGG = os.environ.get("AGG", "agg")
 W, H = 80, 24
 FONT = 20
+BOX_W = int(W * 0.618)  # golden ratio title box
 
-# -- Feature definitions: (file_arg, steps) -----------------------------------
+NYSE = "data/nyse10k.parquet"
+
+# -- Feature definitions: (cli_args, steps) ------------------------------------
 # Steps: (description, keys_shown, keys_to_send, pause_seconds)
-
-# nyse10k.parquet is at row 5 after size-desc sort in data/ folder
-OPEN_NYSE = [("", None, "l]jjjjj\r", 1.5)]  # silent open helper
 
 FEATURES = {
     "demo": ("data/", [
         # Act 1: Folder browse
-        ("Browse folder",                 "tc data/",    None,       2.5),
-        ("Sort by size",                  "l ]",         "l]",       2.5),
+        ("Browse folder",                 "tc data/",    None,       3.5),
+        ("Sort by size",                  "l ]",         "l]",       3.5),
         # Act 2: Open parquet → sparklines
-        ("Open nyse10k.parquet",          "Enter",       "jjjjj\r", 2.5),
-        ("Sparklines show distributions", None,          None,       2.5),
+        ("Open nyse10k.parquet",          "Enter",       "jjjjj\r", 3.5),
+        ("Sparklines show distributions", None,          None,       3.5),
         # Act 3: fzf command menu
-        ("Command menu",                  "Space",       " ",        1.5),
-        ("Theme cycle",                   "th Enter",    "th\r",     2.0),
-        ("Command menu",                  "Space",       " ",        1.5),
-        ("Heatmap toggle",                "hea Enter",   "hea\r",    2.0),
+        ("Command menu",                  "Space",       " ",        2.0),
+        ("Theme cycle",                   "th Enter",    "th\r",     3.0),
+        ("Command menu",                  "Space",       " ",        2.0),
+        ("Heatmap toggle",                "hea Enter",   "hea\r",    3.0),
         # Act 4: Frequency analysis
-        ("Move to Exchange",              "l",           "l",        1.5),
-        ("Frequency view",                "F",           "F",        2.5),
-        ("Filter by value",               "j Enter",     "j\r",      2.5),
-        ("Filtered rows",                 None,          None,       1.5),
+        ("Move to Exchange",              "l",           "l",        2.0),
+        ("Frequency view",                "F",           "F",        3.5),
+        ("Filter by value",               "j Enter",     "j\r",      3.5),
+        ("Filtered rows",                 None,          None,       2.5),
         # Act 5: Histogram plot
-        ("Move to Bid_Price",             "lll",         "lll",      1.5),
-        ("Command menu",                  "Space",       " ",        1.5),
-        ("Histogram plot",                "hist Enter",  "hist\r",   4.0),
-        ("Exit plot",                     "q",           "q",        2.0),
+        ("Move to Bid_Price",             "lll",         "lll",      2.0),
+        ("Command menu",                  "Space",       " ",        2.0),
+        ("Histogram plot",                "hist Enter",  "hist\r",   5.0),
+        ("Exit plot",                     "q",           "q",        2.5),
     ]),
 
     "folder": ("data/", [
-        ("Browse folder",   "tc data/",  None,  2.0),
-        ("Sort by size",    "] desc",    "l]",  2.5),
-        ("Navigate",        "j j j",     "jjj", 2.0),
+        ("Browse folder",   "tc data/",  None,  3.0),
+        ("Sort by size",    "] desc",    "l]",  3.5),
+        ("Navigate",        "j j j",     "jjj", 3.0),
     ]),
 
-    "sparkline": ("data/", OPEN_NYSE + [
-        ("Sparkline distributions", None, None, 3.0),
+    "sparkline": (NYSE, [
+        ("Sparkline distributions", None, None, 4.0),
     ]),
 
-    "freq": ("data/", OPEN_NYSE + [
-        ("Move to Exchange", "l",       "l",  1.0),
-        ("Frequency view",   "F",       "F",  2.5),
-        ("Filter by value",  "j Enter", "j\r", 2.5),
-        ("Filtered rows",    None,      None, 2.0),
+    "freq": (NYSE, [
+        ("Move to Exchange", "l",       "l",   2.0),
+        ("Frequency view",   "F",       "F",   3.5),
+        ("Filter by value",  "j Enter", "j\r", 3.5),
+        ("Filtered rows",    None,      None,  3.0),
     ]),
 
-    "heatmap": ("data/", OPEN_NYSE + [
-        ("Heatmap on",       "Space",     " ",      1.0),
-        ("",                 None,        "hea\r",  1.5),
-        ("Heatmap mode 2",  "Space",      " ",      1.0),
-        ("",                 None,        "hea\r",  1.5),
-        ("Heatmap mode 3",  "Space",      " ",      1.0),
-        ("",                 None,        "hea\r",  1.5),
+    "heatmap": (NYSE, [
+        ("Heatmap on",       "Space",  " ",      1.5),
+        ("",                 None,     "hea\r",  2.5),
+        ("Heatmap mode 2",  "Space",   " ",      1.5),
+        ("",                 None,     "hea\r",  2.5),
+        ("Heatmap mode 3",  "Space",   " ",      1.5),
+        ("",                 None,     "hea\r",  2.5),
     ]),
 
-    "plot": ("data/", OPEN_NYSE + [
-        ("Move to Bid_Price", "lll",        "lll",    1.0),
-        ("Histogram",         "P h",        "Ph",     4.0),
-        ("Exit plot",         "q",          "q",      1.5),
+    "plot": (NYSE, [
+        ("Move to Bid_Price", "lll",   "lll", 2.0),
+        ("Histogram",         "P h",   "Ph",  5.0),
+        ("Exit plot",         "q",     "q",   2.0),
     ]),
 
-    "fzf": ("data/", OPEN_NYSE + [
-        ("Command palette", "Space",    " ",    1.5),
-        ("Search & select", "th Enter", "th\r", 2.5),
+    "fzf": (NYSE, [
+        ("Command palette", "Space",    " ",    2.5),
+        ("Search & select", "th Enter", "th\r", 3.5),
     ]),
 
-    "meta": ("data/", OPEN_NYSE + [
-        ("Meta view",    "M",   "M",  3.0),
+    "meta": (NYSE, [
+        ("Meta view", "M", "M", 4.0),
     ]),
 
-    "sort": ("data/", OPEN_NYSE + [
-        ("Sort asc",     "[",   "l[",  2.0),
-        ("Sort desc",    "]",   "l]",  2.0),
+    "sort": (NYSE, [
+        ("Sort asc",  "[", "l[", 3.0),
+        ("Sort desc", "]", "l]", 3.0),
     ]),
 
-    "split": ("data/", OPEN_NYSE + [
-        ("Split Time by -",  ":",    ":-\r",  2.5),
-        ("New columns",      None,   None,    2.0),
+    "split": (NYSE, [
+        ("Split Time by -", ":", ":-\r", 3.5),
+        ("New columns",     None, None,  3.0),
     ]),
 
-    "filter": ("data/", OPEN_NYSE + [
-        ("PRQL filter",    "\\",   "\\Bid_Price > 100\r",  2.5),
-        ("Filtered rows",  None,   None,                    2.5),
+    "filter": (NYSE, [
+        ("PRQL filter",   "\\",  "\\Bid_Price > 100\r", 3.5),
+        ("Filtered rows", None,  None,                   3.5),
     ]),
 
-    "derive": ("data/", OPEN_NYSE + [
-        ("Derive column",  "=",   "=Bid_Price * 2\r",  2.5),
-        ("New column",     None,  None,                 2.0),
+    "derive": (NYSE, [
+        ("Derive column", "=", "=Bid_Price * 2\r", 3.5),
+        ("New column",    None, None,               3.0),
     ]),
 
-    "diff": ("data/", OPEN_NYSE + [
-        # open nyse, push freq on Exchange, pop back, diff the two views
-        ("Frequency view",  "F",   "lF",  1.5),
-        ("Back to table",   "q",   "q",   1.5),
-        ("Diff top 2",      "V",   "V",   3.0),
+    "diff": (NYSE, [
+        ("Frequency view", "F",  "lF", 2.5),
+        ("Back to table",  "q",  "q",  2.5),
+        ("Diff top 2",     "V",  "V",  4.0),
     ]),
 
-    "theme": ("data/", OPEN_NYSE + [
-        ("Theme 1",  "Space", " ",    0.8),
-        ("",         None,    "th\r", 1.5),
-        ("Theme 2",  "Space", " ",    0.8),
-        ("",         None,    "th\r", 1.5),
-        ("Theme 3",  "Space", " ",    0.8),
-        ("",         None,    "th\r", 1.5),
+    "theme": (NYSE, [
+        ("Theme 1", "Space", " ",    1.5),
+        ("",        None,    "th\r", 2.5),
+        ("Theme 2", "Space", " ",    1.5),
+        ("",        None,    "th\r", 2.5),
+        ("Theme 3", "Space", " ",    1.5),
+        ("",        None,    "th\r", 2.5),
+    ]),
+
+    "s3": ("s3://nyc-tlc/ +n", [
+        ("S3 public bucket", "tc s3://nyc-tlc/ +n", None, 4.0),
+        ("Navigate",         "j j",                 "jj", 3.5),
+    ]),
+
+    "hf": ("hf://datasets/stanfordnlp/imdb", [
+        ("HuggingFace dataset", "tc hf://...imdb", None, 4.0),
+        ("Navigate",            "j j",             "jj", 3.5),
     ]),
 }
 
 # -- Title overlay -------------------------------------------------------------
 
 def title_escape(desc, keys):
-    """Centered movie-title overlay: 3-row box in the middle of the screen."""
+    """Centered golden-ratio title box in the middle of the screen."""
     if not desc:
         return ""
     text = f"{desc}  ({keys})" if keys else desc
-    pad = max(W - len(text), 0)
+    pad = max(BOX_W - len(text), 0)
     left = pad // 2
     line = " " * left + text + " " * (pad - left)
-    blank = " " * W
+    blank = " " * BOX_W
+    # center the box horizontally
+    margin = (W - BOX_W) // 2
+    indent = f"\x1b[{margin + 1}G"  # move cursor to column
     row = H // 2 - 1
     esc = "\x1b[1;97;44m"
     rst = "\x1b[0m"
     return (f"\x1b7"
-            f"\x1b[{row};1H{esc}{blank}{rst}"
-            f"\x1b[{row+1};1H{esc}{line}{rst}"
-            f"\x1b[{row+2};1H{esc}{blank}{rst}"
+            f"\x1b[{row};1H{indent}{esc}{blank}{rst}"
+            f"\x1b[{row+1};1H{indent}{esc}{line}{rst}"
+            f"\x1b[{row+2};1H{indent}{esc}{blank}{rst}"
             f"\x1b8")
 
 # -- Recording engine ----------------------------------------------------------
 
-def record(file_arg, steps, cast_path):
+def record(cli_args, steps, cast_path):
     os.makedirs(os.path.dirname(cast_path), exist_ok=True)
     env = {**os.environ,
            "LD_LIBRARY_PATH": "/usr/local/lib:" + os.environ.get("LD_LIBRARY_PATH", ""),
@@ -155,9 +167,10 @@ def record(file_arg, steps, cast_path):
     cast_f = open(cast_path, "w")
     cast_f.write(json.dumps(header) + "\n")
 
+    args = [TC] + cli_args.split()
     pid, fd = pty.fork()
     if pid == 0:
-        os.execvpe(TC, [TC, file_arg], env)
+        os.execvpe(TC, args, env)
 
     winsize = struct.pack("HHHH", H, W, 0, 0)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
@@ -228,10 +241,10 @@ def record(file_arg, steps, cast_path):
     print(f"  {cast_path} ({t_total:.1f}s)")
 
 def gen(name):
-    file_arg, steps = FEATURES[name]
+    cli_args, steps = FEATURES[name]
     cast = f"doc/{name}.cast"
     gif = f"doc/{name}.gif"
-    record(file_arg, steps, cast)
+    record(cli_args, steps, cast)
     subprocess.run([AGG, cast, gif, "--font-size", str(FONT)], check=True)
     os.remove(cast)
     sz = os.path.getsize(gif)

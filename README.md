@@ -7,8 +7,6 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 ## Features
 
 - CSV, Parquet, JSON, DuckDB file support (via DuckDB)
-- S3 bucket browsing (`s3://bucket/path`) with auto-caching for slow listings
-- HuggingFace Hub datasets (`hf://datasets/user/dataset`)
 - Osquery table browser (`osquery://`)
 
 **Folder browser** with recursive depth control, sorting
@@ -63,13 +61,15 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 
 ![diff](doc/diff.gif)
 
+**S3 bucket browsing** (`s3://bucket/path`) with auto-caching, `+n` for public buckets
+
+**HuggingFace Hub** datasets (`hf://datasets/user/dataset`)
+
 - Column grouping (key columns pinned left)
 - Row/column selection, hidden columns
 - Status bar aggregation (sum/avg/count for current column)
 - Unix socket command channel (`$TV_SOCK`) — external tools send 2-char commands for live control
-- Regex column split (`:` key — split column by delimiter/regex into new columns)
 - Stdin pipe mode (`cat data.csv | tv`)
-- Table diff (compare top 2 views, auto-key categorical columns, hide same-value columns)
 - Session save/load (persist filters, sorts, derives across sessions)
 - Replay ops on tab line (shows PRQL pipeline; replay with `tv file -p "ops"`)
 - Zero-copy rendering via C FFI (termbox2)
