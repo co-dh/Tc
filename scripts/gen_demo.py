@@ -29,12 +29,14 @@ FEATURES = {
     # folder: enter subfolder, backspace to parent, open csv, open parquet
     # sorted asc: row0=.., row1=basic.csv, row2=diff_test(dir), row3=filtered_test.parquet
     "folder": F("data/", [
-        ("Browse a folder of data files",    "tv data/",   None,   3.0),
-        ("Enter a subfolder",                "jj Enter",   "jj\r", 3.0),  # row2=diff_test
-        ("Backspace goes to parent folder",  "Backspace",  "\x7f", 3.0),
-        ("Open a CSV file as a table",       "j Enter",    "j\r",  3.0),  # row1=basic.csv
-        ("Press q to go back to folder",     "q",          "q",    2.0),
-        ("Open a parquet file",              "jj Enter",   "jj\r", 3.0),  # row3=filtered_test.parquet
+        ("Browse a folder of data files",    "tv data/",   None,    3.0),
+        ("Enter a subfolder",                "jj Enter",   "jj\r",  3.0),  # row2=diff_test
+        ("Backspace goes to parent folder",  "Backspace",  "\x7f",  3.0),
+        ("Press / to search for a file",     "/",          "/",     2.0),  # fzf step
+        ("Jump to nyse10k.parquet",          None,         "nyse\r", 2.5),
+        ("Open the parquet file",            "Enter",      "\r",    3.0),
+        ("Press q to go back to folder",     "q",          "q",     2.0),
+        ("Open a CSV file",                  "j Enter",    "j\r",   3.0),  # next file after nyse
     ]),
 
     "sparkline": F(NYSE, [
@@ -48,16 +50,15 @@ FEATURES = {
         ("Only matching rows remain",       None,      None,  3.0),
     ]),
 
-    # heatmap: title shows AFTER apply so text overlays the colored table
+    # heatmap: title shows AFTER apply so text overlays the colored table.
+    # hea Enter always sends .inc (0→1→2→3, capped at 3).
     "heatmap": F(NYSE, [
         ("",                                    None,     " ",      0.5),
-        ("Mode 1: color numeric columns",       None,     "hea\r",  3.0),
+        ("Mode 1: color numeric columns",       None,     "hea\r",  3.5),
         ("",                                    None,     " ",      0.5),
-        ("Mode 2: color categorical columns",   None,     "hea\r",  3.0),
+        ("Mode 2: color categorical columns",   None,     "hea\r",  3.5),
         ("",                                    None,     " ",      0.5),
-        ("Mode 3: color all columns",           None,     "hea\r",  3.0),
-        ("",                                    None,     " ",      0.5),
-        ("Mode 0: heatmap off",                 None,     "hea\r",  3.0),
+        ("Mode 3: color all columns",           None,     "hea\r",  3.5),
     ]),
 
     "plot": F(NYSE, [
@@ -94,15 +95,15 @@ FEATURES = {
     ]),
 
     "filter": F(NYSE, [
-        ("Press \\ to open PRQL filter",          "\\",  "\\",              3.0),  # fzf step
-        ("Type a filter expression",              None,  "Bid_Price > 100", 3.5),
-        ("Press Enter to apply the filter",       None,  "\r",              3.5),
+        ("Press \\ to open the filter prompt",         "\\",  "\\",             3.0),  # fzf step
+        ("Show all symbols containing AAP",            None,  "Sym ~= 'AAP'",  3.5),
+        ("Press Enter to apply the filter",            None,  "\r",             3.5),
     ]),
 
-    "derive": F(NYSE, [
-        ("Press = to create a new computed column", "=",  "=",             3.0),  # fzf needs startup
-        ("Type an expression using column names",   None, "Bid_Price * 2", 4.0),
-        ("Press Enter to add the new column",       None, "\r",            3.0),
+    "derive": F("data/numeric.csv", [
+        ("Press = to create a new computed column", "=",  "=",            3.0),  # fzf needs startup
+        ("Type name = expression",                  None, "d = x * 2",   4.0),
+        ("Press Enter to add the new column",       None, "\r",          3.0),
     ]),
 
     # diff: open folder, use S(swap) to open both files, then V to diff
