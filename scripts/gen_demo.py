@@ -14,12 +14,13 @@ FONT = 20
 BOX_W = int(W * 0.618)  # golden ratio title box
 
 NYSE = "data/nyse10k.parquet"
+HIDE_INFO = [("", None, "I", 0.3)]  # turn off info overlay silently
 
 # -- Feature definitions: (cli_args, steps) ------------------------------------
 # Steps: (description, keys_shown, keys_to_send, pause_seconds)
 
 FEATURES = {
-    "demo": ("data/", [
+    "demo": ("data/", HIDE_INFO + [
         # Act 1: Folder browse
         ("Browse folder",                 "tc data/",    None,       3.5),
         ("Sort by size",                  "l ]",         "l]",       3.5),
@@ -43,24 +44,24 @@ FEATURES = {
         ("Exit plot",                     "q",           "q",        2.5),
     ]),
 
-    "folder": ("data/", [
+    "folder": ("data/", HIDE_INFO + [
         ("Browse folder",   "tc data/",  None,  3.0),
         ("Sort by size",    "] desc",    "l]",  3.5),
         ("Navigate",        "j j j",     "jjj", 3.0),
     ]),
 
-    "sparkline": (NYSE, [
+    "sparkline": (NYSE, HIDE_INFO + [
         ("Sparkline distributions", None, None, 4.0),
     ]),
 
-    "freq": (NYSE, [
+    "freq": (NYSE, HIDE_INFO + [
         ("Move to Exchange", "l",       "l",   2.0),
         ("Frequency view",   "F",       "F",   3.5),
         ("Filter by value",  "j Enter", "j\r", 3.5),
         ("Filtered rows",    None,      None,  3.0),
     ]),
 
-    "heatmap": (NYSE, [
+    "heatmap": (NYSE, HIDE_INFO + [
         ("Heatmap on",       "Space",  " ",      1.5),
         ("",                 None,     "hea\r",  2.5),
         ("Heatmap mode 2",  "Space",   " ",      1.5),
@@ -69,48 +70,48 @@ FEATURES = {
         ("",                 None,     "hea\r",  2.5),
     ]),
 
-    "plot": (NYSE, [
+    "plot": (NYSE, HIDE_INFO + [
         ("Move to Bid_Price", "lll",   "lll", 2.0),
         ("Histogram",         "P h",   "Ph",  5.0),
         ("Exit plot",         "q",     "q",   2.0),
     ]),
 
-    "fzf": (NYSE, [
+    "fzf": (NYSE, HIDE_INFO + [
         ("Command palette", "Space",    " ",    2.5),
         ("Search & select", "th Enter", "th\r", 3.5),
     ]),
 
-    "meta": (NYSE, [
+    "meta": (NYSE, HIDE_INFO + [
         ("Meta view", "M", "M", 4.0),
     ]),
 
-    "sort": (NYSE, [
+    "sort": (NYSE, HIDE_INFO + [
         ("Sort asc",  "[", "l[", 3.0),
         ("Sort desc", "]", "l]", 3.0),
     ]),
 
-    "split": (NYSE, [
+    "split": (NYSE, HIDE_INFO + [
         ("Split Time by -", ":", ":-\r", 3.5),
         ("New columns",     None, None,  3.0),
     ]),
 
-    "filter": (NYSE, [
+    "filter": (NYSE, HIDE_INFO + [
         ("PRQL filter",   "\\",  "\\Bid_Price > 100\r", 3.5),
         ("Filtered rows", None,  None,                   3.5),
     ]),
 
-    "derive": (NYSE, [
+    "derive": (NYSE, HIDE_INFO + [
         ("Derive column", "=", "=Bid_Price * 2\r", 3.5),
         ("New column",    None, None,               3.0),
     ]),
 
-    "diff": (NYSE, [
-        ("Frequency view", "F",  "lF", 2.5),
-        ("Back to table",  "q",  "q",  2.5),
+    "diff": (NYSE, HIDE_INFO + [
+        ("Push 2nd view",  "F",  "lF", 1.5),
+        ("Pop back",       "q",  "q",  1.5),
         ("Diff top 2",     "V",  "V",  4.0),
     ]),
 
-    "theme": (NYSE, [
+    "theme": (NYSE, HIDE_INFO + [
         ("Theme 1", "Space", " ",    1.5),
         ("",        None,    "th\r", 2.5),
         ("Theme 2", "Space", " ",    1.5),
@@ -119,12 +120,12 @@ FEATURES = {
         ("",        None,    "th\r", 2.5),
     ]),
 
-    "s3": ("s3://nyc-tlc/ +n", [
+    "s3": ("s3://nyc-tlc/ +n", HIDE_INFO + [
         ("S3 public bucket", "tc s3://nyc-tlc/ +n", None, 4.0),
         ("Navigate",         "j j",                 "jj", 3.5),
     ]),
 
-    "hf": ("hf://datasets/stanfordnlp/imdb", [
+    "hf": ("hf://datasets/stanfordnlp/imdb", HIDE_INFO + [
         ("HuggingFace dataset", "tc hf://...imdb", None, 4.0),
         ("Navigate",            "j j",             "jj", 3.5),
     ]),
