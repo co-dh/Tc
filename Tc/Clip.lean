@@ -12,21 +12,17 @@ variable {T : Type} [TblOps T]
 -- | Cached clipboard command (detected once)
 initialize clipCmd : IO.Ref (Option (String × Array String)) ← IO.mkRef none
 
--- | Detect clipboard tool
-private def detectClip : IO (Option (String × Array String)) := do
-  -- macOS
-  let pb ← IO.Process.output { cmd := "which", args := #["pbcopy"] }
-  if pb.exitCode == 0 then return some ("pbcopy", #[])
-  -- Wayland
-  let wl ← IO.Process.output { cmd := "which", args := #["wl-copy"] }
-  if wl.exitCode == 0 then return some ("wl-copy", #[])
-  -- X11
-  let xc ← IO.Process.output { cmd := "which", args := #["xclip"] }
-  if xc.exitCode == 0 then return some ("xclip", #["-selection", "clipboard"])
-  -- xsel fallback
-  let xs ← IO.Process.output { cmd := "which", args := #["xsel"] }
-  if xs.exitCode == 0 then return some ("xsel", #["--clipboard", "--input"])
-  return none
+-- | Clipboard tools in priority order: macOS → Wayland → X11
+private def clipTools : Array (String × Array String) := #[
+  ("pbcopy", #[]), ("wl-copy", #[]),
+  ("xclip", #["-selection", "clipboard"]), ("xsel", #["--clipboard", "--input"])
+]
+
+-- | Detect first available clipboard tool
+private def detectClip : IO (Option (String × Array String)) :=
+  clipTools.findSomeM? fun tool => do
+    let r ← IO.Process.output { cmd := "which", args := #[tool.1] }
+    pure (if r.exitCode == 0 then some tool else none)
 
 -- | Get clipboard command (cached)
 private def getClip : IO (Option (String × Array String)) := do
