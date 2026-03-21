@@ -48,20 +48,21 @@ FEATURES = {
         ("Only matching rows remain",       None,      None,  3.0),
     ]),
 
+    # heatmap: title shows AFTER apply so text overlays the colored table
     "heatmap": F(NYSE, [
-        ("Mode 1: color numeric columns",       "Space",  " ",      1.5),
-        ("",                                    None,     "hea\r",  2.5),
-        ("Mode 2: color categorical columns",   "Space",  " ",      1.5),
-        ("",                                    None,     "hea\r",  2.5),
-        ("Mode 3: color all columns",           "Space",  " ",      1.5),
-        ("",                                    None,     "hea\r",  2.5),
-        ("Mode 0: heatmap off",                 "Space",  " ",      1.5),
-        ("",                                    None,     "hea\r",  2.5),
+        ("",                                    None,     " ",      0.5),
+        ("Mode 1: color numeric columns",       None,     "hea\r",  3.0),
+        ("",                                    None,     " ",      0.5),
+        ("Mode 2: color categorical columns",   None,     "hea\r",  3.0),
+        ("",                                    None,     " ",      0.5),
+        ("Mode 3: color all columns",           None,     "hea\r",  3.0),
+        ("",                                    None,     " ",      0.5),
+        ("Mode 0: heatmap off",                 None,     "hea\r",  3.0),
     ]),
 
     "plot": F(NYSE, [
         ("Move cursor to a numeric column",  "lll",        "lll",    2.0),
-        ("Open command menu with Space",     "Space",      " ",      2.0),
+        ("Open command menu with Space",     "Space",      " ",      3.0),  # fzf needs startup
         ("Render a histogram with ggplot2",  "hist Enter", "hist\r", 5.0),
         ("Press q to close the plot",        "q",          "q",      2.0),
     ]),
@@ -81,10 +82,13 @@ FEATURES = {
     "sort": F(NYSE, [
         ("Press [ to sort the current column ascending",  "[", "l[", 3.0),
         ("Press ] to sort the current column descending", "]", "l]", 3.0),
+        ("Press ! to make a column a key (pinned left)", "!", "l!", 3.0),
+        ("Press ! again to remove it from keys",         "!", "!",  3.0),
     ]),
 
-    "split": F(NYSE, [
-        ("Press : to split a column by a delimiter", ":",  ":",   1.5),  # fzf step
+    # split: use split_test.csv which has "a-b" values to split on "-"
+    "split": F("data/split_test.csv", [
+        ("Press : to split a column by a delimiter", ":",  ":",   2.0),  # fzf step
         ("Type the delimiter and press Enter",       None, "-\r", 3.5),
         ("New columns appear from the split parts",  None, None,  3.0),
     ]),
@@ -96,8 +100,8 @@ FEATURES = {
     ]),
 
     "derive": F(NYSE, [
-        ("Press = to create a new computed column", "=",  "=",             1.5),  # fzf step
-        ("Type an expression using column names",   None, "Bid_Price * 2", 3.5),
+        ("Press = to create a new computed column", "=",  "=",             3.0),  # fzf needs startup
+        ("Type an expression using column names",   None, "Bid_Price * 2", 4.0),
         ("Press Enter to add the new column",       None, "\r",            3.0),
     ]),
 
@@ -120,10 +124,10 @@ FEATURES = {
     #     ("",                            None,    "th\r", 2.5),
     # ]),
 
-    "s3": F("s3://nyc-tlc/ +n", [
-        ("Browse S3 buckets like folders", "tv s3://nyc-tlc/ +n", None, 4.0),
-        ("Navigate and open files",        "j j",                 "jj", 3.5),
-    ]),
+    # "s3": F("s3://nyc-tlc/ +n", [
+    #     ("Browse S3 buckets like folders", "tv s3://nyc-tlc/ +n", None, 4.0),
+    #     ("Navigate and open files",        "j j",                 "jj", 3.5),
+    # ]),
 
     "hf": F("hf://", [
         ("List all HuggingFace datasets",   "tv hf://",  None,   4.0),
@@ -236,17 +240,13 @@ def record(cli_args, steps, cast_path):
         except OSError:
             pass
 
-        if not child_dead:
-            try:
-                os.write(fd, b"Q")
-                time.sleep(0.3)
-                drain(0.1)
-            except OSError:
-                pass
+        # Don't send Q — it clears the screen (alternate buffer exit),
+        # leaving a black frame at the end of the GIF.
 
-    # cleanup pty and child process
+    # cleanup: kill child, don't wait for graceful exit
     os.close(fd)
     try:
+        os.kill(pid, signal.SIGTERM)
         _, status = os.waitpid(pid, 0)
         rc = os.WEXITSTATUS(status) if os.WIFEXITED(status) else -1
     except (ChildProcessError, ProcessLookupError, OSError):
