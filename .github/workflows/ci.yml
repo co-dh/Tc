@@ -48,4 +48,4 @@ jobs:
           restore-keys: lake-${{ runner.os }}-
 
       - name: Build and test
-        run: make test
+        run: make citest

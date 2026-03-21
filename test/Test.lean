@@ -1071,7 +1071,8 @@ def test_replay_empty : IO Unit := do
 -- === Run all tests ===
 
 -- | All tests as (name, action) pairs
-def tests : Array (String × IO Unit) := #[
+-- Fast tests: no external tools, no network, no heavy subprocesses
+def ciTests : Array (String × IO Unit) := #[
   -- CSV tests (nav/key/hide/select/stack/info/quit moved to TestScreen.lean)
   ("sort_asc", test_sort_asc), ("sort_desc", test_sort_desc),
   ("meta_shows", test_meta_shows), ("meta_col_info", test_meta_col_info),
@@ -1103,24 +1104,11 @@ def tests : Array (String × IO Unit) := #[
   -- arrow/feather disabled: DuckDB arrow extension not available on extensions.duckdb.org for v1.4.4
   -- ("arrow_open", test_arrow_open), ("feather_open", test_feather_open),
   ("xlsx_open", test_xlsx_open), ("avro_open", test_avro_open),
-  ("pg_list", test_pg_list), ("pg_enter", test_pg_enter),
   ("folder_prefix", test_folder_prefix),
   -- Parquet tests (checked-in data only)
   ("sort_excludes_key", test_sort_excludes_key),
   ("sort_selected_not_key", test_sort_selected_not_key),
   ("filter_parquet_full_db", test_filter_parquet_full_db),
-  -- Osquery tests
-  ("osquery_list", test_osquery_list), ("osquery_enter", test_osquery_enter),
-  ("osquery_scroll_no_hide", test_osquery_scroll_no_hide),
-  ("osquery_back", test_osquery_back),
-  ("osquery_meta_description", test_osquery_meta_description),
-  ("osquery_direct_table", test_osquery_direct_table),
-  ("osquery_typed_columns", test_osquery_typed_columns),
-  ("osquery_sort_enter", test_osquery_sort_enter),
-  -- HF tests
-  ("hf_readme", test_hf_readme),
-  ("hf_enter_parquet", test_hf_enter_parquet),
-  ("hf_backspace", test_hf_backspace),
   -- Rendering tests
   ("last_col_no_stretch", test_last_col_no_stretch),
   ("width_grows_on_scroll", test_width_grows_on_scroll),
@@ -1156,19 +1144,11 @@ def tests : Array (String × IO Unit) := #[
   -- Diff tests
   ("diff", test_diff),
   ("diff_show_same", test_diff_show_same),
-  -- Plot tests
+  -- Plot tests (data export only, no R)
   ("plot_key_dispatch", test_plot_key_dispatch),
   ("plot_export_string_col", test_plot_export_string_col),
   ("plot_export_data", test_plot_export_data),
   ("plot_export_cat", test_plot_export_cat),
-  ("plot_r_installed", test_plot_r_installed),
-  ("plot_render_line", test_plot_render_line),
-  ("plot_render_scatter_cat", test_plot_render_scatter_cat),
-  ("plot_render_histogram", test_plot_render_histogram),
-  ("plot_render_area", test_plot_render_area),
-  ("plot_render_density", test_plot_render_density),
-  ("plot_render_step", test_plot_render_step),
-  ("plot_render_violin", test_plot_render_violin),
   -- Replay ops tests
   ("replay_sort", test_replay_sort),
   ("replay_empty", test_replay_empty),
@@ -1176,20 +1156,50 @@ def tests : Array (String × IO Unit) := #[
   ("folder_sort_type", test_folder_sort_type)
 ]
 
+-- Heavy tests: external tools (R, osqueryi), network (HF), databases (pg)
+def heavyTests : Array (String × IO Unit) := #[
+  ("pg_list", test_pg_list), ("pg_enter", test_pg_enter),
+  -- Osquery tests
+  ("osquery_list", test_osquery_list), ("osquery_enter", test_osquery_enter),
+  ("osquery_scroll_no_hide", test_osquery_scroll_no_hide),
+  ("osquery_back", test_osquery_back),
+  ("osquery_meta_description", test_osquery_meta_description),
+  ("osquery_direct_table", test_osquery_direct_table),
+  ("osquery_typed_columns", test_osquery_typed_columns),
+  ("osquery_sort_enter", test_osquery_sort_enter),
+  -- HF tests
+  ("hf_readme", test_hf_readme),
+  ("hf_enter_parquet", test_hf_enter_parquet),
+  ("hf_backspace", test_hf_backspace),
+  -- Plot R rendering tests
+  ("plot_r_installed", test_plot_r_installed),
+  ("plot_render_line", test_plot_render_line),
+  ("plot_render_scatter_cat", test_plot_render_scatter_cat),
+  ("plot_render_histogram", test_plot_render_histogram),
+  ("plot_render_area", test_plot_render_area),
+  ("plot_render_density", test_plot_render_density),
+  ("plot_render_step", test_plot_render_step),
+  ("plot_render_violin", test_plot_render_violin)
+]
+
+def tests : Array (String × IO Unit) := ciTests ++ heavyTests
+
 def main (args : List String) : IO Unit := do
   IO.FS.writeFile "test.log" ""
   IO.FS.createDirAll "/tmp/tc_test"
   let err ← Tc.AdbcTable.init
   if !err.isEmpty then throw (IO.userError s!"Backend init failed: {err}")
   try Tc.SourceConfig.attachDb catch _ => pure ()
-  let filter := args.head?
+  let ci := args.contains "--ci"
+  let filter := args.filter (· != "--ci") |>.head?
+  let pool := if ci then ciTests else tests
   let selected := match filter with
-    | none => tests
-    | some f => tests.filter fun (name, _) => (name.splitOn f).length > 1
+    | none => pool
+    | some f => pool.filter fun (name, _) => (name.splitOn f).length > 1
   if selected.isEmpty then
     IO.eprintln s!"No tests matching '{filter.getD ""}'"
     return
-  IO.println s!"Running {selected.size} test(s)...\n"
+  IO.println s!"Running {selected.size} test(s){if ci then " (CI mode)" else ""}...\n"
   for (_, action) in selected do action
   Tc.AdbcTable.shutdown
   IO.println "\nAll tests passed!"
