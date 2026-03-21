@@ -171,9 +171,9 @@ class TblOps (α : Type) where
   -- build filter expression from fzf result (default: PRQL syntax)
   buildFilter : α → String → Array String → String → Bool → String
     := fun _ => buildFilterPrql
-  -- filter prompt hint (default: PRQL examples)
+  -- filter header hint (shown above fzf input, default: PRQL examples)
   filterPrompt : α → String → String
-    := fun _ col => s!"{col}: {col} > 5 | {col} ~= 'pat' > "
+    := fun _ col => s!"PRQL filter on [{col}]:  {col} > 5 | {col} == 'val' | {col} ~= 'pattern'"
   -- export plot data to tmpdir/plot.dat via DB (returns category list, or none for fallback)
   -- args: tbl xName yName catName? xIsTime step truncLen
   plotExport : α → String → String → Option String → Bool → Nat → Nat → IO (Option (Array String))
