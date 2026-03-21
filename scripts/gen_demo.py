@@ -219,7 +219,9 @@ def record(cli_args, steps, cast_path):
             if buf:
                 t = time.monotonic() - t0
                 text = buf.decode("utf-8", errors="replace")
-                cast_f.write(json.dumps([round(t, 3), "o", text]) + "\n")
+                # Drop alternate-screen-exit frames — they cause a black last frame in GIFs
+                if "\x1b[?1049l" not in text:
+                    cast_f.write(json.dumps([round(t, 3), "o", text]) + "\n")
                 sys.stdout.buffer.write(buf)
                 sys.stdout.buffer.flush()
 
@@ -248,8 +250,8 @@ def record(cli_args, steps, cast_path):
         except OSError:
             pass
 
-        # Don't send Q — it clears the screen (alternate buffer exit),
-        # leaving a black frame at the end of the GIF.
+        # Close cast file BEFORE killing child — SIGTERM triggers tb_shutdown
+        # which exits alternate screen buffer, writing a black frame.
 
     # cleanup: kill child, don't wait for graceful exit
     os.close(fd)
