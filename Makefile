@@ -4,7 +4,7 @@ PRQLC_VER := 0.13.10
 DUCKDB_VER := 1.4.4
 LEAN_VER := v4.28.0
 
-.PHONY: build test deps duckdb elan prqlc ci docker docker-dev dtest perf mem demo
+.PHONY: build test deps duckdb elan prqlc ci docker docker-dev dtest perf mem demo release
 
 build:
 	lake build tv test
@@ -34,6 +34,10 @@ prqlc:
 	curl -fsSL https://github.com/PRQL/prql/releases/download/$(PRQLC_VER)/prqlc-$(PRQLC_VER)-x86_64-unknown-linux-musl.tar.gz | tar xz -C /usr/local/bin ./prqlc
 
 ci: deps duckdb elan prqlc build test
+
+# Package binary + libduckdb for release
+release: build
+	tar czf tv-linux-amd64.tar.gz -C .lake/build/bin tv -C /usr/local/lib libduckdb.so
 
 # Production image
 docker:
