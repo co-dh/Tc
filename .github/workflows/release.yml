@@ -42,10 +42,19 @@ jobs:
         run: make test
 
       - name: Package release
-        run: make release
+        run: |
+          make release
+          sha256sum tv-linux-amd64.tar.gz > tv-linux-amd64.tar.gz.sha256
+
+      - name: Verify package
+        run: |
+          mkdir /tmp/test-release && tar xzf tv-linux-amd64.tar.gz -C /tmp/test-release
+          LD_LIBRARY_PATH=/tmp/test-release /tmp/test-release/tv --help || true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: tv-linux-amd64.tar.gz
+          files: |
+            tv-linux-amd64.tar.gz
+            tv-linux-amd64.tar.gz.sha256
           generate_release_notes: true
