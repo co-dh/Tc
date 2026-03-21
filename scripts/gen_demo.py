@@ -112,13 +112,13 @@ FEATURES = {
         ("The new 'double' column appears",                    None, "gl",                     4.0),
     ]),
 
-    # diff: open folder, open first table, swap back, open second, then V to diff
+    # diff_compare: static side-by-side showing first, second, and diff result
     # folder sorts asc: row0=.., 1=after, 2=before, 3=first, 4=second
     "diff": F("data/diff_test/", [
-        ("Open the first table",                               "jjjj Enter", "[jjjj\r", 2.5),
-        ("S swaps back to the folder",                         "S",          "S",       1.5),
-        ("Open the second table",                              "j Enter",    "j\r",     2.5),
-        ("V compares the two tables\nChanged columns get a delta prefix", "V", "SqV",   5.0),
+        ("Table 1: first.csv",                                 "jjjj Enter", "[jjjj\r", 5.0),
+        ("",                                                   None,         "S",       0.5),  # swap back to folder
+        ("Table 2: second.csv\nbob's sales changed, bonus→rating swapped", "j Enter", "j\r", 5.0),
+        ("V compares the two tables\nChanged columns get a Δ prefix",      "V",       "SqV",  5.0),
     ]),
 
     # "theme": F(NYSE, [
@@ -253,7 +253,7 @@ def record(cli_args, steps, cast_path):
             pass
 
         # Linger on the last screen so the viewer can read the result
-        time.sleep(3.0)
+        time.sleep(10.0)
 
         # Close cast file BEFORE killing child — SIGTERM triggers tb_shutdown
         # which exits alternate screen buffer, writing a black frame.
