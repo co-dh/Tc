@@ -94,10 +94,8 @@ tv -s mysession                    # Restore saved session
 
 | Key | Action |
 |-----|--------|
-| `y` | Yank cell to clipboard |
-| `Y` | Yank row to clipboard (tab-separated) |
-| `Space y ~` | Yank cell |
-| `Space y >` | Yank row |
+| `Space y ~` | Yank cell to clipboard |
+| `Space y >` | Yank row (tab-separated) |
 | `Space y <` | Yank column (newline-separated) |
 
 Auto-detects pbcopy (macOS), wl-copy (Wayland), xclip, or xsel.
