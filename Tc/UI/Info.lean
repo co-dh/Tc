@@ -31,7 +31,7 @@ def viewHints : ViewKind → Array (String × String)
   | .freqV _ _ => #[("⏎", "filter by val"), ("q", "back")]
   | .fld _ _ => #[("⏎", "open"), ("d", "trash"), (",d", "less depth"), (".d", "more depth")]
   | .tbl => #[
-    ("t", "select column"), ("T", "select row"),
+    ("t", "toggle col sel"), ("T", "toggle row sel"),
     ("H", "hide column"), ("!", "group by"),
     ("S-←→", "reorder cols"), ("SPC", "command menu")]
 
