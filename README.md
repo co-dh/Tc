@@ -6,73 +6,116 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 
 ## Features
 
-- CSV, Parquet, JSON, DuckDB file support (via DuckDB)
-- Osquery table browser (`osquery://`)
+tv opens CSV, Parquet, JSON, Arrow, DuckDB, SQLite, and Excel files.
+It can also browse S3 buckets, HuggingFace datasets, and osquery tables.
 
-**Folder browser** with recursive depth control, sorting
+### Folder browser
+
+Point tv at a directory to browse files. Enter opens a file or subfolder,
+Backspace goes to the parent, `[`/`]` sorts columns.
 
 ![folder](doc/folder.gif)
 
-**Sparkline** distribution row for numeric columns (on by default, `Z` to toggle)
+### Sparklines
+
+Every column header shows a tiny sparkline of the value distribution.
+You can see at a glance which columns are skewed, uniform, or sparse.
 
 ![sparkline](doc/sparkline.gif)
 
-**Frequency view** (group by + count/pct/bar)
+### Frequency view
+
+Press `F` to see how many times each value appears in the current column.
+Select a value and press Enter to filter the table to only those rows.
 
 ![freq](doc/freq.gif)
 
-**Heatmap** coloring for all column types: numeric gradient, string categorical
+### Heatmap
+
+Toggle heatmap coloring through the Space menu (`hea`).
+Mode 1 colors numeric columns by value, mode 2 colors categorical columns,
+mode 3 colors both.
 
 ![heatmap](doc/heatmap.gif)
 
-**Plotting** via ggplot2: line, bar, scatter, histogram, boxplot — with faceting
+### Plotting
+
+Move the cursor to a numeric column, open the Space menu, and pick a plot type.
+Charts are rendered with R/ggplot2 and displayed in the terminal.
 
 ![plot](doc/plot.gif)
 
-**Command palette** — fuzzy search via fzf (columns, rows, filter, commands)
+### Command menu
+
+Press Space to open a fuzzy-search command menu. Type to filter,
+Enter to run. This is how you access most features.
 
 ![fzf](doc/fzf.gif)
 
-**Theme** support — cycle through color schemes
+### Themes
+
+Cycle through color themes from the Space menu (`th`).
 
 ![theme](doc/theme.gif)
 
-**Column metadata** view (type, count, distinct, null%, min, max)
+### Column metadata
+
+Press `M` to see every column's type, null count, and distinct values.
+Press `0` to select columns with nulls, `1` for single-value columns,
+then Enter to hide them from the main table.
 
 ![meta](doc/meta.gif)
 
-**Multi-column sorting** (asc/desc)
+### Sorting
+
+Press `[` to sort the current column ascending, `]` for descending.
 
 ![sort](doc/sort.gif)
 
-**Column split** by delimiter/regex (`:` key)
+### Column split
+
+Press `:` to split a column by a delimiter. Type the delimiter
+(e.g. `-`) and press Enter. New columns appear for each part.
 
 ![split](doc/split.gif)
 
-**Filter expressions** via PRQL (`col == val && col2 > 10`)
+### Filter
+
+Press `\` to open the PRQL filter prompt. Type an expression like
+`Bid_Price > 100` and press Enter. Only matching rows remain.
 
 ![filter](doc/filter.gif)
 
-**Derive column** — computed columns via PRQL expressions (`=` key)
+### Derive column
+
+Press `=` to create a computed column. Type an expression like
+`Bid_Price * 2` and press Enter. The new column appears on the right.
 
 ![derive](doc/derive.gif)
 
-**Table diff** — compare top 2 views, auto-key categorical columns
+### Table diff
+
+To compare two tables, open the first file, press `S` to swap back to the
+folder, open the second file, then press `V`. tv joins them on matching
+columns and shows what changed. Identical columns are hidden, changed columns
+get a `Δ` prefix.
 
 ![diff](doc/diff.gif)
 
-**S3 bucket browsing** (`s3://bucket/path`) with auto-caching, `+n` for public buckets
+### Remote sources
 
-**HuggingFace Hub** datasets (`hf://datasets/user/dataset`)
+Browse S3 buckets (`tv s3://bucket/ +n`) and HuggingFace datasets
+(`tv hf://datasets/user/dataset`) the same way you browse local folders.
 
-- Column grouping (key columns pinned left)
-- Row/column selection, hidden columns
-- Status bar aggregation (sum/avg/count for current column)
-- Unix socket command channel (`$TV_SOCK`) — external tools send 2-char commands for live control
-- Stdin pipe mode (`cat data.csv | tv`)
-- Session save/load (persist filters, sorts, derives across sessions)
-- Replay ops on tab line (shows PRQL pipeline; replay with `tv file -p "ops"`)
-- Zero-copy rendering via C FFI (termbox2)
+### Also
+
+- Column grouping with `!` (key columns pinned left, used as x-axis for plots)
+- Row/column selection and hidden columns
+- Status bar shows sum/avg/count for the current column
+- Pipe mode: `cat data.csv | tv`
+- Session save (`W`) and load (`L`)
+- Tab line shows the PRQL pipeline; replay with `tv file -p "ops"`
+- Socket control channel (`$TV_SOCK`) for scripting
 
 ## Install
 

@@ -102,10 +102,11 @@ FEATURES = {
     # diff: open folder, use S(swap) to open both files, then V to diff
     # folder sorts asc: row0=.., row1=after.csv, row2=before.csv
     "diff": F("data/diff_test/", [
-        ("Open the first table (before.csv)",  "jj Enter",  "[jj\r", 2.5),
-        ("Swap back to folder view",           "S",         "S",     1.5),
-        ("Open the second table (after.csv)",  "k Enter",   "k\r",   2.5),
-        ("Press V to diff the two tables",     "V",         "SqV",   4.0),
+        ("Step 1: open the before table",         "jj Enter", "[jj\r", 2.5),
+        ("Step 2: S swaps back to the folder",    "S",        "S",     1.5),
+        ("Step 3: open the after table",          "k Enter",  "k\r",   2.5),
+        ("Step 4: V compares the two tables",     "V",        "SqV",   4.0),
+        ("Changed columns get a delta prefix",    None,       None,    3.5),
     ]),
 
     "theme": F(NYSE, [
