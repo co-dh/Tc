@@ -4,7 +4,7 @@ PRQLC_VER := 0.13.10
 DUCKDB_VER := 1.4.4
 LEAN_VER := v4.28.0
 
-.PHONY: build test deps duckdb elan prqlc ci docker docker-dev dtest perf mem demo release
+.PHONY: build test citest deps duckdb elan prqlc ci docker docker-dev dtest perf mem demo release
 
 build:
 	lake build tv test
@@ -15,6 +15,10 @@ export LD_LIBRARY_PATH := /usr/local/lib:$(LD_LIBRARY_PATH)
 
 test: build
 	.lake/build/bin/test $(ARGS) || (cat test.log; exit 1)
+
+# Fast subset for CI (no R, osquery, HF, pg)
+citest: build
+	.lake/build/bin/test --ci $(ARGS) || (cat test.log; exit 1)
 
 # CI: install Ubuntu packages
 deps:
