@@ -37,7 +37,8 @@ Interactive mode: h/l cycles plot types, ,/. adjusts downsampling.
 - Info.lean: no change needed (hints are compact)
 - Tests: add R render tests for area, density, step, violin
 
-## fzf --tmux Pitfall
+## fzf Pitfalls
 - **`execute-silent` commands with special shell chars (`>`, `|`, `$`, `"`) break under `--tmux`** because fzf re-launches inside a tmux popup, and the args get shell-corrupted during re-launch.
 - **Fix**: write a helper script to tmpdir, have the bind call the script with simple args (no special chars in the bind string itself). See `Fzf.lean` `cmdMode` for the pattern.
 - **`<` and `>` are not valid fzf bind keys** — they conflict with fzf's `<key>` notation parser. Use `left`/`right` arrows instead.
+- **fzf pty char loss**: fzf discards pending pty input during startup (TCSAFLUSH). In demo recordings (`scripts/gen_demo.py`), characters sent right after opening fzf (`=`, `\`, `:`, `Space`) are lost. **Fix**: pad with dummy dots after the fzf-opening key (`"=......"`), then send ctrl-u (`\x15`) before the real input to clear the dots. Does NOT affect `-c` test mode (no fzf).
