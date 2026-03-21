@@ -111,14 +111,14 @@ FEATURES = {
         ("Changed columns get a delta prefix",    None,       None,    3.5),
     ]),
 
-    "theme": F(NYSE, [
-        ("Cycle through color themes",  "Space", " ",    1.5),
-        ("",                            None,    "th\r", 2.5),
-        ("Each theme changes all colors", "Space", " ",    1.5),
-        ("",                            None,    "th\r", 2.5),
-        ("Pick the one you like",       "Space", " ",    1.5),
-        ("",                            None,    "th\r", 2.5),
-    ]),
+    # "theme": F(NYSE, [
+    #     ("Cycle through color themes",  "Space", " ",    1.5),
+    #     ("",                            None,    "th\r", 2.5),
+    #     ("Each theme changes all colors", "Space", " ",    1.5),
+    #     ("",                            None,    "th\r", 2.5),
+    #     ("Pick the one you like",       "Space", " ",    1.5),
+    #     ("",                            None,    "th\r", 2.5),
+    # ]),
 
     "s3": F("s3://nyc-tlc/ +n", [
         ("Browse S3 buckets like folders", "tv s3://nyc-tlc/ +n", None, 4.0),
