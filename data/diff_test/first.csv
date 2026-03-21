@@ -1,0 +1,4 @@
+name,region,sales,cost,bonus
+alice,east,100,50,10
+bob,west,200,60,20
+carol,east,150,70,15

@@ -87,30 +87,36 @@ FEATURES = {
 
     # split: use split_test.csv which has "a-b" values to split on "-"
     "split": F("data/split_test.csv", [
-        ("A table with a column containing a-b values", None, None, 3.0),
-        ("Press : to split a column by a delimiter",    ":",  ":",  2.0),  # fzf step
-        ("Type the delimiter and press Enter\nNew columns appear from the split parts", None, "-\r", 5.0),
+        ("A table with a column containing a-b values", None, None,          3.0),
+        ("Press : to split a column by a delimiter",    None, None,          2.0),
+        ("",                                            None, ":...",        3.0),  # fzf char loss padding
+        ("",                                            None, "\x15-\r",     5.0),  # ctrl-u clear, type -, enter
     ]),
 
     "filter": F(NYSE, [
-        ("Press \\ to open the filter prompt",                      "\\",  "\\",             3.0),  # fzf step
-        ("Type a PRQL expression\nPress Enter to apply the filter", None,  "Sym ~= 'AAP'\r", 4.0),
+        ("Press \\ to open the filter prompt",                      None,  None,                        2.0),
+        ("",                                                        None,  "\\.....",                    3.0),  # fzf char loss padding
+        ("Type a PRQL expression\nPress Enter to apply the filter", None,  "\x15Sym ~= 'AAP'\r",        4.0),
     ]),
 
+    # derive: pad with dots before real input — fzf eats first chars during startup.
+    # ctrl-u clears the line so only the real expression remains.
     "derive": F("data/numeric.csv", [
-        ("A simple table with columns x, y, z",                     None, None,             3.0),
-        ("Press = to create a new computed column",                  "=",  "=",              2.0),  # fzf needs startup
-        ("Type: name = expression\nPress Enter to add the column",   None, "double = x * 2\r", 4.0),
-        ("Scroll right to see the new column",                       "gl", "gl",             4.0),
+        ("A simple table with columns x, y, z",               None, None,                     3.0),
+        ("Press = to open the derive prompt",                  None, None,                     2.0),
+        ("",                                                   None, "=......",                3.0),  # dots absorb fzf char loss
+        ("",                                                   None, "\x15double = x * 2",     3.0),  # ctrl-u clears, then type
+        ("",                                                   None, "\r",                     2.0),  # enter, back to table
+        ("The new 'double' column appears",                    None, "gl",                     4.0),
     ]),
 
-    # diff: open folder, use S(swap) to open both files, then V to diff
-    # folder sorts asc: row0=.., row1=after.csv, row2=before.csv
+    # diff: open folder, open first table, swap back, open second, then V to diff
+    # folder sorts asc: row0=.., 1=after, 2=before, 3=first, 4=second
     "diff": F("data/diff_test/", [
-        ("Open the before table",                              "jj Enter", "[jj\r", 2.5),
-        ("S swaps back to the folder",                         "S",        "S",     1.5),
-        ("Open the after table",                               "k Enter",  "k\r",   2.5),
-        ("V compares the two tables\nChanged columns get a delta prefix", "V", "SqV", 5.0),
+        ("Open the first table",                               "jjjj Enter", "[jjjj\r", 2.5),
+        ("S swaps back to the folder",                         "S",          "S",       1.5),
+        ("Open the second table",                              "j Enter",    "j\r",     2.5),
+        ("V compares the two tables\nChanged columns get a delta prefix", "V", "SqV",   5.0),
     ]),
 
     # "theme": F(NYSE, [
