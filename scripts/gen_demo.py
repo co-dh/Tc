@@ -49,12 +49,14 @@ FEATURES = {
     ]),
 
     "heatmap": F(NYSE, [
-        ("Color numeric columns by value",   "Space",  " ",      1.5),
-        ("",                                 None,     "hea\r",  2.5),
-        ("Color categorical columns",        "Space",  " ",      1.5),
-        ("",                                 None,     "hea\r",  2.5),
-        ("Color both numeric and categorical","Space",  " ",      1.5),
-        ("",                                 None,     "hea\r",  2.5),
+        ("Mode 1: color numeric columns",       "Space",  " ",      1.5),
+        ("",                                    None,     "hea\r",  2.5),
+        ("Mode 2: color categorical columns",   "Space",  " ",      1.5),
+        ("",                                    None,     "hea\r",  2.5),
+        ("Mode 3: color all columns",           "Space",  " ",      1.5),
+        ("",                                    None,     "hea\r",  2.5),
+        ("Mode 0: heatmap off",                 "Space",  " ",      1.5),
+        ("",                                    None,     "hea\r",  2.5),
     ]),
 
     "plot": F(NYSE, [
@@ -123,11 +125,11 @@ FEATURES = {
         ("Navigate and open files",        "j j",                 "jj", 3.5),
     ]),
 
-    "hf": F("hf://datasets/stanfordnlp/imdb", [
-        ("Browse HuggingFace datasets",          "tv hf://...imdb", None,  4.0),
-        ("Sort by column with ] for descending", "]",               "l]",  3.5),
-        ("Enter to open a dataset",              "Enter",           "\r",  4.0),
-        ("Browse the dataset files",             None,              None,  3.5),
+    "hf": F("hf://", [
+        ("List all HuggingFace datasets",   "tv hf://",  None,   4.0),
+        ("Sort by downloads",               "]",         "l]",   3.5),
+        ("Open the top dataset",            "Enter",     "\r",   4.0),
+        ("Browse the dataset files",        None,        None,   3.5),
     ]),
 }
 
