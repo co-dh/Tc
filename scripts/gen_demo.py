@@ -101,9 +101,11 @@ FEATURES = {
     ]),
 
     "derive": F("data/numeric.csv", [
-        ("Press = to create a new computed column", "=",  "=",            3.0),  # fzf needs startup
-        ("Type name = expression",                  None, "d = x * 2",   4.0),
-        ("Press Enter to add the new column",       None, "\r",          3.0),
+        ("A simple table with columns x, y, z",     None, None,          3.0),
+        ("Press = to create a new computed column",  "=",  "=",          2.0),  # fzf needs startup
+        ("Type: double = x * 2",                     None, "double = x * 2", 4.0),
+        ("Press Enter to add the column",            None, "\r",         2.0),
+        ("Scroll right to see the new column",       "gl", "gl",         4.0),
     ]),
 
     # diff: open folder, use S(swap) to open both files, then V to diff
