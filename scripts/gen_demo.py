@@ -91,7 +91,7 @@ FEATURES = {
     "split": F("data/split_test.csv", [
         ("Press : to split a column by a delimiter", ":",  ":",   2.0),  # fzf step
         ("Type the delimiter and press Enter",       None, "-\r", 3.5),
-        ("New columns appear from the split parts",  None, None,  3.0),
+        ("New columns appear from the split parts",  None, None,  5.0),
     ]),
 
     "filter": F(NYSE, [
