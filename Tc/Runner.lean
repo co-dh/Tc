@@ -9,6 +9,7 @@ import Tc.Meta
 import Tc.Theme
 import Tc.Plot
 import Tc.Export
+import Tc.Clip
 
 namespace Tc
 
@@ -96,6 +97,7 @@ def runStackEffect (s : ViewStack AdbcTable) (eff : Effect) : IO (ViewStack Adbc
       | some v => pure (s.setCur v)
       | none => pure s
     | none => pure s
+  | .clip ce => Clip.run s ce
   | .export fmt => Export.run s fmt
   | .sessionSave | .sessionLoad | .join | .quit | .themeLoad _ => pure s
 

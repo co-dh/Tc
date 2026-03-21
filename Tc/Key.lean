@@ -49,7 +49,9 @@ namespace KeyMap
     ('N', .grp .dec),        -- search prev: repeat last search backward
     ('\\', .rowSel .dec),    -- row filter: fzf PRQL filter (backslash)
     ('q', .stk .dec), ('S', .stk .ent),  -- stack: q=pop, S=swap
-    ('I', .info .ent)  -- info: toggle overlay
+    ('I', .info .ent),  -- info: toggle overlay
+    ('y', .yank .ent),  -- yank cell
+    ('Y', .yank .inc)   -- yank row
   ]
 end KeyMap
 
@@ -93,7 +95,8 @@ def objMenu : Array (Char × String × (Verb → Cmd)) := #[
   ('D', "fld    : folder view",          .fld),
   ('P', "plot   : ggplot2 chart (group ! for x-axis, cursor on numeric y)", .plot),
   ('K', "colShift : reorder key cols", .colShift),
-  ('m', "heat   : heatmap mode 0-3", .heat)
+  ('m', "heat   : heatmap mode 0-3", .heat),
+  ('y', "yank   : copy to clipboard", .yank)
 ]
 
 -- | Verb menu for command mode, context-sensitive per object and view kind
@@ -125,6 +128,7 @@ def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
   | 'P' => #[('>', "line — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .inc), ('<', "bar — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .dec), ('s', "scatter — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .ent), ('h', "histogram — just put cursor on a numeric column, no grouping needed", .del), ('b', "boxplot — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .dup), ('a', "area — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .up)]
   | 'K' => #[('<', "shift left", .dec), ('>', "shift right", .inc)]
   | 'm' => #[('<', "less color", .dec), ('>', "more color", .inc)]
+  | 'y' => #[('~', "cell", .ent), ('>', "row", .inc), ('<', "column", .dec)]
   | _   => #[]
 
 -- | Enter key → context-specific command based on view kind
