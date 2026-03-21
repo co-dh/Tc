@@ -27,23 +27,19 @@ end State
 
 -- | Context-specific key hints per view (no common navigation)
 def viewHints : ViewKind → Array (String × String)
-  | .colMeta => #[("0", "sel null"), ("1", "sel single"), ("⏎", "set key"), ("q", "back")]
-  | .freqV _ _ => #[("⏎", "filter"), ("q", "back")]
-  | .fld _ _ => #[("⏎", "enter"), ("d", "trash"), (",d", "depth-"), (".d", "depth+")]
+  | .colMeta => #[("0", "select nulls"), ("1", "select unique"), ("⏎", "set as key"), ("q", "back")]
+  | .freqV _ _ => #[("⏎", "filter by val"), ("q", "back")]
+  | .fld _ _ => #[("⏎", "open"), ("d", "trash"), (",d", "less depth"), (".d", "more depth")]
   | .tbl => #[
-    ("=", "derive"), (":", "split"), ("e", "export"),
-    (".", "line plot"), ("P,", "bar plot"),
-    ("t/T", "sel"), ("H", "hide"), ("!", "group"), ("S-←→", "key order"),
-    ("\\", "filter"), ("s", "col jump"), ("X", "transpose"),
-    ("M", "meta"), ("F", "freq"), ("D", "folder"),
-    ("V", "diff top 2"), ("W", "save sess"), ("L", "load sess"),
-    ("I", "info"), ("SPC", "cmd mode")]
+    ("t", "toggle col sel"), ("T", "toggle row sel"),
+    ("H", "hide column"), ("!", "group by"),
+    ("S-←→", "reorder cols"), ("SPC", "command menu")]
 
 -- | Render info overlay at bottom-right
 def render (screenH screenW : Nat) (vk : ViewKind) : IO Unit := do
   let hints := viewHints vk
   let nRows := hints.size
-  let keyW : Nat := 5; let hintW : Nat := 10
+  let keyW : Nat := 5; let hintW : Nat := 14
   let boxW := keyW + 1 + hintW
   let x0 := screenW - boxW - 2
   let y0 := screenH - nRows - 3
