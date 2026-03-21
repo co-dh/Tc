@@ -7,7 +7,7 @@ Usage:
 """
 import os, pty, select, signal, struct, sys, json, time, fcntl, termios, subprocess
 
-TC = ".lake/build/bin/tc"
+TC = ".lake/build/bin/tv"
 AGG = os.environ.get("AGG", "agg")
 W, H = 80, 24
 FONT = 20
@@ -34,8 +34,6 @@ FEATURES = {
         # Act 3: fzf command menu
         ("Command menu",                  "Space",       " ",        2.0),
         ("Theme cycle",                   "th Enter",    "th\r",     3.0),
-        ("Command menu",                  "Space",       " ",        2.0),
-        ("Heatmap toggle",                "hea Enter",   "hea\r",    3.0),
         # Act 4: Frequency analysis
         ("Move to Exchange",              "l",           "l",        2.0),
         ("Frequency view",                "F",           "F",        3.5),
@@ -66,12 +64,12 @@ FEATURES = {
     ]),
 
     "heatmap": F(NYSE, [
-        ("Heatmap on",       "Space",  " ",      1.5),
-        ("",                 None,     "hea\r",  2.5),
-        ("Heatmap mode 2",  "Space",   " ",      1.5),
-        ("",                 None,     "hea\r",  2.5),
-        ("Heatmap mode 3",  "Space",   " ",      1.5),
-        ("",                 None,     "hea\r",  2.5),
+        ("Heatmap numeric",     "Space",  " ",      1.5),
+        ("",                    None,     "hea\r",  2.5),
+        ("Heatmap categorical", "Space",  " ",      1.5),
+        ("",                    None,     "hea\r",  2.5),
+        ("Heatmap both",        "Space",  " ",      1.5),
+        ("",                    None,     "hea\r",  2.5),
     ]),
 
     "plot": F(NYSE, [
@@ -100,19 +98,24 @@ FEATURES = {
     ]),
 
     "filter": F(NYSE, [
-        ("PRQL filter",   "\\",  "\\Bid_Price > 100\r", 3.5),
-        ("Filtered rows", None,  None,                   3.5),
+        ("PRQL filter",   "\\",  "\\",                  1.5),
+        ("",              None,  "Bid_Price > 100\r",   3.5),
+        ("Filtered rows", None,  None,                  3.5),
     ]),
 
     "derive": F(NYSE, [
-        ("Derive column", "=", "=Bid_Price * 2\r", 3.5),
-        ("New column",    None, None,               3.0),
+        ("Derive column", "=",  "=",              1.5),
+        ("",              None, "Bid_Price * 2",  3.5),  # pause at fzf for user to read
+        ("New column",    None, "\r",             3.0),
     ]),
 
-    "diff": F(NYSE, [
-        ("Push 2nd view",  "F",  "lF", 1.5),
-        ("Pop back",       "q",  "q",  1.5),
-        ("Diff top 2",     "V",  "V",  4.0),
+    # diff: open folder, enter before.csv, back to folder, enter after.csv, V diff
+    # folder sorts asc: row0=.., row1=after.csv, row2=before.csv
+    "diff": F("data/diff_test/", [
+        ("Open before.csv",  "jj Enter",  "jj\r", 2.5),
+        ("Back to folder",   "D",         "D",    2.0),
+        ("Open after.csv",   "j Enter",   "j\r",  2.5),
+        ("Compare tables",   "V",         "V",    4.0),
     ]),
 
     "theme": F(NYSE, [

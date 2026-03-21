@@ -718,13 +718,13 @@ def test_key_shift : IO Unit := do
   let aPos := hdr.splitOn "a" |>.head?.map (·.length) |>.getD 999
   assert (bPos < aPos) s!"shift-left: b ({bPos}) should appear before a ({aPos}) in header"
 
--- | Heatmap mode cycling: space m , reduces mode, space m . increases (default=1 numeric)
+-- | Heatmap mode cycling: space m , reduces mode, space m . increases (default=0 off)
 def test_heat_mode : IO Unit := do
   log "heat_mode"
-  -- space m , reduces mode from 1→0 (off); verify rendering still works
+  -- space m , at mode 0 stays at 0 (clamped); verify rendering still works
   let output ← run " m," "data/basic.csv"
   assert (contains output "a") "heat mode dec: still shows column a"
-  -- space m . increases mode from 1→2; verify rendering still works
+  -- space m . increases mode from 0→1; verify rendering still works
   let output ← run " m." "data/basic.csv"
   assert (contains output "a") "heat mode inc: still shows column a"
   -- space m . . . increases to 3 (clamped max); verify rendering still works

@@ -36,7 +36,7 @@ structure AppState where
   theme : Theme.State
   info  : UI.Info.State
   prevScroll : Nat := 0
-  heatMode : UInt8 := 1  -- 0=off, 1=numeric, 2=categorical, 3=both
+  heatMode : UInt8 := 0  -- 0=off, 1=numeric, 2=categorical, 3=both
   sparklines : Array String := #[]  -- per-column sparkline cache (empty = recompute)
   statusCache : String × String × String := ("", "", "")  -- (path, col, desc) — avoids per-frame DB query
   aggCache : StatusAgg.Cache := StatusAgg.Cache.empty
