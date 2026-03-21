@@ -42,8 +42,9 @@ jobs:
           key: lake-release-${{ runner.os }}-${{ hashFiles('lakefile.lean', 'lake-manifest.json') }}
           restore-keys: lake-release-${{ runner.os }}-
 
-      - name: Build and test
-        run: make test
+      # CI on main already runs tests before tagging
+      - name: Build
+        run: make build
 
       - name: Package release
         run: |
