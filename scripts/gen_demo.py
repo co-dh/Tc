@@ -27,123 +27,123 @@ def F(cli_args, steps):
 
 FEATURES = {
     "demo": F("data/", [
-        # Act 1: Folder browse
-        ("Browse folder",                 "tv data/",    None,       3.5),
-        ("Sort by size",                  "l ]",         "l]",       3.5),
-        # Act 2: Open parquet → sparklines
-        ("Open nyse10k.parquet",          "Enter",       "jjjjj\r", 3.5),
-        ("Sparklines show distributions", None,          None,       3.5),
-        # Act 3: fzf command menu
-        ("Command menu",                  "Space",       " ",        2.0),
-        ("Theme cycle",                   "th Enter",    "th\r",     3.0),
-        # Act 4: Frequency analysis
-        ("Move to Exchange",              "l",           "l",        2.0),
-        ("Frequency view",                "F",           "F",        3.5),
-        ("Filter by value",               "j Enter",     "j\r",      3.5),
-        ("Filtered rows",                 None,          None,       2.5),
-        # Act 5: Histogram plot
-        ("Move to Bid_Price",             "lll",         "lll",      2.0),
-        ("Command menu",                  "Space",       " ",        2.0),
-        ("Histogram plot",                "hist Enter",  "hist\r",   5.0),
-        ("Exit plot",                     "q",           "q",        2.5),
+        ("Browse a folder of data files",   "tv data/",    None,       3.5),
+        ("Sort columns by size descending", "l ]",         "l]",       3.5),
+        ("Open a parquet file",             "Enter",       "jjjjj\r", 3.5),
+        ("Sparklines show value distributions", None,      None,       3.5),
+        ("Open command menu with Space",    "Space",       " ",        2.0),
+        ("Search and pick a command",       "th Enter",    "th\r",     3.0),
+        ("Move cursor to Exchange column",  "l",           "l",        2.0),
+        ("Frequency count of column values","F",           "F",        3.5),
+        ("Select a value to filter by",     "j Enter",     "j\r",      3.5),
+        ("Only matching rows remain",       None,          None,       2.5),
+        ("Move cursor to Bid_Price",        "lll",         "lll",      2.0),
+        ("Open command menu",               "Space",       " ",        2.0),
+        ("Render a histogram with ggplot2", "hist Enter",  "hist\r",   5.0),
+        ("Press q to close the plot",       "q",           "q",        2.5),
     ]),
 
+    # folder: enter subfolder, backspace to parent, open csv, open parquet
+    # sorted asc: row0=.., row1=basic.csv, row2=diff_test(dir), row3=filtered_test.parquet
     "folder": F("data/", [
-        ("Browse folder",   "tv data/",  None,  3.0),
-        ("Sort by size",    "] desc",    "l]",  3.5),
-        ("Navigate",        "j j j",     "jjj", 3.0),
+        ("Browse a folder of data files",    "tv data/",   None,   3.0),
+        ("Enter a subfolder",                "jj Enter",   "jj\r", 3.0),  # row2=diff_test
+        ("Backspace goes to parent folder",  "Backspace",  "\x7f", 3.0),
+        ("Open a CSV file as a table",       "j Enter",    "j\r",  3.0),  # row1=basic.csv
+        ("Press q to go back to folder",     "q",          "q",    2.0),
+        ("Open a parquet file",              "jj Enter",   "jj\r", 3.0),  # row3=filtered_test.parquet
     ]),
 
     "sparkline": F(NYSE, [
-        ("Header sparklines show value distribution per column", None, None, 5.0),
+        ("Each column header has a sparkline showing the value distribution", None, None, 5.0),
     ]),
 
     "freq": F(NYSE, [
-        ("Move to Exchange", "l",       "l",   2.0),
-        ("Frequency view",   "F",       "F",   3.5),
-        ("Filter by value",  "j Enter", "j\r", 3.5),
-        ("Filtered rows",    None,      None,  3.0),
+        ("Move cursor to Exchange column",  "l",       "l",   2.0),
+        ("Press F for frequency count",     "F",       "F",   3.5),
+        ("Select a value to filter by",     "j Enter", "j\r", 3.5),
+        ("Only matching rows remain",       None,      None,  3.0),
     ]),
 
     "heatmap": F(NYSE, [
-        ("Heatmap numeric",     "Space",  " ",      1.5),
-        ("",                    None,     "hea\r",  2.5),
-        ("Heatmap categorical", "Space",  " ",      1.5),
-        ("",                    None,     "hea\r",  2.5),
-        ("Heatmap both",        "Space",  " ",      1.5),
-        ("",                    None,     "hea\r",  2.5),
+        ("Color numeric columns by value",   "Space",  " ",      1.5),
+        ("",                                 None,     "hea\r",  2.5),
+        ("Color categorical columns",        "Space",  " ",      1.5),
+        ("",                                 None,     "hea\r",  2.5),
+        ("Color both numeric and categorical","Space",  " ",      1.5),
+        ("",                                 None,     "hea\r",  2.5),
     ]),
 
     "plot": F(NYSE, [
-        ("Move to Bid_Price",  "lll",        "lll",    2.0),
-        ("Command menu",       "Space",      " ",      2.0),
-        ("Histogram",          "hist Enter", "hist\r", 5.0),
-        ("Exit plot",          "q",          "q",      2.0),
+        ("Move cursor to a numeric column",  "lll",        "lll",    2.0),
+        ("Open command menu with Space",     "Space",      " ",      2.0),
+        ("Render a histogram with ggplot2",  "hist Enter", "hist\r", 5.0),
+        ("Press q to close the plot",        "q",          "q",      2.0),
     ]),
 
     "fzf": F(NYSE, [
-        ("Command palette", "Space",    " ",    2.5),
-        ("Search & select", "th Enter", "th\r", 3.5),
+        ("Press Space to open the command menu", "Space",    " ",    2.5),
+        ("Type to search, Enter to run",         "th Enter", "th\r", 3.5),
     ]),
 
     "meta": F(NYSE, [
-        ("Column stats and types",     "M",     "M",  3.5),  # meta view: name, type, nulls, distinct
-        ("Select null columns",        "0",     "0",  3.0),  # 0 = highlight columns with nulls
-        ("Select single-value columns","1",     "1",  3.0),  # 1 = highlight columns with 1 unique value
-        ("Hide selected columns",      "Enter", "\r", 3.5),  # enter = set as group key (hides from main view)
+        ("M shows column names, types, nulls, and unique counts", "M",     "M",  3.5),
+        ("Press 0 to select columns that have null values",       "0",     "0",  3.0),
+        ("Press 1 to select columns with only one unique value",  "1",     "1",  3.0),
+        ("Enter hides the selected columns from the table",       "Enter", "\r", 3.5),
     ]),
 
     "sort": F(NYSE, [
-        ("Sort asc",  "[", "l[", 3.0),
-        ("Sort desc", "]", "l]", 3.0),
+        ("Press [ to sort the current column ascending",  "[", "l[", 3.0),
+        ("Press ] to sort the current column descending", "]", "l]", 3.0),
     ]),
 
     "split": F(NYSE, [
-        ("Split column",    ":",  ":",   1.5),  # : opens fzf — separate step
-        ("Split Time by -", None, "-\r", 3.5),
-        ("New columns",     None, None,  3.0),
+        ("Press : to split a column by a delimiter", ":",  ":",   1.5),  # fzf step
+        ("Type the delimiter and press Enter",       None, "-\r", 3.5),
+        ("New columns appear from the split parts",  None, None,  3.0),
     ]),
 
     "filter": F(NYSE, [
-        ("PRQL filter",   "\\",  "\\",                3.0),  # \ opens fzf — separate step
-        ("",              None,  "Bid_Price > 100",   3.5),  # type expression
-        ("Filtered rows", None,  "\r",                3.5),  # submit
+        ("Press \\ to open PRQL filter",          "\\",  "\\",              3.0),  # fzf step
+        ("Type a filter expression",              None,  "Bid_Price > 100", 3.5),
+        ("Press Enter to apply the filter",       None,  "\r",              3.5),
     ]),
 
     "derive": F(NYSE, [
-        ("Derive column", "=",  "=",             1.5),  # = opens fzf — separate step
-        ("",              None, "Bid_Price * 2", 3.5),  # pause at fzf for user to read
-        ("New column",    None, "\r",            3.0),
+        ("Press = to create a new computed column", "=",  "=",             1.5),  # fzf step
+        ("Type an expression using column names",   None, "Bid_Price * 2", 3.5),
+        ("Press Enter to add the new column",       None, "\r",            3.0),
     ]),
 
     # diff: open folder, use S(swap) to open both files, then V to diff
     # folder sorts asc: row0=.., row1=after.csv, row2=before.csv
     "diff": F("data/diff_test/", [
-        ("Open before.csv",  "jj Enter",  "[jj\r", 2.5),  # sort asc, nav to row2, open
-        ("Back to folder",   "S",         "S",     1.5),   # swap: folder on top
-        ("Open after.csv",   "k Enter",   "k\r",   2.5),   # up to row1=after, open
-        ("Diff view",        "V",         "SqV",   4.0),   # swap, pop folder, diff
+        ("Open the first table (before.csv)",  "jj Enter",  "[jj\r", 2.5),
+        ("Swap back to folder view",           "S",         "S",     1.5),
+        ("Open the second table (after.csv)",  "k Enter",   "k\r",   2.5),
+        ("Press V to diff the two tables",     "V",         "SqV",   4.0),
     ]),
 
     "theme": F(NYSE, [
-        ("Theme 1", "Space", " ",    1.5),
-        ("",        None,    "th\r", 2.5),
-        ("Theme 2", "Space", " ",    1.5),
-        ("",        None,    "th\r", 2.5),
-        ("Theme 3", "Space", " ",    1.5),
-        ("",        None,    "th\r", 2.5),
+        ("Cycle through color themes",  "Space", " ",    1.5),
+        ("",                            None,    "th\r", 2.5),
+        ("Each theme changes all colors", "Space", " ",    1.5),
+        ("",                            None,    "th\r", 2.5),
+        ("Pick the one you like",       "Space", " ",    1.5),
+        ("",                            None,    "th\r", 2.5),
     ]),
 
     "s3": F("s3://nyc-tlc/ +n", [
-        ("S3 public bucket", "tv s3://nyc-tlc/ +n", None, 4.0),
-        ("Navigate",         "j j",                 "jj", 3.5),
+        ("Browse S3 buckets like folders", "tv s3://nyc-tlc/ +n", None, 4.0),
+        ("Navigate and open files",        "j j",                 "jj", 3.5),
     ]),
 
     "hf": F("hf://datasets/stanfordnlp/imdb", [
-        ("Browse HuggingFace dataset",   "tv hf://...imdb", None,  4.0),
-        ("Sort by popularity",           "]",               "l]",  3.5),
-        ("Open first dataset",           "Enter",           "\r",  4.0),
-        ("Browse dataset files",         None,              None,  3.5),
+        ("Browse HuggingFace datasets",          "tv hf://...imdb", None,  4.0),
+        ("Sort by column with ] for descending", "]",               "l]",  3.5),
+        ("Enter to open a dataset",              "Enter",           "\r",  4.0),
+        ("Browse the dataset files",             None,              None,  3.5),
     ]),
 }
 
