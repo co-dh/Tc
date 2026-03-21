@@ -90,6 +90,18 @@ tv -s mysession                    # Restore saved session
 | `L`         | Load session (restore saved view stack)                          |
 | `Q`         | Quit                                                             |
 
+### Clipboard
+
+| Key | Action |
+|-----|--------|
+| `y` | Yank cell to clipboard |
+| `Y` | Yank row to clipboard (tab-separated) |
+| `Space y ~` | Yank cell |
+| `Space y >` | Yank row |
+| `Space y <` | Yank column (newline-separated) |
+
+Auto-detects pbcopy (macOS), wl-copy (Wayland), xclip, or xsel.
+
 ### Export
 
 | Key | Action |
