@@ -26,23 +26,6 @@ def F(cli_args, steps):
 # before typing into the fzf prompt — fzf needs startup time.
 
 FEATURES = {
-    "demo": F("data/", [
-        ("Browse a folder of data files",   "tv data/",    None,       3.5),
-        ("Sort columns by size descending", "l ]",         "l]",       3.5),
-        ("Open a parquet file",             "Enter",       "jjjjj\r", 3.5),
-        ("Sparklines show value distributions", None,      None,       3.5),
-        ("Open command menu with Space",    "Space",       " ",        2.0),
-        ("Search and pick a command",       "th Enter",    "th\r",     3.0),
-        ("Move cursor to Exchange column",  "l",           "l",        2.0),
-        ("Frequency count of column values","F",           "F",        3.5),
-        ("Select a value to filter by",     "j Enter",     "j\r",      3.5),
-        ("Only matching rows remain",       None,          None,       2.5),
-        ("Move cursor to Bid_Price",        "lll",         "lll",      2.0),
-        ("Open command menu",               "Space",       " ",        2.0),
-        ("Render a histogram with ggplot2", "hist Enter",  "hist\r",   5.0),
-        ("Press q to close the plot",       "q",           "q",        2.5),
-    ]),
-
     # folder: enter subfolder, backspace to parent, open csv, open parquet
     # sorted asc: row0=.., row1=basic.csv, row2=diff_test(dir), row3=filtered_test.parquet
     "folder": F("data/", [

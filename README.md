@@ -2,7 +2,7 @@
 
 VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 
-![tv demo](doc/demo.gif)
+![folder](doc/folder.gif)
 
 ## Features
 
