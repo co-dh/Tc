@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Record tc demo GIFs as asciinema .cast via scripted keystrokes in a real terminal.
+"""Record tv demo GIFs as asciinema .cast via scripted keystrokes in a real terminal.
 
 Usage:
   python3 scripts/gen_demo.py           # record all GIFs
@@ -22,11 +22,13 @@ def F(cli_args, steps):
 
 # -- Feature definitions: (cli_args, steps) ------------------------------------
 # Steps: (description, keys_shown, keys_to_send, pause_seconds)
+# IMPORTANT: Keys that open fzf (\ = : space / s) need a separate step
+# before typing into the fzf prompt — fzf needs startup time.
 
 FEATURES = {
     "demo": F("data/", [
         # Act 1: Folder browse
-        ("Browse folder",                 "tc data/",    None,       3.5),
+        ("Browse folder",                 "tv data/",    None,       3.5),
         ("Sort by size",                  "l ]",         "l]",       3.5),
         # Act 2: Open parquet → sparklines
         ("Open nyse10k.parquet",          "Enter",       "jjjjj\r", 3.5),
@@ -47,7 +49,7 @@ FEATURES = {
     ]),
 
     "folder": F("data/", [
-        ("Browse folder",   "tc data/",  None,  3.0),
+        ("Browse folder",   "tv data/",  None,  3.0),
         ("Sort by size",    "] desc",    "l]",  3.5),
         ("Navigate",        "j j j",     "jjj", 3.0),
     ]),
@@ -73,9 +75,10 @@ FEATURES = {
     ]),
 
     "plot": F(NYSE, [
-        ("Move to Bid_Price", "lll",   "lll", 2.0),
-        ("Histogram",         "P h",   "Ph",  5.0),
-        ("Exit plot",         "q",     "q",   2.0),
+        ("Move to Bid_Price",  "lll",        "lll",    2.0),
+        ("Command menu",       "Space",      " ",      2.0),
+        ("Histogram",          "hist Enter", "hist\r", 5.0),
+        ("Exit plot",          "q",          "q",      2.0),
     ]),
 
     "fzf": F(NYSE, [
@@ -93,29 +96,30 @@ FEATURES = {
     ]),
 
     "split": F(NYSE, [
-        ("Split Time by -", ":", ":-\r", 3.5),
+        ("Split column",    ":",  ":",   1.5),  # : opens fzf — separate step
+        ("Split Time by -", None, "-\r", 3.5),
         ("New columns",     None, None,  3.0),
     ]),
 
     "filter": F(NYSE, [
-        ("PRQL filter",   "\\",  "\\",                  1.5),
-        ("",              None,  "Bid_Price > 100\r",   3.5),
-        ("Filtered rows", None,  None,                  3.5),
+        ("PRQL filter",   "\\",  "\\",                2.0),  # \ opens fzf — separate step
+        ("",              None,  "Bid_Price > 100\r", 3.5),
+        ("Filtered rows", None,  None,                3.5),
     ]),
 
     "derive": F(NYSE, [
-        ("Derive column", "=",  "=",              1.5),
-        ("",              None, "Bid_Price * 2",  3.5),  # pause at fzf for user to read
-        ("New column",    None, "\r",             3.0),
+        ("Derive column", "=",  "=",             1.5),  # = opens fzf — separate step
+        ("",              None, "Bid_Price * 2", 3.5),  # pause at fzf for user to read
+        ("New column",    None, "\r",            3.0),
     ]),
 
-    # diff: open folder, enter before.csv, back to folder, enter after.csv, V diff
+    # diff: open folder, use S(swap) to open both files, then V to diff
     # folder sorts asc: row0=.., row1=after.csv, row2=before.csv
     "diff": F("data/diff_test/", [
-        ("Open before.csv",  "jj Enter",  "jj\r", 2.5),
-        ("Back to folder",   "D",         "D",    2.0),
-        ("Open after.csv",   "j Enter",   "j\r",  2.5),
-        ("Compare tables",   "V",         "V",    4.0),
+        ("Open before.csv",  "jj Enter",  "[jj\r", 2.5),  # sort asc, nav to row2, open
+        ("Back to folder",   "S",         "S",     1.5),   # swap: folder on top
+        ("Open after.csv",   "k Enter",   "k\r",   2.5),   # up to row1=after, open
+        ("Diff view",        "V",         "SqV",   4.0),   # swap, pop folder, diff
     ]),
 
     "theme": F(NYSE, [
@@ -128,12 +132,12 @@ FEATURES = {
     ]),
 
     "s3": F("s3://nyc-tlc/ +n", [
-        ("S3 public bucket", "tc s3://nyc-tlc/ +n", None, 4.0),
+        ("S3 public bucket", "tv s3://nyc-tlc/ +n", None, 4.0),
         ("Navigate",         "j j",                 "jj", 3.5),
     ]),
 
     "hf": F("hf://datasets/stanfordnlp/imdb", [
-        ("HuggingFace dataset", "tc hf://...imdb", None, 4.0),
+        ("HuggingFace dataset", "tv hf://...imdb", None, 4.0),
         ("Navigate",            "j j",             "jj", 3.5),
     ]),
 }
@@ -181,6 +185,7 @@ def record(cli_args, steps, cast_path):
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
     os.kill(pid, signal.SIGWINCH)
     t0 = time.monotonic()
+    child_dead = False
 
     with open(cast_path, "w") as cast_f:
         cast_f.write(json.dumps(header) + "\n")
@@ -192,6 +197,7 @@ def record(cli_args, steps, cast_path):
             sys.stdout.buffer.flush()
 
         def drain(timeout=0.1):
+            nonlocal child_dead
             buf = b""
             while True:
                 r, _, _ = select.select([fd], [], [], timeout)
@@ -200,9 +206,11 @@ def record(cli_args, steps, cast_path):
                 try:
                     chunk = os.read(fd, 65536)
                     if not chunk:
+                        child_dead = True
                         break
                     buf += chunk
                 except OSError:
+                    child_dead = True
                     break
                 timeout = 0.01  # fast follow-up reads after first data arrives
             if buf:
@@ -214,6 +222,8 @@ def record(cli_args, steps, cast_path):
 
         try:
             for desc, keys_shown, keys, pause in steps:
+                if child_dead:
+                    break
                 if keys is not None:
                     for ch in keys:
                         drain(0.05)
@@ -228,34 +238,42 @@ def record(cli_args, steps, cast_path):
         except OSError:
             pass
 
-        try:
-            os.write(fd, b"Q")
-            time.sleep(0.3)
-            drain(0.1)
-        except OSError:
-            pass
+        if not child_dead:
+            try:
+                os.write(fd, b"Q")
+                time.sleep(0.3)
+                drain(0.1)
+            except OSError:
+                pass
 
     # cleanup pty and child process
     os.close(fd)
     try:
-        os.waitpid(pid, os.WNOHANG)
-        time.sleep(0.2)
-        os.kill(pid, signal.SIGTERM)
-        os.waitpid(pid, 0)
+        _, status = os.waitpid(pid, 0)
+        rc = os.WEXITSTATUS(status) if os.WIFEXITED(status) else -1
     except (ChildProcessError, ProcessLookupError, OSError):
-        pass
+        rc = -1
 
-    print(f"  {cast_path} ({time.monotonic() - t0:.1f}s)")
+    elapsed = time.monotonic() - t0
+    if child_dead and rc != 0:
+        print(f"  ERROR: {TC} died early (exit {rc}, {elapsed:.1f}s)")
+        return False
+    print(f"  {cast_path} ({elapsed:.1f}s)")
+    return True
 
 def gen(name):
     cli_args, steps = FEATURES[name]
     cast = f"doc/{name}.cast"
     gif = f"doc/{name}.gif"
-    record(cli_args, steps, cast)
+    if not record(cli_args, steps, cast):
+        if os.path.exists(cast):
+            os.remove(cast)
+        return False
     subprocess.run([AGG, cast, gif, "--font-size", str(FONT)], check=True)
     os.remove(cast)
     sz = os.path.getsize(gif)
     print(f"  {gif} ({sz // 1024}K)")
+    return True
 
 if __name__ == "__main__":
     names = sys.argv[1:] or list(FEATURES.keys())
@@ -263,6 +281,11 @@ if __name__ == "__main__":
         if name not in FEATURES:
             print(f"Unknown feature: {name}. Available: {', '.join(FEATURES)}")
             sys.exit(1)
+    failed = []
     for name in names:
         print(f"[{name}]")
-        gen(name)
+        if not gen(name):
+            failed.append(name)
+    if failed:
+        print(f"\nFAILED: {', '.join(failed)}")
+        sys.exit(1)
