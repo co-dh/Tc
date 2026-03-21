@@ -8,7 +8,8 @@
 --   DETACH/ATTACH/SELECT from attach_type and duckdb_ext.
 -- attach_type: TYPE clause for ATTACH (e.g. 'POSTGRES'). Empty = native DuckDB.
 
-CREATE TABLE IF NOT EXISTS tv_sources (
+DROP TABLE IF EXISTS tv_sources;
+CREATE TABLE tv_sources (
   pfx VARCHAR, min_parts INTEGER, list_cmd VARCHAR,
   list_sql VARCHAR, download_cmd VARCHAR, needs_download BOOLEAN,
   dir_suffix BOOLEAN, parent_fallback VARCHAR,

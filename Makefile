@@ -8,7 +8,6 @@ LEAN_VER := v4.28.0
 
 build:
 	lake build tv test
-	cp Tc/Data/ADBC/funcs.prql .lake/build/bin/
 
 ARGS ?=
 # Official DuckDB release (with ADBC) installed to /usr/local/lib via `make duckdb`

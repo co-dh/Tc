@@ -81,22 +81,15 @@ private def validateShellSafe (s : String) (label : String) : IO Unit := do
 
 /-! ## Config DB -/
 
--- | Attach cfg/sources.duckdb as schema "src". Called once after AdbcTable.init.
+-- | Source config SQL, compiled into the binary
+private def sourcesSql : String := include_str "../cfg/sources.sql"
+
+-- | Create tv_sources table from embedded SQL. Called once after AdbcTable.init.
 def attachDb : IO Unit := do
-  let exe ← IO.appPath
-  let exeDir := exe.parent.getD "."
-  let candidates := #[
-    s!"{exeDir}/cfg/sources.duckdb",
-    s!"{exeDir}/../cfg/sources.duckdb",
-    s!"{exeDir}/../../cfg/sources.duckdb",
-    "cfg/sources.duckdb"
-  ]
-  for c in candidates do
-    if ← (c : System.FilePath).pathExists then
-      let _ ← Adbc.query s!"ATTACH '{c}' AS src (READ_ONLY)"
-      Log.write "init" s!"sources: {c}"
-      return
-  Log.write "init" "sources.duckdb not found (remote source browsing disabled)"
+  let stmts := sourcesSql.splitOn ";\n" |>.map (·.trimAscii.toString) |>.filter (·.length > 0)
+  for stmt in stmts do
+    let _ ← Adbc.query stmt
+  Log.write "init" "sources: embedded"
 
 -- | A typed row accessor: bundles (qr, row, colMap) so column access
 -- takes only a name. The row/col swap bug is impossible by construction —
@@ -147,7 +140,7 @@ private def configFromRow (qr : Adbc.QueryResult) (row : Nat) : IO Config := do
 -- | Find config for a path by prefix match (longest prefix wins)
 def findSource (path : String) : IO (Option Config) := do
   try
-    let qr ← Adbc.queryParam "SELECT * FROM src.tv_sources WHERE pfx != '' AND $1 LIKE pfx || '%' ORDER BY length(pfx) DESC LIMIT 1" path
+    let qr ← Adbc.queryParam "SELECT * FROM tv_sources WHERE pfx != '' AND $1 LIKE pfx || '%' ORDER BY length(pfx) DESC LIMIT 1" path
     let n ← Adbc.nrows qr
     if n == 0 then return none
     some <$> configFromRow qr 0

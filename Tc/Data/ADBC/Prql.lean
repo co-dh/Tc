@@ -62,21 +62,12 @@ def Query.filter (q : Query) (expr : String) : Query := q.pipe (.filter expr)
 def ducktabs := "from dtabs | tbl_info"
 def ducktabsF := "from dtabs | tbl_info_filtered"
 
--- | Cached PRQL function definitions, loaded once from funcs.prql next to the executable
-initialize funcsRef : IO.Ref String ← IO.mkRef ""
-
--- | Load funcs.prql from disk (once), cache in IORef. Does not cache empty to allow retry.
-def funcs : IO String := do
-  let cached ← funcsRef.get
-  if !cached.isEmpty then return cached
-  let path := s!"{(← IO.appPath).parent.getD "."}/funcs.prql"
-  let content ← try IO.FS.readFile path catch _ => Log.error s!"funcs.prql not found at {path}"; pure ""
-  if !content.isEmpty then funcsRef.set content
-  pure content
+-- | PRQL function definitions, compiled into the binary
+def funcs : String := include_str "funcs.prql"
 
 -- | Compile PRQL to SQL using prqlc CLI
 def compile (prql : String) : IO (Option String) := do
-  let full := (← funcs) ++ "\n" ++ prql
+  let full := funcs ++ "\n" ++ prql
   let child ← IO.Process.spawn {
     cmd := "prqlc"
     args := #["compile", "--hide-signature-comment", "-t", "sql.duckdb"]

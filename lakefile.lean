@@ -15,7 +15,12 @@ extern_lib termbox2 pkg := mkCLib pkg "termbox2" "termbox2.h"
 extern_lib termshim pkg := mkCLib pkg "termshim" "term_shim.c"
 -- ADBC: adbc_core.c (generic ADBC + DuckDB driver)
 extern_lib adbcshim pkg := mkCLib pkg "adbcshim" "adbc_core.c"
+-- | include_str deps: Lake doesn't track these automatically
+input_file funcsPrql where path := "Tc" / "Data" / "ADBC" / "funcs.prql"; text := true
+input_file sourcesSql where path := "cfg" / "sources.sql"; text := true
+
 lean_lib Tc where
+  needs := #[funcsPrql, sourcesSql]
   roots := #[`Tc.Cmd, `Tc.Nav, `Tc.Render, `Tc.Key, `Tc.App.Common,
              `Tc.Term, `Tc.Types, `Tc.Error, `Tc.TmpDir, `Tc.View,
              `Tc.Meta, `Tc.Fzf, `Tc.Filter, `Tc.Folder,
@@ -44,10 +49,6 @@ lean_exe test where
 lean_exe testlarge where
   root := `test.TestLargeData
 
--- | Copy funcs.prql next to tv binary (runtime dependency)
-def copyFuncsPrql : IO Unit := do
-  IO.FS.writeFile ".lake/build/bin/funcs.prql" (← IO.FS.readFile "Tc/Data/ADBC/funcs.prql")
-
 -- | Build test + tv, then run tests (test shells out to tv binary)
 script runscreen args do
   let build ← IO.Process.spawn {
@@ -55,7 +56,6 @@ script runscreen args do
     stdin := .inherit, stdout := .inherit, stderr := .inherit
   }
   if (← build.wait) != 0 then return 1
-  copyFuncsPrql
   let child ← IO.Process.spawn {
     cmd := ".lake/build/bin/testscreen"
     args := args.toArray
@@ -69,7 +69,6 @@ script runlarge args do
     stdin := .inherit, stdout := .inherit, stderr := .inherit
   }
   if (← build.wait) != 0 then return 1
-  copyFuncsPrql
   let child ← IO.Process.spawn {
     cmd := ".lake/build/bin/testlarge"
     args := args.toArray
@@ -83,7 +82,6 @@ script runtest args do
     stdin := .inherit, stdout := .inherit, stderr := .inherit
   }
   if (← build.wait) != 0 then return 1
-  copyFuncsPrql
   let child ← IO.Process.spawn {
     cmd := ".lake/build/bin/test"
     args := args.toArray
