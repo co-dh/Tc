@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    env:
+      PATH: /home/runner/.elan/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache tools
+        id: tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/libduckdb.so
+            /usr/local/bin/prqlc
+            ~/.elan
+          key: tools-release-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      - name: Install tools
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: |
+          sudo make duckdb prqlc
+          make elan
+
+      - name: ldconfig
+        run: sudo ldconfig
+
+      - name: Cache .lake
+        uses: actions/cache@v4
+        with:
+          path: .lake
+          key: lake-release-${{ runner.os }}-${{ hashFiles('lakefile.lean', 'lake-manifest.json') }}
+          restore-keys: lake-release-${{ runner.os }}-
+
+      - name: Build and test
+        run: make test
+
+      - name: Package release
+        run: |
+          make release
+          sha256sum tv-linux-amd64.tar.gz > tv-linux-amd64.tar.gz.sha256
+
+      - name: Verify package
+        run: |
+          mkdir /tmp/test-release && tar xzf tv-linux-amd64.tar.gz -C /tmp/test-release
+          LD_LIBRARY_PATH=/tmp/test-release /tmp/test-release/tv --help || true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            tv-linux-amd64.tar.gz
+            tv-linux-amd64.tar.gz.sha256
+          generate_release_notes: true

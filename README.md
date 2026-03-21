@@ -31,7 +31,19 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 - Replay ops on tab line (shows PRQL pipeline; replay with `tv file -p "ops"`)
 - Zero-copy rendering via C FFI (termbox2)
 
-## Build
+## Install
+
+Download the latest release from [GitHub Releases](https://github.com/co-dh/Tc/releases):
+
+```bash
+curl -fsSL https://github.com/co-dh/Tc/releases/latest/download/tv-linux-amd64.tar.gz | tar xz
+sudo cp libduckdb.so /usr/local/lib/ && sudo ldconfig
+cp tv ~/.local/bin/   # or anywhere on PATH
+```
+
+Requires glibc 2.25+ (Ubuntu 18.04+, Debian 10+, RHEL 8+, any distro from ~2018).
+
+## Build from source
 
 ```bash
 lake build tv
