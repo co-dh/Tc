@@ -52,11 +52,11 @@ Enter to run. This is how you access most features.
 
 ![fzf](doc/fzf.gif)
 
-### Themes
+<!-- ### Themes
 
 Cycle through color themes from the Space menu (`th`).
 
-![theme](doc/theme.gif)
+![theme](doc/theme.gif) -->
 
 ### Column metadata
 
