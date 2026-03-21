@@ -49,9 +49,7 @@ namespace KeyMap
     ('N', .grp .dec),        -- search prev: repeat last search backward
     ('\\', .rowSel .dec),    -- row filter: fzf PRQL filter (backslash)
     ('q', .stk .dec), ('S', .stk .ent),  -- stack: q=pop, S=swap
-    ('I', .info .ent),  -- info: toggle overlay
-    ('y', .yank .ent),  -- yank cell
-    ('Y', .yank .inc)   -- yank row
+    ('I', .info .ent)  -- info: toggle overlay
   ]
 end KeyMap
 
