@@ -95,8 +95,8 @@ FEATURES = {
 
     "filter": F(NYSE, [
         ("Press \\ to open the filter prompt",                      None,  None,                        2.0),
-        ("",                                                        None,  "\\.....",                    3.0),  # fzf char loss padding
-        ("Type a PRQL expression\nPress Enter to apply the filter", None,  "\x15Sym ~= 'AAP'\r",        4.0),
+        ("",                                                        None,  "\\.....",                    3.0),  # \ opens fzf, dots absorb char loss
+        ("Type a PRQL expression\nPress Enter to apply the filter", None,  "\x15Symbol ~= 'AAP'\r",     4.0),
     ]),
 
     # derive: pad with dots before real input — fzf eats first chars during startup.
