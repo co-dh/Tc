@@ -32,15 +32,16 @@ FEATURES = {
         ("Browse a folder of data files",                     "tv data/",   None,    3.0),
         ("Enter a subfolder",                                 "jj Enter",   "jj\r",  3.0),  # row2=diff_test
         ("Backspace goes to parent folder",                   "Backspace",  "\x7f",  3.0),
-        ("Press / to search for a file",                      "/",          "/",     2.0),  # fzf step
-        ("Type a name to jump to it",                         None,         "nyse\r", 2.5),
+        ("Press / to search for a file",                      None,         None,    2.0),
+        ("",                                                  None,         "/.....",  5.0),  # fzf char loss padding
+        ("",                                                  None,         "\x15nyse\r", 2.0),  # ctrl-u + type + enter
         ("Open the parquet file\nPress q to go back",         "Enter",      "\r",    3.0),
         ("",                                                  None,         "q",     1.0),
-        ("Open a CSV file",                                   "j Enter",    "j\r",   3.0),  # next file after nyse
+        ("Open a CSV file",                                   "j Enter",    "j\r",   3.0),
     ]),
 
     "sparkline": F(NYSE, [
-        ("Each column header has a sparkline showing the value distribution", None, None, 5.0),
+        ("Each column header has a sparkline\nshowing the value distribution", None, None, 5.0),
     ]),
 
     "freq": F(NYSE, [
@@ -49,27 +50,30 @@ FEATURES = {
         ("Select a value and press Enter\nOnly matching rows remain", "j Enter", "j\r", 4.0),
     ]),
 
-    # heatmap: title shows AFTER apply so text overlays the colored table.
-    # hea Enter always sends .inc (0→1→2→3, capped at 3).
+    # heatmap: Space opens fzf cmd menu, type "hea" to find heatmap, Enter applies.
+    # Each apply sends .inc: 0(off)→1(numeric)→2(categorical)→3(both).
+    # fzf char loss: Space opens fzf, dots pad, ctrl-u clears, then type "hea".
     "heatmap": F(NYSE, [
-        ("",                                    None,     " ",      0.5),
-        ("Mode 1: color numeric columns",       None,     "hea\r",  3.5),
-        ("",                                    None,     " ",      0.5),
-        ("Mode 2: color categorical columns",   None,     "hea\r",  3.5),
-        ("",                                    None,     " ",      0.5),
-        ("Mode 3: color all columns",           None,     "hea\r",  3.5),
+        ("",                                    None,     " .....",    4.0),  # Space opens fzf + padding
+        ("Mode 1: color numeric columns",       None,     "\x15hea\r", 3.5),
+        ("",                                    None,     " .....",    4.0),
+        ("Mode 2: color categorical columns",   None,     "\x15hea\r", 3.5),
+        ("",                                    None,     " .....",    4.0),
+        ("Mode 3: color all columns",           None,     "\x15hea\r", 3.5),
     ]),
 
     "plot": F(NYSE, [
         ("Move cursor to a numeric column",                  "lll",        "lll",    2.0),
-        ("Open command menu with Space",                     "Space",      " ",      3.0),  # fzf needs startup
-        ("Render a histogram with ggplot2\nPress q to close", "hist Enter", "hist\r", 5.0),
+        ("Open command menu with Space",                     None,         None,     2.0),
+        ("",                                                 None,         " .....", 4.0),  # fzf char loss padding
+        ("Render a histogram with ggplot2\nPress q to close", None,        "\x15hist\r", 5.0),
         ("",                                                 None,         "q",      1.0),
     ]),
 
     "fzf": F(NYSE, [
-        ("Press Space to open the command menu", "Space",    " ",    2.5),
-        ("Type to search, Enter to run",         "th Enter", "th\r", 3.5),
+        ("Press Space to open the command menu", None,       None,         2.0),
+        ("",                                     None,       " .....",     4.0),  # fzf char loss padding
+        ("Type to search, Enter to run",         None,       "\x15th\r",  3.5),
     ]),
 
     "meta": F(NYSE, [
@@ -85,18 +89,19 @@ FEATURES = {
         ("",                                                      None, "!",  3.0),
     ]),
 
-    # split: use split_test.csv which has "a-b" values to split on "-"
+    # split: : opens fzf. Send dots as padding, ctrl-u clears, type -, enter.
+    # All in one step to avoid drain() between : and the input.
     "split": F("data/split_test.csv", [
-        ("A table with a column containing a-b values", None, None,          3.0),
-        ("Press : to split a column by a delimiter",    None, None,          2.0),
-        ("",                                            None, ":...",        3.0),  # fzf char loss padding
-        ("",                                            None, "\x15-\r",     5.0),  # ctrl-u clear, type -, enter
+        ("A table with a column containing a-b values",           None, None,                        3.0),
+        ("Press : to split a column by a delimiter",              None, None,                        2.0),
+        ("",                                                      None, ":.........\x15-\r",         5.0),
+        ("New columns appear from the split parts\nScroll right to see them", None, "gl",            5.0),
     ]),
 
     "filter": F(NYSE, [
         ("Move to the Symbol column",                               "ll",  "ll",                        2.0),
         ("Press \\ to open the filter prompt",                      None,  None,                        2.0),
-        ("",                                                        None,  "\\.....",                    3.0),  # \ opens fzf, dots absorb char loss
+        ("",                                                        None,  "\\........",                 5.0),  # \ opens fzf, more dots for 10k row load
         ("",                                                        None,  "\x15Symbol ~= 'AAP'\r",     2.0),  # ctrl-u + type + enter
         ("Only rows matching AAP remain",                           None,  None,                        5.0),
     ]),
@@ -233,10 +238,23 @@ def record(cli_args, steps, cast_path):
         drain(2.0)
         time.sleep(1.0)
 
+        last_title_lines = 0
         try:
             for desc, keys_shown, keys, pause in steps:
                 if child_dead:
                     break
+                # Clear previous title overlay if this step has no title
+                if not desc and last_title_lines > 0:
+                    box_h = last_title_lines + 2
+                    row = H // 2 - box_h // 2
+                    margin = (W - BOX_W) // 2
+                    indent = f"\x1b[{margin + 1}G"
+                    clr = "\x1b7"
+                    for i in range(box_h):
+                        clr += f"\x1b[{row+i};1H{indent}\x1b[{BOX_W}X"
+                    clr += "\x1b8"
+                    emit(clr)
+                    last_title_lines = 0
                 if keys is not None:
                     # No drain() between chars: reading pty output mid-keystroke
                     # causes fzf to lose input chars (pty flow control issue).
@@ -247,6 +265,7 @@ def record(cli_args, steps, cast_path):
                 title = title_escape(desc, keys_shown)
                 if title:
                     emit(title)
+                    last_title_lines = len(desc.split(chr(10))) if desc else 0
                 time.sleep(pause)
                 drain(0.1)
         except OSError:
@@ -294,11 +313,14 @@ if __name__ == "__main__":
         if name not in FEATURES:
             print(f"Unknown feature: {name}. Available: {', '.join(FEATURES)}")
             sys.exit(1)
-    failed = []
-    for name in names:
-        print(f"[{name}]")
-        if not gen(name):
-            failed.append(name)
-    if failed:
-        print(f"\nFAILED: {', '.join(failed)}")
-        sys.exit(1)
+    if len(names) == 1:
+        if not gen(names[0]):
+            sys.exit(1)
+    else:
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+        with ProcessPoolExecutor() as pool:
+            futures = {pool.submit(gen, n): n for n in names}
+            failed = [futures[f] for f in as_completed(futures) if not f.result()]
+        if failed:
+            print(f"\nFAILED: {', '.join(failed)}")
+            sys.exit(1)
