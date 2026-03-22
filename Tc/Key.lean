@@ -43,8 +43,7 @@ namespace KeyMap
     ('M', .metaV .dup), ('F', .freq .dup),   -- M=meta, F=freq view (dup=constructor)
     ('D', .fld .dup),                        -- D=folder view (dup=constructor)
     ('0', .metaV .dec), ('1', .metaV .inc),  -- meta: 0=selNull, 1=selSingle
-    ('s', .col .ent),        -- col search: fzf jump to column
-    -- / and \ handled in mainLoop (argument collection in -c, fzf in interactive)
+    -- s / \ e W L J handled in mainLoop (argument collection in -c, fzf in interactive)
     ('n', .grp .inc),        -- search next: repeat last search forward
     ('N', .grp .dec),        -- search prev: repeat last search backward
     ('q', .stk .dec), ('S', .stk .ent),  -- stack: q=pop, S=swap

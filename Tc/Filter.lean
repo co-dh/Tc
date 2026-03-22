@@ -69,6 +69,15 @@ def rowFilter (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun _curCol
   let some v' := s.cur.rebuild tbl' (row := 0) | return s
   return s.push { v' with disp := s!"\\{curName}" }
 
+-- | Jump to column by name directly (no fzf). Called by socket/dispatch.
+def colJumpWith (s : ViewStack T) (name : String) : IO (ViewStack T) := do
+  if name.isEmpty then return s
+  let v := s.cur; let names := TblOps.colNames v.nav.tbl
+  let dispNames := v.nav.grp ++ names.filter (!v.nav.grp.contains ·)
+  match dispNames.findIdx? (· == name) with
+  | some idx => pure (moveColTo s idx)
+  | none => pure s
+
 -- | Filter by expression directly (no fzf). Called by socket/dispatch.
 def filterWith (s : ViewStack T) (expr : String) : IO (ViewStack T) := do
   if expr.isEmpty then return s

@@ -1,7 +1,8 @@
 /-
-  Command system: Verb + Obj pattern
+  Command system: Verb + Obj pattern for nav/toggle, ArgCmd for argument commands.
   - Verb: movement, toggle, del, sort
-  - Cmd: Obj + Verb (row, col, rowSel, colSel, grp)
+  - Cmd: Obj + Verb (row, col, rowSel, colSel, grp) or .arg ArgCmd
+  - ArgCmd: prefix char + payload, bypasses fzf (socket/demo/test)
 -/
 
 -- | Parse typeclass (inverse of ToString)
@@ -33,6 +34,46 @@ instance : Parse Verb where parse? s := s.toList.head?.bind ofChar?
 
 end Verb
 
+-- | Argument commands: prefix char + payload (bypass fzf, fully programmable via socket)
+-- Each variant corresponds to a key that normally opens fzf for user input.
+inductive ArgCmd where
+  | split (arg : String)     -- :  split column by delimiter
+  | derive (arg : String)    -- =  derive column (name = expr)
+  | filter (arg : String)    -- \  filter rows by PRQL expression
+  | search (arg : String)    -- /  search for value in current column
+  | colJump (arg : String)   -- s  jump to column by name
+  | export (arg : String)    -- e  export (csv/parquet/json/ndjson)
+  | sessSave (arg : String)  -- W  save session with name
+  | sessLoad (arg : String)  -- L  load session by name
+  | join (arg : String)      -- J  join type by index (0=inner,1=left,2=right,3=union,4=diff)
+  deriving Repr, BEq, DecidableEq
+
+namespace ArgCmd
+
+-- | Single source of truth: prefix char for each argument command
+def pfx : ArgCmd → Char
+  | .split _ => ':' | .derive _ => '=' | .filter _ => '\\' | .search _ => '/'
+  | .colJump _ => 's' | .export _ => 'e'
+  | .sessSave _ => 'W' | .sessLoad _ => 'L' | .join _ => 'J'
+
+-- | Construct from prefix char + argument string
+def ofPfx? (c : Char) (arg : String) : Option ArgCmd :=
+  match c with
+  | ':' => some (.split arg) | '=' => some (.derive arg)
+  | '\\' => some (.filter arg) | '/' => some (.search arg)
+  | 's' => some (.colJump arg) | 'e' => some (.export arg)
+  | 'W' => some (.sessSave arg) | 'L' => some (.sessLoad arg)
+  | 'J' => some (.join arg) | _ => none
+
+-- | Check if char is an ArgCmd prefix (derived from ofPfx?, single source of truth)
+def isPfx (c : Char) : Bool := (ofPfx? c "").isSome
+
+instance : ToString ArgCmd where toString ac := s!"{ac.pfx}{match ac with
+  | .split a | .derive a | .filter a | .search a
+  | .colJump a | .export a | .sessSave a | .sessLoad a | .join a => a}"
+
+end ArgCmd
+
 -- | Command: Obj + Verb pattern
 inductive Cmd where
   | row (v : Verb)     -- row inc/dec (single step)
@@ -59,11 +100,7 @@ inductive Cmd where
   | colShift (v : Verb) -- colShift +=right, -=left (reorder key columns)
   | heat (v : Verb)     -- heat +=more color, -=less color (mode 0-3)
   | yank (v : Verb)    -- yank ~=cell, +=row, -=col
-  -- Argument commands: prefix char + payload (bypass fzf)
-  | splitBy (delim : String)    -- :delim  (split column by delimiter)
-  | deriveExpr (expr : String)  -- =name = expr  (derive column)
-  | filterExpr (expr : String)  -- \expr  (filter rows)
-  | searchExpr (expr : String)  -- /expr  (search rows)
+  | arg (ac : ArgCmd)  -- argument commands (prefix + payload, bypass fzf)
   deriving Repr, BEq, DecidableEq
 
 namespace Cmd
@@ -85,37 +122,33 @@ private def objChar : Cmd → Char
   | .prec _ => 'p' | .width _ => 'w' | .thm _ => 'T' | .info _ => 'i'
   | .metaV _ => 'M' | .freq _ => 'F' | .fld _ => 'D' | .plot _ => 'P'
   | .colShift _ => 'K' | .heat _ => 'm' | .yank _ => 'y'
-  | .splitBy _ => ':' | .deriveExpr _ => '=' | .filterExpr _ => '\\' | .searchExpr _ => '/'
+  | .arg ac => ac.pfx
 
 -- | Get verb from Cmd
 private def verb : Cmd → Verb
   | .row v | .col v | .rowSel v | .colSel v | .grp v | .stk v => v
   | .hor v | .ver v | .hPage v | .vPage v | .prec v | .width v => v
   | .thm v | .info v | .metaV v | .freq v | .fld v | .plot v | .colShift v | .heat v | .yank v => v
-  | .splitBy _ | .deriveExpr _ | .filterExpr _ | .searchExpr _ => .ent
+  | .arg _ => .ent
 
 instance : ToString Cmd where toString
-  | .splitBy d => s!":{d}" | .deriveExpr e => s!"={e}"
-  | .filterExpr e => s!"\\{e}" | .searchExpr e => s!"/{e}"
+  | .arg ac => toString ac
   | c => s!"{c.objChar}{c.verb.toChar}"
 
 instance : Parse Cmd where
   parse? s := do
-    -- Extended commands: prefix char + argument (e.g. ":-", "=double = x * 2")
+    -- 2-char obj+verb commands first (e.g. "r+", "s~", "m~") — prevents
+    -- ArgCmd prefix collision (e.g. "s~" must be stk.ent, not colJump "~")
+    if let [o, vc] := s.toList then
+      if let some v := Verb.ofChar? vc then
+        if let some (_, mk) := objs.find? (·.1 == o) then
+          return mk v
+    -- Argument commands: prefix char + argument (e.g. ":-", "=double = x * 2", "ecsv")
     if s.length > 1 then
       let pfx := s.front
-      let arg := (s.drop 1).toString
-      match pfx with
-      | ':' => return .splitBy arg
-      | '=' => return .deriveExpr arg
-      | '\\' => return .filterExpr arg
-      | '/' => return .searchExpr arg
-      | _ => pure ()
-    -- 2-char obj+verb commands (e.g. "r+", "c-", "m~")
-    let [o, vc] := s.toList | none
-    let v ← Verb.ofChar? vc
-    let (_, mk) ← objs.find? (·.1 == o)
-    pure (mk v)
+      let a := (s.drop 1).toString
+      if let some ac := ArgCmd.ofPfx? pfx a then return .arg ac
+    none
 
 -- | Previewable: pure visual commands safe for live preview (no IO/DB)
 def isPreviewable : Cmd → Bool

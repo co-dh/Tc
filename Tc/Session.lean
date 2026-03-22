@@ -289,4 +289,13 @@ def pickLoadName : IO (Option String) := do
   Fzf.fzf #["--prompt=load session: "] ("\n".intercalate existing.toList)
     |>.map (·.map (·.trimAscii.toString))
 
+-- | Save session with explicit name (no fzf). Called by socket/dispatch.
+def saveWith (stk : ViewStack AdbcTable) (name : String) : IO Unit :=
+  if name.isEmpty then save stk  -- empty name → use auto name
+  else save stk (sanitize name)
+
+-- | Load session by name directly (no fzf). Called by socket/dispatch.
+def loadWith (name : String) : IO (Option (ViewStack AdbcTable)) :=
+  if name.isEmpty then pure none else load name
+
 end Tc.Session

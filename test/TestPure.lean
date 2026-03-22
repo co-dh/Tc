@@ -74,7 +74,8 @@ theorem key_I     : evToCmd (charToEvent 'I')  .tbl = some (.info .ent)   := by 
 theorem key_slash : evToCmd (charToEvent '/')  .tbl = none := by native_decide
 theorem key_n     : evToCmd (charToEvent 'n')  .tbl = some (.grp .inc)    := by native_decide
 theorem key_N     : evToCmd (charToEvent 'N')  .tbl = some (.grp .dec)    := by native_decide
-theorem key_s     : evToCmd (charToEvent 's')  .tbl = some (.col .ent)    := by native_decide
+-- s now handled in mainLoop (argument collection), not via KeyMap.char
+theorem key_s     : evToCmd (charToEvent 's')  .tbl = none := by native_decide
 theorem key_bslash: evToCmd (charToEvent '\\') .tbl = none := by native_decide
 
 -- Ctrl keys (from test_page_down/up)
@@ -245,11 +246,20 @@ theorem cmd_roundtrip_col (v : Verb) : @Parse.parse? Cmd _ (toString (Cmd.col v)
 theorem cmd_roundtrip_heat (v : Verb) : @Parse.parse? Cmd _ (toString (Cmd.heat v)) = some (.heat v) := by
   cases v <;> native_decide
 
--- Argument command parse round-trips
-#guard (@Parse.parse? Cmd _ ":-") == some (.splitBy "-")
-#guard (@Parse.parse? Cmd _ "=d = x * 2") == some (.deriveExpr "d = x * 2")
-#guard (@Parse.parse? Cmd _ "\\Bid > 100") == some (.filterExpr "Bid > 100")
-#guard (@Parse.parse? Cmd _ "/NYSE") == some (.searchExpr "NYSE")
+-- 2-char obj+verb takes priority over ArgCmd prefix (prevents "s~" → colJump "~" bug)
+#guard (@Parse.parse? Cmd _ "s~") == some (.stk .ent)
+#guard (@Parse.parse? Cmd _ "s-") == some (.stk .dec)
+
+-- Argument command parse round-trips (all 9 ArgCmd variants)
+#guard (@Parse.parse? Cmd _ ":-") == some (.arg (.split "-"))
+#guard (@Parse.parse? Cmd _ "=d = x * 2") == some (.arg (.derive "d = x * 2"))
+#guard (@Parse.parse? Cmd _ "\\Bid > 100") == some (.arg (.filter "Bid > 100"))
+#guard (@Parse.parse? Cmd _ "/NYSE") == some (.arg (.search "NYSE"))
+#guard (@Parse.parse? Cmd _ "sExchange") == some (.arg (.colJump "Exchange"))
+#guard (@Parse.parse? Cmd _ "ecsv") == some (.arg (.export "csv"))
+#guard (@Parse.parse? Cmd _ "Wmysess") == some (.arg (.sessSave "mysess"))
+#guard (@Parse.parse? Cmd _ "Lmysess") == some (.arg (.sessLoad "mysess"))
+#guard (@Parse.parse? Cmd _ "J0") == some (.arg (.join "0"))
 
 -- Socket <> binds send "{obj}-"/"{obj}+" — verify these parse correctly
 #guard (@Parse.parse? Cmd _ "r-") == some (.row .dec)
