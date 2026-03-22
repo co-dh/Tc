@@ -132,21 +132,24 @@ def test_no_stderr : IO Unit := do
 
 def test_search_jump : IO Unit := do
   log "search_jump"
-  assert (contains (footer (← run "l/" "data/basic.csv")).2 "r2/") "/ search finds x at row 2"
+  -- /x<ret>: search for "x" in column b, finds at row 2 (start from r0+1=1, first match at row 2)
+  assert (contains (footer (← run "l/x<ret>" "data/basic.csv")).2 "r2/") "/ search finds x at row 2"
 
 def test_search_next : IO Unit := do
   log "search_next"
-  assert (contains (footer (← run "l/n" "data/basic.csv")).2 "r4/") "n finds next x at row 4"
+  -- /x<ret>n: search for x (jumps to row 2), then n (next match at row 4)
+  assert (contains (footer (← run "l/x<ret>n" "data/basic.csv")).2 "r4/") "n finds next x at row 4"
 
 def test_search_prev : IO Unit := do
   log "search_prev"
-  assert (contains (footer (← run "l/N" "data/basic.csv")).2 "r0/") "N finds prev x (wraps to row 0)"
+  -- /x<ret>N: search for x (jumps to row 2), then N (prev match wraps to row 0)
+  assert (contains (footer (← run "l/x<ret>N" "data/basic.csv")).2 "r0/") "N finds prev x (wraps to row 0)"
 
 def test_search_after_sort : IO Unit := do
   log "search_after_sort"
-  -- sort desc on a (]) then move to col b (l) then search (/)
+  -- sort desc on a (]) then move to col b (l) then search for x
   -- sorted: 5,x 4,z 3,x 2,y 1,x → cursor at r0, search starts from r1, finds x at r2
-  assert (contains (footer (← run "]l/" "data/basic.csv")).2 "r2/") "/ search after sort finds row 2"
+  assert (contains (footer (← run "]l/x<ret>" "data/basic.csv")).2 "r2/") "/ search after sort finds row 2"
 
 def test_col_search : IO Unit := do
   log "col_search"
@@ -619,6 +622,34 @@ def test_split_noop : IO Unit := do
   let (_, status) := footer out
   -- cursor on "value" (int column), split should be no-op — still 2 columns
   assert (contains status "c1/2") "split: no split on int column"
+
+-- | Split via argument command: -c ":-<ret>" sends split-by-dash directly (no fzf)
+def test_split_arg : IO Unit := do
+  log "split_arg"
+  let out ← run ":-<ret>llll" "data/split_test.csv"
+  let (tab, status) := footer out
+  assert (contains status "c5/6") "split_arg: cursor at tag_4 (c5/6)"
+  assert (contains tab ":tag") "split_arg: tab shows :tag"
+  let lines := dataLines out
+  assert (lines.any (contains · " w ")) "split_arg: last part 'w' visible"
+
+-- | Derive via argument command: -c "=double = x * 2<ret>" creates new column
+def test_derive_arg : IO Unit := do
+  log "derive_arg"
+  let out ← run "=double = x * 2<ret>lll" "data/numeric.csv"
+  let (tab, status) := footer out
+  assert (contains status "c3/4") "derive_arg: cursor at double (c3/4)"
+  assert (contains tab "=double") "derive_arg: tab shows =double"
+  let lines := dataLines out
+  assert (lines.any (contains · "10")) "derive_arg: 5*2=10 visible"
+
+-- | Filter via argument command: -c "\Exchange == 'P'<ret>" filters rows
+def test_filter_arg : IO Unit := do
+  log "filter_arg"
+  let out ← run "<backslash>Exchange == 'P'<ret>" "data/nyse10k.parquet"
+  let (_, status) := footer out
+  -- 528 rows with Exchange=P in nyse10k
+  assert (contains status "r0/528") "filter_arg: 528 rows after filter"
 
 -- === Export tests ===
 
@@ -1125,8 +1156,12 @@ def ciTests : Array (String × IO Unit) := #[
   -- Split tests
   ("split", test_split),
   ("split_noop", test_split_noop),
+  ("split_arg", test_split_arg),
   -- Derive tests
   ("derive", test_derive),
+  ("derive_arg", test_derive_arg),
+  -- Filter argument test
+  ("filter_arg", test_filter_arg),
   -- Join tests
   ("join_inner", test_join_inner),
   ("join_union", test_join_union),
