@@ -99,11 +99,11 @@ FEATURES = {
     ]),
 
     "filter": F(NYSE, [
-        ("Move to the Symbol column",                               "ll",  "ll",                        2.0),
+        ("Move to the Exchange column",                             "l",   "l",                         2.0),
         ("Press \\ to open the filter prompt",                      None,  None,                        2.0),
         ("",                                                        None,  "\\........",                 5.0),  # \ opens fzf, more dots for 10k row load
-        ("",                                                        None,  "\x15Symbol ~= 'AAP'\r",     2.0),  # ctrl-u + type + enter
-        ("Only rows matching AAP remain",                           None,  None,                        5.0),
+        ("",                                                        None,  "\x15Exchange ~= 'P'\r",     2.0),  # ctrl-u + type + enter
+        ("Only rows where Exchange contains P remain",              None,  None,                        5.0),
     ]),
 
     # derive: pad with dots before real input — fzf eats first chars during startup.
