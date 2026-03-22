@@ -30,17 +30,13 @@ private def splitBindings (col ep : String) (qc : String) (n : Nat) : Array (Str
     let idx := i + 1
     (s!"{col}_{idx}", s!"s\"string_split_regex(\{{qc}}, '{ep}')[{idx}]\"")
 
--- | Prompt for pattern, detect part count, derive split columns, push new view.
--- Returns unchanged stack on cancel or error.
-def run (s : ViewStack AdbcTable) : IO (ViewStack AdbcTable) := do
+-- | Split column by pattern (no fzf). Called by socket/dispatch and by `run` after fzf.
+def runWith (s : ViewStack AdbcTable) (pat : String) : IO (ViewStack AdbcTable) := do
   let names := TblOps.colNames s.tbl
   let curCol := s.cur.nav.curColIdx
   let curName := names.getD curCol ""
   let typ := TblOps.colType s.tbl curCol
   if typ != "str" then return s  -- only split string columns
-  let header := s!"Split '{curName}' by delimiter or regex"
-  let some raw ← Fzf.fzf #["--print-query", "--prompt=split: ", s!"--header={header}"] suggestions | return s
-  let pat := raw.trimAscii.toString
   if pat.isEmpty then return s
   let ep := escSql pat
   let qc := Prql.quote curName
@@ -54,5 +50,14 @@ def run (s : ViewStack AdbcTable) : IO (ViewStack AdbcTable) := do
   let firstSplitCol := nCols - n
   let some v := s.cur.rebuild tbl' (col := firstSplitCol) | return s
   return s.push { v with disp := s!":{curName}" }
+
+-- | Prompt for pattern via fzf, then split.
+def run (s : ViewStack AdbcTable) : IO (ViewStack AdbcTable) := do
+  let names := TblOps.colNames s.tbl
+  let curCol := s.cur.nav.curColIdx
+  let curName := names.getD curCol ""
+  let header := s!"Split '{curName}' by delimiter or regex"
+  let some raw ← Fzf.fzf #["--print-query", "--prompt=split: ", s!"--header={header}"] suggestions | return s
+  runWith s raw.trimAscii.toString
 
 end Tc.Split

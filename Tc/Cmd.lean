@@ -59,6 +59,11 @@ inductive Cmd where
   | colShift (v : Verb) -- colShift +=right, -=left (reorder key columns)
   | heat (v : Verb)     -- heat +=more color, -=less color (mode 0-3)
   | yank (v : Verb)    -- yank ~=cell, +=row, -=col
+  -- Argument commands: prefix char + payload (bypass fzf)
+  | splitBy (delim : String)    -- :delim  (split column by delimiter)
+  | deriveExpr (expr : String)  -- =name = expr  (derive column)
+  | filterExpr (expr : String)  -- \expr  (filter rows)
+  | searchExpr (expr : String)  -- /expr  (search rows)
   deriving Repr, BEq, DecidableEq
 
 namespace Cmd
@@ -80,17 +85,33 @@ private def objChar : Cmd → Char
   | .prec _ => 'p' | .width _ => 'w' | .thm _ => 'T' | .info _ => 'i'
   | .metaV _ => 'M' | .freq _ => 'F' | .fld _ => 'D' | .plot _ => 'P'
   | .colShift _ => 'K' | .heat _ => 'm' | .yank _ => 'y'
+  | .splitBy _ => ':' | .deriveExpr _ => '=' | .filterExpr _ => '\\' | .searchExpr _ => '/'
 
 -- | Get verb from Cmd
 private def verb : Cmd → Verb
   | .row v | .col v | .rowSel v | .colSel v | .grp v | .stk v => v
   | .hor v | .ver v | .hPage v | .vPage v | .prec v | .width v => v
   | .thm v | .info v | .metaV v | .freq v | .fld v | .plot v | .colShift v | .heat v | .yank v => v
+  | .splitBy _ | .deriveExpr _ | .filterExpr _ | .searchExpr _ => .ent
 
-instance : ToString Cmd where toString c := s!"{c.objChar}{c.verb.toChar}"
+instance : ToString Cmd where toString
+  | .splitBy d => s!":{d}" | .deriveExpr e => s!"={e}"
+  | .filterExpr e => s!"\\{e}" | .searchExpr e => s!"/{e}"
+  | c => s!"{c.objChar}{c.verb.toChar}"
 
 instance : Parse Cmd where
   parse? s := do
+    -- Extended commands: prefix char + argument (e.g. ":-", "=double = x * 2")
+    if s.length > 1 then
+      let pfx := s.front
+      let arg := (s.drop 1).toString
+      match pfx with
+      | ':' => return .splitBy arg
+      | '=' => return .deriveExpr arg
+      | '\\' => return .filterExpr arg
+      | '/' => return .searchExpr arg
+      | _ => pure ()
+    -- 2-char obj+verb commands (e.g. "r+", "c-", "m~")
     let [o, vc] := s.toList | none
     let v ← Verb.ofChar? vc
     let (_, mk) ← objs.find? (·.1 == o)

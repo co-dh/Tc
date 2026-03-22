@@ -70,11 +70,12 @@ theorem key_S : evToCmd (charToEvent 'S') .tbl = some (.stk .ent) := by native_d
 
 -- Info, search, filter keys (from test_info, test_search_jump/next/prev, test_col_search)
 theorem key_I     : evToCmd (charToEvent 'I')  .tbl = some (.info .ent)   := by native_decide
-theorem key_slash : evToCmd (charToEvent '/')  .tbl = some (.rowSel .inc) := by native_decide
+-- / and \ now handled in mainLoop (argument collection), not via KeyMap.char
+theorem key_slash : evToCmd (charToEvent '/')  .tbl = none := by native_decide
 theorem key_n     : evToCmd (charToEvent 'n')  .tbl = some (.grp .inc)    := by native_decide
 theorem key_N     : evToCmd (charToEvent 'N')  .tbl = some (.grp .dec)    := by native_decide
 theorem key_s     : evToCmd (charToEvent 's')  .tbl = some (.col .ent)    := by native_decide
-theorem key_bslash: evToCmd (charToEvent '\\') .tbl = some (.rowSel .dec) := by native_decide
+theorem key_bslash: evToCmd (charToEvent '\\') .tbl = none := by native_decide
 
 -- Ctrl keys (from test_page_down/up)
 theorem key_ctrlD : evToCmd (charToEvent '\x04') .tbl = some (.vPage .inc) := by native_decide
@@ -235,9 +236,20 @@ end FilterUpdateTests
 
 section CmdRoundTripTests
 
--- All Cmd constructors round-trip through toString/parse?
-theorem cmd_roundtrip (c : Cmd) : @Parse.parse? Cmd _ (toString c) = some c := by
-  cases c <;> rename_i v <;> cases v <;> native_decide
+-- Obj+verb Cmd constructors round-trip through toString/parse?
+-- (Argument commands tested separately since they carry String payloads)
+theorem cmd_roundtrip_nav (v : Verb) : @Parse.parse? Cmd _ (toString (Cmd.row v)) = some (.row v) := by
+  cases v <;> native_decide
+theorem cmd_roundtrip_col (v : Verb) : @Parse.parse? Cmd _ (toString (Cmd.col v)) = some (.col v) := by
+  cases v <;> native_decide
+theorem cmd_roundtrip_heat (v : Verb) : @Parse.parse? Cmd _ (toString (Cmd.heat v)) = some (.heat v) := by
+  cases v <;> native_decide
+
+-- Argument command parse round-trips
+#guard (@Parse.parse? Cmd _ ":-") == some (.splitBy "-")
+#guard (@Parse.parse? Cmd _ "=d = x * 2") == some (.deriveExpr "d = x * 2")
+#guard (@Parse.parse? Cmd _ "\\Bid > 100") == some (.filterExpr "Bid > 100")
+#guard (@Parse.parse? Cmd _ "/NYSE") == some (.searchExpr "NYSE")
 
 -- Socket <> binds send "{obj}-"/"{obj}+" — verify these parse correctly
 #guard (@Parse.parse? Cmd _ "r-") == some (.row .dec)

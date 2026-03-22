@@ -40,8 +40,17 @@ private def parseDerive (input : String) : Option (String × String) :=
     if n.isEmpty || e.isEmpty then none else some (n, e)
   | _ => none
 
--- | Prompt for name = expr, requery with derive, push new view.
--- Returns unchanged stack on cancel or invalid format.
+-- | Derive column from expression (no fzf). Called by socket/dispatch and by `run` after fzf.
+def runWith (s : ViewStack AdbcTable) (input : String) : IO (ViewStack AdbcTable) := do
+  let some (name, expr) := parseDerive input | return s
+  let q := s.tbl.query.pipe (.derive #[(name, expr)])
+  Log.write "derive" q.render
+  let some tbl' ← AdbcTable.requery q s.tbl.totalRows | return s
+  let nCols := (TblOps.colNames tbl').size
+  let some v := s.cur.rebuild tbl' (col := nCols - 1) | return s
+  return s.push { v with disp := s!"={name}" }
+
+-- | Prompt for name = expr via fzf, then derive.
 def run (s : ViewStack AdbcTable) : IO (ViewStack AdbcTable) := do
   let names := TblOps.colNames s.tbl
   let curCol := s.cur.nav.curColIdx
@@ -50,12 +59,6 @@ def run (s : ViewStack AdbcTable) : IO (ViewStack AdbcTable) := do
   let header := s!"name = expr\n{samples curName typ}"
   let hint := colHints names s.tbl.colTypes
   let some raw ← Fzf.fzf #["--print-query", "--prompt=derive: ", s!"--header={header}"] hint | return s
-  let some (name, expr) := parseDerive raw.trimAscii.toString | return s
-  let q := s.tbl.query.pipe (.derive #[(name, expr)])
-  Log.write "derive" q.render
-  let some tbl' ← AdbcTable.requery q s.tbl.totalRows | return s
-  let nCols := (TblOps.colNames tbl').size
-  let some v := s.cur.rebuild tbl' (col := nCols - 1) | return s
-  return s.push { v with disp := s!"={name}" }
+  runWith s raw.trimAscii.toString
 
 end Tc.Derive

@@ -69,6 +69,22 @@ def rowFilter (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun _curCol
   let some v' := s.cur.rebuild tbl' (row := 0) | return s
   return s.push { v' with disp := s!"\\{curName}" }
 
+-- | Filter by expression directly (no fzf). Called by socket/dispatch.
+def filterWith (s : ViewStack T) (expr : String) : IO (ViewStack T) := do
+  if expr.isEmpty then return s
+  let some tbl' ← TblOps.filter s.tbl expr | return s
+  let some v' := s.cur.rebuild tbl' (row := 0) | return s
+  return s.push { v' with disp := s!"\\{expr}" }
+
+-- | Search for value directly (no fzf). Called by socket/dispatch.
+def searchWith (s : ViewStack T) (val : String) : IO (ViewStack T) := do
+  if val.isEmpty then return s
+  let v := s.cur; let names := TblOps.colNames v.nav.tbl
+  let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
+  let start := v.nav.row.cur.val + 1
+  let some rowIdx ← TblOps.findRow s.tbl curCol val start true | return s
+  return moveRowTo s rowIdx (some (curCol, val))
+
 end Tc.ViewStack
 
 namespace Tc.Filter

@@ -357,16 +357,28 @@ Optional (feature-specific):
 ## Socket Command Channel
 
 tv starts a Unix domain socket at `$TV_SOCK` (e.g. `/tmp/tv-12345.sock`).
-External tools can send 2-char commands to control tv:
+External tools can send commands to control tv — the same commands work in `-c` mode:
 
 ```bash
 echo "m+" | socat - UNIX-CONNECT:$TV_SOCK   # heatmap: more color
 echo "T+" | socat - UNIX-CONNECT:$TV_SOCK   # theme: next
 echo "C+" | socat - UNIX-CONNECT:$TV_SOCK   # sort ascending
+echo ":-" | socat - UNIX-CONNECT:$TV_SOCK   # split column by "-"
+echo "=d = x * 2" | socat - UNIX-CONNECT:$TV_SOCK  # derive column
+echo "\Price > 100" | socat - UNIX-CONNECT:$TV_SOCK # filter rows
+echo "/NYSE" | socat - UNIX-CONNECT:$TV_SOCK        # search for value
 ```
 
-Command format: `{obj}{verb}` where obj is a single char (e.g. `m`=heat, `T`=theme, `C`=colSel)
-and verb is `+`=inc, `-`=dec, `~`=toggle, `c`=dup, `d`=del.
+| Format | Example | Meaning |
+|--------|---------|---------|
+| `{obj}{verb}` | `m+`, `T-`, `C~` | Navigation/toggle (obj=`m`heat/`T`theme/`C`colSel, verb=`+`inc/`-`dec/`~`toggle) |
+| `:delim` | `:-` | Split column by delimiter |
+| `=name = expr` | `=d = x * 2` | Derive computed column |
+| `\expr` | `\Price > 100` | Filter rows by PRQL expression |
+| `/value` | `/NYSE` | Search for value in current column |
+
+In `-c` mode, argument commands use `<ret>` as terminator:
+`tv data.csv -c ":-<ret>lll"` (split by `-`, move right 3).
 
 The socket is per-process and cleaned up on exit.
 

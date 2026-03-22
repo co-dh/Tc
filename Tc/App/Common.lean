@@ -121,10 +121,20 @@ where
     let sp := if e.isNone then a.sparklines else #[]
     pure { a with stk := s, vs := vs', sparklines := sp }
 
+-- | Run a stack-level IO action with shared error handling and state reset
+private partial def runStackIO (a : AppState) (f : IO (ViewStack AdbcTable)) : IO AppState := do
+  match ← f.toBaseIO with
+  | .ok s' => pure { a with stk := s', vs := .default, sparklines := #[] }
+  | .error e => Log.error e.toString; errorPopup e.toString; pure a
+
 -- | Dispatch a command string: parse → update → run effect
 private partial def dispatchCmd (a : AppState) (cmdStr : String) : IO AppState := do
   Log.write "sock" s!"cmd={cmdStr}"
   match (Parse.parse? cmdStr : Option Cmd) with
+  | some (.splitBy delim) => runStackIO a (Split.runWith a.stk delim)
+  | some (.deriveExpr expr) => runStackIO a (Derive.runWith a.stk expr)
+  | some (.filterExpr expr) => runStackIO a (ViewStack.filterWith a.stk expr)
+  | some (.searchExpr val) => runStackIO a (ViewStack.searchWith a.stk val)
   | some cmd => match a.update cmd with
     | some (a', e) =>
       let a'' ← if e.isNone then pure a' else runEffect a' e
@@ -182,14 +192,21 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   if ev.type == 0 then return ← mainLoop a test ks'
   if isKey ev 'Q' then return a
   if isKey ev ' ' then mainLoop (← runEffect a (.fzf .cmd)) test ks'
-  else if isKey ev '=' then do
-    let s' ← match ← (Derive.run a.stk).toBaseIO with
-      | .ok s' => pure s' | .error e => Log.error e.toString; errorPopup e.toString; pure a.stk
-    mainLoop { a with stk := s', vs := .default } test ks'
-  else if isKey ev ':' then do
-    let s' ← match ← (Split.run a.stk).toBaseIO with
-      | .ok s' => pure s' | .error e => Log.error e.toString; errorPopup e.toString; pure a.stk
-    mainLoop { a with stk := s', vs := .default, sparklines := #[] } test ks'
+  -- Argument commands: in test mode, collect chars up to \r and dispatch; in interactive, open fzf
+  else if isKey ev '=' || isKey ev ':' || isKey ev '\\' || isKey ev '/' then do
+    let pfx := String.ofList [Char.ofNat ev.ch.toNat]
+    if test && ks'.any (· == '\r') then  -- -c mode with argument: collect until \r
+      let idx := ks'.findIdx? (· == '\r') |>.getD ks'.size
+      let arg := String.ofList (ks'.extract 0 idx).toList
+      let rest := ks'.extract (idx + 1) ks'.size
+      let a' ← dispatchCmd a (pfx ++ arg)
+      mainLoop a' test rest
+    else  -- interactive: open fzf, then dispatch result
+      let fzfRun := match pfx with
+        | "=" => Derive.run a.stk | ":" => Split.run a.stk
+        | "\\" => ViewStack.rowFilter a.stk | _ => ViewStack.rowSearch a.stk
+      let a' ← runStackIO a fzfRun
+      mainLoop a' test ks'
   else if isKey ev 'e' then do
     match ← Export.pickFmt with
     | some fmt => mainLoop (← runEffect a (.export fmt)) test ks'

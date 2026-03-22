@@ -44,10 +44,9 @@ namespace KeyMap
     ('D', .fld .dup),                        -- D=folder view (dup=constructor)
     ('0', .metaV .dec), ('1', .metaV .inc),  -- meta: 0=selNull, 1=selSingle
     ('s', .col .ent),        -- col search: fzf jump to column
-    ('/', .rowSel .inc),     -- row search: fzf jump to row (vim-style)
+    -- / and \ handled in mainLoop (argument collection in -c, fzf in interactive)
     ('n', .grp .inc),        -- search next: repeat last search forward
     ('N', .grp .dec),        -- search prev: repeat last search backward
-    ('\\', .rowSel .dec),    -- row filter: fzf PRQL filter (backslash)
     ('q', .stk .dec), ('S', .stk .ent),  -- stack: q=pop, S=swap
     ('I', .info .ent)  -- info: toggle overlay
   ]
