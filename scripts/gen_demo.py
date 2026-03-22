@@ -277,8 +277,9 @@ def record(cli_args, steps, cast_path):
         except OSError:
             pass
 
-        # Linger on the last screen so the viewer can read the result
-        time.sleep(10.0)
+        # Linger: drain periodically so late renders (e.g. split result) are captured
+        for _ in range(10):
+            drain(1.0)
 
         # Close cast file BEFORE killing child — SIGTERM triggers tb_shutdown
         # which exits alternate screen buffer, writing a black frame.
@@ -308,7 +309,6 @@ def gen(name):
             os.remove(cast)
         return False
     subprocess.run([AGG, cast, gif, "--font-size", str(FONT)], check=True)
-    os.remove(cast)
     sz = os.path.getsize(gif)
     print(f"  {gif} ({sz // 1024}K)")
     return True
