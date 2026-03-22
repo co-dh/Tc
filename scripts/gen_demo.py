@@ -33,8 +33,9 @@ FEATURES = {
         ("Enter a subfolder",                                 "jj Enter",   "jj\r",  3.0),  # row2=diff_test
         ("Backspace goes to parent folder",                   "Backspace",  "\x7f",  3.0),
         ("Press / to search for a file",                      None,         None,    2.0),
-        ("",                                                  None,         "/.....",  5.0),  # fzf char loss padding
-        ("",                                                  None,         "\x15nyse\r", 4.0),  # ctrl-u + type + enter; linger on result
+        ("",                                                  None,         "/.....",  3.0),  # fzf char loss padding
+        ("",                                                  None,         "\x15nyse",  3.0),  # ctrl-u + type (fzf visible with input)
+        ("",                                                  None,         "\r",      2.0),  # enter; linger on result
         ("Cursor jumps to the matched file\nPress Enter to open", None,    None,    3.0),
         ("",                                                  None,         "\r",    3.0),
         ("",                                                  None,         "q",     1.0),
@@ -52,29 +53,32 @@ FEATURES = {
     ]),
 
     # heatmap: Space opens fzf cmd menu, type "hea" to find heatmap, Enter applies.
-    # Each apply sends .inc: 0(off)→1(numeric)→2(categorical)→3(both).
+    # Each apply cycles: 0(off)→1(numeric)→2(categorical)→3(both).
+    # Mode 3 (both) has a bug where categorical isn't colored, so show only 1→2.
     # fzf char loss: Space opens fzf, dots pad, ctrl-u clears, then type "hea".
     "heatmap": F(NYSE, [
-        ("",                                    None,     " .....",    4.0),  # Space opens fzf + padding
-        ("Mode 1: color numeric columns",       None,     "\x15hea\r", 3.5),
-        ("",                                    None,     " .....",    4.0),
-        ("Mode 2: color categorical columns",   None,     "\x15hea\r", 3.5),
-        ("",                                    None,     " .....",    4.0),
-        ("Mode 3: color all columns",           None,     "\x15hea\r", 3.5),
+        ("",                                    None,     " .....",    3.0),  # Space opens fzf + padding
+        ("",                                    None,     "\x15hea",   3.0),  # ctrl-u + type (fzf visible with input)
+        ("Color numeric columns by value",      None,     "\r",        4.0),
+        ("",                                    None,     " .....",    3.0),
+        ("",                                    None,     "\x15hea",   3.0),
+        ("Color categorical columns by group",  None,     "\r",        4.0),
     ]),
 
     "plot": F(NYSE, [
         ("Move cursor to a numeric column",                  "lll",        "lll",    2.0),
         ("Open command menu with Space",                     None,         None,     2.0),
-        ("",                                                 None,         " .....", 4.0),  # fzf char loss padding
-        ("Render a histogram with ggplot2\nPress q to close", None,        "\x15hist\r", 5.0),
+        ("",                                                 None,         " .....", 3.0),  # fzf char loss padding
+        ("",                                                 None,         "\x15hist", 3.0),  # type command (fzf visible)
+        ("Render a histogram with ggplot2\nPress q to close", None,        "\r",     5.0),
         ("",                                                 None,         "q",      1.0),
     ]),
 
     "fzf": F(NYSE, [
         ("Press Space to open the command menu", None,       None,         2.0),
-        ("",                                     None,       " .....",     4.0),  # fzf char loss padding
-        ("Type to search, Enter to run",         None,       "\x15th\r",  3.5),
+        ("",                                     None,       " .....",     3.0),  # fzf char loss padding
+        ("Type to search, Enter to run",         None,       "\x15th",    3.5),  # type (fzf visible with input)
+        ("",                                     None,       "\r",        3.5),
     ]),
 
     "meta": F(NYSE, [
@@ -95,7 +99,8 @@ FEATURES = {
     "split": F("data/split_test.csv", [
         ("A table with a column containing a-b values",           None, None,                        3.0),
         ("Press : to split a column by a delimiter",              None, None,                        2.0),
-        ("",                                                      None, ":.........\x15-\r",         5.0),
+        ("",                                                      None, ":.........\x15-",           3.0),  # fzf visible with "-"
+        ("",                                                      None, "\r",                        2.0),
         ("New columns appear from the split parts\nScroll right to see them", None, "gl",            5.0),
     ]),
 
@@ -103,7 +108,8 @@ FEATURES = {
         ("Move to the Exchange column",                             "l",   "l",                         2.0),
         ("Press \\ to open the filter prompt",                      None,  None,                        2.0),
         ("",                                                        None,  "\\........",                 5.0),  # \ opens fzf, more dots for 10k row load
-        ("",                                                        None,  "\x15Exchange ~= 'P'\r",     2.0),  # ctrl-u + type + enter
+        ("",                                                        None,  "\x15Exchange ~= 'P'",       3.0),  # ctrl-u + type (fzf visible)
+        ("",                                                        None,  "\r",                        2.0),
         ("Only rows where Exchange contains P remain",              None,  None,                        5.0),
     ]),
 
@@ -113,8 +119,8 @@ FEATURES = {
         ("A simple table with columns x, y, z",               None, None,                     3.0),
         ("Press = to open the derive prompt",                  None, None,                     2.0),
         ("",                                                   None, "=......",                3.0),  # dots absorb fzf char loss
-        ("",                                                   None, "\x15double = x * 2",     3.0),  # ctrl-u clears, then type
-        ("",                                                   None, "\r",                     2.0),  # enter, back to table
+        ("",                                                   None, "\x15double = x * 2",     3.0),  # ctrl-u clears, then type (fzf visible)
+        ("",                                                   None, "\r",                     3.0),  # enter, back to table
         ("The new 'double' column appears",                    None, "gl",                     4.0),
     ]),
 
