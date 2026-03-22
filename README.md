@@ -387,6 +387,15 @@ In `-c` mode, argument commands use `<ret>` as terminator:
 
 The socket is per-process and cleaned up on exit.
 
+## Demo GIFs
+
+The demo GIFs in `doc/` are recorded via `scripts/gen_demo.py` using asciinema `.cast` files
+converted to GIF with [agg](https://github.com/asciinema/agg). Features that need fzf for
+free-text input (split, derive, filter) send commands via the socket channel instead, because
+fzf's `--print-query` text return doesn't work in pty recordings. Features that only need fzf
+for selection (folder search, command menu) work fine — fzf display and index selection work
+in pty, only typed-text return is broken.
+
 ## Known Limitations
 
 - Duration columns display as raw int64 (DuckDB ADBC limitation)
