@@ -651,6 +651,25 @@ def test_filter_arg : IO Unit := do
   -- 528 rows with Exchange=P in nyse10k
   assert (contains status "r0/528") "filter_arg: 528 rows after filter"
 
+-- | Export via argument command: -c "ecsv<ret>" exports without fzf
+def test_export_arg : IO Unit := do
+  log "export_arg"
+  let home := (← IO.getEnv "HOME").getD "."
+  let path := s!"{home}/tv_export_sort_test.csv"
+  try IO.FS.removeFile path catch _ => pure ()
+  let _ ← run "ecsv<ret>" "data/sort_test.parquet"
+  let csv ← IO.FS.readFile path
+  assert (contains csv "name") "export_arg: csv should contain header"
+  assert (contains csv "alice") "export_arg: csv should contain data"
+  IO.FS.removeFile path
+
+-- | Column jump via argument command: -c "sExchange<ret>" jumps to Exchange column
+def test_col_jump_arg : IO Unit := do
+  log "col_jump_arg"
+  let out ← run "sExchange<ret>" "data/nyse10k.parquet"
+  let (_, status) := footer out
+  assert (contains status "c1/") "col_jump_arg: cursor moved to Exchange column"
+
 -- === Export tests ===
 
 -- | Export: press 'e', fzf auto-selects csv, verify file created with correct content
@@ -1150,6 +1169,8 @@ def ciTests : Array (String × IO Unit) := #[
   ("script_from", test_script_from),
   -- Export tests
   ("export_csv", test_export_csv),
+  ("export_arg", test_export_arg),
+  ("col_jump_arg", test_col_jump_arg),
   -- Transpose tests
   ("transpose", test_transpose),
   ("transpose_pop", test_transpose_pop),

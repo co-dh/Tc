@@ -376,6 +376,11 @@ echo "/NYSE" | socat - UNIX-CONNECT:$TV_SOCK        # search for value
 | `=name = expr` | `=d = x * 2` | Derive computed column |
 | `\expr` | `\Price > 100` | Filter rows by PRQL expression |
 | `/value` | `/NYSE` | Search for value in current column |
+| `sname` | `sExchange` | Jump to column by name |
+| `efmt` | `ecsv` | Export (csv/parquet/json/ndjson) |
+| `Wname` | `Wmysess` | Save session |
+| `Lname` | `Lmysess` | Load session |
+| `Jidx` | `J0` | Join (0=inner, 1=left, 2=right, 3=union, 4=diff) |
 
 In `-c` mode, argument commands use `<ret>` as terminator:
 `tv data.csv -c ":-<ret>lll"` (split by `-`, move right 3).

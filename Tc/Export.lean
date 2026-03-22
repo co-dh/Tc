@@ -40,4 +40,9 @@ def run (s : ViewStack AdbcTable) (fmt : ExportFmt) : IO (ViewStack AdbcTable) :
   statusMsg s!"exported {path}"
   pure s
 
+-- | Export by format string directly (no fzf). Called by socket/dispatch.
+def runWith (s : ViewStack AdbcTable) (fmtStr : String) : IO (ViewStack AdbcTable) := do
+  let some fmt := ExportFmt.ofString? fmtStr | return s
+  run s fmt
+
 end Tc.Export

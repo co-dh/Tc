@@ -127,14 +127,27 @@ private partial def runStackIO (a : AppState) (f : IO (ViewStack AdbcTable)) : I
   | .ok s' => pure { a with stk := s', vs := .default, sparklines := #[] }
   | .error e => Log.error e.toString; errorPopup e.toString; pure a
 
+-- | Run an ArgCmd: dispatch to runWith (with arg) or fzf run (empty arg = old test mode)
+private partial def runArgCmd (a : AppState) (ac : ArgCmd) : IO AppState := match ac with
+  | .split delim  => runStackIO a (if delim.isEmpty then Split.run a.stk else Split.runWith a.stk delim)
+  | .derive expr  => runStackIO a (if expr.isEmpty then Derive.run a.stk else Derive.runWith a.stk expr)
+  | .filter expr  => runStackIO a (if expr.isEmpty then ViewStack.rowFilter a.stk else ViewStack.filterWith a.stk expr)
+  | .search val   => runStackIO a (if val.isEmpty then ViewStack.rowSearch a.stk else ViewStack.searchWith a.stk val)
+  | .colJump name => runStackIO a (if name.isEmpty then ViewStack.colSearch a.stk else ViewStack.colJumpWith a.stk name)
+  | .export fmt   => runStackIO a (if fmt.isEmpty then do
+      match ← Export.pickFmt with | some f => Export.run a.stk f | none => pure a.stk
+    else Export.runWith a.stk fmt)
+  | .sessSave nm  => runStackIO a (do Session.saveWith a.stk nm; pure a.stk)
+  | .sessLoad nm  => runStackIO a (do
+    match ← Session.loadWith nm with | some stk' => pure stk' | none => pure a.stk)
+  | .join idx     => runStackIO a (do
+    match ← Join.runWith a.stk idx with | some s' => pure s' | none => pure a.stk)
+
 -- | Dispatch a command string: parse → update → run effect
 private partial def dispatchCmd (a : AppState) (cmdStr : String) : IO AppState := do
   Log.write "sock" s!"cmd={cmdStr}"
   match (Parse.parse? cmdStr : Option Cmd) with
-  | some (.splitBy delim) => runStackIO a (Split.runWith a.stk delim)
-  | some (.deriveExpr expr) => runStackIO a (Derive.runWith a.stk expr)
-  | some (.filterExpr expr) => runStackIO a (ViewStack.filterWith a.stk expr)
-  | some (.searchExpr val) => runStackIO a (ViewStack.searchWith a.stk val)
+  | some (.arg ac) => runArgCmd a ac
   | some cmd => match a.update cmd with
     | some (a', e) =>
       let a'' ← if e.isNone then pure a' else runEffect a' e
@@ -192,40 +205,19 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   if ev.type == 0 then return ← mainLoop a test ks'
   if isKey ev 'Q' then return a
   if isKey ev ' ' then mainLoop (← runEffect a (.fzf .cmd)) test ks'
-  -- Argument commands: in test mode, collect chars up to \r and dispatch; in interactive, open fzf
-  else if isKey ev '=' || isKey ev ':' || isKey ev '\\' || isKey ev '/' then do
-    let pfx := String.ofList [Char.ofNat ev.ch.toNat]
-    if test && ks'.any (· == '\r') then  -- -c mode with argument: collect until \r
+  -- Argument commands: collect argument up to \r in -c mode, empty arg triggers fzf fallback
+  else if ArgCmd.isPfx (Char.ofNat ev.ch.toNat) then do
+    let pfxCh := Char.ofNat ev.ch.toNat
+    let (arg, rest) := if test && ks'.any (· == '\r') then
       let idx := ks'.findIdx? (· == '\r') |>.getD ks'.size
-      let arg := String.ofList (ks'.extract 0 idx).toList
-      let rest := ks'.extract (idx + 1) ks'.size
-      let a' ← dispatchCmd a (pfx ++ arg)
-      mainLoop a' test rest
-    else  -- interactive: open fzf, then dispatch result
-      let fzfRun := match pfx with
-        | "=" => Derive.run a.stk | ":" => Split.run a.stk
-        | "\\" => ViewStack.rowFilter a.stk | _ => ViewStack.rowSearch a.stk
-      let a' ← runStackIO a fzfRun
-      mainLoop a' test ks'
-  else if isKey ev 'e' then do
-    match ← Export.pickFmt with
-    | some fmt => mainLoop (← runEffect a (.export fmt)) test ks'
-    | none => mainLoop a test ks'
+      (String.ofList (ks'.extract 0 idx).toList, ks'.extract (idx + 1) ks'.size)
+    else ("", ks')
+    let a' ← match ArgCmd.ofPfx? pfxCh arg with
+      | some ac => runArgCmd a ac
+      | none => pure a
+    mainLoop a' test rest
   else if isKey ev 'X' then do
     match ← Transpose.push a.stk with
-    | some s' => mainLoop { a with stk := s', vs := .default, sparklines := #[] } test ks'
-    | none => mainLoop a test ks'
-  else if isKey ev 'W' then do
-    Session.save a.stk
-    mainLoop a test ks'
-  else if isKey ev 'L' then do
-    match ← Session.pickLoadName with
-    | some name => match ← Session.load name with
-      | some stk' => mainLoop { a with stk := stk', vs := .default, sparklines := #[] } test ks'
-      | none => statusMsg s!"session load failed: {name}"; mainLoop a test ks'
-    | none => mainLoop a test ks'
-  else if isKey ev 'J' then do
-    match ← Join.run a.stk with
     | some s' => mainLoop { a with stk := s', vs := .default, sparklines := #[] } test ks'
     | none => mainLoop a test ks'
   else if isKey ev 'V' then do

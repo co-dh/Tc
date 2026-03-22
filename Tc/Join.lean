@@ -39,21 +39,11 @@ private def prepareView (tbl : AdbcTable) (suffix : String) : IO (String × Stri
   let some sql ← Prql.compile prql | throw (IO.userError "PRQL compile failed")
   pure (name, stripSemi sql)
 
--- Full workflow: validate stack, show fzf menu, execute, push result
-def run (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
-  let some parent := s.tl.head? | return none  -- need ≥2 views
-  let leftGrp := parent.nav.grp
-  let rightGrp := s.cur.nav.grp
-  -- Joins require matching key columns by name; union/diff always available
-  let joinOk := leftGrp.size > 0 && leftGrp == rightGrp
-  let ops := if joinOk then allOps else #[.union, .diff]
-  -- Prepare view names + SQL (deferred DDL — no DB work until after fzf)
+-- | Execute join with resolved op. Shared by run (fzf) and runWith (socket).
+private def execJoin (s : ViewStack AdbcTable) (op : JoinOp) (leftGrp : Array String) : IO (Option (ViewStack AdbcTable)) := do
+  let some parent := s.tl.head? | return none
   let (lName, lSql) ← prepareView parent.nav.tbl "l"
   let (rName, rSql) ← prepareView s.tbl "r"
-  let items := ops.map fun op => s!"{opLabel op}  |  {prqlStr lName rName leftGrp op}"
-  let some idx ← Fzf.fzfIdx #["--prompt=join> "] items | return none
-  let op := ops.getD idx .inner
-  -- Create temp views + materialize join result (only after user confirms)
   let _ ← Adbc.query s!"CREATE OR REPLACE TEMP VIEW {lName} AS {lSql}"
   let _ ← Adbc.query s!"CREATE OR REPLACE TEMP VIEW {rName} AS {rSql}"
   let prql := prqlStr lName rName leftGrp op
@@ -65,7 +55,6 @@ def run (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let q : Prql.Query := { base := s!"from {tblName}" }
   let total ← AdbcTable.queryCount q
   let some adbc ← AdbcTable.requery q total | return none
-  -- Pop top view, replace second with result
   let some s' := s.pop | return none
   let disp := match op with
     | .union => "union" | .diff => "diff"
@@ -73,5 +62,29 @@ def run (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   match View.fromTbl adbc s'.cur.path with
   | some v => return some (s'.setCur { v with disp })
   | none => return none
+
+-- | Resolve available ops from stack state
+private def resolveOps (s : ViewStack AdbcTable) : Option (Array JoinOp × Array String) := do
+  let parent ← s.tl.head?
+  let leftGrp := parent.nav.grp
+  let joinOk := leftGrp.size > 0 && leftGrp == s.cur.nav.grp
+  pure (if joinOk then allOps else #[.union, .diff], leftGrp)
+
+-- Full workflow: validate stack, show fzf menu, execute, push result
+def run (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
+  let some (ops, leftGrp) := resolveOps s | return none
+  let some parent := s.tl.head? | return none
+  let (lName, _) ← prepareView parent.nav.tbl "l"
+  let (rName, _) ← prepareView s.tbl "r"
+  let items := ops.map fun op => s!"{opLabel op}  |  {prqlStr lName rName leftGrp op}"
+  let some idx ← Fzf.fzfIdx #["--prompt=join> "] items | return none
+  execJoin s (ops.getD idx .inner) leftGrp
+
+-- | Join by operation index directly (no fzf). Called by socket/dispatch.
+def runWith (s : ViewStack AdbcTable) (idxStr : String) : IO (Option (ViewStack AdbcTable)) := do
+  let some (ops, leftGrp) := resolveOps s | return none
+  let idx := idxStr.toNat?.getD 0
+  if idx >= ops.size then return none
+  execJoin s (ops.getD idx .inner) leftGrp
 
 end Tc.Join
