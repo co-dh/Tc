@@ -5,7 +5,7 @@ Usage:
   python3 scripts/gen_demo.py           # record all GIFs
   python3 scripts/gen_demo.py folder    # record one feature
 """
-import os, pty, select, signal, struct, sys, json, time, fcntl, termios, subprocess
+import os, pty, select, signal, socket as sock_mod, struct, sys, json, time, fcntl, termios, subprocess
 
 TC = ".lake/build/bin/tv"
 AGG = os.environ.get("AGG", "agg")
@@ -94,33 +94,30 @@ FEATURES = {
         ("",                                                      None, "!",  3.0),
     ]),
 
-    # split: : opens fzf. Send dots as padding, ctrl-u clears, type -, enter.
-    # All in one step to avoid drain() between : and the input.
+    # split: send :- via socket (bypasses fzf, works in pty recording)
     "split": F("data/split_test.csv", [
         ("A table with a column containing a-b values",           None, None,                        3.0),
-        ("Press : to split a column by a delimiter",              None, None,                        2.0),
-        ("",                                                      None, ":.........\x15-",           3.0),  # fzf visible with "-"
-        ("New columns appear from the split parts",               None, "\r",                        5.0),
+        ("Press : to split, type - and Enter",                     ": - Enter", "!:-",                3.0),
+        ("New columns appear from the split parts",               None, "!c+",                      0.5),
+        ("",                                                      None, "!c+",                      0.5),
+        ("",                                                      None, "!c+",                      0.5),
+        ("",                                                      None, "!c+",                      5.0),
     ]),
 
+    # filter: send \expr via socket (bypasses fzf)
     "filter": F(NYSE, [
         ("Move to the Exchange column",                             "l",   "l",                         2.0),
-        ("Press \\ to open the filter prompt",                      None,  None,                        2.0),
-        ("",                                                        None,  "\\........",                 5.0),  # \ opens fzf, more dots for 10k row load
-        ("",                                                        None,  "\x15Exchange ~= 'P'",       3.0),  # ctrl-u + type (fzf visible)
-        ("",                                                        None,  "\r",                        2.0),
-        ("Only rows where Exchange contains P remain",              None,  None,                        5.0),
+        ("Filter rows where Exchange contains 'P'",                 "\\Exchange ~= 'P'",  "!\\Exchange ~= 'P'",  3.0),
+        ("Only matching rows remain",                               None,  None,                        5.0),
     ]),
 
-    # derive: pad with dots before real input — fzf eats first chars during startup.
-    # ctrl-u clears the line so only the real expression remains.
+    # derive: send =expr via socket (bypasses fzf)
     "derive": F("data/numeric.csv", [
         ("A simple table with columns x, y, z",               None, None,                     3.0),
-        ("Press = to open the derive prompt",                  None, None,                     2.0),
-        ("",                                                   None, "=......",                3.0),  # dots absorb fzf char loss
-        ("",                                                   None, "\x15double = x * 2",     3.0),  # ctrl-u clears, then type (fzf visible)
-        ("",                                                   None, "\r",                     3.0),  # enter, back to table
-        ("The new 'double' column appears",                    None, "lll",                    4.0),
+        ("Press = to derive: double = x * 2",                 "= double = x * 2 Enter", "!=double = x * 2", 3.0),
+        ("The new 'double' column appears",                    None, "!c+",                   0.5),
+        ("",                                                   None, "!c+",                   0.5),
+        ("",                                                   None, "!c+",                   5.0),
     ]),
 
     # diff_compare: static side-by-side showing first, second, and diff result
@@ -154,32 +151,35 @@ FEATURES = {
 
 # -- Title overlay -------------------------------------------------------------
 
+BOX_H = 4  # fixed: blank + line1 + line2 + blank
+BOX_ROW = H // 2 - BOX_H // 2  # fixed vertical position
+
 def title_escape(desc, keys):
-    """Centered golden-ratio title box in the middle of the screen.
-    Supports multi-line descriptions via \\n in desc string."""
+    """Fixed-size title box: 2 content lines + top/bottom padding.
+    Line 1 = description, line 2 = keys (or second line of desc if multiline)."""
     if not desc:
-        return ""
-    first = f"{desc.split(chr(10))[0]}  ({keys})" if keys else desc.split(chr(10))[0]
-    lines = [first] + desc.split(chr(10))[1:] if chr(10) in desc else [first]
-    # pad each line to box width
-    rendered = []
-    for ln in lines:
-        pad = max(BOX_W - len(ln), 0)
-        left = pad // 2
-        rendered.append(" " * left + ln + " " * (pad - left))
+        return "", 0
+    # Split desc into lines, append keys to first line if short enough
+    parts = desc.split(chr(10))
+    line1 = f"{parts[0]}  ({keys})" if keys and len(parts[0]) + len(keys) + 4 <= BOX_W else parts[0]
+    line2 = parts[1] if len(parts) > 1 else (f"({keys})" if keys and line1 == parts[0] else "")
+    # Truncate if still too wide
+    if len(line1) > BOX_W: line1 = line1[:BOX_W]
+    if len(line2) > BOX_W: line2 = line2[:BOX_W]
+    # Center each line within box
+    def pad(s):
+        p = max(BOX_W - len(s), 0)
+        return " " * (p // 2) + s + " " * (p - p // 2)
     blank = " " * BOX_W
     margin = (W - BOX_W) // 2
     indent = f"\x1b[{margin + 1}G"
-    # center vertically: box = blank + lines + blank
-    box_h = len(rendered) + 2
-    row = H // 2 - box_h // 2
-    esc = "\x1b[1;97;44m"
-    rst = "\x1b[0m"
-    out = f"\x1b7\x1b[{row};1H{indent}{esc}{blank}{rst}"
-    for i, ln in enumerate(rendered):
-        out += f"\x1b[{row+1+i};1H{indent}{esc}{ln}{rst}"
-    out += f"\x1b[{row+1+len(rendered)};1H{indent}{esc}{blank}{rst}\x1b8"
-    return out
+    esc, rst = "\x1b[1;97;44m", "\x1b[0m"
+    row = BOX_ROW
+    out = f"\x1b7"
+    for i, ln in enumerate([blank, pad(line1), pad(line2), blank]):
+        out += f"\x1b[{row+i};1H{indent}{esc}{ln}{rst}"
+    out += "\x1b8"
+    return out, 2
 
 # -- Recording engine ----------------------------------------------------------
 
@@ -187,7 +187,8 @@ def record(cli_args, steps, cast_path):
     os.makedirs(os.path.dirname(cast_path), exist_ok=True)
     env = {**os.environ,
            "LD_LIBRARY_PATH": "/usr/local/lib:" + os.environ.get("LD_LIBRARY_PATH", ""),
-           "TERM": "xterm-256color"}
+           "TERM": "xterm-256color",
+           "TMPDIR": "/tmp"}  # real /tmp for socket; gen_demo.py is in excludedCommands
     env.pop("TMUX", None)  # fzf --tmux fails in pty; force inline mode
 
     header = {"version": 2, "width": W, "height": H,
@@ -232,11 +233,26 @@ def record(cli_args, steps, cast_path):
             if buf:
                 t = time.monotonic() - t0
                 text = buf.decode("utf-8", errors="replace")
-                # Drop alternate-screen-exit frames — they cause a black last frame in GIFs
-                if "\x1b[?1049l" not in text:
-                    cast_f.write(json.dumps([round(t, 3), "o", text]) + "\n")
+                # Alt-screen-exit frames: replace with clear screen (agg doesn't track alt buffers)
+                if "\x1b[?1049l" in text:
+                    text = "\x1b[2J\x1b[H"  # clear screen + home cursor
+                cast_f.write(json.dumps([round(t, 3), "o", text]) + "\n")
                 sys.stdout.buffer.write(buf)
                 sys.stdout.buffer.flush()
+
+        # Send command via tv's Unix socket (bypasses fzf)
+        sock_path = f"{env.get('TMPDIR', '/tmp')}/tv-{pid}.sock"
+        def sock_send(cmd):
+            """Send a command string to tv's socket. Retries briefly if socket not ready."""
+            for _ in range(20):
+                try:
+                    s = sock_mod.socket(sock_mod.AF_UNIX, sock_mod.SOCK_STREAM)
+                    s.connect(sock_path)
+                    s.sendall(cmd.encode())
+                    s.close()
+                    return
+                except (ConnectionRefusedError, FileNotFoundError):
+                    time.sleep(0.1)
 
         # Warmup: wait for tv to call tb_init() and render first frame.
         # tb_init uses TCSAFLUSH which discards pending pty input.
@@ -249,29 +265,30 @@ def record(cli_args, steps, cast_path):
             for desc, keys_shown, keys, pause in steps:
                 if child_dead:
                     break
-                # Clear previous title overlay if this step has no title
-                if not desc and last_title_lines > 0:
-                    box_h = last_title_lines + 2
-                    row = H // 2 - box_h // 2
+                # Clear previous title overlay before drawing a new one
+                if last_title_lines > 0 and desc:
                     margin = (W - BOX_W) // 2
                     indent = f"\x1b[{margin + 1}G"
                     clr = "\x1b7"
-                    for i in range(box_h):
-                        clr += f"\x1b[{row+i};1H{indent}\x1b[{BOX_W}X"
+                    for i in range(BOX_H):
+                        clr += f"\x1b[{BOX_ROW+i};1H{indent}\x1b[{BOX_W}X"
                     clr += "\x1b8"
                     emit(clr)
                     last_title_lines = 0
                 if keys is not None:
-                    # No drain() between chars: reading pty output mid-keystroke
-                    # causes fzf to lose input chars (pty flow control issue).
-                    for ch in keys:
-                        os.write(fd, ch.encode())
-                        time.sleep(0.08)
+                    if keys.startswith("!"):
+                        # Socket command: bypass fzf, send directly to tv socket
+                        sock_send(keys[1:])
+                    else:
+                        # Keystroke injection via pty
+                        for ch in keys:
+                            os.write(fd, ch.encode())
+                            time.sleep(0.08)
                 drain(0.5)
-                title = title_escape(desc, keys_shown)
+                title, nlines = title_escape(desc, keys_shown)
                 if title:
                     emit(title)
-                    last_title_lines = len(desc.split(chr(10))) if desc else 0
+                    last_title_lines = nlines
                 time.sleep(pause)
                 drain(0.1)
         except OSError:

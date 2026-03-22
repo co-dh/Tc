@@ -48,7 +48,8 @@ def fzfCore (opts : Array String) (input : String) (poll : IO Unit := pure ()) :
       IO.sleep 30
     let out ← outRef.get
     let _ ← child'.wait
-    if !inTmux then let _ ← Term.init; pure ()
+    -- Clear after re-init: fzf inline renders below termbox area, leaving residue
+    if !inTmux then let _ ← Term.init; Term.clear; Term.present
     pure out.trimAscii.toString
 
 -- | Single select: returns none if empty/cancelled
