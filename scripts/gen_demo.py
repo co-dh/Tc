@@ -34,8 +34,9 @@ FEATURES = {
         ("Backspace goes to parent folder",                   "Backspace",  "\x7f",  3.0),
         ("Press / to search for a file",                      None,         None,    2.0),
         ("",                                                  None,         "/.....",  5.0),  # fzf char loss padding
-        ("",                                                  None,         "\x15nyse\r", 2.0),  # ctrl-u + type + enter
-        ("Open the parquet file\nPress q to go back",         "Enter",      "\r",    3.0),
+        ("",                                                  None,         "\x15nyse\r", 4.0),  # ctrl-u + type + enter; linger on result
+        ("Cursor jumps to the matched file\nPress Enter to open", None,    None,    3.0),
+        ("",                                                  None,         "\r",    3.0),
         ("",                                                  None,         "q",     1.0),
         ("Open a CSV file",                                   "j Enter",    "j\r",   3.0),
     ]),
