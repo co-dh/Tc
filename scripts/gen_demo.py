@@ -100,8 +100,7 @@ FEATURES = {
         ("A table with a column containing a-b values",           None, None,                        3.0),
         ("Press : to split a column by a delimiter",              None, None,                        2.0),
         ("",                                                      None, ":.........\x15-",           3.0),  # fzf visible with "-"
-        ("",                                                      None, "\r",                        2.0),
-        ("New columns appear from the split parts\nJump to last column to see them", None, "G",             5.0),
+        ("New columns appear from the split parts",               None, "\r",                        5.0),
     ]),
 
     "filter": F(NYSE, [
@@ -121,7 +120,7 @@ FEATURES = {
         ("",                                                   None, "=......",                3.0),  # dots absorb fzf char loss
         ("",                                                   None, "\x15double = x * 2",     3.0),  # ctrl-u clears, then type (fzf visible)
         ("",                                                   None, "\r",                     3.0),  # enter, back to table
-        ("The new 'double' column appears",                    None, "G",                      4.0),
+        ("The new 'double' column appears",                    None, "lll",                    4.0),
     ]),
 
     # diff_compare: static side-by-side showing first, second, and diff result

@@ -168,10 +168,10 @@ tv -s mysession                    # Restore saved session
 | `K` / `PgUp`  | Page up |
 | `H`           | Page left |
 | `L`           | Page right |
-| `gj`          | Bottom |
-| `gk`          | Top    |
-| `gh`          | First column |
-| `gl`          | Last column |
+| `Space V >`   | Bottom |
+| `Space V <`   | Top    |
+| `Space H <`   | First column |
+| `Space H >`   | Last column |
 
 ### Views
 
