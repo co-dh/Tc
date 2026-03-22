@@ -45,6 +45,8 @@ Charts are rendered with R/ggplot2 and displayed in the terminal.
 
 ![plot](doc/plot.gif)
 
+![plot example](doc/plot-example.png)
+
 ### Command menu
 
 Press Space to open a fuzzy-search command menu. Type to filter,
