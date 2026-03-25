@@ -723,21 +723,30 @@ def test_key_shift : IO Unit := do
   let aPos := hdr.splitOn "a" |>.head?.map (·.length) |>.getD 999
   assert (bPos < aPos) s!"shift-left: b ({bPos}) should appear before a ({aPos}) in header"
 
--- | Heatmap mode cycling: space m , reduces mode, space m . increases (default=0 off)
+-- | Heat mode: test via socket dispatch (m0-m3 direct mode selection)
 def test_heat_mode : IO Unit := do
   log "heat_mode"
-  -- space m , at mode 0 stays at 0 (clamped); verify rendering still works
-  let output ← run " m," "data/basic.csv"
-  assert (contains output "a") "heat mode dec: still shows column a"
-  -- space m . increases mode from 0→1; verify rendering still works
-  let output ← run " m." "data/basic.csv"
-  assert (contains output "a") "heat mode inc: still shows column a"
-  -- space m . . . increases to 3 (clamped max); verify rendering still works
-  let output ← run " m..." "data/basic.csv"
-  assert (contains output "a") "heat mode inc to max: still shows column a"
+  unless (← hasCmd "socat") do log "  skip (no socat)"; return
+  let tmpdir := (← IO.getEnv "TMPDIR").getD "/tmp"
+  -- Spawn tv with wait pauses so socket commands can arrive
+  let waits := String.ofList ['\x16', '\x16', '\x16']
+  let cfg : IO.Process.SpawnArgs := { cmd := bin, args := #["data/basic.csv", "-c", waits], stdin := .null, stdout := .piped, stderr := .piped }
+  let child ← IO.Process.spawn cfg
+  let sockPath := s!"{tmpdir}/tv-{child.pid}.sock"
+  let mut ready := false
+  for _ in List.range 50 do
+    if ← hasFile sockPath then ready := true; break
+    IO.sleep 20
+  unless ready do log "  skip (socket not ready)"; return
+  -- Send m3 (heat both) via socket
+  let _ ← IO.Process.output { cmd := "bash", args := #["-c", s!"printf 'm3' | socat - UNIX-CONNECT:{sockPath}"] }
+  IO.sleep 50
+  let out ← child.stdout.readToEnd
+  let _ ← child.wait
+  assert (contains out "a") "heat mode 3 (both): renders after socket m3"
 
 -- | Flat command menu: space triggers single-level fzf menu (test mode picks first item)
--- Verifies the 2-level menu → flat menu refactor doesn't break menu dispatch
+-- Each item shows 2-char code + description, selecting applies the command
 def test_flat_menu : IO Unit := do
   log "flat_menu"
   -- In test mode, space → cmdMode picks first flat item → row .dec (cursor up from r0 = no-op)

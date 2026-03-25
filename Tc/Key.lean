@@ -123,7 +123,7 @@ def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
   | 'D' => #[('<', "depth--", .dec), ('>', "depth++", .inc), ('~', "enter", .ent), ('d', "trash", .del), ('c', "push folder", .dup)]
   | 'P' => #[('>', "line — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .inc), ('<', "bar — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .dec), ('s', "scatter — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .ent), ('h', "histogram — just put cursor on a numeric column, no grouping needed", .del), ('b', "boxplot — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .dup), ('a', "area — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .up)]
   | 'K' => #[('<', "shift left", .dec), ('>', "shift right", .inc)]
-  | 'm' => #[('<', "less color", .dec), ('>', "more color", .inc)]
+  | 'm' => #[('0', "off", .val 0), ('1', "numeric", .val 1), ('2', "categorical", .val 2), ('3', "both", .val 3)]
   | 'y' => #[('~', "cell", .ent), ('>', "row", .inc), ('<', "column", .dec)]
   | _   => #[]
 
