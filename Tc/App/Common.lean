@@ -60,12 +60,8 @@ private def liftStk (a : AppState) (cmd : Cmd) (r : Option (ViewStack AdbcTable 
 def update (a : AppState) (cmd : Cmd) : Option (AppState × Effect) :=
   let viewUp := View.update a.stk.cur cmd 20 |>.map fun (v', e) => (withStk a cmd (a.stk.setCur v'), e)
   match cmd with
-  | .heat v   => let m' := match v with
-                    | .val n => min 3 n  -- direct mode selection: m0=off, m1=numeric, m2=categorical, m3=both
-                    | .inc => min 3 (a.heatMode + 1)
-                    | .dec => if a.heatMode > 0 then a.heatMode - 1 else 0
-                    | _ => a.heatMode
-                  some ({ a with heatMode := m' }, .none)
+  | .heat (.val n) => some ({ a with heatMode := min 3 n }, .none)  -- m0=off, m1=numeric, m2=categorical, m3=both
+  | .heat _        => some (a, .none)  -- ignore inc/dec (use m0-m3 directly)
   | .thm _    => a.theme.update cmd |>.map fun (t', e) => ({ a with theme := t' }, e)
   | .info _   => a.info.update cmd |>.map fun (i', e) => ({ a with info := i' }, e)
   | .stk _    => liftStk a cmd (ViewStack.update a.stk cmd)
