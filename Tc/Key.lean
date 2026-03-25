@@ -161,7 +161,7 @@ theorem enterCmd_fld : ∀ p d, enterCmd (.fld p d) = some (.fld .ent) := by
   intros; rfl
 
 -- | Convert Term.Event to Cmd: special terminal keys (Enter/Backspace/Shift+Arrow) + nav/special/ctrl.
--- KeyMap.char is handled separately in mainLoop (returns KeyAction, not Cmd).
+-- KeyMap.char is handled separately in mainLoop via lookup.
 def evToCmd (ev : Term.Event) (vk : ViewKind) : Option Cmd :=
   if ev.type != Term.eventKey then none else
   if ev.key == Term.keyEnter then enterCmd vk else
