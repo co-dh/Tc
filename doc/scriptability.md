@@ -65,6 +65,6 @@ Script file = `.prql` file. No new language.
 **Pros**: users already know PRQL (or learn once), no custom grammar, compiler infra exists.
 **Cons**: PRQL syntax is heavier than options 1-2 for simple ops.
 
-## Recommendation
+## Current State
 
-**Option 2** (Kakoune-style) with **option 3** as escape hatch. The `Op` type is already the right abstraction. A thin parser from `:sort -age +name` → `Op.sort #[("age", false), ("name", true)]` is ~30 lines. For anything complex, fall through to raw PRQL. The `-c` keystroke injection stays for testing; `:` commands become the user-facing scripting layer.
+**Option 3** (`-p` PRQL flag) was implemented and later removed in favor of the **socket command interface**, which is more flexible — it allows external tools to send commands to a running Tc instance, supports both simple and compound operations, and doesn't require a separate CLI mode. The `-c` keystroke injection stays for testing.

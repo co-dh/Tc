@@ -544,51 +544,6 @@ def test_hf_backspace : IO Unit := do
   let output ← run "jj<ret><bs>" "hf://datasets/openai/gsm8k"
   assert (contains output "gsm8k") "backspace returns to HF repo root"
 
--- === Script mode (-p) tests ===
-
--- | -p with implicit from: filter rows where a > 2
-def test_script_filter : IO Unit := do
-  log "script_filter"
-  let out ← IO.Process.output { cmd := bin, args := #["data/basic.csv", "-p", "filter a > 2"] }
-  assert (out.exitCode == 0) s!"script_filter exit code: {out.exitCode}"
-  assert (contains out.stdout "3") "script_filter: row a=3 present"
-  assert (contains out.stdout "5") "script_filter: row a=5 present"
-  assert (!contains out.stdout "\n1\t") "script_filter: row a=1 excluded"
-
--- | -p join: join two CSV files on shared column
-def test_script_join : IO Unit := do
-  log "script_join"
-  IO.FS.writeFile "/tmp/tc_test/left.csv" "k,val\n1,a\n2,b\n3,c\n"
-  IO.FS.writeFile "/tmp/tc_test/right.csv" "k,score\n1,10\n3,30\n"
-  let prql := "from x | join (from `/tmp/tc_test/right.csv`) (==k)"
-  let out ← IO.Process.output { cmd := bin, args := #["/tmp/tc_test/left.csv", "-p", prql] }
-  assert (out.exitCode == 0) s!"script_join exit code: {out.exitCode}"
-  assert (contains out.stdout "10") "script_join: score=10 present"
-  assert (contains out.stdout "30") "script_join: score=30 present"
-  assert (!contains out.stdout "\tb\t") "script_join: val=b excluded (k=2 not in right)"
-
--- | -p append: union two files
-def test_script_append : IO Unit := do
-  log "script_append"
-  IO.FS.writeFile "/tmp/tc_test/a1.csv" "x\n1\n2\n"
-  IO.FS.writeFile "/tmp/tc_test/a2.csv" "x\n3\n4\n"
-  let prql := "from x | append (from `/tmp/tc_test/a2.csv`)"
-  let out ← IO.Process.output { cmd := bin, args := #["/tmp/tc_test/a1.csv", "-p", prql] }
-  assert (out.exitCode == 0) s!"script_append exit code: {out.exitCode}"
-  let lines := out.stdout.splitOn "\n" |>.filter (· != "")
-  -- header + 4 data rows (2 from each file)
-  assert (lines.length == 5) s!"script_append: expected 5 lines, got {lines.length}"
-
--- | -p with explicit from: verify full PRQL passthrough
-def test_script_from : IO Unit := do
-  log "script_from"
-  let out ← IO.Process.output { cmd := bin, args := #["data/basic.csv", "-p", "from `data/basic.csv` | take 2"] }
-  assert (out.exitCode == 0) s!"script_from exit code: {out.exitCode}"
-  let lines := out.stdout.splitOn "\n" |>.filter (· != "")
-  -- header + 2 data rows
-  assert (lines.length == 3) s!"script_from: expected 3 lines, got {lines.length}"
-  assert (contains out.stdout "a\tb") "script_from: header present"
-
 -- === Derive tests ===
 
 -- | Derive: press '=', fzf auto-selects hint "a : int" which lacks "name = expr" format → no-op
@@ -1162,11 +1117,6 @@ def ciTests : Array (String × IO Unit) := #[
   -- Rendering tests
   ("last_col_no_stretch", test_last_col_no_stretch),
   ("width_grows_on_scroll", test_width_grows_on_scroll),
-  -- Script mode (-p) tests
-  ("script_filter", test_script_filter),
-  ("script_join", test_script_join),
-  ("script_append", test_script_append),
-  ("script_from", test_script_from),
   -- Export tests
   ("export_csv", test_export_csv),
   ("export_arg", test_export_arg),
