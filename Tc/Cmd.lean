@@ -153,10 +153,6 @@ instance : Parse Cmd where
       if let some ac := ArgCmd.ofPfx? pfx a then return .arg ac
     none
 
--- | Previewable: pure visual commands safe for live preview (no IO/DB)
--- Currently unused: arrow-cycling removed in favor of direct selection.
-def isPreviewable : Cmd → Bool
-  | _ => false
 
 end Cmd
 
