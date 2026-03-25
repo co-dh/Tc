@@ -53,33 +53,33 @@ theorem key_l : evToCmd (charToEvent 'l') .tbl = some (.col .inc) := by native_d
 theorem key_h : evToCmd (charToEvent 'h') .tbl = some (.col .dec) := by native_decide
 
 -- Single-key shortcuts via KeyMap.char (centralized data table, all obj+verb Cmd)
-#guard lookup KeyMap.char '!' == some (.grp .ent)
-#guard lookup KeyMap.char 'T' == some (.rowSel .ent)
-#guard lookup KeyMap.char 't' == some (.colSel .ent)
-#guard lookup KeyMap.char '[' == some (.colSel .inc)
-#guard lookup KeyMap.char ']' == some (.colSel .dec)
-#guard lookup KeyMap.char 'M' == some (.metaV .dup)
-#guard lookup KeyMap.char 'F' == some (.freq .dup)
-#guard lookup KeyMap.char 'D' == some (.fld .dup)
-#guard lookup KeyMap.char 'q' == some (.stk .dec)      -- pop (s<)
-#guard lookup KeyMap.char 'S' == some (.stk .ent)      -- swap (s~)
-#guard lookup KeyMap.char 'Q' == some (.stk .del)      -- quit (sd)
-#guard lookup KeyMap.char 'X' == some (.stk .up)       -- transpose (s^)
-#guard lookup KeyMap.char 'V' == some (.stk (.val 0))  -- diff (s0)
-#guard lookup KeyMap.char ' ' == some (.col .dup)       -- fzf menu (cc)
-#guard lookup KeyMap.char 'I' == some (.info .ent)
-#guard lookup KeyMap.char 'n' == some (.grp .inc)
-#guard lookup KeyMap.char 'N' == some (.grp .dec)
-#guard lookup KeyMap.char '{' == some (.prev .dec)
-#guard lookup KeyMap.char '}' == some (.prev .inc)
-#guard lookup KeyMap.char '0' == some (.metaV (.val 0))
-#guard lookup KeyMap.char '1' == some (.metaV (.val 1))
+theorem key_bang  : lookup KeyMap.char '!' = some (.grp .ent)       := by native_decide
+theorem key_T     : lookup KeyMap.char 'T' = some (.rowSel .ent)    := by native_decide
+theorem key_t     : lookup KeyMap.char 't' = some (.colSel .ent)    := by native_decide
+theorem key_lbr   : lookup KeyMap.char '[' = some (.colSel .inc)    := by native_decide
+theorem key_rbr   : lookup KeyMap.char ']' = some (.colSel .dec)    := by native_decide
+theorem key_M     : lookup KeyMap.char 'M' = some (.metaV .dup)     := by native_decide
+theorem key_F     : lookup KeyMap.char 'F' = some (.freq .dup)      := by native_decide
+theorem key_D     : lookup KeyMap.char 'D' = some (.fld .dup)       := by native_decide
+theorem key_q     : lookup KeyMap.char 'q' = some (.stk .dec)       := by native_decide  -- pop
+theorem key_S     : lookup KeyMap.char 'S' = some (.stk .ent)       := by native_decide  -- swap
+theorem key_Q     : lookup KeyMap.char 'Q' = some (.stk .del)       := by native_decide  -- quit
+theorem key_X     : lookup KeyMap.char 'X' = some (.stk .up)        := by native_decide  -- transpose
+theorem key_V     : lookup KeyMap.char 'V' = some (.stk (.val 0))   := by native_decide  -- diff
+theorem key_space : lookup KeyMap.char ' ' = some (.col .dup)        := by native_decide  -- fzf menu
+theorem key_I     : lookup KeyMap.char 'I' = some (.info .ent)       := by native_decide
+theorem key_n     : lookup KeyMap.char 'n' = some (.grp .inc)        := by native_decide
+theorem key_N     : lookup KeyMap.char 'N' = some (.grp .dec)        := by native_decide
+theorem key_lbrace: lookup KeyMap.char '{' = some (.prev .dec)       := by native_decide
+theorem key_rbrace: lookup KeyMap.char '}' = some (.prev .inc)       := by native_decide
+theorem key_0     : lookup KeyMap.char '0' = some (.metaV (.val 0))  := by native_decide
+theorem key_1     : lookup KeyMap.char '1' = some (.metaV (.val 1))  := by native_decide
 -- H removed from single-key shortcuts (hide via Space > C > h)
-#guard lookup KeyMap.char 'H' == none
+theorem key_H_none : lookup KeyMap.char 'H' = none                   := by native_decide
 -- ArgCmd prefixes not in KeyMap.char (handled separately in mainLoop)
-#guard lookup KeyMap.char '/' == none
-#guard lookup KeyMap.char 's' == none
-#guard lookup KeyMap.char '\\' == none
+theorem key_slash_none  : lookup KeyMap.char '/'  = none := by native_decide
+theorem key_s_none      : lookup KeyMap.char 's'  = none := by native_decide
+theorem key_bslash_none : lookup KeyMap.char '\\' = none := by native_decide
 
 -- Ctrl keys via evToCmd (from test_page_down/up)
 theorem key_ctrlD : evToCmd (charToEvent '\x04') .tbl = some (.vPage .inc) := by native_decide
@@ -236,68 +236,59 @@ section FilterUpdateTests
 
 end FilterUpdateTests
 
-/-! ## Cmd Parse/ToString Round-Trip Theorem -/
+/-! ## Cmd Parse/ToString Round-Trip Theorems -/
 
 section CmdRoundTripTests
 
--- Obj+verb Cmd round-trip: standard verbs (val digits tested separately)
-#guard (@Parse.parse? Cmd _ "r>") == some (.row .inc)
-#guard (@Parse.parse? Cmd _ "r<") == some (.row .dec)
-#guard (@Parse.parse? Cmd _ "r~") == some (.row .ent)
-#guard (@Parse.parse? Cmd _ "rd") == some (.row .del)
-#guard (@Parse.parse? Cmd _ "rc") == some (.row .dup)
-#guard (@Parse.parse? Cmd _ "r^") == some (.row .up)
-#guard (@Parse.parse? Cmd _ "c>") == some (.col .inc)
-#guard (@Parse.parse? Cmd _ "c<") == some (.col .dec)
-
+-- Verb parse roundtrip (all 7 verb types)
+theorem parse_r_inc : (@Parse.parse? Cmd _ "r>") = some (.row .inc) := by native_decide
+theorem parse_r_dec : (@Parse.parse? Cmd _ "r<") = some (.row .dec) := by native_decide
+theorem parse_r_ent : (@Parse.parse? Cmd _ "r~") = some (.row .ent) := by native_decide
+theorem parse_r_del : (@Parse.parse? Cmd _ "rd") = some (.row .del) := by native_decide
+theorem parse_r_dup : (@Parse.parse? Cmd _ "rc") = some (.row .dup) := by native_decide
+theorem parse_r_up  : (@Parse.parse? Cmd _ "r^") = some (.row .up)  := by native_decide
+theorem parse_c_inc : (@Parse.parse? Cmd _ "c>") = some (.col .inc) := by native_decide
+theorem parse_c_dec : (@Parse.parse? Cmd _ "c<") = some (.col .dec) := by native_decide
 -- Heat mode: direct selection via digit verbs (m0-m3)
-#guard (@Parse.parse? Cmd _ "m0") == some (.heat (.val 0))
-#guard (@Parse.parse? Cmd _ "m1") == some (.heat (.val 1))
-#guard (@Parse.parse? Cmd _ "m2") == some (.heat (.val 2))
-#guard (@Parse.parse? Cmd _ "m3") == some (.heat (.val 3))
-
+theorem parse_m0 : (@Parse.parse? Cmd _ "m0") = some (.heat (.val 0)) := by native_decide
+theorem parse_m1 : (@Parse.parse? Cmd _ "m1") = some (.heat (.val 1)) := by native_decide
+theorem parse_m2 : (@Parse.parse? Cmd _ "m2") = some (.heat (.val 2)) := by native_decide
+theorem parse_m3 : (@Parse.parse? Cmd _ "m3") = some (.heat (.val 3)) := by native_decide
 -- Backward compat: +/- still parse as inc/dec
-#guard (@Parse.parse? Cmd _ "r-") == some (.row .dec)
-#guard (@Parse.parse? Cmd _ "r+") == some (.row .inc)
-#guard (@Parse.parse? Cmd _ "m-") == some (.heat .dec)
-#guard (@Parse.parse? Cmd _ "m+") == some (.heat .inc)
-
+theorem parse_r_minus : (@Parse.parse? Cmd _ "r-") = some (.row .dec)  := by native_decide
+theorem parse_r_plus  : (@Parse.parse? Cmd _ "r+") = some (.row .inc)  := by native_decide
+theorem parse_m_minus : (@Parse.parse? Cmd _ "m-") = some (.heat .dec) := by native_decide
+theorem parse_m_plus  : (@Parse.parse? Cmd _ "m+") = some (.heat .inc) := by native_decide
 -- 2-char obj+verb takes priority over ArgCmd prefix (prevents "s~" → colJump "~" bug)
-#guard (@Parse.parse? Cmd _ "s~") == some (.stk .ent)
-#guard (@Parse.parse? Cmd _ "s<") == some (.stk .dec)
-
--- Argument command parse round-trips (all 9 ArgCmd variants)
-#guard (@Parse.parse? Cmd _ ":-") == some (.arg (.split "-"))
-#guard (@Parse.parse? Cmd _ "=d = x * 2") == some (.arg (.derive "d = x * 2"))
-#guard (@Parse.parse? Cmd _ "\\Bid > 100") == some (.arg (.filter "Bid > 100"))
-#guard (@Parse.parse? Cmd _ "/NYSE") == some (.arg (.search "NYSE"))
-#guard (@Parse.parse? Cmd _ "sExchange") == some (.arg (.colJump "Exchange"))
-#guard (@Parse.parse? Cmd _ "ecsv") == some (.arg (.export "csv"))
-#guard (@Parse.parse? Cmd _ "Wmysess") == some (.arg (.sessSave "mysess"))
-#guard (@Parse.parse? Cmd _ "Lmysess") == some (.arg (.sessLoad "mysess"))
-#guard (@Parse.parse? Cmd _ "J0") == some (.arg (.join "0"))
-
--- Socket codes: <> for inc/dec, digits for direct selection
-#guard (@Parse.parse? Cmd _ "r<") == some (.row .dec)
-#guard (@Parse.parse? Cmd _ "r>") == some (.row .inc)
-#guard (@Parse.parse? Cmd _ "T<") == some (.thm .dec)
-#guard (@Parse.parse? Cmd _ "T>") == some (.thm .inc)
-#guard (@Parse.parse? Cmd _ "w<") == some (.width .dec)
-#guard (@Parse.parse? Cmd _ "w>") == some (.width .inc)
-#guard (@Parse.parse? Cmd _ "p<") == some (.prec .dec)
-#guard (@Parse.parse? Cmd _ "p>") == some (.prec .inc)
--- preview scroll
-#guard (@Parse.parse? Cmd _ "B<") == some (.prev .dec)
-#guard (@Parse.parse? Cmd _ "B>") == some (.prev .inc)
--- meta select with val verb (M0/M1)
-#guard (@Parse.parse? Cmd _ "M0") == some (.metaV (.val 0))
-#guard (@Parse.parse? Cmd _ "M1") == some (.metaV (.val 1))
--- stk verbs: quit/transpose/diff reuse stk obj
-#guard (@Parse.parse? Cmd _ "sd") == some (.stk .del)      -- quit
-#guard (@Parse.parse? Cmd _ "s^") == some (.stk .up)       -- transpose
-#guard (@Parse.parse? Cmd _ "s0") == some (.stk (.val 0))  -- diff
--- fzf menu reuses col obj
-#guard (@Parse.parse? Cmd _ "cc") == some (.col .dup)       -- fzf menu
+theorem parse_s_ent : (@Parse.parse? Cmd _ "s~") = some (.stk .ent) := by native_decide
+theorem parse_s_dec : (@Parse.parse? Cmd _ "s<") = some (.stk .dec) := by native_decide
+-- Argument command parse (all 9 ArgCmd variants)
+theorem parse_split   : (@Parse.parse? Cmd _ ":-")          = some (.arg (.split "-"))          := by native_decide
+theorem parse_derive  : (@Parse.parse? Cmd _ "=d = x * 2")  = some (.arg (.derive "d = x * 2")) := by native_decide
+theorem parse_filter  : (@Parse.parse? Cmd _ "\\Bid > 100") = some (.arg (.filter "Bid > 100")) := by native_decide
+theorem parse_search  : (@Parse.parse? Cmd _ "/NYSE")        = some (.arg (.search "NYSE"))      := by native_decide
+theorem parse_colJump : (@Parse.parse? Cmd _ "sExchange")    = some (.arg (.colJump "Exchange")) := by native_decide
+theorem parse_export  : (@Parse.parse? Cmd _ "ecsv")         = some (.arg (.export "csv"))       := by native_decide
+theorem parse_sessSave: (@Parse.parse? Cmd _ "Wmysess")      = some (.arg (.sessSave "mysess"))  := by native_decide
+theorem parse_sessLoad: (@Parse.parse? Cmd _ "Lmysess")      = some (.arg (.sessLoad "mysess"))  := by native_decide
+theorem parse_join    : (@Parse.parse? Cmd _ "J0")           = some (.arg (.join "0"))           := by native_decide
+-- Socket 2-codes
+theorem parse_T_dec : (@Parse.parse? Cmd _ "T<") = some (.thm .dec)   := by native_decide
+theorem parse_T_inc : (@Parse.parse? Cmd _ "T>") = some (.thm .inc)   := by native_decide
+theorem parse_w_dec : (@Parse.parse? Cmd _ "w<") = some (.width .dec)  := by native_decide
+theorem parse_w_inc : (@Parse.parse? Cmd _ "w>") = some (.width .inc)  := by native_decide
+theorem parse_p_dec : (@Parse.parse? Cmd _ "p<") = some (.prec .dec)   := by native_decide
+theorem parse_p_inc : (@Parse.parse? Cmd _ "p>") = some (.prec .inc)   := by native_decide
+theorem parse_B_dec : (@Parse.parse? Cmd _ "B<") = some (.prev .dec)   := by native_decide
+theorem parse_B_inc : (@Parse.parse? Cmd _ "B>") = some (.prev .inc)   := by native_decide
+theorem parse_M0    : (@Parse.parse? Cmd _ "M0") = some (.metaV (.val 0)) := by native_decide
+theorem parse_M1    : (@Parse.parse? Cmd _ "M1") = some (.metaV (.val 1)) := by native_decide
+-- Stk verbs: quit/transpose/diff reuse stk obj
+theorem parse_sd : (@Parse.parse? Cmd _ "sd") = some (.stk .del)      := by native_decide
+theorem parse_su : (@Parse.parse? Cmd _ "s^") = some (.stk .up)       := by native_decide
+theorem parse_s0 : (@Parse.parse? Cmd _ "s0") = some (.stk (.val 0))  := by native_decide
+-- Fzf menu reuses col obj
+theorem parse_cc : (@Parse.parse? Cmd _ "cc") = some (.col .dup)       := by native_decide
 
 end CmdRoundTripTests
 
