@@ -96,13 +96,14 @@ inductive Cmd where
   | width (v : Verb)   -- width -=dec, +=inc width
   | thm (v : Verb)     -- thm -=prev, +=next theme
   | info (v : Verb)    -- info +=show, -=hide, ~=toggle
-  | metaV (v : Verb)   -- metaV c=push, -/0=selNull, +/1=selSingle, ~=enter
+  | metaV (v : Verb)   -- metaV c=push, 0=selNull, 1=selSingle, ~=enter
   | freq (v : Verb)    -- freq c=push, ~=filter
   | fld (v : Verb)     -- fld c=push, +/-=depth, ~=enter dir/file
   | plot (v : Verb)    -- plot: line/bar/scatter/hist/box via PlotKind
   | colShift (v : Verb) -- colShift +=right, -=left (reorder key columns)
   | heat (v : Verb)     -- heat +=more color, -=less color (mode 0-3)
-  | yank (v : Verb)    -- yank ~=cell, +=row, -=col
+  | yank (v : Verb)    -- yank ~=cell, >=row, <=col
+  | prev (v : Verb)    -- prev >=scroll down, <=scroll up ({/} keys)
   | arg (ac : ArgCmd)  -- argument commands (prefix + payload, bypass fzf)
   deriving Repr, BEq, DecidableEq
 
@@ -114,7 +115,7 @@ private def objs : Array (Char × (Verb → Cmd)) := #[
   ('h', .hPage), ('v', .vPage), ('H', .hor), ('V', .ver), ('p', .prec), ('w', .width),
   ('T', .thm), ('i', .info), ('M', .metaV), ('F', .freq), ('D', .fld),
   ('P', .plot), ('K', .colShift), ('m', .heat),
-  ('y', .yank)
+  ('y', .yank), ('B', .prev)
 ]
 
 -- | Get obj char for Cmd
@@ -124,14 +125,14 @@ private def objChar : Cmd → Char
   | .hPage _ => 'h' | .vPage _ => 'v' | .hor _ => 'H' | .ver _ => 'V'
   | .prec _ => 'p' | .width _ => 'w' | .thm _ => 'T' | .info _ => 'i'
   | .metaV _ => 'M' | .freq _ => 'F' | .fld _ => 'D' | .plot _ => 'P'
-  | .colShift _ => 'K' | .heat _ => 'm' | .yank _ => 'y'
+  | .colShift _ => 'K' | .heat _ => 'm' | .yank _ => 'y' | .prev _ => 'B'
   | .arg ac => ac.pfx
 
 -- | Get verb from Cmd
 private def verb : Cmd → Verb
   | .row v | .col v | .rowSel v | .colSel v | .grp v | .stk v => v
   | .hor v | .ver v | .hPage v | .vPage v | .prec v | .width v => v
-  | .thm v | .info v | .metaV v | .freq v | .fld v | .plot v | .colShift v | .heat v | .yank v => v
+  | .thm v | .info v | .metaV v | .freq v | .fld v | .plot v | .colShift v | .heat v | .yank v | .prev v => v
   | .arg _ => .ent
 
 instance : ToString Cmd where toString

@@ -51,24 +51,8 @@ def test_key_reorder : IO Unit := do
   assert ((header (← run "l!" "data/basic.csv")).take 5 |>.any (· == 'b')) "Key col moves to front"
 
 -- === Hide ===
--- Pure: key_H (H → colSel.dup)
--- Pure: nav_hide (H hides c0)
--- Pure: hidden_toggle_inverse (HH returns to empty hidden)
-
-def test_hide_col : IO Unit := do
-  log "hide_col"
-  let out ← run "H" "data/basic.csv"
-  let (_, status) := footer out
-  assert (contains status "c0/") "Cursor still on hidden col"
-  let hdr := header out
-  let normalHdr := header (← run "" "data/basic.csv")
-  assert (hdr != normalHdr) "Header changes when column hidden"
-
-def test_hide_unhide : IO Unit := do
-  log "hide_unhide"
-  let hdr := header (← run "HH" "data/basic.csv")
-  let normalHdr := header (← run "" "data/basic.csv")
-  assert (hdr == normalHdr) "Unhidden header matches normal"
+-- H single-key removed; hide accessible via Space > C > h (Ch).
+-- Logic still covered by pure theorems: hidden_toggle_inverse, nav_hide in TestPure.lean.
 
 -- === Selection ===
 -- Pure: key_T (T → rowSel.ent)
@@ -130,7 +114,6 @@ def tests : Array (String × IO Unit) := #[
   ("nav_up", test_nav_up), ("nav_left", test_nav_left),
   ("key_toggle", test_key_toggle), ("key_remove", test_key_remove),
   ("key_reorder", test_key_reorder),
-  ("hide_col", test_hide_col), ("hide_unhide", test_hide_unhide),
   ("row_select", test_row_select), ("multi_select", test_multi_select),
   ("stack_swap", test_stack_swap), ("meta_quit", test_meta_quit),
   ("freq_quit", test_freq_quit), ("info", test_info),

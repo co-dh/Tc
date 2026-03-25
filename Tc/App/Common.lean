@@ -60,6 +60,9 @@ private def liftStk (a : AppState) (cmd : Cmd) (r : Option (ViewStack AdbcTable 
 def update (a : AppState) (cmd : Cmd) : Option (AppState × Effect) :=
   let viewUp := View.update a.stk.cur cmd 20 |>.map fun (v', e) => (withStk a cmd (a.stk.setCur v'), e)
   match cmd with
+  | .prev .dec => some ({ a with prevScroll := a.prevScroll - min a.prevScroll 5 }, .none)
+  | .prev .inc => some ({ a with prevScroll := a.prevScroll + 5 }, .none)
+  | .prev _    => some (a, .none)
   | .heat (.val n) => some ({ a with heatMode := min 3 n }, .none)  -- m0=off, m1=numeric, m2=categorical, m3=both
   | .heat _        => some (a, .none)  -- ignore inc/dec (use m0-m3 directly)
   | .thm _    => a.theme.update cmd |>.map fun (t', e) => ({ a with theme := t' }, e)
@@ -203,10 +206,8 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   if ev.type == 1 && ev.key == 0x16 then IO.sleep 50; return ← mainLoop a test ks'
   -- Empty event (socket wake-up with no key press) → re-render and loop
   if ev.type == 0 then return ← mainLoop a test ks'
-  if isKey ev 'Q' then return a
-  if isKey ev ' ' then mainLoop (← runEffect a (.fzf .cmd)) test ks'
-  -- Argument commands: collect argument up to \r in -c mode, empty arg triggers fzf fallback
-  else if ArgCmd.isPfx (Char.ofNat ev.ch.toNat) then do
+  -- Argument commands: prefix char + payload (: = \ / s e W L J)
+  if ArgCmd.isPfx (Char.ofNat ev.ch.toNat) then do
     let pfxCh := Char.ofNat ev.ch.toNat
     let (arg, rest) := if test && ks'.any (· == '\r') then
       let idx := ks'.findIdx? (· == '\r') |>.getD ks'.size
@@ -216,32 +217,37 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
       | some ac => runArgCmd a ac
       | none => pure a
     mainLoop a' test rest
-  else if isKey ev 'X' then do
-    match ← Transpose.push a.stk with
-    | some s' => mainLoop { a with stk := s', vs := .default, sparklines := #[] } test ks'
+  else
+  -- Dispatch helper: Cmd → update → runEffect → loop
+  let dispatchCmd (cmd : Cmd) : IO AppState := do
+    match a.update cmd with
     | none => mainLoop a test ks'
-  else if isKey ev 'V' then do
-    if a.stk.cur.sameHide.isEmpty then
-      -- No sameHide → run diff on top 2 views
-      match ← Diff.run a.stk with
-      | some s' => mainLoop { a with stk := s', vs := .default, sparklines := #[] } test ks'
-      | none => mainLoop a test ks'
-    else
-      -- Has sameHide → toggle: reveal same columns
-      let v' := Diff.showSame a.stk.cur
-      mainLoop { a with stk := a.stk.setCur v', vs := .default } test ks'
-  else if isKey ev '{' then mainLoop { a with prevScroll := a.prevScroll - min a.prevScroll 5 } test ks'
-  else if isKey ev '}' then mainLoop { a with prevScroll := a.prevScroll + 5 } test ks'
-  else match evToCmd ev a.stk.cur.vkind with
+    | some (a', e) =>
+      if e == .quit then pure a'
+      else let a'' ← if e.isNone then pure a' else runEffect a' e
+           let a'' := if e.isNone then a'' else { a'' with sparklines := #[] }
+           let a'' := if cmd matches .prev _ then a'' else { a'' with prevScroll := 0 }
+           mainLoop a'' test ks'
+  -- 1. Single-key action table (data-driven, centralized in KeyMap.char)
+  let c := evToChar ev
+  match lookup KeyMap.char c with
+  | some .quit => return a
+  | some .fzfCmd => mainLoop (← runEffect a (.fzf .cmd)) test ks'
+  | some .transpose => do
+      match ← (Transpose.push a.stk).toBaseIO with
+      | .ok (some s') => mainLoop { a with stk := s', vs := .default, sparklines := #[] } test ks'
+      | _ => mainLoop a test ks'
+  | some .diff => do
+      match ← (if a.stk.cur.sameHide.isEmpty then
+        Diff.run a.stk |>.map (·.map fun s' => { a with stk := s', vs := .default, sparklines := #[] })
+      else pure (some { a with stk := a.stk.setCur (Diff.showSame a.stk.cur), vs := .default })).toBaseIO with
+      | .ok (some a') => mainLoop a' test ks'
+      | _ => mainLoop a test ks'
+  | some (.cmd cmd) => dispatchCmd cmd
+  -- 2. Special terminal keys + nav/special/ctrl (Enter, Backspace, Shift+Arrow, hjkl, PgUp/Dn)
+  | none => match evToCmd ev a.stk.cur.vkind with
+    | some cmd => dispatchCmd cmd
     | none => mainLoop a test ks'
-    | some c => match a.update c with
-      | none => mainLoop a test ks'
-      | some (a', e) =>
-        if e == .quit then pure a'
-        else let a'' ← if e.isNone then pure a' else runEffect a' e
-             -- Clear sparklines when view content changes (filter/sort/stack ops)
-             let a'' := if e.isNone then a'' else { a'' with sparklines := #[] }
-             mainLoop { a'' with prevScroll := 0 } test ks'
 
 -- parsed CLI arguments
 structure CliArgs where

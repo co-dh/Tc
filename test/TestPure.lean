@@ -46,43 +46,51 @@ def testStack : ViewStack (MockTable 5 3) := ⟨testView, []⟩
 
 section KeyMapTests
 
--- Navigation keys (from test_nav_down/up/right/left)
+-- Helper: lookup char in KeyMap.char table
+private def charAction (c : Char) : Option KeyAction :=
+  KeyMap.char.findSome? fun (k, v) => if k == c then some v else none
+
+-- Navigation keys via evToCmd (hjkl, arrows — not in KeyMap.char)
 theorem key_j : evToCmd (charToEvent 'j') .tbl = some (.row .inc) := by native_decide
 theorem key_k : evToCmd (charToEvent 'k') .tbl = some (.row .dec) := by native_decide
 theorem key_l : evToCmd (charToEvent 'l') .tbl = some (.col .inc) := by native_decide
 theorem key_h : evToCmd (charToEvent 'h') .tbl = some (.col .dec) := by native_decide
 
--- Action keys (from test_key_toggle, test_row_select, test_hide_col, test_sort_asc/desc)
-theorem key_bang  : evToCmd (charToEvent '!') .tbl = some (.grp .ent)    := by native_decide
-theorem key_T     : evToCmd (charToEvent 'T') .tbl = some (.rowSel .ent) := by native_decide
-theorem key_H     : evToCmd (charToEvent 'H') .tbl = some (.colSel .dup) := by native_decide
-theorem key_lbr   : evToCmd (charToEvent '[') .tbl = some (.colSel .inc) := by native_decide
-theorem key_rbr   : evToCmd (charToEvent ']') .tbl = some (.colSel .dec) := by native_decide
+-- Single-key shortcuts via KeyMap.char (centralized data table)
+#guard charAction '!' == some (.cmd (.grp .ent))
+#guard charAction 'T' == some (.cmd (.rowSel .ent))
+#guard charAction 't' == some (.cmd (.colSel .ent))
+#guard charAction '[' == some (.cmd (.colSel .inc))
+#guard charAction ']' == some (.cmd (.colSel .dec))
+#guard charAction 'M' == some (.cmd (.metaV .dup))
+#guard charAction 'F' == some (.cmd (.freq .dup))
+#guard charAction 'D' == some (.cmd (.fld .dup))
+#guard charAction 'q' == some (.cmd (.stk .dec))
+#guard charAction 'S' == some (.cmd (.stk .ent))
+#guard charAction 'I' == some (.cmd (.info .ent))
+#guard charAction 'n' == some (.cmd (.grp .inc))
+#guard charAction 'N' == some (.cmd (.grp .dec))
+#guard charAction '{' == some (.cmd (.prev .dec))
+#guard charAction '}' == some (.cmd (.prev .inc))
+#guard charAction '0' == some (.cmd (.metaV (.val 0)))
+#guard charAction '1' == some (.cmd (.metaV (.val 1)))
+-- Special actions
+#guard charAction 'Q' == some .quit
+#guard charAction ' ' == some .fzfCmd
+#guard charAction 'X' == some .transpose
+#guard charAction 'V' == some .diff
+-- H removed from single-key shortcuts (hide via Space > C > h)
+#guard charAction 'H' == none
+-- ArgCmd prefixes not in KeyMap.char (handled separately in mainLoop)
+#guard charAction '/' == none
+#guard charAction 's' == none
+#guard charAction '\\' == none
 
--- View keys (from test_meta_shows, test_freq_shows, test_folder_D)
-theorem key_M : evToCmd (charToEvent 'M') .tbl = some (.metaV .dup) := by native_decide
-theorem key_F : evToCmd (charToEvent 'F') .tbl = some (.freq .dup)  := by native_decide
-theorem key_D : evToCmd (charToEvent 'D') .tbl = some (.fld .dup)   := by native_decide
-
--- Stack keys (from test_meta_quit, test_stack_swap)
-theorem key_q : evToCmd (charToEvent 'q') .tbl = some (.stk .dec) := by native_decide
-theorem key_S : evToCmd (charToEvent 'S') .tbl = some (.stk .ent) := by native_decide
-
--- Info, search, filter keys (from test_info, test_search_jump/next/prev, test_col_search)
-theorem key_I     : evToCmd (charToEvent 'I')  .tbl = some (.info .ent)   := by native_decide
--- / and \ now handled in mainLoop (argument collection), not via KeyMap.char
-theorem key_slash : evToCmd (charToEvent '/')  .tbl = none := by native_decide
-theorem key_n     : evToCmd (charToEvent 'n')  .tbl = some (.grp .inc)    := by native_decide
-theorem key_N     : evToCmd (charToEvent 'N')  .tbl = some (.grp .dec)    := by native_decide
--- s now handled in mainLoop (argument collection), not via KeyMap.char
-theorem key_s     : evToCmd (charToEvent 's')  .tbl = none := by native_decide
-theorem key_bslash: evToCmd (charToEvent '\\') .tbl = none := by native_decide
-
--- Ctrl keys (from test_page_down/up)
+-- Ctrl keys via evToCmd (from test_page_down/up)
 theorem key_ctrlD : evToCmd (charToEvent '\x04') .tbl = some (.vPage .inc) := by native_decide
 theorem key_ctrlU : evToCmd (charToEvent '\x15') .tbl = some (.vPage .dec) := by native_decide
 
--- Context-sensitive Enter (from test_freq_enter, test_meta_0_enter, test_folder_enter, test_enter_no_quit)
+-- Context-sensitive Enter via evToCmd (from test_freq_enter, test_meta_0_enter, test_folder_enter)
 theorem enter_freq : evToCmd (charToEvent '\r') (.freqV #["a"] 10) = some (.freq .ent) := by native_decide
 theorem enter_meta : evToCmd (charToEvent '\r') .colMeta = some (.metaV .ent)           := by native_decide
 theorem enter_fld  : evToCmd (charToEvent '\r') (.fld "/tmp" 1) = some (.fld .ent)      := by native_decide
@@ -283,6 +291,12 @@ section CmdRoundTripTests
 #guard (@Parse.parse? Cmd _ "w>") == some (.width .inc)
 #guard (@Parse.parse? Cmd _ "p<") == some (.prec .dec)
 #guard (@Parse.parse? Cmd _ "p>") == some (.prec .inc)
+-- preview scroll
+#guard (@Parse.parse? Cmd _ "B<") == some (.prev .dec)
+#guard (@Parse.parse? Cmd _ "B>") == some (.prev .inc)
+-- meta select with val verb (M0/M1)
+#guard (@Parse.parse? Cmd _ "M0") == some (.metaV (.val 0))
+#guard (@Parse.parse? Cmd _ "M1") == some (.metaV (.val 1))
 
 end CmdRoundTripTests
 

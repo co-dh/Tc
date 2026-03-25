@@ -27,12 +27,12 @@ end State
 
 -- | Context-specific key hints per view (no common navigation)
 def viewHints : ViewKind → Array (String × String)
-  | .colMeta => #[("0", "select nulls"), ("1", "select unique"), ("⏎", "set as key"), ("q", "back")]
+  | .colMeta => #[("M0", "select nulls"), ("M1", "select unique"), ("⏎", "set as key"), ("q", "back")]
   | .freqV _ _ => #[("⏎", "filter by val"), ("q", "back")]
   | .fld _ _ => #[("⏎", "open"), ("d", "trash"), (",d", "less depth"), (".d", "more depth")]
   | .tbl => #[
     ("t", "toggle col sel"), ("T", "toggle row sel"),
-    ("H", "hide column"), ("!", "group by"),
+    ("!", "group by"), ("Ch", "hide column"),
     ("S-←→", "reorder cols"), ("SPC", "command menu")]
 
 -- | Render info overlay at bottom-right
