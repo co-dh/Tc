@@ -60,9 +60,13 @@ private def liftStk (a : AppState) (cmd : Cmd) (r : Option (ViewStack AdbcTable 
 def update (a : AppState) (cmd : Cmd) : Option (AppState × Effect) :=
   let viewUp := View.update a.stk.cur cmd 20 |>.map fun (v', e) => (withStk a cmd (a.stk.setCur v'), e)
   match cmd with
-  | .prev .dec => some ({ a with prevScroll := a.prevScroll - min a.prevScroll 5 }, .none)
-  | .prev .inc => some ({ a with prevScroll := a.prevScroll + 5 }, .none)
-  | .prev _    => some (a, .none)
+  | .stk .del      => some (a, .quit)        -- Q: force quit
+  | .stk .up       => some (a, .transpose)   -- X: transpose push
+  | .stk (.val 0)  => some (a, .diff)        -- V: diff / show-same
+  | .col .dup      => some (a, .fzf .cmd)    -- Space: command menu
+  | .prev .dec  => some ({ a with prevScroll := a.prevScroll - min a.prevScroll 5 }, .none)
+  | .prev .inc  => some ({ a with prevScroll := a.prevScroll + 5 }, .none)
+  | .prev _     => some (a, .none)
   | .heat (.val n) => some ({ a with heatMode := min 3 n }, .none)  -- m0=off, m1=numeric, m2=categorical, m3=both
   | .heat _        => some (a, .none)  -- ignore inc/dec (use m0-m3 directly)
   | .thm _    => a.theme.update cmd |>.map fun (t', e) => ({ a with theme := t' }, e)
@@ -117,6 +121,17 @@ where
       | some (a', e') => if e'.isNone then pure a' else runEffect a' e'
       | none => pure a
     | none => pure a
+  | .transpose => do
+      match ← Transpose.push a.stk with
+      | some s' => pure { a with stk := s', vs := .default, sparklines := #[] }
+      | none => pure a
+  | .diff => do
+      if a.stk.cur.sameHide.isEmpty then
+        match ← Diff.run a.stk with
+        | some s' => pure { a with stk := s', vs := .default, sparklines := #[] }
+        | none => pure a
+      else
+        pure { a with stk := a.stk.setCur (Diff.showSame a.stk.cur), vs := .default }
   | .themeLoad d => do let th ← a.theme.runEffect d; pure { a with theme := th }
   | _ => do
     let s ← Runner.runStackEffect a.stk e
@@ -218,8 +233,8 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
       | none => pure a
     mainLoop a' test rest
   else
-  -- Dispatch helper: Cmd → update → runEffect → loop
-  let dispatchCmd (cmd : Cmd) : IO AppState := do
+  -- Dispatch: Cmd → update → runEffect → loop
+  let runCmd (cmd : Cmd) : IO AppState := do
     match a.update cmd with
     | none => mainLoop a test ks'
     | some (a', e) =>
@@ -228,25 +243,12 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
            let a'' := if e.isNone then a'' else { a'' with sparklines := #[] }
            let a'' := if cmd matches .prev _ then a'' else { a'' with prevScroll := 0 }
            mainLoop a'' test ks'
-  -- 1. Single-key action table (data-driven, centralized in KeyMap.char)
-  let c := evToChar ev
-  match lookup KeyMap.char c with
-  | some .quit => return a
-  | some .fzfCmd => mainLoop (← runEffect a (.fzf .cmd)) test ks'
-  | some .transpose => do
-      match ← (Transpose.push a.stk).toBaseIO with
-      | .ok (some s') => mainLoop { a with stk := s', vs := .default, sparklines := #[] } test ks'
-      | _ => mainLoop a test ks'
-  | some .diff => do
-      match ← (if a.stk.cur.sameHide.isEmpty then
-        Diff.run a.stk |>.map (·.map fun s' => { a with stk := s', vs := .default, sparklines := #[] })
-      else pure (some { a with stk := a.stk.setCur (Diff.showSame a.stk.cur), vs := .default })).toBaseIO with
-      | .ok (some a') => mainLoop a' test ks'
-      | _ => mainLoop a test ks'
-  | some (.cmd cmd) => dispatchCmd cmd
-  -- 2. Special terminal keys + nav/special/ctrl (Enter, Backspace, Shift+Arrow, hjkl, PgUp/Dn)
+  -- 1. Single-key shortcuts (data table — all entries are Cmd obj+verb)
+  match lookup KeyMap.char (evToChar ev) with
+  | some cmd => runCmd cmd
+  -- 2. Special terminal keys + nav (Enter, Backspace, Shift+Arrow, hjkl, PgUp/Dn)
   | none => match evToCmd ev a.stk.cur.vkind with
-    | some cmd => dispatchCmd cmd
+    | some cmd => runCmd cmd
     | none => mainLoop a test ks'
 
 -- parsed CLI arguments

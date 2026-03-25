@@ -11,15 +11,6 @@ open Tc
 def lookup [BEq α] (tbl : Array (α × β)) (k : α) : Option β :=
   tbl.findSome? fun (k', v) => if k == k' then some v else none
 
--- | Action triggered by a single key press
-inductive KeyAction where
-  | cmd (c : Cmd)  -- standard command (goes through update → runEffect)
-  | quit           -- Q: exit application
-  | fzfCmd         -- Space: open command menu
-  | transpose      -- X: transpose push
-  | diff           -- V: diff / show-same toggle
-  deriving BEq
-
 -- | Key mapping tables grouped by category
 namespace KeyMap
   -- Arrow/special keys → navigation char (hjkl)
@@ -45,33 +36,33 @@ namespace KeyMap
   ]
 
   -- | Single-key shortcuts — the single source of truth for all one-key mappings.
-  -- Sorted ascending by estimated usage frequency.
-  def char : Array (Char × KeyAction) := #[
+  -- Every entry is a Cmd (obj+verb). Sorted ascending by estimated usage frequency.
+  def char : Array (Char × Cmd) := #[
     -- rarely used
-    ('{', .cmd (.prev .dec)),       -- preview scroll up
-    ('}', .cmd (.prev .inc)),       -- preview scroll down
+    ('{', .prev .dec),              -- preview scroll up
+    ('}', .prev .inc),              -- preview scroll down
     -- occasionally used
-    ('0', .cmd (.metaV (.val 0))),   -- alias for M0: select null cols
-    ('1', .cmd (.metaV (.val 1))),   -- alias for M1: select single-val cols
-    ('X', .transpose),              -- transpose push
-    ('V', .diff),                   -- diff / show-same toggle
-    ('I', .cmd (.info .ent)),       -- toggle info overlay
-    ('D', .cmd (.fld .dup)),        -- open folder view
-    ('M', .cmd (.metaV .dup)),      -- open meta view
-    ('S', .cmd (.stk .ent)),        -- stack swap
+    ('0', .metaV (.val 0)),         -- alias for M0: select null cols
+    ('1', .metaV (.val 1)),         -- alias for M1: select single-val cols
+    ('X', .stk .up),               -- transpose push (s^)
+    ('V', .stk (.val 0)),          -- diff / show-same (s0)
+    ('I', .info .ent),             -- toggle info overlay
+    ('D', .fld .dup),              -- open folder view
+    ('M', .metaV .dup),            -- open meta view
+    ('S', .stk .ent),              -- stack swap
     -- frequently used
-    ('F', .cmd (.freq .dup)),       -- frequency view
-    ('[', .cmd (.colSel .inc)),     -- sort ascending
-    (']', .cmd (.colSel .dec)),     -- sort descending
-    ('!', .cmd (.grp .ent)),        -- toggle group
-    ('T', .cmd (.rowSel .ent)),     -- toggle row filter
-    ('t', .cmd (.colSel .ent)),     -- toggle column sort
-    ('n', .cmd (.grp .inc)),        -- search next
-    ('N', .cmd (.grp .dec)),        -- search prev
+    ('F', .freq .dup),             -- frequency view
+    ('[', .colSel .inc),           -- sort ascending
+    (']', .colSel .dec),           -- sort descending
+    ('!', .grp .ent),              -- toggle group
+    ('T', .rowSel .ent),           -- toggle row filter
+    ('t', .colSel .ent),           -- toggle column sort
+    ('n', .grp .inc),              -- search next
+    ('N', .grp .dec),              -- search prev
     -- very frequently used
-    (' ', .fzfCmd),                 -- command menu
-    ('q', .cmd (.stk .dec)),        -- pop view / back
-    ('Q', .quit)                    -- exit application
+    (' ', .col .dup),              -- command menu (cc)
+    ('q', .stk .dec),              -- pop view / back (s<)
+    ('Q', .stk .del)              -- exit application (sd)
   ]
 end KeyMap
 

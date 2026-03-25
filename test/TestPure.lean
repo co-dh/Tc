@@ -46,45 +46,40 @@ def testStack : ViewStack (MockTable 5 3) := ⟨testView, []⟩
 
 section KeyMapTests
 
--- Helper: lookup char in KeyMap.char table
-private def charAction (c : Char) : Option KeyAction :=
-  KeyMap.char.findSome? fun (k, v) => if k == c then some v else none
-
 -- Navigation keys via evToCmd (hjkl, arrows — not in KeyMap.char)
 theorem key_j : evToCmd (charToEvent 'j') .tbl = some (.row .inc) := by native_decide
 theorem key_k : evToCmd (charToEvent 'k') .tbl = some (.row .dec) := by native_decide
 theorem key_l : evToCmd (charToEvent 'l') .tbl = some (.col .inc) := by native_decide
 theorem key_h : evToCmd (charToEvent 'h') .tbl = some (.col .dec) := by native_decide
 
--- Single-key shortcuts via KeyMap.char (centralized data table)
-#guard charAction '!' == some (.cmd (.grp .ent))
-#guard charAction 'T' == some (.cmd (.rowSel .ent))
-#guard charAction 't' == some (.cmd (.colSel .ent))
-#guard charAction '[' == some (.cmd (.colSel .inc))
-#guard charAction ']' == some (.cmd (.colSel .dec))
-#guard charAction 'M' == some (.cmd (.metaV .dup))
-#guard charAction 'F' == some (.cmd (.freq .dup))
-#guard charAction 'D' == some (.cmd (.fld .dup))
-#guard charAction 'q' == some (.cmd (.stk .dec))
-#guard charAction 'S' == some (.cmd (.stk .ent))
-#guard charAction 'I' == some (.cmd (.info .ent))
-#guard charAction 'n' == some (.cmd (.grp .inc))
-#guard charAction 'N' == some (.cmd (.grp .dec))
-#guard charAction '{' == some (.cmd (.prev .dec))
-#guard charAction '}' == some (.cmd (.prev .inc))
-#guard charAction '0' == some (.cmd (.metaV (.val 0)))
-#guard charAction '1' == some (.cmd (.metaV (.val 1)))
--- Special actions
-#guard charAction 'Q' == some .quit
-#guard charAction ' ' == some .fzfCmd
-#guard charAction 'X' == some .transpose
-#guard charAction 'V' == some .diff
+-- Single-key shortcuts via KeyMap.char (centralized data table, all obj+verb Cmd)
+#guard lookup KeyMap.char '!' == some (.grp .ent)
+#guard lookup KeyMap.char 'T' == some (.rowSel .ent)
+#guard lookup KeyMap.char 't' == some (.colSel .ent)
+#guard lookup KeyMap.char '[' == some (.colSel .inc)
+#guard lookup KeyMap.char ']' == some (.colSel .dec)
+#guard lookup KeyMap.char 'M' == some (.metaV .dup)
+#guard lookup KeyMap.char 'F' == some (.freq .dup)
+#guard lookup KeyMap.char 'D' == some (.fld .dup)
+#guard lookup KeyMap.char 'q' == some (.stk .dec)      -- pop (s<)
+#guard lookup KeyMap.char 'S' == some (.stk .ent)      -- swap (s~)
+#guard lookup KeyMap.char 'Q' == some (.stk .del)      -- quit (sd)
+#guard lookup KeyMap.char 'X' == some (.stk .up)       -- transpose (s^)
+#guard lookup KeyMap.char 'V' == some (.stk (.val 0))  -- diff (s0)
+#guard lookup KeyMap.char ' ' == some (.col .dup)       -- fzf menu (cc)
+#guard lookup KeyMap.char 'I' == some (.info .ent)
+#guard lookup KeyMap.char 'n' == some (.grp .inc)
+#guard lookup KeyMap.char 'N' == some (.grp .dec)
+#guard lookup KeyMap.char '{' == some (.prev .dec)
+#guard lookup KeyMap.char '}' == some (.prev .inc)
+#guard lookup KeyMap.char '0' == some (.metaV (.val 0))
+#guard lookup KeyMap.char '1' == some (.metaV (.val 1))
 -- H removed from single-key shortcuts (hide via Space > C > h)
-#guard charAction 'H' == none
+#guard lookup KeyMap.char 'H' == none
 -- ArgCmd prefixes not in KeyMap.char (handled separately in mainLoop)
-#guard charAction '/' == none
-#guard charAction 's' == none
-#guard charAction '\\' == none
+#guard lookup KeyMap.char '/' == none
+#guard lookup KeyMap.char 's' == none
+#guard lookup KeyMap.char '\\' == none
 
 -- Ctrl keys via evToCmd (from test_page_down/up)
 theorem key_ctrlD : evToCmd (charToEvent '\x04') .tbl = some (.vPage .inc) := by native_decide
@@ -297,6 +292,12 @@ section CmdRoundTripTests
 -- meta select with val verb (M0/M1)
 #guard (@Parse.parse? Cmd _ "M0") == some (.metaV (.val 0))
 #guard (@Parse.parse? Cmd _ "M1") == some (.metaV (.val 1))
+-- stk verbs: quit/transpose/diff reuse stk obj
+#guard (@Parse.parse? Cmd _ "sd") == some (.stk .del)      -- quit
+#guard (@Parse.parse? Cmd _ "s^") == some (.stk .up)       -- transpose
+#guard (@Parse.parse? Cmd _ "s0") == some (.stk (.val 0))  -- diff
+-- fzf menu reuses col obj
+#guard (@Parse.parse? Cmd _ "cc") == some (.col .dup)       -- fzf menu
 
 end CmdRoundTripTests
 

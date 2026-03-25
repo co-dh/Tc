@@ -80,7 +80,7 @@ end ArgCmd
 -- | Command: Obj + Verb pattern
 inductive Cmd where
   | row (v : Verb)     -- row inc/dec (single step)
-  | col (v : Verb)     -- col inc/dec/del (single step)
+  | col (v : Verb)     -- col </>/c=fzf cmd menu
   | hPage (v : Verb)   -- hPage -=prev, +=next page (column)
   | vPage (v : Verb)   -- vPage -=prev, +=next page (row)
   | hor (v : Verb)     -- hor -=home, +=end (column)
@@ -90,7 +90,7 @@ inductive Cmd where
   | colSel (v : Verb)  -- colSel +=sortAsc([), -=sortDesc(]), ~=toggle(t)
   | grp (v : Verb)     -- grp +=next(n), -=prev(N), ~=toggle(!)
 
-  | stk (v : Verb)     -- stk +push/-pop/~swap/cdup
+  | stk (v : Verb)     -- stk <pop/~swap/c=dup/d=quit/^=xpose/0=diff
 
   | prec (v : Verb)    -- prec -=dec, +=inc precision
   | width (v : Verb)   -- width -=dec, +=inc width
@@ -192,6 +192,8 @@ inductive Effect where
   | sessionSave
   | sessionLoad
   | join
+  | transpose
+  | diff
   deriving Repr, BEq
 
 namespace Effect
