@@ -8,7 +8,7 @@ import Tc.Term
 open Tc
 
 -- Lookup in (key, value) array
-private def lookup [BEq α] (tbl : Array (α × β)) (k : α) : Option β :=
+def lookup [BEq α] (tbl : Array (α × β)) (k : α) : Option β :=
   tbl.findSome? fun (k', v) => if k == k' then some v else none
 
 -- | Key mapping tables grouped by category
@@ -26,8 +26,8 @@ namespace KeyMap
 
   -- Special keys → Cmd (PageUp/Down, Home/End)
   private def special : Array (UInt16 × Cmd) := #[
-    (Term.keyPageDown, .vPage .inc), (Term.keyPageUp, .vPage .dec),  -- vPage +=down, -=up
-    (Term.keyHome, .ver .dec), (Term.keyEnd, .ver .inc)  -- ver -=top, +=bottom
+    (Term.keyPageDown, .vPage .inc), (Term.keyPageUp, .vPage .dec),
+    (Term.keyHome, .ver .dec), (Term.keyEnd, .ver .inc)
   ]
 
   -- Ctrl keys → Cmd (Ctrl-D=pgdn, Ctrl-U=pgup) - termbox reports in ev.key, not ev.ch
@@ -35,24 +35,39 @@ namespace KeyMap
     (Term.ctrlD.toUInt16, .vPage .inc), (Term.ctrlU.toUInt16, .vPage .dec)
   ]
 
-  -- Regular chars → Cmd (selection, group, colSel ops, stack, info, folder)
-  private def char : Array (Char × Cmd) := #[
-    ('t', .colSel .ent), ('T', .rowSel .ent),
-    ('!', .grp .ent), ('H', .colSel .dup),  -- H=hide/unhide column
-    ('[', .colSel .inc), (']', .colSel .dec),
-    ('M', .metaV .dup), ('F', .freq .dup),   -- M=meta, F=freq view (dup=constructor)
-    ('D', .fld .dup),                        -- D=folder view (dup=constructor)
-    ('0', .metaV .dec), ('1', .metaV .inc),  -- meta: 0=selNull, 1=selSingle
-    -- s / \ e W L J handled in mainLoop (argument collection in -c, fzf in interactive)
-    ('n', .grp .inc),        -- search next: repeat last search forward
-    ('N', .grp .dec),        -- search prev: repeat last search backward
-    ('q', .stk .dec), ('S', .stk .ent),  -- stack: q=pop, S=swap
-    ('I', .info .ent)  -- info: toggle overlay
+  -- | Single-key shortcuts — the single source of truth for all one-key mappings.
+  -- Every entry is a Cmd (obj+verb). Sorted ascending by estimated usage frequency.
+  def char : Array (Char × Cmd) := #[
+    -- rarely used
+    ('{', .prev .dec),              -- preview scroll up
+    ('}', .prev .inc),              -- preview scroll down
+    -- occasionally used
+    ('0', .metaV (.val 0)),         -- alias for M0: select null cols
+    ('1', .metaV (.val 1)),         -- alias for M1: select single-val cols
+    ('X', .stk .up),               -- transpose push (s^)
+    ('V', .stk (.val 0)),          -- diff / show-same (s0)
+    ('I', .info .ent),             -- toggle info overlay
+    ('D', .fld .dup),              -- open folder view
+    ('M', .metaV .dup),            -- open meta view
+    ('S', .stk .ent),              -- stack swap
+    -- frequently used
+    ('F', .freq .dup),             -- frequency view
+    ('[', .colSel .inc),           -- sort ascending
+    (']', .colSel .dec),           -- sort descending
+    ('!', .grp .ent),              -- toggle group
+    ('T', .rowSel .ent),           -- toggle row filter
+    ('t', .colSel .ent),           -- toggle column sort
+    ('n', .grp .inc),              -- search next
+    ('N', .grp .dec),              -- search prev
+    -- very frequently used
+    (' ', .col .dup),              -- command menu (cc)
+    ('q', .stk .dec),              -- pop view / back (s<)
+    ('Q', .stk .del)              -- exit application (sd)
   ]
 end KeyMap
 
 -- Normalize event to char (arrow→hjkl, Enter→\r, or raw char)
-private def evToChar (ev : Term.Event) : Char :=
+def evToChar (ev : Term.Event) : Char :=
   if ev.key == Term.keyEnter then '\r'
   else (lookup KeyMap.arrow ev.key).getD (Char.ofNat ev.ch.toNat)
 
@@ -116,7 +131,7 @@ def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
   | 'T' => #[('<', "prev theme",   .dec), ('>', "next theme",   .inc)]
   | 'i' => #[('~', "toggle info", .ent)]
   -- views
-  | 'M' => #[('<', "sel nulls", .dec), ('>', "sel singles", .inc), ('~', "enter", .ent), ('c', "push meta", .dup)]
+  | 'M' => #[('0', "sel nulls", .val 0), ('1', "sel singles", .val 1), ('~', "enter", .ent), ('c', "push meta", .dup)]
   | 'F' => match vk with
     | .freqV _ _ => #[('~', "filter by row", .ent), ('c', "push freq", .dup)]
     | _ => #[('c', "push freq", .dup)]
@@ -145,7 +160,8 @@ theorem enterCmd_meta : enterCmd .colMeta = some (.metaV .ent) := by rfl
 theorem enterCmd_fld : ∀ p d, enterCmd (.fld p d) = some (.fld .ent) := by
   intros; rfl
 
--- | Convert Term.Event to Cmd (view-aware for Enter key)
+-- | Convert Term.Event to Cmd: special terminal keys (Enter/Backspace/Shift+Arrow) + nav/special/ctrl.
+-- KeyMap.char is handled separately in mainLoop via lookup.
 def evToCmd (ev : Term.Event) (vk : ViewKind) : Option Cmd :=
   if ev.type != Term.eventKey then none else
   if ev.key == Term.keyEnter then enterCmd vk else
@@ -156,7 +172,7 @@ def evToCmd (ev : Term.Event) (vk : ViewKind) : Option Cmd :=
   -- Shift+Arrow left/right → reorder key columns (before nav normalization)
   if shift && ev.key == Term.keyArrowLeft then some (.colShift .dec)
   else if shift && ev.key == Term.keyArrowRight then some (.colShift .inc)
-  else lookup KeyMap.char c <|> navCmd c shift <|> lookup KeyMap.special ev.key <|> lookup KeyMap.ctrl ev.key
+  else navCmd c shift <|> lookup KeyMap.special ev.key <|> lookup KeyMap.ctrl ev.key
 
 -- | Parse key notation: <ret> → \r, <C-d> → Ctrl-D, etc.
 -- Arrow keys use \x1c-\x1f (FS/GS/RS/US — unmapped control chars)

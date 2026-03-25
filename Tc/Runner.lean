@@ -99,7 +99,8 @@ def runStackEffect (s : ViewStack AdbcTable) (eff : Effect) : IO (ViewStack Adbc
     | none => pure s
   | .clip ce => Clip.run s ce
   | .export fmt => Export.run s fmt
-  | .sessionSave | .sessionLoad | .join | .quit | .themeLoad _ => pure s
+  | .sessionSave | .sessionLoad | .join | .quit | .themeLoad _
+  | .transpose | .diff => pure s  -- handled in runEffectCore, not here
 
 end Runner
 end Tc
