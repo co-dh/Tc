@@ -249,7 +249,6 @@ structure CliArgs where
   keys    : Array Char := #[]
   test    : Bool := false
   noSign  : Bool := false
-  prql    : Option String := none   -- -p "prql" script mode
   session : Option String := none   -- -s "name" session restore
 
 -- extract flag with value, return (value?, remaining args)
@@ -258,18 +257,17 @@ private def extractFlag (flag : String) : List String → Option String × List 
     else let (r, rest') := extractFlag flag (v :: rest); (r, f :: rest')
   | other => (none, other)
 
--- parse args: path?, -c keys?, test mode, +n, -p prql, -s session
+-- parse args: path?, -c keys?, test mode, +n, -s session
 def parseArgs (args : List String) : CliArgs :=
   let noSign := args.any (· == "+n")
   let args := args.filter (· != "+n")
-  let (prql, args) := extractFlag "-p" args
   let (session, args) := extractFlag "-s" args
   let toK s := (parseKeys s).toList.toArray
   match args with
-  | "-c" :: k :: _ => { path := none, keys := toK k, test := true, noSign, prql, session }
-  | p :: "-c" :: k :: _ => { path := some p, keys := toK k, test := true, noSign, prql, session }
-  | p :: _ => { path := some p, noSign, prql, session }
-  | [] => { noSign, prql, session }
+  | "-c" :: k :: _ => { path := none, keys := toK k, test := true, noSign, session }
+  | p :: "-c" :: k :: _ => { path := some p, keys := toK k, test := true, noSign, session }
+  | p :: _ => { path := some p, noSign, session }
+  | [] => { noSign, session }
 
 -- | Init/shutdown socket + terminal around a mainLoop call
 private def withTui (test : Bool) (f : IO α) : IO α := do
@@ -299,41 +297,6 @@ def runTsv (r : Except String String) (nm : String) (pipe test : Bool)
 def outputTable (a : AppState) : IO Unit := do
   IO.println (← AdbcTable.toText a.stk.tbl)
 
--- stem from file path: "/tmp/right.csv" → "right"
-private def fileStem (path : String) : String :=
-  let base := (path.splitOn "/").getLast?.getD path
-  (base.splitOn ".").head?.getD base
-
--- replace backtick file paths with their stems and register as DuckDB views
--- needed because PRQL qualifies columns with the full backtick name, but DuckDB
--- replacement scan only aliases by stem — causing "table not found" in joins
-private def resolveBacktickPaths (prql : String) : IO String := do
-  let parts := prql.splitOn "`"
-  let mut result := ""
-  let mut i := 0
-  for part in parts do
-    if i % 2 == 1 && !part.isEmpty && (part.any (· == '/') || part.any (· == '.')) then
-      let stem := fileStem part
-      let _ ← Adbc.query s!"CREATE OR REPLACE VIEW \"{escSql stem}\" AS SELECT * FROM '{escSql part}'"
-      result := result ++ stem
-    else if i % 2 == 1 then
-      result := result ++ s!"`{part}`"  -- preserve non-path backticks
-    else
-      result := result ++ part
-    i := i + 1
-  pure result
-
--- run PRQL script: register CLI file as view `x`, compile PRQL, execute, print TSV
--- If prql starts with "from " or "let " → use as-is; otherwise prepend "from x |"
-def runScript (path : String) (prqlOps : String) : IO Unit := do
-  let _ ← Adbc.query s!"CREATE OR REPLACE VIEW x AS SELECT * FROM '{escSql path}'"
-  let prqlOps ← resolveBacktickPaths prqlOps
-  let prql := if prqlOps.startsWith "from " || prqlOps.startsWith "let " then prqlOps
-    else s!"from x | {prqlOps}"
-  let some qr ← Prql.query prql | IO.eprintln "PRQL compilation failed"; return
-  let tbl ← AdbcTable.ofQueryResult qr default 0
-  IO.println (← AdbcTable.toText tbl)
-
 -- main entry point: init backend, parse args, run app
 def appMain (args : List String) : IO Unit := do
   let cli := parseArgs args
@@ -348,13 +311,6 @@ def appMain (args : List String) : IO Unit := do
   let err ← try AdbcTable.init catch e => IO.eprintln s!"Backend init error: {e}"; return
   if !err.isEmpty then IO.eprintln s!"Backend init failed: {err}"; return
   try SourceConfig.attachDb catch e => Log.write "init" s!"attachDb: {e}"
-  -- script mode: run PRQL against file and exit
-  if let some prqlOps := cli.prql then
-    let path := path?.getD ""
-    if path.isEmpty then IO.eprintln "tv -p requires a file argument"; return
-    try runScript path prqlOps
-    finally AdbcTable.shutdown; Tc.cleanupTmp
-    return
   -- session restore: -s name
   if let some sessName := cli.session then
     try
