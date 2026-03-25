@@ -43,7 +43,7 @@
                             ▼
 ┌─────────────────────────────────────────────────────────┐
 │  appMain (App/Common.lean)                              │
-│    evToCmd → AppState.update → runEffect → render       │
+│    lookup KeyMap.char ∪ evToCmd → update → runEffect    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -119,38 +119,44 @@ The architecture separates pure state logic from IO effects:
 
 ## Cmd System (Cmd.lean)
 
-### Verb (5 actions)
+### Verb (7 actions)
 
-| Verb | Char | Meaning                       |
-|------|------|-------------------------------|
-| inc  | +    | increment, forward, next      |
-| dec  | -    | decrement, backward, prev     |
-| ent  | ~    | enter, toggle                 |
-| del  | d    | delete                        |
-| dup  | c    | copy, push, create            |
+| Verb   | Char | Meaning                       |
+|--------|------|-------------------------------|
+| inc    | >    | increment, forward, next      |
+| dec    | <    | decrement, backward, prev     |
+| ent    | ~    | enter, toggle                 |
+| del    | d    | delete, destroy               |
+| dup    | c    | copy, push, create            |
+| up     | ^    | go up / parent                |
+| val n  | 0-9  | direct value selection         |
 
-### Cmd Objects (18 objects)
+### Cmd Objects (22 objects)
 
-| Obj    | Char | Purpose                          |
-|--------|------|----------------------------------|
-| row    | r    | row cursor                       |
-| col    | c    | column cursor                    |
-| vPage  | v    | vertical page scroll             |
-| hPage  | h    | horizontal page scroll           |
-| ver    | V    | vertical end (top/bottom)        |
-| hor    | H    | horizontal end (first/last col)  |
-| rowSel | R    | row selection/search/filter      |
-| colSel | C    | column selection/sort/delete     |
-| grp    | g    | group (key columns)              |
-| stk    | s    | view stack operations            |
-| prec   | p    | decimal precision                |
-| width  | w    | column width                     |
-| thm    | T    | theme                            |
-| info   | i    | info overlay                     |
-| metaV  | M    | meta view                        |
-| freq   | F    | frequency view                   |
-| fld    | D    | folder view                      |
-| plot   | P    | R/ggplot2 chart (line/bar/scatter/hist/box) |
+| Obj      | Char | Purpose                          |
+|----------|------|----------------------------------|
+| row      | r    | row cursor                       |
+| col      | c    | column cursor, c=fzf cmd menu    |
+| vPage    | v    | vertical page scroll             |
+| hPage    | h    | horizontal page scroll           |
+| ver      | V    | vertical end (top/bottom)        |
+| hor      | H    | horizontal end (first/last col)  |
+| rowSel   | R    | row selection/search/filter      |
+| colSel   | C    | column selection/sort/hide       |
+| grp      | g    | group (key columns)              |
+| stk      | s    | view stack: pop/swap/dup/quit/xpose/diff |
+| prec     | p    | decimal precision                |
+| width    | w    | column width                     |
+| thm      | T    | theme                            |
+| info     | i    | info overlay                     |
+| metaV    | M    | meta view (0=selNull, 1=selSingle) |
+| freq     | F    | frequency view                   |
+| fld      | D    | folder view                      |
+| plot     | P    | R/ggplot2 chart                  |
+| colShift | K    | reorder key columns              |
+| heat     | m    | heatmap mode (0-3)               |
+| yank     | y    | copy to clipboard                |
+| prev     | B    | preview scroll ({/} keys)        |
 
 ### Isomorphism
 
@@ -161,38 +167,41 @@ theorem ofChar_toChar (v : Verb) : Verb.ofChar? (Verb.toChar v) = some v
 
 ## Obj/Verb Matrix (Key.lean)
 
-Direct key bindings and command mode (`space` + obj + verb):
+`KeyMap.char` is the single source of truth for all one-key shortcuts.
+All entries are `Cmd` (obj+verb). Command mode: `space` → fzf object picker → verb picker.
 
 ```
-                 │ DEC │ INC │ ENT │ DEL │ DUP │
-                 │  -  │  +  │  ~  │  d  │  c  │
-Char │ Obj       │  ,  │  .  │     │     │     │ Description
-─────┴───────────┴─────┴─────┴─────┴─────┴─────┴──────────────────
- --- Navigation (direct keys) ---
- r   │ row       │  k  │  j  │     │     │     │ Row cursor up/down
- c   │ col       │  h  │  l  │  s  │     │     │ Col cursor, s=fzf jump
- v   │ vPage     │ ^U  │ ^D  │     │     │     │ Vertical page (also JK)
- h   │ hPage     │     │     │     │     │     │ Horizontal page
- V   │ ver       │Home │End  │     │     │     │ Top/bottom
- H   │ hor       │  ←  │  →  │     │     │     │ First/last col
+                 │ DEC │ INC │ ENT │ DEL │ DUP │ UP  │ VAL │
+                 │  <  │  >  │  ~  │  d  │  c  │  ^  │ 0-9 │
+Char │ Obj       │     │     │     │     │     │     │     │ Description
+─────┴───────────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴───────────
+ --- Navigation (direct keys, via evToCmd) ---
+ r   │ row       │  k  │  j  │     │     │     │     │     │ cursor up/down
+ c   │ col       │  h  │  l  │  s  │     │ SPC │     │     │ cursor, s=fzf, SPC=cmd menu
+ v   │ vPage     │ ^U  │ ^D  │     │     │     │     │     │ page (also JK)
+ h   │ hPage     │     │     │     │     │     │     │     │ horizontal page
+ V   │ ver       │Home │End  │     │     │     │     │     │ top/bottom
+ H   │ hor       │  ←  │  →  │     │     │     │     │     │ first/last col
  --- Selection ---
- R   │ rowSel    │  \  │  /  │  T  │     │     │ \=filter, /=search, T=toggle
- C   │ colSel    │  ]  │  [  │  t  │  d  │     │ ]=sortDesc, [=sortAsc, t=toggle
- g   │ grp       │  N  │  n  │  !  │     │     │ N=prev, n=next, !=toggle
+ R   │ rowSel    │  \  │  /  │  T  │     │     │     │     │ \=filter, /=search, T=toggle
+ C   │ colSel    │  ]  │  [  │  t  │     │     │     │     │ sort/toggle (hide via Ch)
+ g   │ grp       │  N  │  n  │  !  │     │     │     │     │ prev/next/toggle
  --- Options ---
- s   │ stk       │  q  │     │  S  │     │     │ q=pop, S=swap
- p   │ prec      │     │     │     │     │     │ (space p ,/.)
- w   │ width     │     │     │     │     │     │ (space w ,/.)
- T   │ thm       │     │     │     │     │     │ (space T ,/.)
- i   │ info      │     │     │  I  │     │     │ I=toggle overlay
+ s   │ stk       │  q  │     │  S  │  Q  │     │  X  │ V=0 │ q=pop S=swap Q=quit X=xpose V=diff
+ p   │ prec      │     │     │     │     │     │     │     │ (space p </>)
+ w   │ width     │     │     │     │     │     │     │     │ (space w </>)
+ T   │ thm       │     │     │     │     │     │     │     │ (space T </>)
+ i   │ info      │     │     │  I  │     │     │     │     │ I=toggle overlay
+ B   │ prev      │  {  │  }  │     │     │     │     │     │ preview scroll
  --- Views ---
- M   │ metaV     │  0  │  1  │ ⏎   │     │  M  │ 0=selNull, 1=selSingle, M=push
- F   │ freq      │     │     │ ⏎   │     │  F  │ ⏎=filter by row, F=push
- D   │ fld       │     │     │ ⏎   │  d  │  D  │ ⏎=enter, d=trash, D=push
- P   │ plot      │     │  .  │     │     │     │ .=line chart (space P ,=bar)
+ M   │ metaV     │     │     │ ⏎   │     │  M  │     │0  1 │ M=push, 0=null, 1=single
+ F   │ freq      │     │     │ ⏎   │     │  F  │     │     │ ⏎=filter by row, F=push
+ D   │ fld       │     │     │ ⏎   │  d  │  D  │     │     │ ⏎=enter, d=trash, D=push
+ P   │ plot      │     │     │     │     │     │     │     │ (space P for type selection)
+ K   │ colShift  │S-←  │S-→  │     │     │     │     │     │ reorder key cols
+ m   │ heat      │     │     │     │     │     │     │0-3  │ heatmap mode (0=off)
+ y   │ yank      │     │  >  │  ~  │     │     │     │     │ ~=cell, >=row, <=col
 ```
-
-**Command mode**: Press `space` to open fzf object picker, then fzf verb picker.
 
 ## Effect DSL (Cmd.lean)
 
@@ -205,10 +214,12 @@ inductive QueryEffect where
   | freqFilter (cols : Array String) (row : Nat)
   | filter (expr : String)
   | sort (colIdx : Nat) (sels : Array Nat) (grp : Array Nat) (asc : Bool)
-inductive FolderEffect where | push | enter | del | depth (delta : Int)
+inductive FolderEffect where | push | enter | del | parent | depth (delta : Int)
 inductive SearchEffect where | next | prev
-inductive PlotEffect where | line | bar
+inductive PlotKind where | line | bar | scatter | hist | box | area | density | step | violin
 inductive MetaEffect where | selNull | selSingle | setKey
+inductive ClipEffect where | cell | row | col
+inductive ExportFmt where | csv | parquet | json | ndjson
 
 inductive Effect where
   | none | quit
@@ -216,10 +227,14 @@ inductive Effect where
   | query : QueryEffect → Effect
   | folder : FolderEffect → Effect
   | search : SearchEffect → Effect
-  | plot : PlotEffect → Effect
+  | plot : PlotKind → Effect
   | colMeta : MetaEffect → Effect
+  | clip : ClipEffect → Effect
   | themeLoad (delta : Int)
   | fetchMore
+  | export : ExportFmt → Effect
+  | sessionSave | sessionLoad | join
+  | transpose | diff
 ```
 
 **Functor pattern**: `update` maps `Cmd → Effect`:
@@ -266,9 +281,9 @@ Interactive plot with interval control. After display, `+`/`-` cycles intervals:
 
 | Struct       | Purpose                                      |
 |--------------|----------------------------------------------|
-| Verb         | Action type: inc/dec/ent/del/dup (5 verbs)   |
-| Cmd          | Object + Verb command pattern (18 objects)   |
-| Effect       | IO operation descriptor (24 variants)        |
+| Verb         | Action type: inc/dec/ent/del/dup/up/val (7 verbs) |
+| Cmd          | Object + Verb command pattern (22 objects)   |
+| Effect       | IO operation descriptor (30+ variants)       |
 | NavState     | Table + row/col cursors + selections + group |
 | NavAxis      | Generic axis: cur (Fin n) + sels (Array)     |
 | View         | Existential wrapper hiding table type        |
