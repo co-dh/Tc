@@ -11,23 +11,26 @@ class Parse (α : Type) where
 
 -- | Verb: action type
 inductive Verb where
-  | inc | dec         -- +/- movement (colSel:[/], rowSel:/\, grp:n/N)
+  | inc | dec         -- >/< movement (colSel:[/], rowSel:/\, grp:n/N)
   | dup               -- copy/dup (info: select single-val cols)
   | del               -- delete
   | ent               -- toggle/enter (col:s, rowSel:T, grp:!)
   | up                -- go up/parent (fld: backspace → parent dir)
+  | val (n : UInt8)   -- direct value selection (heat mode 0-3, etc.)
   deriving Repr, BEq, DecidableEq
 
 namespace Verb
 
--- | Verb to char
+-- | Verb to char (<> for inc/dec, digits for val)
 def toChar : Verb → Char
-  | .inc => '+' | .dec => '-' | .ent => '~' | .del => 'd' | .dup => 'c' | .up => '^'
+  | .inc => '>' | .dec => '<' | .ent => '~' | .del => 'd' | .dup => 'c' | .up => '^'
+  | .val n => Char.ofNat (n.toNat + '0'.toNat)
 
--- | Char to verb
+-- | Char to verb (<> and +- both accepted for inc/dec)
 def ofChar? : Char → Option Verb
-  | '+' => some .inc | '-' => some .dec | '~' => some .ent
-  | 'd' => some .del | 'c' => some .dup | '^' => some .up | _ => none
+  | '>' | '+' => some .inc | '<' | '-' => some .dec | '~' => some .ent
+  | 'd' => some .del | 'c' => some .dup | '^' => some .up
+  | c => if c.isDigit then some (.val (c.toNat - '0'.toNat).toUInt8) else none
 
 instance : ToString Verb where toString v := v.toChar.toString
 instance : Parse Verb where parse? s := s.toList.head?.bind ofChar?
@@ -151,8 +154,8 @@ instance : Parse Cmd where
     none
 
 -- | Previewable: pure visual commands safe for live preview (no IO/DB)
+-- Currently unused: arrow-cycling removed in favor of direct selection.
 def isPreviewable : Cmd → Bool
-  | .thm _ | .heat _ | .width _ | .prec _ => true
   | _ => false
 
 end Cmd

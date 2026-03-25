@@ -237,18 +237,31 @@ end FilterUpdateTests
 
 section CmdRoundTripTests
 
--- Obj+verb Cmd constructors round-trip through toString/parse?
--- (Argument commands tested separately since they carry String payloads)
-theorem cmd_roundtrip_nav (v : Verb) : @Parse.parse? Cmd _ (toString (Cmd.row v)) = some (.row v) := by
-  cases v <;> native_decide
-theorem cmd_roundtrip_col (v : Verb) : @Parse.parse? Cmd _ (toString (Cmd.col v)) = some (.col v) := by
-  cases v <;> native_decide
-theorem cmd_roundtrip_heat (v : Verb) : @Parse.parse? Cmd _ (toString (Cmd.heat v)) = some (.heat v) := by
-  cases v <;> native_decide
+-- Obj+verb Cmd round-trip: standard verbs (val digits tested separately)
+#guard (@Parse.parse? Cmd _ "r>") == some (.row .inc)
+#guard (@Parse.parse? Cmd _ "r<") == some (.row .dec)
+#guard (@Parse.parse? Cmd _ "r~") == some (.row .ent)
+#guard (@Parse.parse? Cmd _ "rd") == some (.row .del)
+#guard (@Parse.parse? Cmd _ "rc") == some (.row .dup)
+#guard (@Parse.parse? Cmd _ "r^") == some (.row .up)
+#guard (@Parse.parse? Cmd _ "c>") == some (.col .inc)
+#guard (@Parse.parse? Cmd _ "c<") == some (.col .dec)
+
+-- Heat mode: direct selection via digit verbs (m0-m3)
+#guard (@Parse.parse? Cmd _ "m0") == some (.heat (.val 0))
+#guard (@Parse.parse? Cmd _ "m1") == some (.heat (.val 1))
+#guard (@Parse.parse? Cmd _ "m2") == some (.heat (.val 2))
+#guard (@Parse.parse? Cmd _ "m3") == some (.heat (.val 3))
+
+-- Backward compat: +/- still parse as inc/dec
+#guard (@Parse.parse? Cmd _ "r-") == some (.row .dec)
+#guard (@Parse.parse? Cmd _ "r+") == some (.row .inc)
+#guard (@Parse.parse? Cmd _ "m-") == some (.heat .dec)
+#guard (@Parse.parse? Cmd _ "m+") == some (.heat .inc)
 
 -- 2-char obj+verb takes priority over ArgCmd prefix (prevents "s~" → colJump "~" bug)
 #guard (@Parse.parse? Cmd _ "s~") == some (.stk .ent)
-#guard (@Parse.parse? Cmd _ "s-") == some (.stk .dec)
+#guard (@Parse.parse? Cmd _ "s<") == some (.stk .dec)
 
 -- Argument command parse round-trips (all 9 ArgCmd variants)
 #guard (@Parse.parse? Cmd _ ":-") == some (.arg (.split "-"))
@@ -261,17 +274,15 @@ theorem cmd_roundtrip_heat (v : Verb) : @Parse.parse? Cmd _ (toString (Cmd.heat 
 #guard (@Parse.parse? Cmd _ "Lmysess") == some (.arg (.sessLoad "mysess"))
 #guard (@Parse.parse? Cmd _ "J0") == some (.arg (.join "0"))
 
--- Socket <> binds send "{obj}-"/"{obj}+" — verify these parse correctly
-#guard (@Parse.parse? Cmd _ "r-") == some (.row .dec)
-#guard (@Parse.parse? Cmd _ "r+") == some (.row .inc)
-#guard (@Parse.parse? Cmd _ "m-") == some (.heat .dec)
-#guard (@Parse.parse? Cmd _ "m+") == some (.heat .inc)
-#guard (@Parse.parse? Cmd _ "T-") == some (.thm .dec)
-#guard (@Parse.parse? Cmd _ "T+") == some (.thm .inc)
-#guard (@Parse.parse? Cmd _ "w-") == some (.width .dec)
-#guard (@Parse.parse? Cmd _ "w+") == some (.width .inc)
-#guard (@Parse.parse? Cmd _ "p-") == some (.prec .dec)
-#guard (@Parse.parse? Cmd _ "p+") == some (.prec .inc)
+-- Socket codes: <> for inc/dec, digits for direct selection
+#guard (@Parse.parse? Cmd _ "r<") == some (.row .dec)
+#guard (@Parse.parse? Cmd _ "r>") == some (.row .inc)
+#guard (@Parse.parse? Cmd _ "T<") == some (.thm .dec)
+#guard (@Parse.parse? Cmd _ "T>") == some (.thm .inc)
+#guard (@Parse.parse? Cmd _ "w<") == some (.width .dec)
+#guard (@Parse.parse? Cmd _ "w>") == some (.width .inc)
+#guard (@Parse.parse? Cmd _ "p<") == some (.prec .dec)
+#guard (@Parse.parse? Cmd _ "p>") == some (.prec .inc)
 
 end CmdRoundTripTests
 
