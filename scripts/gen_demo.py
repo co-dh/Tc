@@ -52,17 +52,24 @@ FEATURES = {
         ("Select a value and press Enter\nOnly matching rows remain", "j Enter", "j\r", 4.0),
     ]),
 
-    # heatmap: direct via socket — i1=numeric, i2=categorical (merged heat→info)
+    # heatmap: Space opens fzf cmd menu, select heatmap modes
     "heatmap": F(NYSE, [
-        ("Color numeric columns by value",       "i1",    "!i1",       4.0),
-        ("Color categorical columns by group",   "i2",    "!i2",       4.0),
+        ("",                                              None,  " .....",          3.0),  # Space opens fzf + padding
+        ("",                                              None,  "\x15Heatmap: n",  3.0),  # ctrl-u + type (fzf visible)
+        ("Color numeric columns by value",                None,  "\r",              4.0),
+        ("",                                              None,  " .....",          3.0),
+        ("",                                              None,  "\x15Heatmap: c",  3.0),
+        ("Color categorical columns by group",            None,  "\r",              4.0),
     ]),
 
-    # plot: direct via socket — c6=histogram (merged plot→col)
+    # plot: Space opens fzf cmd menu, select histogram
     "plot": F(NYSE, [
         ("Move cursor to a numeric column",                    "lll",   "lll",  2.0),
-        ("Render a histogram with ggplot2\nPress q to close",  "c6",    "!c6",  5.0),
-        ("",                                                   None,    "q",    1.0),
+        ("Open command menu with Space",                       None,    None,   2.0),
+        ("",                                                   None,    " .....",       3.0),  # fzf char loss padding
+        ("",                                                   None,    "\x15histogram", 3.0),  # type command (fzf visible)
+        ("Render a histogram with ggplot2\nPress q to close",  None,    "\r",           5.0),
+        ("",                                                   None,    "q",            1.0),
     ]),
 
     "fzf": F(NYSE, [
