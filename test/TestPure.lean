@@ -273,57 +273,57 @@ section NavTheorems
 
 -- Theorem 2: row.inc then row.dec is identity (from test_nav_up: "jk returns to row 0")
 theorem nav_row_inverse :
-    (do let n1 ← NavState.exec (.row .inc) testNav 1 1
-        let n2 ← NavState.exec (.row .dec) n1 1 1
+    (do let n1 ← NavState.exec (.row .inc) testNav 1
+        let n2 ← NavState.exec (.row .dec) n1 1
         pure n2.row.cur.val) = some 0 := by
   native_decide
 
 -- Theorem 3: col.inc then col.dec is identity (from test_nav_left: "lh returns to col 0")
 theorem nav_col_inverse :
-    (do let n1 ← NavState.exec (.col .inc) testNav 1 1
-        let n2 ← NavState.exec (.col .dec) n1 1 1
+    (do let n1 ← NavState.exec (.col .inc) testNav 1
+        let n2 ← NavState.exec (.col .dec) n1 1
         pure n2.col.cur.val) = some 0 := by
   native_decide
 
 -- Theorem 4: group toggle twice returns to empty (from test_key_remove: "!! removes key")
 theorem grp_toggle_inverse :
-    (do let n1 ← NavState.exec (.col .ent) testNav 1 1
-        let n2 ← NavState.exec (.col .ent) n1 1 1
+    (do let n1 ← NavState.exec (.col .ent) testNav 1
+        let n2 ← NavState.exec (.col .ent) n1 1
         pure n2.grp) = some #[] := by
   native_decide
 
 -- Theorem 5: hidden toggle twice returns to empty (from test_hide_unhide: "HH unhides")
 theorem hidden_toggle_inverse :
-    (do let n1 ← NavState.exec (.col .filter) testNav 1 1
-        let n2 ← NavState.exec (.col .filter) n1 1 1
+    (do let n1 ← NavState.exec (.col .filter) testNav 1
+        let n2 ← NavState.exec (.col .filter) n1 1
         pure n2.hidden) = some #[] := by
   native_decide
 
 -- Theorem 6: TjT accumulates selections [0, 1] (from test_multi_select)
 theorem sel_accumulation :
-    (do let n1 ← NavState.exec (.row .ent) testNav 1 1
-        let n2 ← NavState.exec (.row .inc) n1 1 1
-        let n3 ← NavState.exec (.row .ent) n2 1 1
+    (do let n1 ← NavState.exec (.row .ent) testNav 1
+        let n2 ← NavState.exec (.row .inc) n1 1
+        let n3 ← NavState.exec (.row .ent) n2 1
         pure n3.row.sels) = some #[0, 1] := by
   native_decide
 
 -- l! groups c1 (from test_key_reorder: "Key col moves to front")
 theorem nav_grp_col :
-    (do let n1 ← NavState.exec (.col .inc) testNav 1 1
-        let n2 ← NavState.exec (.col .ent) n1 1 1
+    (do let n1 ← NavState.exec (.col .inc) testNav 1
+        let n2 ← NavState.exec (.col .ent) n1 1
         pure n2.grp) = some #["c1"] := by
   native_decide
 
 -- l! → dispOrder puts c1 first (from test_key_reorder)
 theorem nav_disp_grp_first :
-    (do let n1 ← NavState.exec (.col .inc) testNav 1 1
-        let n2 ← NavState.exec (.col .ent) n1 1 1
+    (do let n1 ← NavState.exec (.col .inc) testNav 1
+        let n2 ← NavState.exec (.col .ent) n1 1
         pure (n2.dispIdxs.getD 0 999)) = some 1 := by
   native_decide
 
 -- \ hides current column (from test_hide_col)
 theorem nav_hide :
-    (do let n1 ← NavState.exec (.col .filter) testNav 1 1
+    (do let n1 ← NavState.exec (.col .filter) testNav 1
         pure n1.hidden) = some #["c0"] := by
   native_decide
 
@@ -453,77 +453,77 @@ section NavTests2
 -- 5 rows, 3 cols — uses mock53/testNav already defined above
 
 -- | j (row.inc) moves cursor from 0 to 1
-#guard (NavState.exec (.row .inc) testNav 1 1).map (·.row.cur.val) == some 1
+#guard (NavState.exec (.row .inc) testNav 1).map (·.row.cur.val) == some 1
 
 -- | k (row.dec) at row 0 stays at 0 (clamped)
-#guard (NavState.exec (.row .dec) testNav 1 1).map (·.row.cur.val) == some 0
+#guard (NavState.exec (.row .dec) testNav 1).map (·.row.cur.val) == some 0
 
 -- | l (col.inc) moves cursor from 0 to 1
-#guard (NavState.exec (.col .inc) testNav 1 1).map (·.col.cur.val) == some 1
+#guard (NavState.exec (.col .inc) testNav 1).map (·.col.cur.val) == some 1
 
 -- | h (col.dec) at col 0 stays at 0 (clamped)
-#guard (NavState.exec (.col .dec) testNav 1 1).map (·.col.cur.val) == some 0
+#guard (NavState.exec (.col .dec) testNav 1).map (·.col.cur.val) == some 0
 
 -- | } (row.rbc = bottom) goes to last row (4)
-#guard (NavState.exec (.row .rbc) testNav 1 1).map (·.row.cur.val) == some 4
+#guard (NavState.exec (.row .rbc) testNav 1).map (·.row.cur.val) == some 4
 
 -- | { (row.lbc = top) goes to first row (0)
 def navAtRow4 : NavState 5 3 (MockTable 5 3) :=
-  match NavState.exec (.row .rbc) testNav 1 1 with
+  match NavState.exec (.row .rbc) testNav 1 with
   | some n => n
   | none => testNav
-#guard (NavState.exec (.row .lbc) navAtRow4 1 1).map (·.row.cur.val) == some 0
+#guard (NavState.exec (.row .lbc) navAtRow4 1).map (·.row.cur.val) == some 0
 
 -- | col } (col.rbc = last) goes to last col (2)
-#guard (NavState.exec (.col .rbc) testNav 1 1).map (·.col.cur.val) == some 2
+#guard (NavState.exec (.col .rbc) testNav 1).map (·.col.cur.val) == some 2
 
 -- | col { (col.lbc = first) goes to first col (0)
 def navAtCol2 : NavState 5 3 (MockTable 5 3) :=
-  match NavState.exec (.col .rbc) testNav 1 1 with
+  match NavState.exec (.col .rbc) testNav 1 with
   | some n => n
   | none => testNav
-#guard (NavState.exec (.col .lbc) navAtCol2 1 1).map (·.col.cur.val) == some 0
+#guard (NavState.exec (.col .lbc) navAtCol2 1).map (·.col.cur.val) == some 0
 
 -- | ] (row.rbr = page down) with page size 2 moves from 0 to 2
-#guard (NavState.exec (.row .rbr) testNav 2 1).map (·.row.cur.val) == some 2
+#guard (NavState.exec (.row .rbr) testNav 2).map (·.row.cur.val) == some 2
 
 -- | [ (row.lbr = page up) at row 0 stays at 0
-#guard (NavState.exec (.row .lbr) testNav 2 1).map (·.row.cur.val) == some 0
+#guard (NavState.exec (.row .lbr) testNav 2).map (·.row.cur.val) == some 0
 
 -- | T (row.ent) toggles row selection
-#guard (NavState.exec (.row .ent) testNav 1 1).map (·.row.sels) == some #[0]
+#guard (NavState.exec (.row .ent) testNav 1).map (·.row.sels) == some #[0]
 
 -- | T twice removes selection
 def navWithSel : NavState 5 3 (MockTable 5 3) :=
-  match NavState.exec (.row .ent) testNav 1 1 with
+  match NavState.exec (.row .ent) testNav 1 with
   | some n => n
   | none => testNav
-#guard (NavState.exec (.row .ent) navWithSel 1 1).map (·.row.sels) == some #[]
+#guard (NavState.exec (.row .ent) navWithSel 1).map (·.row.sels) == some #[]
 
 -- | ! (col.ent) toggles group
-#guard (NavState.exec (.col .ent) testNav 1 1).map (·.grp) == some #["c0"]
+#guard (NavState.exec (.col .ent) testNav 1).map (·.grp) == some #["c0"]
 
 -- | colShift (c-) on non-keyed column is no-op
-#guard (NavState.exec (.col .del) testNav 1 1).isNone
+#guard (NavState.exec (.col .del) testNav 1).isNone
 
 -- | colShift on keyed column swaps grp order
 -- !l! → grp=["c0","c1"], then shift-left (c-) on c1 (cursor at disp pos 1) → grp=["c1","c0"]
 def navGrp2 : NavState 5 3 (MockTable 5 3) :=
-  match do let n1 ← NavState.exec (.col .ent) testNav 1 1
-           let n2 ← NavState.exec (.col .inc) n1 1 1
-           NavState.exec (.col .ent) n2 1 1 with
+  match do let n1 ← NavState.exec (.col .ent) testNav 1
+           let n2 ← NavState.exec (.col .inc) n1 1
+           NavState.exec (.col .ent) n2 1 with
   | some n => n | none => testNav
 #guard navGrp2.grp == #["c0", "c1"]
-#guard (NavState.exec (.col .del) navGrp2 1 1).map (·.grp) == some #["c1", "c0"]
+#guard (NavState.exec (.col .del) navGrp2 1).map (·.grp) == some #["c1", "c0"]
 
 -- | colShift at boundary is no-op (first key col can't shift left)
 def navGrp2AtFirst : NavState 5 3 (MockTable 5 3) :=
-  match NavState.exec (.col .dec) navGrp2 1 1 with
+  match NavState.exec (.col .dec) navGrp2 1 with
   | some n => n | none => navGrp2
-#guard (NavState.exec (.col .del) navGrp2AtFirst 1 1).isNone
+#guard (NavState.exec (.col .del) navGrp2AtFirst 1).isNone
 
 -- | update returns Effect.none for nav commands
-#guard (NavState.update (.row .inc) testNav 1 1).map (·.2) == some .none
+#guard (NavState.update (.row .inc) testNav 1).map (·.2) == some .none
 
 end NavTests2
 
@@ -570,11 +570,9 @@ def infoOn : UI.Info.State := { vis := true }
 #guard (UI.Info.State.update infoOff (.info .ent)).map (·.1.vis) == some true
 #guard (UI.Info.State.update infoOn (.info .ent)).map (·.1.vis) == some false
 
--- | info.inc turns on
-#guard (UI.Info.State.update infoOff (.info .inc)).map (·.1.vis) == some true
-
--- | info.dec turns off
-#guard (UI.Info.State.update infoOn (.info .dec)).map (·.1.vis) == some false
+-- | info.inc/dec now handled by AppState (not Info.State), returns none here
+#guard (UI.Info.State.update infoOff (.info .inc)).isNone
+#guard (UI.Info.State.update infoOn (.info .dec)).isNone
 
 -- | Unhandled returns none
 #guard (UI.Info.State.update infoOff (.row .inc)).isNone

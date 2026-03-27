@@ -138,7 +138,7 @@ def newAt (tbl : t) (hRows : TblOps.nRows tbl = nRows) (hCols : (TblOps.colNames
   ⟨tbl, hRows, hCols, ⟨⟨r, hltr⟩, #[]⟩, ⟨⟨c, hltc⟩, #[]⟩, grp, #[], dispOrder grp (TblOps.colNames tbl)⟩
 
 -- Execute Cmd, returns Option NavState (always some for nav commands)
-def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option (NavState nRows nCols t) :=
+def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg : Nat) : Option (NavState nRows nCols t) :=
   let r d := some { nav with row := { nav.row with cur := nav.row.cur.clamp d } }
   let c d := some { nav with col := { nav.col with cur := nav.col.cur.clamp d } }
   match cmd with
@@ -173,9 +173,9 @@ def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option
   | _ => none
 
 -- | Pure update: wrap exec to return Effect
-def update (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat)
+def update (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg : Nat)
     : Option (NavState nRows nCols t × Effect) :=
-  (exec cmd nav rowPg colPg).map (·, .none)
+  (exec cmd nav rowPg).map (·, .none)
 
 end NavState
 

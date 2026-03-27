@@ -56,7 +56,7 @@ The architecture separates pure state logic from IO effects:
 │                   Pure State Machine                     │
 │  update : AppState → Cmd → Option (AppState × Effect)   │
 │  - Nav.update (cursor, selection, group)                │
-│  - Theme.update (returns Effect.themeLoad)              │
+│  - Theme.init (load on startup)                         │
 │  - Info.update (toggle visibility)                      │
 │  - View.update (prec/width, returns query effects)      │
 │  - Filter.update (returns fzf effects)                  │
@@ -182,8 +182,6 @@ inductive Effect where
   | search : SearchEffect → Effect
   | plot : PlotKind → Effect
   | colMeta : MetaEffect → Effect
-  | clip : ClipEffect → Effect
-  | themeLoad (delta : Int)
   | fetchMore
   | export : ExportFmt → Effect
   | sessionSave | sessionLoad | join
@@ -206,14 +204,14 @@ Interactive plot with interval control. After display, `+`/`-` cycles intervals:
 │  Plot.run                                               │
 │  1. Determine x/y columns from group + cursor           │
 │  2. Detect x-axis type (time/timestamp/date/str/num)    │
-│  3. Infer date/time from string values if needed         │
-│  4. Term.shutdown                                        │
-│  5. Loop:                                                │
+│  3. Infer date/time from string values if needed        │
+│  4. Term.shutdown                                       │
+│  5. Loop:                                               │
 │     export data (DB-side or Lean fallback)              │
 │     Rscript (ggplot2) → PNG → viu                       │
 │     show interval selector: [1d] 1M 1Y                  │
 │     read key: +/- → change interval, else → exit        │
-│  6. Term.init                                            │
+│  6. Term.init                                           │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -234,8 +232,8 @@ Interactive plot with interval control. After display, `+`/`-` cycles intervals:
 
 | Struct       | Purpose                                      |
 |--------------|----------------------------------------------|
-| Verb         | Action type: inc/dec/ent/del/dup/up/val (7 verbs) |
-| Cmd          | Object + Verb command pattern (15 objects)   |
+| Verb         | Action type: 14 named + val 0-9              |
+| Cmd          | Object + Verb command pattern (7 objects)    |
 | Effect       | IO operation descriptor (30+ variants)       |
 | NavState     | Table + row/col cursors + selections + group |
 | NavAxis      | Generic axis: cur (Fin n) + sels (Array)     |

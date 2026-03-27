@@ -2,8 +2,6 @@
   Clip: clipboard copy support (deprecated — not suitable for database use case).
   Kept for copyToClip utility used by statusMsg.
 -/
-import Tc.Cmd
-import Tc.View
 
 namespace Tc.Clip
 

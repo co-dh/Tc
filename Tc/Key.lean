@@ -47,7 +47,7 @@ def evToChar (ev : Term.Event) : Char :=
   if ev.key == Term.keyEnter then '\r'
   else (lookup KeyMap.arrow ev.key).getD (Char.ofNat ev.ch.toNat)
 
-private def navCmd (c : Char) (shift : Bool) : Option Cmd :=
+private def navCmd (c : Char) : Option Cmd :=
   KeyMap.nav.findSome? fun (ch, isRow, fwd) =>
     if c == ch then
       let v := if fwd then Verb.inc else .dec
@@ -61,30 +61,48 @@ def objMenu : Array (Char × String × (Verb → Cmd)) := #[
 
 def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
   match obj with
-  | 'r' => #[('<', "up", .dec), ('>', "down", .inc), ('[', "page up", .lbr), (']', "page down", .rbr),
-             ('{', "top", .lbc), ('}', "bottom", .rbc),
-             ('~', "toggle row", .ent), ('+', "next match", .dup), ('-', "prev match", .del),
-             ('/', "search", .search), ('\\', "filter", .filter)]
-  | 'c' => #[('<', "left", .dec), ('>', "right", .inc), ('{', "first", .lbc), ('}', "last", .rbc),
-             ('[', "sort asc", .lbr), (']', "sort desc", .rbr),
-             ('-', "shift left", .del), ('+', "shift right", .dup),
-             ('~', "toggle group", .ent), ('\\', "hide", .filter), ('/', "search col", .search),
-             (':', "split", .split), ('=', "derive", .derive),
-             ('0', "area", .val 0), ('1', "line", .val 1), ('2', "scatter", .val 2), ('3', "bar", .val 3),
-             ('4', "boxplot", .val 4), ('5', "step", .val 5), ('6', "histogram", .val 6), ('7', "density", .val 7),
-             ('8', "violin", .val 8)]
-  | 's' => #[('<', "pop", .dec), ('>', "dup", .inc), ('~', "swap", .ent),
-             ('[', "join left", .lbr), (']', "join right", .rbr), ('{', "quit", .lbc), ('}', "inner join", .rbc),
-             ('-', "set diff", .del), ('+', "union", .dup), ('/', "cmd menu", .search),
-             ('1', "transpose", .val 1), ('2', "diff", .val 2)]
-  | 'i' => #[('<', "prec dec", .dec), ('>', "prec inc", .inc), ('~', "toggle info", .ent),
-             ('[', "scroll up", .lbr), (']', "scroll down", .rbr), ('{', "0 dp", .lbc), ('}', "17 dp max", .rbc),
-             ('0', "heat off", .val 0), ('1', "heat numeric", .val 1), ('2', "heat categorical", .val 2), ('3', "heat all", .val 3)]
-  | 'M' => #[('0', "sel nulls", .val 0), ('1', "sel singles", .val 1), ('~', "set key", .ent), ('+', "open", .dup)]
+  | 'r' => #[('/', "Search for value in current column", .search),
+             ('\\', "Filter rows by PRQL expression", .filter),
+             ('~', "Select/deselect current row", .ent),
+             ('+', "Jump to next search match", .dup), ('-', "Jump to previous search match", .del),
+             ('[', "Page up", .lbr), (']', "Page down", .rbr),
+             ('{', "Jump to top", .lbc), ('}', "Jump to bottom", .rbc),
+             ('<', "Move cursor up", .dec), ('>', "Move cursor down", .inc)]
+  | 'c' => #[('/', "Jump to column by name", .search),
+             ('~', "Toggle group on current column", .ent),
+             ('\\', "Hide/unhide current column", .filter),
+             ('[', "Sort ascending", .lbr), (']', "Sort descending", .rbr),
+             (':', "Split column by delimiter", .split), ('=', "Derive new column (name = expr)", .derive),
+             ('-', "Shift key column left", .del), ('+', "Shift key column right", .dup),
+             ('{', "Jump to first column", .lbc), ('}', "Jump to last column", .rbc),
+             ('<', "Move cursor left", .dec), ('>', "Move cursor right", .inc),
+             ('0', "Plot: area chart", .val 0), ('1', "Plot: line chart", .val 1),
+             ('2', "Plot: scatter plot", .val 2), ('3', "Plot: bar chart", .val 3),
+             ('4', "Plot: boxplot", .val 4), ('5', "Plot: step chart", .val 5),
+             ('6', "Plot: histogram", .val 6), ('7', "Plot: density plot", .val 7),
+             ('8', "Plot: violin plot", .val 8)]
+  | 's' => #[('/', "Open command menu", .search),
+             ('~', "Swap top two views", .ent),
+             ('<', "Close current view", .dec), ('>', "Duplicate current view", .inc),
+             ('{', "Quit application", .lbc),
+             ('1', "Transpose table (rows ↔ columns)", .val 1),
+             ('2', "Diff top two views", .val 2),
+             ('}', "Join: inner", .rbc), ('[', "Join: left", .lbr), (']', "Join: right", .rbr),
+             ('+', "Join: union", .dup), ('-', "Join: set difference", .del)]
+  | 'i' => #[('~', "Toggle info overlay", .ent),
+             ('<', "Decrease decimal precision", .dec), ('>', "Increase decimal precision", .inc),
+             ('{', "Set precision to 0 decimals", .lbc), ('}', "Set precision to max (17)", .rbc),
+             ('[', "Scroll cell preview up", .lbr), (']', "Scroll cell preview down", .rbr),
+             ('0', "Heatmap: off", .val 0), ('1', "Heatmap: numeric columns", .val 1),
+             ('2', "Heatmap: categorical columns", .val 2), ('3', "Heatmap: all columns", .val 3)]
+  | 'M' => #[('+', "Open column metadata view", .dup), ('~', "Set selected rows as key columns", .ent),
+             ('0', "Select columns with null values", .val 0), ('1', "Select columns with single value", .val 1)]
   | 'F' => match vk with
-    | .freqV _ _ => #[('~', "filter by row", .ent), ('+', "open", .dup)]
-    | _ => #[('+', "open", .dup)]
-  | 'D' => #[('<', "depth--", .dec), ('>', "depth++", .inc), ('~', "enter", .ent), ('-', "trash", .del), ('{', "parent", .lbc)]
+    | .freqV _ _ => #[('+', "Open frequency view", .dup), ('~', "Filter parent table by current row", .ent)]
+    | _ => #[('+', "Open frequency view", .dup)]
+  | 'D' => #[('~', "Open file or enter directory", .ent), ('{', "Go to parent directory", .lbc),
+             ('-', "Move to trash", .del),
+             ('<', "Decrease folder depth", .dec), ('>', "Increase folder depth", .inc)]
   | _   => #[]
 
 def enterCmd (vk : ViewKind) : Option Cmd :=
@@ -107,7 +125,7 @@ def evToCmd (ev : Term.Event) (vk : ViewKind) : Option Cmd :=
   let shift := ev.mod &&& Term.modShift != 0
   if shift && ev.key == Term.keyArrowLeft then some (.col .del)
   else if shift && ev.key == Term.keyArrowRight then some (.col .dup)
-  else navCmd c shift <|> lookup KeyMap.special ev.key <|> lookup KeyMap.ctrl ev.key
+  else navCmd c <|> lookup KeyMap.special ev.key <|> lookup KeyMap.ctrl ev.key
 
 def parseKeys (s : String) : String :=
   s.replace "<ret>" "\r"

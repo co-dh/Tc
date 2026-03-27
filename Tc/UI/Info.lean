@@ -16,8 +16,6 @@ namespace State
 -- | Pure update: returns (new state, effect)
 def update (s : State) (cmd : Cmd) : Option (State × Effect) :=
   match cmd with
-  | .info .inc => some ({ s with vis := true }, .none)
-  | .info .dec => some ({ s with vis := false }, .none)
   | .info .ent => some ({ s with vis := !s.vis }, .none)
   | _ => none
 
@@ -29,10 +27,10 @@ end State
 def viewHints : ViewKind → Array (String × String)
   | .colMeta => #[("M0", "select nulls"), ("M1", "select unique"), ("⏎", "set as key"), ("q", "back")]
   | .freqV _ _ => #[("⏎", "filter by val"), ("q", "back")]
-  | .fld _ _ => #[("⏎", "open"), ("d", "trash"), (",d", "less depth"), (".d", "more depth")]
+  | .fld _ _ => #[("⏎", "open"), ("D-", "trash"), ("D<", "less depth"), ("D>", "more depth")]
   | .tbl => #[
-    ("t", "toggle col sel"), ("T", "toggle row sel"),
-    ("!", "group by"), ("Ch", "hide column"),
+    ("T", "toggle row sel"),
+    ("!", "group by"), ("c\\", "hide column"),
     ("S-←→", "reorder cols"), ("SPC", "command menu")]
 
 -- | Render info overlay at bottom-right

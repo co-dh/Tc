@@ -89,12 +89,6 @@ def themes : Array (String × String) := #[
 def themeIdx (theme variant : String) : Nat :=
   themes.findIdx? (· == (theme, variant)) |>.getD 0
 
--- | Cycle theme index by delta, return new (theme, variant)
-def cycleTheme (idx : Nat) (delta : Int) : String × String :=
-  let n := themes.size
-  let newIdx := ((idx : Int) + delta).toNat % n
-  themes.getD newIdx ("default", "dark")
-
 -- | Load theme CSV, filter by theme/variant, return styles array
 def load (path : String) (theme variant : String) : IO (Array UInt32) := do
   let content ← IO.FS.readFile path
@@ -113,13 +107,6 @@ def load (path : String) (theme variant : String) : IO (Array UInt32) := do
       styles := styles.set! (idx * 2 + 1) bg
   return styles
 
--- | Cycle theme by delta, returns (newStyles, newIdx)
-def doCycle (idx : Nat) (delta : Int) : IO (Array UInt32 × Nat) := do
-  let (theme, variant) := cycleTheme idx delta
-  let newIdx := themeIdx theme variant
-  let styles ← load "theme.csv" theme variant <|> pure defaultDark
-  pure (styles, newIdx)
-
 namespace State
 
 -- | Initialize theme: detect dark/light, load default theme
@@ -128,13 +115,6 @@ def init : IO State := do
   let variant := if dark then "dark" else "light"
   let styles ← load "theme.csv" "default" variant <|> pure defaultDark
   pure ⟨styles, Theme.themeIdx "default" variant⟩
-
--- Theme update removed — theme cycling not exposed in current UI
-
--- | Execute theme effect: load theme with delta
-def runEffect (s : State) (delta : Int) : IO State := do
-  let (sty, idx) ← doCycle s.themeIdx delta
-  pure ⟨sty, idx⟩
 
 end State
 end Tc.Theme

@@ -53,10 +53,6 @@ def fromTbl (tbl : T) (path : String)
     else none
   else none
 
--- | Verb to delta: inc=+1, dec=-1
-private def verbDelta (verb : Verb) : Int := if verb == .inc then 1 else -1
-
-
 -- | Rebuild view with new table, preserving all attributes from old view.
 -- Only nRows/nCols/nav change; everything else (vkind, disp, prec, etc.) is kept.
 def rebuild (old : View T) (tbl : T) (col : Nat := old.nav.col.cur.val)
@@ -76,16 +72,13 @@ def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
   let curCol := colIdxAt n.grp names n.col.cur.val
   match cmd with
   -- effect: sort (runner will execute and rebuild view)
-  | .col .lbr =>
+  | .col .lbr | .col .rbr =>
+    let asc := cmd == .col .lbr
     let selIdxs := n.col.sels.filterMap names.idxOf?
     let grpIdxs := n.grp.filterMap names.idxOf?
-    some (v, .query (.sort curCol selIdxs grpIdxs true))
-  | .col .rbr =>
-    let selIdxs := n.col.sels.filterMap names.idxOf?
-    let grpIdxs := n.grp.filterMap names.idxOf?
-    some (v, .query (.sort curCol selIdxs grpIdxs false))
+    some (v, .query (.sort curCol selIdxs grpIdxs asc))
   -- pure: navigation (detect at-bottom for fetchMore on downward scroll)
-  | _ => (NavState.exec cmd n rowPg colPageSize).map fun nav' =>
+  | _ => (NavState.exec cmd n rowPg).map fun nav' =>
     let needsMore := nav'.row.cur.val + 1 >= v.nRows
       && TblOps.totalRows n.tbl > v.nRows
       && (cmd matches .row .inc | .row .rbr | .row .rbc)
