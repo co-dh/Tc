@@ -5,7 +5,6 @@ import Tc.SourceConfig
 import Tc.TmpDir
 import Tc.Meta
 import Tc.Plot
-import Tc.Clip
 import Tc.Transpose
 import Tc.Join
 import Tc.Fzf
@@ -45,7 +44,7 @@ namespace AppState
 
 -- | Commands that reset ViewState to default (clear scroll/cursor) because view content changes substantially
 def resetsVS (cmd : Cmd) : Bool :=
-  cmd matches .stk .dec | .col (.val 2) | .col (.val 3) | .metaV _ | .freq _ | .fld _
+  cmd matches .stk .dec | .col .lbr | .col .rbr | .metaV _ | .freq _ | .fld _
     | .col .search | .row .search | .row .filter
 
 -- | Update stk, reset vs if needed
@@ -60,20 +59,28 @@ private def liftStk (a : AppState) (cmd : Cmd) (r : Option (ViewStack AdbcTable 
 def update (a : AppState) (cmd : Cmd) : Option (AppState × Effect) :=
   let viewUp := View.update a.stk.cur cmd 20 |>.map fun (v', e) => (withStk a cmd (a.stk.setCur v'), e)
   match cmd with
-  | .stk .del      => some (a, .quit)        -- s-: quit
-  | .stk .up       => some (a, .transpose)   -- s^: transpose push
-  | .stk (.val 0)  => some (a, .diff)        -- s0: diff / show-same
+  | .stk .lbc      => some (a, .quit)        -- s{: quit
+  | .stk (.val 1)  => some (a, .transpose)   -- s1: transpose push
+  | .stk (.val 2)  => some (a, .diff)        -- s2: diff / show-same
   | .stk .search   => some (a, .fzf .cmd)    -- s/: command menu (SPC)
-  | .info .dec  => some ({ a with prevScroll := a.prevScroll - min a.prevScroll 5 }, .none)  -- i<: { scroll up
-  | .info .inc  => some ({ a with prevScroll := a.prevScroll + 5 }, .none)                   -- i>: } scroll down
-  | .heat (.val n) => some ({ a with heatMode := min 3 n }, .none)
-  | .heat _        => some (a, .none)
+  | .stk .lbr      => some (a, .join)        -- s[: join left
+  | .stk .rbr      => some (a, .join)        -- s]: join right
+  | .stk .rbc      => some (a, .join)        -- s}: inner join
+  | .stk .del      => some (a, .join)        -- s-: set diff
+  | .stk .dup      => some (a, .join)        -- s+: union
+  | .info .lbr  => some ({ a with prevScroll := a.prevScroll - min a.prevScroll 5 }, .none)  -- i[: scroll up
+  | .info .rbr  => some ({ a with prevScroll := a.prevScroll + 5 }, .none)                   -- i]: scroll down
+  | .info .dec  => some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj - 1 } }, .none)  -- i<: prec dec
+  | .info .inc  => some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj + 1 } }, .none)  -- i>: prec inc
+  | .info .lbc  => some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := -4 } }, .none)  -- i{: 0dp
+  | .info .rbc  => some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := 13 } }, .none)  -- i}: 17dp max
+  | .info (.val n) => some ({ a with heatMode := min 3 n }, .none)  -- i0-i3: heat mode
   | .info .ent => a.info.update cmd |>.map fun (i', e) => ({ a with info := i' }, e)  -- i~: toggle info
   | .stk _    => liftStk a cmd (ViewStack.update a.stk cmd)
   | .fld _    => liftStk a cmd (Folder.update a.stk cmd) <|> viewUp
   | .metaV _  => liftStk a cmd (Meta.update a.stk cmd) <|> viewUp
   | .freq _   => liftStk a cmd (Freq.update a.stk cmd) <|> viewUp
-  | .plot _   => liftStk a cmd (Plot.update a.stk cmd)
+  | .col (.val _) => liftStk a cmd (Plot.update a.stk cmd)
   | .col .search | .row .search | .row .filter | .row .dup | .row .del =>
     liftStk a cmd (Filter.update a.stk cmd) <|> viewUp
   | _ => viewUp
@@ -219,15 +226,24 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   if ev.type == 0 then return ← mainLoop a test ks'
   -- Dispatch: Cmd → update → runEffect → loop
   let runCmd (cmd : Cmd) (rest : Array Char) : IO AppState := do
+    -- Verb shortcuts that route to ArgCmd (interactive fzf)
+    if cmd matches .col .split then return ← mainLoop (← runArgCmd a (.split "")) test rest
+    if cmd matches .col .derive then return ← mainLoop (← runArgCmd a (.derive "")) test rest
+    -- Join commands that need op index routing
+    if cmd matches .stk .lbr then return ← mainLoop (← runArgCmd a (.join "1")) test rest   -- join left
+    if cmd matches .stk .rbr then return ← mainLoop (← runArgCmd a (.join "2")) test rest   -- join right
+    if cmd matches .stk .rbc then return ← mainLoop (← runArgCmd a (.join "0")) test rest   -- inner join
+    if cmd matches .stk .del then return ← mainLoop (← runArgCmd a (.join "4")) test rest   -- set diff
+    if cmd matches .stk .dup then return ← mainLoop (← runArgCmd a (.join "3")) test rest   -- union
     match a.update cmd with
     | none => mainLoop a test rest
     | some (a', e) =>
       if e == .quit then pure a'
       else let a'' ← if e.isNone then pure a' else runEffect a' e
            let a'' := if e.isNone then a'' else { a'' with sparklines := #[] }
-           let a'' := if cmd matches .info .dec | .info .inc then a'' else { a'' with prevScroll := 0 }
+           let a'' := if cmd matches .info .lbr | .info .rbr then a'' else { a'' with prevScroll := 0 }
            mainLoop a'' test rest
-  -- 1. Test mode: 2-char obj+verb codes (e.g. "s^"=stk.up, "s0"=stk.val0)
+  -- 1. Test mode: 2-char obj+verb codes (e.g. "s1"=stk.val1, "c["=col.lbr)
   -- Only when the first char has no single-key mapping and no nav mapping
   -- (avoids "M0" being parsed as metaV.val0 instead of M=push then 0=selNull).
   let ch := Char.ofNat ev.ch.toNat

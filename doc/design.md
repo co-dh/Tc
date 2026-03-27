@@ -128,17 +128,30 @@ Three sources, checked in order by `evToCmd` + main loop:
 Key = single-key shortcut. Name = implemented via space menu / `-c` code only.
 
 ```
-     │ Obj       │ <       │ >       │ ~       │ -      │ +       │ ^       │ /       │ \       │ 0       │ 1       │ 2      │ 3      │ 4   │ 5       │ 6       │ 7    │ 8       │ 9       │ Key desc
-─────┼───────────┼─────────┼─────────┼─────────┼────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼────────┼────────┼─────┼─────────┼─────────┼──────┼─────────┼─────────┼─────────
- r   │ row       │ k       │ j       │ T       │ N      │ n       │         │ /       │ \       │ Home    │ ^U      │        │        │     │         │         │      │ ^D      │ End     │ n/N=match /=search \=filter T=toggle row
- c   │ col       │ h       │ l       │ !       │ hide   │         │         │ search  │         │ first   │ pgLeft  │ [      │ ]      │     │ S-←     │ S-→     │      │ pgRight │ last    │ !group
- s   │ stk       │ q       │         │ swap    │ quit   │ dup     │ xpose   │ SPC     │         │ diff    │         │        │        │     │         │         │      │         │         │ q=pop SPC=cmd menu
- i   │ info      │ {       │ }       │ togInfo │        │         │         │         │         │ 0dp     │ 1dp     │ 2dp    │ 3dp    │ 4dp │ 5dp     │ 6dp     │ 7dp  │ 8dp     │ 9dp     │ {/}=scroll preview
- M   │ metaV     │         │         │ ⏎*      │        │ push    │         │         │         │ selNull │ selSing │        │        │     │         │         │      │         │         │ ⏎=enter
- F   │ freq      │         │         │ ⏎*      │        │ push    │         │         │         │         │         │        │        │     │         │         │      │         │         │ ⏎=filter
- D   │ fld       │ depth-- │ depth++ │ ⏎*      │ trash  │ push    │ ⌫       │         │         │         │         │        │        │     │         │         │      │         │         │ ⏎=enter ⌫=parent
- P   │ plot      │         │         │         │        │         │         │         │         │ area    │ line    │ scat   │ bar    │ box │ step    │ hist    │ dens │ violin  │         │
- m   │ heat      │         │         │         │        │         │         │         │         │ off     │ numeric │ cat    │ both   │     │         │         │      │         │         │
+Verb │ r:row      │ c:col      │ s:stk    │ i:info   │ M:metaV  │ F:freq   │ D:fld    │ desc
+─────┼────────────┼────────────┼──────────┼──────────┼──────────┼──────────┼──────────┼──────────────────────────────
+  ~  │ T togRow   │ ! group    │ swap     │ togInfo  │ ⏎* setKey│ ⏎* filt  │ ⏎* enter │ M~:set key cols from selected  F~:filter parent table by current row
+  <  │ k up       │ h left     │ q pop    │ precDec  │          │          │ depth--  │
+  >  │ j down     │ l right    │ dup      │ precInc  │          │          │ depth++  │ s>:clone current view
+  [  │ ^U pgUp    │ [ sortAsc  │ joinLeft │ { scrUp  │          │          │          │ i[:scroll cell preview up
+  ]  │ ^D pgDn    │ ] sortDesc │ joinRigh │ } scrDn  │          │          │          │ i]:scroll cell preview down
+  {  │ Home top   │ first      │ quit     │ 0dp      │          │          │ ⌫ parent │
+  }  │ End bot    │ last       │ inner    │ 17dp max │          │          │          │
+  -  │ N prevMat  │ S-← shift  │ setDiff  │          │          │          │ trash    │
+  +  │ n nextMat  │ S-→ shift  │ union    │          │ open     │ open     │          │ M+:column metadata  F+:value frequency counts
+  /  │ / search   │ search     │ SPC menu │          │          │          │          │ c/:jump to col by name
+  \  │ \ filter   │ hide       │          │          │          │          │          │ r\:PRQL filter expr
+  :  │            │ : split    │          │          │          │          │          │
+  =  │            │ = derive   │          │          │          │          │          │ c=:name = expr
+  0  │            │ area       │          │ heat off │ selNull  │          │          │ M0:select null cols
+  1  │            │ line       │ xpose    │ heat num │ selSing  │          │          │ M1:select single-val cols  s1:rows↔cols
+  2  │            │ scat       │ diff     │ heat cat │          │          │          │ s2:compare top 2 views
+  3  │            │ bar        │          │ heat all │          │          │          │
+  4  │            │ box        │          │          │          │          │          │
+  5  │            │ step       │          │          │          │          │          │
+  6  │            │ hist       │          │          │          │          │          │
+  7  │            │ dens       │          │          │          │          │          │
+  8  │            │ violin     │          │          │          │          │          │
 
 * ⏎ context-sensitive: freq→filter, meta→enter, fld→enter, tbl→none
 ```

@@ -397,7 +397,7 @@ def update (s : ViewStack AdbcTable) (cmd : Cmd) : Option (ViewStack AdbcTable Ã
   | .fld .dec => some (s, .folder (.depth (-1)))
   | .fld .del =>
     if s.cur.vkind matches .fld _ _ then some (s, .folder .del) else none
-  | .fld .up =>
+  | .fld .lbc =>
     if s.cur.vkind matches .fld _ _ then some (s, .folder .parent) else none
   | .fld .ent =>
     if s.cur.vkind matches .fld _ _ then some (s, .folder .enter) else none

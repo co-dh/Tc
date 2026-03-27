@@ -1,7 +1,7 @@
 /-
   Command system: Verb + Obj pattern for nav/toggle, ArgCmd for argument commands.
-  - Verb: < > ~ - + ^ / \ 0-9
-  - Cmd: Obj + Verb (row, col, stk, info, metaV, freq, fld, plot, heat) or .arg ArgCmd
+  - Verb: ~ < > [ ] { } - + / \ : = 0-9
+  - Cmd: Obj + Verb (row, col, stk, info, metaV, freq, fld) or .arg ArgCmd
   - ArgCmd: prefix char + payload, bypasses fzf (socket/demo/test)
 -/
 
@@ -9,31 +9,34 @@
 class Parse (α : Type) where
   parse? : String → Option α
 
--- | Verb: action type
+-- | Verb: action type (14 named + val 0-9)
 inductive Verb where
-  | inc | dec         -- >/< movement
+  | inc | dec         -- > < step/forward/back
   | ent               -- ~ toggle/enter
-  | del               -- - delete/remove/prev
-  | dup               -- + create/push/next
-  | up                -- ^ go up/parent
-  | search            -- / search
-  | filter            -- \ filter
+  | del               -- - remove/subtract/prev
+  | dup               -- + add/combine/next
+  | search            -- / search/find
+  | filter            -- \ filter/exclude
+  | lbr | rbr         -- [ ] page/sort/join
+  | lbc | rbc         -- { } home/end/min/max
+  | split             -- : split column
+  | derive            -- = derive column
   | val (n : UInt8)   -- 0-9 direct value selection
   deriving Repr, BEq, DecidableEq
 
 namespace Verb
 
--- | Verb to char
 def toChar : Verb → Char
-  | .inc => '>' | .dec => '<' | .ent => '~' | .del => '-' | .dup => '+' | .up => '^'
-  | .search => '/' | .filter => '\\'
+  | .inc => '>' | .dec => '<' | .ent => '~' | .del => '-' | .dup => '+' | .search => '/'
+  | .filter => '\\' | .lbr => '[' | .rbr => ']' | .lbc => '{' | .rbc => '}'
+  | .split => ':' | .derive => '='
   | .val n => Char.ofNat (n.toNat + '0'.toNat)
 
--- | Char to verb
 def ofChar? : Char → Option Verb
   | '>' => some .inc | '<' => some .dec | '~' => some .ent
-  | '-' => some .del | '+' => some .dup | '^' => some .up
-  | '/' => some .search | '\\' => some .filter
+  | '-' => some .del | '+' => some .dup | '/' => some .search | '\\' => some .filter
+  | '[' => some .lbr | ']' => some .rbr | '{' => some .lbc | '}' => some .rbc
+  | ':' => some .split | '=' => some .derive
   | c => if c.isDigit then some (.val (c.toNat - '0'.toNat).toUInt8) else none
 
 instance : ToString Verb where toString v := v.toChar.toString
@@ -42,7 +45,6 @@ instance : Parse Verb where parse? s := s.toList.head?.bind ofChar?
 end Verb
 
 -- | Argument commands: prefix char + payload (bypass fzf, fully programmable via socket)
--- Each variant corresponds to a key that normally opens fzf for user input.
 inductive ArgCmd where
   | split (arg : String)     -- :  split column by delimiter
   | derive (arg : String)    -- =  derive column (name = expr)
@@ -52,18 +54,16 @@ inductive ArgCmd where
   | export (arg : String)    -- e  export (csv/parquet/json/ndjson)
   | sessSave (arg : String)  -- W  save session with name
   | sessLoad (arg : String)  -- L  load session by name
-  | join (arg : String)      -- J  join type by index (0=inner,1=left,2=right,3=union,4=diff)
+  | join (arg : String)      -- J  join type by index
   deriving Repr, BEq, DecidableEq
 
 namespace ArgCmd
 
--- | Single source of truth: prefix char for each argument command
 def pfx : ArgCmd → Char
   | .split _ => ':' | .derive _ => '=' | .filter _ => '\\' | .search _ => '/'
   | .colJump _ => 's' | .export _ => 'e'
   | .sessSave _ => 'W' | .sessLoad _ => 'L' | .join _ => 'J'
 
--- | Construct from prefix char + argument string
 def ofPfx? (c : Char) (arg : String) : Option ArgCmd :=
   match c with
   | ':' => some (.split arg) | '=' => some (.derive arg)
@@ -72,7 +72,6 @@ def ofPfx? (c : Char) (arg : String) : Option ArgCmd :=
   | 'W' => some (.sessSave arg) | 'L' => some (.sessLoad arg)
   | 'J' => some (.join arg) | _ => none
 
--- | Check if char is an ArgCmd prefix (derived from ofPfx?, single source of truth)
 def isPfx (c : Char) : Bool := (ofPfx? c "").isSome
 
 instance : ToString ArgCmd where toString ac := s!"{ac.pfx}{match ac with
@@ -81,40 +80,32 @@ instance : ToString ArgCmd where toString ac := s!"{ac.pfx}{match ac with
 
 end ArgCmd
 
--- | Command: Obj + Verb pattern (9 objects)
+-- | Command: Obj + Verb pattern (7 objects)
 inductive Cmd where
-  | row (v : Verb)     -- row: </>step 0/9top/bot 1/8page ~toggle -prev +next /search \filter
-  | col (v : Verb)     -- col: </>step 0/9first/last 1/8page 2/3sort 5/6shift ~group -hide /search
-  | stk (v : Verb)     -- stk: <pop ~swap -quit +dup ^xpose /menu 0diff
-  | info (v : Verb)    -- info: </>scroll preview ~toggle 0-9 precision
-  | metaV (v : Verb)   -- metaV: +push ~enter 0selNull 1selSingle
-  | freq (v : Verb)    -- freq: +push ~filter
-  | fld (v : Verb)     -- fld: </>depth ~enter -trash +push ^parent
-  | plot (v : Verb)    -- plot 0-8: area/line/scatter/bar/box/step/hist/density/violin
-  | heat (v : Verb)    -- heat 0-3: off/numeric/categorical/both
+  | row (v : Verb)     -- row: ~togRow </>step [/]page {/}top/bot -prev +next /search \filter
+  | col (v : Verb)     -- col: ~group </>step [/]sort {/}first/last -/+shift /search \hide :split =derive 0-8plot
+  | stk (v : Verb)     -- stk: ~swap <pop >dup [/]joinL/R {quit }inner -diff +union /menu 1xpose 2diff
+  | info (v : Verb)    -- info: ~toggle </>prec [/]scroll {0dp }17dp 0-3heat
+  | metaV (v : Verb)   -- metaV: ~setKey +open 0selNull 1selSingle
+  | freq (v : Verb)    -- freq: ~filter +open
+  | fld (v : Verb)     -- fld: ~enter </>depth {parent -trash
   | arg (ac : ArgCmd)  -- argument commands (prefix + payload, bypass fzf)
   deriving Repr, BEq, DecidableEq
 
 namespace Cmd
 
--- | Obj chars
 private def objs : Array (Char × (Verb → Cmd)) := #[
   ('r', .row), ('c', .col), ('s', .stk), ('i', .info),
-  ('M', .metaV), ('F', .freq), ('D', .fld),
-  ('P', .plot), ('m', .heat)
+  ('M', .metaV), ('F', .freq), ('D', .fld)
 ]
 
--- | Get obj char for Cmd
 private def objChar : Cmd → Char
   | .row _ => 'r' | .col _ => 'c' | .stk _ => 's' | .info _ => 'i'
-  | .metaV _ => 'M' | .freq _ => 'F' | .fld _ => 'D' | .plot _ => 'P'
-  | .heat _ => 'm'
+  | .metaV _ => 'M' | .freq _ => 'F' | .fld _ => 'D'
   | .arg ac => ac.pfx
 
--- | Get verb from Cmd
 private def verb : Cmd → Verb
-  | .row v | .col v | .stk v | .info v => v
-  | .metaV v | .freq v | .fld v | .plot v | .heat v => v
+  | .row v | .col v | .stk v | .info v | .metaV v | .freq v | .fld v => v
   | .arg _ => .ent
 
 instance : ToString Cmd where toString
@@ -123,19 +114,15 @@ instance : ToString Cmd where toString
 
 instance : Parse Cmd where
   parse? s := do
-    -- 2-char obj+verb commands first (e.g. "r+", "s~", "m~") — prevents
-    -- ArgCmd prefix collision (e.g. "s~" must be stk.ent, not colJump "~")
     if let [o, vc] := s.toList then
       if let some v := Verb.ofChar? vc then
         if let some (_, mk) := objs.find? (·.1 == o) then
           return mk v
-    -- Argument commands: prefix char + argument (e.g. ":-", "=double = x * 2", "ecsv")
     if s.length > 1 then
       let pfx := s.front
       let a := (s.drop 1).toString
       if let some ac := ArgCmd.ofPfx? pfx a then return .arg ac
     none
-
 
 end Cmd
 
@@ -157,7 +144,6 @@ instance : ToString PlotKind where
 inductive MetaEffect where | selNull | selSingle | setKey deriving Repr, BEq
 inductive ExportFmt where | csv | parquet | json | ndjson deriving Repr, BEq
 
--- | Effect: describes an IO operation to perform (Runner interprets)
 inductive Effect where
   | none | quit
   | fzf : FzfEffect → Effect
@@ -179,6 +165,5 @@ namespace Effect
 def isNone : Effect → Bool | .none => true | _ => false
 end Effect
 
--- | Update typeclass: pure state transition returning Effect
 class Update (α : Type) where
   update : α → Cmd → Option (α × Effect)

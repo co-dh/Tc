@@ -144,22 +144,21 @@ def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option
   match cmd with
   | .row .inc   => r 1            | .row .dec   => r (-1)
   | .col .inc   => c 1            | .col .dec   => c (-1)
-  | .row (.val 8) => r rowPg      | .row (.val 1) => r (-rowPg)
-  | .col (.val 8) => c colPg      | .col (.val 1) => c (-colPg)
-  | .row (.val 9) => r (nRows - 1 - nav.row.cur.val) | .row (.val 0) => r (-nav.row.cur.val)
-  | .col (.val 9) => c (nCols - 1 - nav.col.cur.val) | .col (.val 0) => c (-nav.col.cur.val)
+  | .row .rbr   => r rowPg        | .row .lbr   => r (-rowPg)
+  | .row .rbc   => r (nRows - 1 - nav.row.cur.val) | .row .lbc => r (-nav.row.cur.val)
+  | .col .lbc   => c (-nav.col.cur.val) | .col .rbc => c (nCols - 1 - nav.col.cur.val)
   | .row .ent => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
   | .col .ent =>
     let newGrp := nav.grp.toggle nav.curColName
     some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames }
-  | .col .del =>
+  | .col .filter =>  -- c\: hide column
     some { nav with hidden := nav.hidden.toggle nav.curColName }
-  -- Shift+Arrow: swap key column with neighbor in grp array, cursor follows
-  | .col (.val 5) | .col (.val 6) =>
+  -- c-/c+: swap key column with neighbor in grp array, cursor follows
+  | .col .del | .col .dup =>
     let name := nav.curColName
     match nav.grp.idxOf? name with
     | some i =>
-      let fwd := cmd == .col (.val 6)
+      let fwd := cmd == .col .dup
       if fwd && i + 1 ≥ nav.grp.size then none
       else if !fwd && i == 0 then none
       else
@@ -171,7 +170,7 @@ def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option
         some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames,
                         col := { nav.col with cur := nav.col.cur.clamp d } }
     | none => none
-  | _ => none  -- unhandled: .col .del, .colSel .sort*, .prec, .width, etc.
+  | _ => none
 
 -- | Pure update: wrap exec to return Effect
 def update (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat)

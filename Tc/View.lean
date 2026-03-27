@@ -75,14 +75,12 @@ def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
   let n := v.nav; let names := TblOps.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   match cmd with
-  -- precision: info val 0-9 sets decimal places
-  | .info (.val n) => some ({ v with precAdj := n.toNat - 4 }, .none)  -- default=4dp, so 0→-4, 9→+5
   -- effect: sort (runner will execute and rebuild view)
-  | .col (.val 2) =>
+  | .col .lbr =>
     let selIdxs := n.col.sels.filterMap names.idxOf?
     let grpIdxs := n.grp.filterMap names.idxOf?
     some (v, .query (.sort curCol selIdxs grpIdxs true))
-  | .col (.val 3) =>
+  | .col .rbr =>
     let selIdxs := n.col.sels.filterMap names.idxOf?
     let grpIdxs := n.grp.filterMap names.idxOf?
     some (v, .query (.sort curCol selIdxs grpIdxs false))
@@ -90,7 +88,7 @@ def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
   | _ => (NavState.exec cmd n rowPg colPageSize).map fun nav' =>
     let needsMore := nav'.row.cur.val + 1 >= v.nRows
       && TblOps.totalRows n.tbl > v.nRows
-      && (cmd matches .row .inc | .row (.val 8) | .row (.val 9))
+      && (cmd matches .row .inc | .row .rbr | .row .rbc)
     ({ v with nav := nav' }, if needsMore then .fetchMore else .none)
 
 instance : Update (View T) where update v cmd := update v cmd defaultRowPg
@@ -130,7 +128,7 @@ def tabNames (s : ViewStack T) : Array String := (s.hd :: s.tl).toArray.map (·.
 -- | Pure update: returns (new stack, effect). q on empty stack → quit
 def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   match cmd with
-  | .stk .inc | .stk .dup => some (s.dup, .none)
+  | .stk .inc => some (s.dup, .none)
   | .stk .dec => match s.pop with
     | some s' => some (s', .none)
     | none => some (s, .quit)

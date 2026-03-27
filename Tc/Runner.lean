@@ -10,6 +10,7 @@ import Tc.Theme
 import Tc.Plot
 import Tc.Export
 import Tc.Clip
+import Tc.Join
 
 namespace Tc
 
@@ -98,7 +99,8 @@ def runStackEffect (s : ViewStack AdbcTable) (eff : Effect) : IO (ViewStack Adbc
       | none => pure s
     | none => pure s
   | .export fmt => Export.run s fmt
-  | .sessionSave | .sessionLoad | .join | .quit
+  | .join => opt (Join.run s)
+  | .sessionSave | .sessionLoad | .quit
   | .transpose | .diff => pure s  -- handled in runEffectCore, not here
 
 end Runner

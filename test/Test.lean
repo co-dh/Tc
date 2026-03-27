@@ -631,10 +631,10 @@ def test_export_csv : IO Unit := do
 
 -- === Transpose tests ===
 
--- test_transpose: s^ (stk.up) swaps rows/columns; original col names become row values
+-- test_transpose: s1 (stk.val1) swaps rows/columns; original col names become row values
 def test_transpose : IO Unit := do
   log "transpose"
-  let output ← run "s^" "data/basic.csv"
+  let output ← run "s1" "data/basic.csv"
   assert (contains output "column") "transpose shows 'column' header"
   -- original column names a, b appear as data in the "column" column
   let lines := dataLines output
@@ -647,7 +647,7 @@ def test_transpose : IO Unit := do
 -- test_transpose_pop: q pops back from transposed view
 def test_transpose_pop : IO Unit := do
   log "transpose_pop"
-  let output ← run "s^q" "data/basic.csv"
+  let output ← run "s1q" "data/basic.csv"
   let (_, status) := footer output
   assert (contains status "r0/5") "q pops back to original 5-row view"
 
@@ -873,16 +873,16 @@ def test_session_missing : IO Unit := do
 
 -- === Diff tests ===
 
--- | Diff: open before.csv and after.csv, s0 (stk.val0) to diff.
+-- | Diff: open before.csv and after.csv, s2 (stk.val2) to diff.
 --   cost column is same across all rows → hidden (sameHide).
 --   sales column differs → visible with Δ prefix.
 def test_diff : IO Unit := do
   log "diff"
   -- [ sorts asc → row0=.., row1=after.csv, row2=before.csv
-  -- j<ret> enter after, S swap, jj<ret> enter before, S swap, q pop folder, s0 diff
-  let output ← run "[j<ret>s~jj<ret>s~qs0" "data/diff_test"
+  -- j<ret> enter after, S swap, jj<ret> enter before, S swap, q pop folder, s2 diff
+  let output ← run "[j<ret>s~jj<ret>s~qs2" "data/diff_test"
   let (tab, status) := footer output
-  assert (contains tab "diff") "s0 shows diff in tab"
+  assert (contains tab "diff") "s2 shows diff in tab"
   assert (contains status "r0/3") "diff has 3 rows"
   -- Δ prefix marks changed columns
   assert (contains output "Δ") "diff columns have Δ prefix"
@@ -890,13 +890,13 @@ def test_diff : IO Unit := do
   assert (contains output "name") "diff shows key column name"
   assert (contains output "regi") "diff shows key column region (truncated)"
 
--- | Diff show same: s0 on diff view reveals hidden same-value columns
+-- | Diff show same: s2 on diff view reveals hidden same-value columns
 def test_diff_show_same : IO Unit := do
   log "diff_show_same"
-  -- Same as above but press s0 again to reveal sameHide columns
-  let output ← run "[j<ret>s~jj<ret>s~qs0s0" "data/diff_test"
-  -- After second s0, cost columns should expand (no longer hidden width=1)
-  assert (contains output "cos") "s0s0 reveals same-value cost columns"
+  -- Same as above but press s2 again to reveal sameHide columns
+  let output ← run "[j<ret>s~jj<ret>s~qs2s2" "data/diff_test"
+  -- After second s2, cost columns should expand (no longer hidden width=1)
+  assert (contains output "cos") "s2s2 reveals same-value cost columns"
 
 -- === Plot tests ===
 
