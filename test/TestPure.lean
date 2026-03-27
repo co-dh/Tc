@@ -58,32 +58,16 @@ theorem key_T     : lookup KeyMap.char 'T' = some (.rowSel .ent)    := by native
 theorem key_t     : lookup KeyMap.char 't' = some (.colSel .ent)    := by native_decide
 theorem key_lbr   : lookup KeyMap.char '[' = some (.colSel .inc)    := by native_decide
 theorem key_rbr   : lookup KeyMap.char ']' = some (.colSel .dec)    := by native_decide
-theorem key_M     : lookup KeyMap.char 'M' = some (.metaV .dup)     := by native_decide
-theorem key_F     : lookup KeyMap.char 'F' = some (.freq .dup)      := by native_decide
-theorem key_D     : lookup KeyMap.char 'D' = some (.fld .dup)       := by native_decide
-theorem key_q     : lookup KeyMap.char 'q' = some (.stk .dec)       := by native_decide  -- pop
-theorem key_S     : lookup KeyMap.char 'S' = some (.stk .ent)       := by native_decide  -- swap
-theorem key_Q     : lookup KeyMap.char 'Q' = some (.stk .del)       := by native_decide  -- quit
-theorem key_X     : lookup KeyMap.char 'X' = some (.stk .up)        := by native_decide  -- transpose
-theorem key_V     : lookup KeyMap.char 'V' = some (.stk (.val 0))   := by native_decide  -- diff
-theorem key_space : lookup KeyMap.char ' ' = some (.col .dup)        := by native_decide  -- fzf menu
-theorem key_I     : lookup KeyMap.char 'I' = some (.info .ent)       := by native_decide
+theorem key_q     : lookup KeyMap.char 'q' = some (.stk .dec)       := by native_decide
+theorem key_space : lookup KeyMap.char ' ' = some (.col .dup)        := by native_decide
 theorem key_n     : lookup KeyMap.char 'n' = some (.grp .inc)        := by native_decide
 theorem key_N     : lookup KeyMap.char 'N' = some (.grp .dec)        := by native_decide
 theorem key_lbrace: lookup KeyMap.char '{' = some (.prev .dec)       := by native_decide
 theorem key_rbrace: lookup KeyMap.char '}' = some (.prev .inc)       := by native_decide
-theorem key_0     : lookup KeyMap.char '0' = some (.metaV (.val 0))  := by native_decide
-theorem key_1     : lookup KeyMap.char '1' = some (.metaV (.val 1))  := by native_decide
--- H removed from single-key shortcuts (hide via Space > C > h)
-theorem key_H_none : lookup KeyMap.char 'H' = none                   := by native_decide
--- ArgCmd prefixes not in KeyMap.char (handled separately in mainLoop)
-theorem key_slash_none  : lookup KeyMap.char '/'  = none := by native_decide
-theorem key_s_none      : lookup KeyMap.char 's'  = none := by native_decide
-theorem key_bslash_none : lookup KeyMap.char '\\' = none := by native_decide
 
 -- Ctrl keys via evToCmd (from test_page_down/up)
-theorem key_ctrlD : evToCmd (charToEvent '\x04') .tbl = some (.vPage .inc) := by native_decide
-theorem key_ctrlU : evToCmd (charToEvent '\x15') .tbl = some (.vPage .dec) := by native_decide
+theorem key_ctrlD : evToCmd (charToEvent '\x04') .tbl = some (.row (.val 8)) := by native_decide
+theorem key_ctrlU : evToCmd (charToEvent '\x15') .tbl = some (.row (.val 1)) := by native_decide
 
 -- Context-sensitive Enter via evToCmd (from test_freq_enter, test_meta_0_enter, test_folder_enter)
 theorem enter_freq : evToCmd (charToEvent '\r') (.freqV #["a"] 10) = some (.freq .ent) := by native_decide
@@ -115,13 +99,13 @@ theorem key_synth_left : evToCmd (charToEvent '\x1f') .tbl = some (.col .dec) :=
 -- Shift+Arrow keys (from test_key_shift: reorder key columns)
 -- Synthetic shift+arrow events: mod=4 (modShift), key=arrow code
 theorem key_shift_left : evToCmd ⟨Term.eventKey, Term.modShift, Term.keyArrowLeft, 0, 0, 0⟩ .tbl
-    = some (.colShift .dec) := by native_decide
+    = some (.col (.val 5)) := by native_decide
 theorem key_shift_right : evToCmd ⟨Term.eventKey, Term.modShift, Term.keyArrowRight, 0, 0, 0⟩ .tbl
-    = some (.colShift .inc) := by native_decide
+    = some (.col (.val 6)) := by native_decide
 
 -- Test synthetic shift+arrow via charToEvent (\x11=S-left, \x12=S-right)
-theorem key_synth_shift_left : evToCmd (charToEvent '\x11') .tbl = some (.colShift .dec) := by native_decide
-theorem key_synth_shift_right : evToCmd (charToEvent '\x12') .tbl = some (.colShift .inc) := by native_decide
+theorem key_synth_shift_left : evToCmd (charToEvent '\x11') .tbl = some (.col (.val 5)) := by native_decide
+theorem key_synth_shift_right : evToCmd (charToEvent '\x12') .tbl = some (.col (.val 6)) := by native_decide
 
 end KeyMapTests
 
@@ -507,31 +491,31 @@ section NavTests2
 -- | h (col.dec) at col 0 stays at 0 (clamped)
 #guard (NavState.exec (.col .dec) testNav 1 1).map (·.col.cur.val) == some 0
 
--- | G (ver.inc) goes to last row (4)
-#guard (NavState.exec (.ver .inc) testNav 1 1).map (·.row.cur.val) == some 4
+-- | row 9 (bottom) goes to last row (4)
+#guard (NavState.exec (.row (.val 9)) testNav 1 1).map (·.row.cur.val) == some 4
 
--- | g (ver.dec) goes to first row (0)
+-- | row 0 (top) goes to first row (0)
 def navAtRow4 : NavState 5 3 (MockTable 5 3) :=
-  match NavState.exec (.ver .inc) testNav 1 1 with
+  match NavState.exec (.row (.val 9)) testNav 1 1 with
   | some n => n
   | none => testNav
-#guard (NavState.exec (.ver .dec) navAtRow4 1 1).map (·.row.cur.val) == some 0
+#guard (NavState.exec (.row (.val 0)) navAtRow4 1 1).map (·.row.cur.val) == some 0
 
--- | $ (hor.inc) goes to last col (2)
-#guard (NavState.exec (.hor .inc) testNav 1 1).map (·.col.cur.val) == some 2
+-- | col 9 (last) goes to last col (2)
+#guard (NavState.exec (.col (.val 9)) testNav 1 1).map (·.col.cur.val) == some 2
 
--- | 0 (hor.dec) goes to first col (0)
+-- | col 0 (first) goes to first col (0)
 def navAtCol2 : NavState 5 3 (MockTable 5 3) :=
-  match NavState.exec (.hor .inc) testNav 1 1 with
+  match NavState.exec (.col (.val 9)) testNav 1 1 with
   | some n => n
   | none => testNav
-#guard (NavState.exec (.hor .dec) navAtCol2 1 1).map (·.col.cur.val) == some 0
+#guard (NavState.exec (.col (.val 0)) navAtCol2 1 1).map (·.col.cur.val) == some 0
 
--- | Page down (vPage.inc) with page size 2 moves from 0 to 2
-#guard (NavState.exec (.vPage .inc) testNav 2 1).map (·.row.cur.val) == some 2
+-- | row 8 (page down) with page size 2 moves from 0 to 2
+#guard (NavState.exec (.row (.val 8)) testNav 2 1).map (·.row.cur.val) == some 2
 
--- | Page up (vPage.dec) at row 0 stays at 0
-#guard (NavState.exec (.vPage .dec) testNav 2 1).map (·.row.cur.val) == some 0
+-- | row 1 (page up) at row 0 stays at 0
+#guard (NavState.exec (.row (.val 1)) testNav 2 1).map (·.row.cur.val) == some 0
 
 -- | T (rowSel.ent) toggles row selection
 #guard (NavState.exec (.rowSel .ent) testNav 1 1).map (·.row.sels) == some #[0]
@@ -547,7 +531,7 @@ def navWithSel : NavState 5 3 (MockTable 5 3) :=
 #guard (NavState.exec (.grp .ent) testNav 1 1).map (·.grp) == some #["c0"]
 
 -- | colShift on non-keyed column is no-op
-#guard (NavState.exec (.colShift .inc) testNav 1 1).isNone
+#guard (NavState.exec (.col (.val 6)) testNav 1 1).isNone
 
 -- | colShift on keyed column swaps grp order
 -- !l! → grp=["c0","c1"], then shift-left on c1 (cursor at disp pos 1) → grp=["c1","c0"]
@@ -557,13 +541,13 @@ def navGrp2 : NavState 5 3 (MockTable 5 3) :=
            NavState.exec (.grp .ent) n2 1 1 with
   | some n => n | none => testNav
 #guard navGrp2.grp == #["c0", "c1"]
-#guard (NavState.exec (.colShift .dec) navGrp2 1 1).map (·.grp) == some #["c1", "c0"]
+#guard (NavState.exec (.col (.val 5)) navGrp2 1 1).map (·.grp) == some #["c1", "c0"]
 
 -- | colShift at boundary is no-op (first key col can't shift left)
 def navGrp2AtFirst : NavState 5 3 (MockTable 5 3) :=
   match NavState.exec (.col .dec) navGrp2 1 1 with
   | some n => n | none => navGrp2
-#guard (NavState.exec (.colShift .dec) navGrp2AtFirst 1 1).isNone
+#guard (NavState.exec (.col (.val 5)) navGrp2AtFirst 1 1).isNone
 
 -- | Unhandled command returns none
 #guard (NavState.exec (.thm .inc) testNav 1 1).isNone

@@ -91,7 +91,7 @@ def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
   | _ => (NavState.exec cmd n rowPg colPageSize).map fun nav' =>
     let needsMore := nav'.row.cur.val + 1 >= v.nRows
       && TblOps.totalRows n.tbl > v.nRows
-      && (cmd matches .row .inc | .vPage .inc | .ver .inc)
+      && (cmd matches .row .inc | .row (.val 8) | .row (.val 9))
     ({ v with nav := nav' }, if needsMore then .fetchMore else .none)
 
 instance : Update (View T) where update v cmd := update v cmd defaultRowPg

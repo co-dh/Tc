@@ -117,90 +117,37 @@ The architecture separates pure state logic from IO effects:
 └──────────────┴──────────────────┴───────────────────────┘
 ```
 
-## Cmd System (Cmd.lean)
+## Key → Cmd Mapping
 
-### Verb (7 actions)
+Three sources, checked in order by `evToCmd` + main loop:
 
-| Verb   | Char | Meaning                       |
-|--------|------|-------------------------------|
-| inc    | >    | increment, forward, next      |
-| dec    | <    | decrement, backward, prev     |
-| ent    | ~    | enter, toggle                 |
-| del    | d    | delete, destroy               |
-| dup    | c    | copy, push, create            |
-| up     | ^    | go up / parent                |
-| val n  | 0-9  | direct value selection         |
+1. **`evToCmd`**: terminal special keys (Enter, Backspace, Shift+Arrow, arrows, PageUp/Down, Home/End, Ctrl-D/U)
+2. **`KeyMap.char`**: single-key shortcuts (the single source of truth for all one-key mappings)
+3. **`objMenu`+`verbsFor`**: space → fzf object picker → verb picker
 
-### Cmd Objects (22 objects)
-
-| Obj      | Char | Purpose                          |
-|----------|------|----------------------------------|
-| row      | r    | row cursor                       |
-| col      | c    | column cursor, c=fzf cmd menu    |
-| vPage    | v    | vertical page scroll             |
-| hPage    | h    | horizontal page scroll           |
-| ver      | V    | vertical end (top/bottom)        |
-| hor      | H    | horizontal end (first/last col)  |
-| rowSel   | R    | row selection/search/filter      |
-| colSel   | C    | column selection/sort/hide       |
-| grp      | g    | group (key columns)              |
-| stk      | s    | view stack: pop/swap/dup/quit/xpose/diff |
-| prec     | p    | decimal precision                |
-| width    | w    | column width                     |
-| thm      | T    | theme                            |
-| info     | i    | info overlay                     |
-| metaV    | M    | meta view (0=selNull, 1=selSingle) |
-| freq     | F    | frequency view                   |
-| fld      | D    | folder view                      |
-| plot     | P    | R/ggplot2 chart                  |
-| colShift | K    | reorder key columns              |
-| heat     | m    | heatmap mode (0-3)               |
-| yank     | y    | copy to clipboard                |
-| prev     | B    | preview scroll ({/} keys)        |
-
-### Isomorphism
-
-```lean
-theorem parse_toString (c : Cmd) : Parse.parse? (toString c) = some c
-theorem ofChar_toChar (v : Verb) : Verb.ofChar? (Verb.toChar v) = some v
-```
-
-## Obj/Verb Matrix (Key.lean)
-
-`KeyMap.char` is the single source of truth for all one-key shortcuts.
-All entries are `Cmd` (obj+verb). Command mode: `space` → fzf object picker → verb picker.
+Key = single-key shortcut. Name = implemented via space menu / `-c` code only.
 
 ```
-                 │ DEC │ INC │ ENT │ DEL │ DUP │ UP  │ VAL │
-                 │  <  │  >  │  ~  │  d  │  c  │  ^  │ 0-9 │
-Char │ Obj       │     │     │     │     │     │     │     │ Description
-─────┴───────────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴───────────
- --- Navigation (direct keys, via evToCmd) ---
- r   │ row       │  k  │  j  │     │     │     │     │     │ cursor up/down
- c   │ col       │  h  │  l  │  s  │     │ SPC │     │     │ cursor, s=fzf, SPC=cmd menu
- v   │ vPage     │ ^U  │ ^D  │     │     │     │     │     │ page (also JK)
- h   │ hPage     │     │     │     │     │     │     │     │ horizontal page
- V   │ ver       │Home │End  │     │     │     │     │     │ top/bottom
- H   │ hor       │  ←  │  →  │     │     │     │     │     │ first/last col
- --- Selection ---
- R   │ rowSel    │  \  │  /  │  T  │     │     │     │     │ \=filter, /=search, T=toggle
- C   │ colSel    │  ]  │  [  │  t  │     │     │     │     │ sort/toggle (hide via Ch)
- g   │ grp       │  N  │  n  │  !  │     │     │     │     │ prev/next/toggle
- --- Options ---
- s   │ stk       │  q  │     │  S  │  Q  │     │  X  │ V=0 │ q=pop S=swap Q=quit X=xpose V=diff
- p   │ prec      │     │     │     │     │     │     │     │ (space p </>)
- w   │ width     │     │     │     │     │     │     │     │ (space w </>)
- T   │ thm       │     │     │     │     │     │     │     │ (space T </>)
- i   │ info      │     │     │  I  │     │     │     │     │ I=toggle overlay
- B   │ prev      │  {  │  }  │     │     │     │     │     │ preview scroll
- --- Views ---
- M   │ metaV     │     │     │ ⏎   │     │  M  │     │0  1 │ M=push, 0=null, 1=single
- F   │ freq      │     │     │ ⏎   │     │  F  │     │     │ ⏎=filter by row, F=push
- D   │ fld       │     │     │ ⏎   │  d  │  D  │     │     │ ⏎=enter, d=trash, D=push
- P   │ plot      │     │     │     │     │     │     │     │ (space P for type selection)
- K   │ colShift  │S-←  │S-→  │     │     │     │     │     │ reorder key cols
- m   │ heat      │     │     │     │     │     │     │0-3  │ heatmap mode (0=off)
- y   │ yank      │     │  >  │  ~  │     │     │     │     │ ~=cell, >=row, <=col
+     │ Obj       │ <       │ >       │ ~       │ d      │ c       │ ^       │ 0       │ 1       │ 2    │ 3    │ 4   │ 5       │ 6       │ 7    │ 8       │ 9       │ Key desc
+─────┼───────────┼─────────┼─────────┼─────────┼────────┼─────────┼─────────┼─────────┼─────────┼──────┼──────┼─────┼─────────┼─────────┼──────┼─────────┼─────────┼─────────
+ r   │ row       │ k       │ j       │         │        │ yankCell│ yankRow │ Home    │ ^U      │      │      │     │         │         │      │ ^D      │ End     │ hjkl/arrows
+ c   │ col       │ h       │ l       │ fzfJump │        │         │ yankCol │ first   │ pgLeft  │      │      │     │ S-←     │ S-→     │      │ pgRight │ last    │ SPC=cmd menu
+ R   │ rowSel    │ \       │ /       │ T       │        │         │         │         │         │      │      │     │         │         │      │         │         │ \=filter /=search T=toggle
+ C   │ colSel    │ ]       │ [       │ t       │        │ hide    │         │         │         │      │      │     │         │         │      │         │         │ []=sort t=toggle
+ g   │ grp       │ N       │ n       │ !       │        │         │         │         │         │      │      │     │         │         │      │         │         │ n/N=search !=toggle
+ s   │ stk       │ q       │         │ swap    │ quit   │ dup     │ xpose   │ diff    │         │      │      │     │         │         │      │         │         │ q=pop
+ p   │ prec      │ decPrec │ incPrec │         │        │         │         │         │         │      │      │     │         │         │      │         │         │
+ w   │ width     │ narrower│ wider   │         │        │         │         │         │         │      │      │     │         │         │      │         │         │
+ T   │ thm       │ prevThm │ nextThm │         │        │         │         │         │         │      │      │     │         │         │      │         │         │
+ i   │ info      │         │         │ togInfo │        │         │         │         │         │      │      │     │         │         │      │         │         │
+ B   │ prev      │ {       │ }       │         │        │         │         │         │         │      │      │     │         │         │      │         │         │ {/}=scroll preview
+ M   │ metaV     │         │         │ ⏎*      │        │ push    │         │ selNull │ selSing │      │      │     │         │         │      │         │         │ ⏎=enter
+ F   │ freq      │         │         │ ⏎*      │        │ push    │         │         │         │      │      │     │         │         │      │         │         │ ⏎=filter
+ D   │ fld       │ depth-- │ depth++ │ ⏎*      │ trash  │ push    │ ⌫       │         │         │      │      │     │         │         │      │         │         │ ⏎=enter ⌫=parent
+ P   │ plot      │         │         │         │        │         │         │ line    │ bar     │ scat │ hist │ box │ area    │ density │ step │ violin  │         │
+ m   │ heat      │         │         │         │        │         │         │ off     │ numeric │ cat  │ both │     │         │         │      │         │         │
+
+* ⏎ context-sensitive: freq→filter, meta→enter, fld→enter, tbl→none
 ```
 
 ## Effect DSL (Cmd.lean)
@@ -282,7 +229,7 @@ Interactive plot with interval control. After display, `+`/`-` cycles intervals:
 | Struct       | Purpose                                      |
 |--------------|----------------------------------------------|
 | Verb         | Action type: inc/dec/ent/del/dup/up/val (7 verbs) |
-| Cmd          | Object + Verb command pattern (22 objects)   |
+| Cmd          | Object + Verb command pattern (15 objects)   |
 | Effect       | IO operation descriptor (30+ variants)       |
 | NavState     | Table + row/col cursors + selections + group |
 | NavAxis      | Generic axis: cur (Fin n) + sels (Array)     |

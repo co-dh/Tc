@@ -323,12 +323,15 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
 -- | Pure update: map Cmd to Effect
 def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   match cmd with
-  | .plot .inc => some (s, .plot .line)
-  | .plot .dec => some (s, .plot .bar)
-  | .plot .ent => some (s, .plot .scatter)
-  | .plot .del => some (s, .plot .hist)
-  | .plot .dup => some (s, .plot .box)
-  | .plot .up  => some (s, .plot .area)
+  | .plot (.val 0) => some (s, .plot .line)
+  | .plot (.val 1) => some (s, .plot .bar)
+  | .plot (.val 2) => some (s, .plot .scatter)
+  | .plot (.val 3) => some (s, .plot .hist)
+  | .plot (.val 4) => some (s, .plot .box)
+  | .plot (.val 5) => some (s, .plot .area)
+  | .plot (.val 6) => some (s, .plot .density)
+  | .plot (.val 7) => some (s, .plot .step)
+  | .plot (.val 8) => some (s, .plot .violin)
   | _ => none
 
 end Tc.Plot

@@ -144,10 +144,10 @@ def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option
   match cmd with
   | .row .inc   => r 1            | .row .dec   => r (-1)
   | .col .inc   => c 1            | .col .dec   => c (-1)
-  | .vPage .inc => r rowPg        | .vPage .dec => r (-rowPg)
-  | .hPage .inc => c colPg        | .hPage .dec => c (-colPg)
-  | .ver .inc   => r (nRows - 1 - nav.row.cur.val) | .ver .dec => r (-nav.row.cur.val)
-  | .hor .inc   => c (nCols - 1 - nav.col.cur.val) | .hor .dec => c (-nav.col.cur.val)
+  | .row (.val 8) => r rowPg      | .row (.val 1) => r (-rowPg)
+  | .col (.val 8) => c colPg      | .col (.val 1) => c (-colPg)
+  | .row (.val 9) => r (nRows - 1 - nav.row.cur.val) | .row (.val 0) => r (-nav.row.cur.val)
+  | .col (.val 9) => c (nCols - 1 - nav.col.cur.val) | .col (.val 0) => c (-nav.col.cur.val)
   | .rowSel .ent => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
   | .colSel .ent => some { nav with col := { nav.col with sels := nav.col.sels.toggle nav.curColName } }
   | .grp .ent    =>
@@ -156,19 +156,19 @@ def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option
   | .colSel .dup =>
     some { nav with hidden := nav.hidden.toggle nav.curColName }
   -- Shift+Arrow: swap key column with neighbor in grp array, cursor follows
-  | .colShift v =>
+  | .col (.val 5) | .col (.val 6) =>
     let name := nav.curColName
     match nav.grp.idxOf? name with
     | some i =>
-      -- Boundary check: can't shift left at 0 or right at last
-      if v == .inc && i + 1 ≥ nav.grp.size then none
-      else if v == .dec && i == 0 then none
+      let fwd := cmd == .col (.val 6)
+      if fwd && i + 1 ≥ nav.grp.size then none
+      else if !fwd && i == 0 then none
       else
-        let j := if v == .inc then i + 1 else i - 1
+        let j := if fwd then i + 1 else i - 1
         let gi := nav.grp.getD i ""
         let gj := nav.grp.getD j ""
         let newGrp := nav.grp.set! i gj |>.set! j gi
-        let d := if v == .inc then (1 : Int) else -1
+        let d := if fwd then (1 : Int) else -1
         some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames,
                         col := { nav.col with cur := nav.col.cur.clamp d } }
     | none => none

@@ -79,12 +79,8 @@ end ArgCmd
 
 -- | Command: Obj + Verb pattern
 inductive Cmd where
-  | row (v : Verb)     -- row inc/dec (single step)
-  | col (v : Verb)     -- col </>/c=fzf cmd menu
-  | hPage (v : Verb)   -- hPage -=prev, +=next page (column)
-  | vPage (v : Verb)   -- vPage -=prev, +=next page (row)
-  | hor (v : Verb)     -- hor -=home, +=end (column)
-  | ver (v : Verb)     -- ver -=top, +=bottom (row)
+  | row (v : Verb)     -- row </>: step, 1/8: page, 0/9: top/bottom, ^: yank row, c: yank cell
+  | col (v : Verb)     -- col </>: step, 0/9: first/last, 1/8: page, 5/6: shift, ^: yank col, c: fzf menu
 
   | rowSel (v : Verb)  -- rowSel +=search(/), -=filter(\), ~=toggle(T)
   | colSel (v : Verb)  -- colSel +=sortAsc([), -=sortDesc(]), ~=toggle(t)
@@ -99,10 +95,8 @@ inductive Cmd where
   | metaV (v : Verb)   -- metaV c=push, 0=selNull, 1=selSingle, ~=enter
   | freq (v : Verb)    -- freq c=push, ~=filter
   | fld (v : Verb)     -- fld c=push, +/-=depth, ~=enter dir/file
-  | plot (v : Verb)    -- plot: line/bar/scatter/hist/box via PlotKind
-  | colShift (v : Verb) -- colShift +=right, -=left (reorder key columns)
+  | plot (v : Verb)    -- plot 0-8: line/bar/scatter/hist/box/area/density/step/violin
   | heat (v : Verb)     -- heat +=more color, -=less color (mode 0-3)
-  | yank (v : Verb)    -- yank ~=cell, >=row, <=col
   | prev (v : Verb)    -- prev >=scroll down, <=scroll up ({/} keys)
   | arg (ac : ArgCmd)  -- argument commands (prefix + payload, bypass fzf)
   deriving Repr, BEq, DecidableEq
@@ -112,27 +106,26 @@ namespace Cmd
 -- | Obj chars
 private def objs : Array (Char × (Verb → Cmd)) := #[
   ('r', .row), ('c', .col), ('R', .rowSel), ('C', .colSel), ('g', .grp), ('s', .stk),
-  ('h', .hPage), ('v', .vPage), ('H', .hor), ('V', .ver), ('p', .prec), ('w', .width),
+  ('p', .prec), ('w', .width),
   ('T', .thm), ('i', .info), ('M', .metaV), ('F', .freq), ('D', .fld),
-  ('P', .plot), ('K', .colShift), ('m', .heat),
-  ('y', .yank), ('B', .prev)
+  ('P', .plot), ('m', .heat),
+  ('B', .prev)
 ]
 
 -- | Get obj char for Cmd
 private def objChar : Cmd → Char
   | .row _ => 'r' | .col _ => 'c' | .rowSel _ => 'R' | .colSel _ => 'C'
   | .grp _ => 'g' | .stk _ => 's'
-  | .hPage _ => 'h' | .vPage _ => 'v' | .hor _ => 'H' | .ver _ => 'V'
   | .prec _ => 'p' | .width _ => 'w' | .thm _ => 'T' | .info _ => 'i'
   | .metaV _ => 'M' | .freq _ => 'F' | .fld _ => 'D' | .plot _ => 'P'
-  | .colShift _ => 'K' | .heat _ => 'm' | .yank _ => 'y' | .prev _ => 'B'
+  | .heat _ => 'm' | .prev _ => 'B'
   | .arg ac => ac.pfx
 
 -- | Get verb from Cmd
 private def verb : Cmd → Verb
   | .row v | .col v | .rowSel v | .colSel v | .grp v | .stk v => v
-  | .hor v | .ver v | .hPage v | .vPage v | .prec v | .width v => v
-  | .thm v | .info v | .metaV v | .freq v | .fld v | .plot v | .colShift v | .heat v | .yank v | .prev v => v
+  | .prec v | .width v => v
+  | .thm v | .info v | .metaV v | .freq v | .fld v | .plot v | .heat v | .prev v => v
   | .arg _ => .ent
 
 instance : ToString Cmd where toString

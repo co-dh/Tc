@@ -67,12 +67,12 @@ def run (s : ViewStack T) (ce : ClipEffect) : IO (ViewStack T) := do
   else statusMsg "no clipboard tool found"
   pure s
 
--- | Pure update: map yank Cmd to clip Effect
+-- | Pure update: map yank Cmd to clip Effect (r^=row, c^=col, rc=cell)
 def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   match cmd with
-  | .yank .ent => some (s, .clip .cell)
-  | .yank .inc => some (s, .clip .row)
-  | .yank .dec => some (s, .clip .col)
+  | .row .dup => some (s, .clip .cell)
+  | .row .up  => some (s, .clip .row)
+  | .col .up  => some (s, .clip .col)
   | _ => none
 
 end Tc.Clip

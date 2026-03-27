@@ -76,7 +76,7 @@ def update (a : AppState) (cmd : Cmd) : Option (AppState × Effect) :=
   | .metaV _  => liftStk a cmd (Meta.update a.stk cmd) <|> viewUp
   | .freq _   => liftStk a cmd (Freq.update a.stk cmd) <|> viewUp
   | .plot _   => liftStk a cmd (Plot.update a.stk cmd)
-  | .yank _   => liftStk a cmd (Clip.update a.stk cmd)
+  | .row .up | .row .dup | .col .up => liftStk a cmd (Clip.update a.stk cmd)
   | .col .ent | .rowSel _ => liftStk a cmd (Filter.update a.stk cmd) <|> viewUp
   | .grp .inc | .grp .dec => liftStk a cmd (Filter.update a.stk cmd)
   | _ => viewUp
@@ -221,34 +221,42 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   if ev.type == 1 && ev.key == 0x16 then IO.sleep 50; return ← mainLoop a test ks'
   -- Empty event (socket wake-up with no key press) → re-render and loop
   if ev.type == 0 then return ← mainLoop a test ks'
-  -- Argument commands: prefix char + payload (: = \ / s e W L J)
-  if ArgCmd.isPfx (Char.ofNat ev.ch.toNat) then do
-    let pfxCh := Char.ofNat ev.ch.toNat
-    let (arg, rest) := if test && ks'.any (· == '\r') then
-      let idx := ks'.findIdx? (· == '\r') |>.getD ks'.size
-      (String.ofList (ks'.extract 0 idx).toList, ks'.extract (idx + 1) ks'.size)
-    else ("", ks')
-    let a' ← match ArgCmd.ofPfx? pfxCh arg with
-      | some ac => runArgCmd a ac
-      | none => pure a
-    mainLoop a' test rest
-  else
   -- Dispatch: Cmd → update → runEffect → loop
-  let runCmd (cmd : Cmd) : IO AppState := do
+  let runCmd (cmd : Cmd) (rest : Array Char) : IO AppState := do
     match a.update cmd with
-    | none => mainLoop a test ks'
+    | none => mainLoop a test rest
     | some (a', e) =>
       if e == .quit then pure a'
       else let a'' ← if e.isNone then pure a' else runEffect a' e
            let a'' := if e.isNone then a'' else { a'' with sparklines := #[] }
            let a'' := if cmd matches .prev _ then a'' else { a'' with prevScroll := 0 }
-           mainLoop a'' test ks'
-  -- 1. Single-key shortcuts (data table — all entries are Cmd obj+verb)
+           mainLoop a'' test rest
+  -- 1. Test mode: 2-char obj+verb codes (e.g. "s^"=stk.up, "s0"=stk.val0)
+  -- Only when the first char has no single-key mapping and no nav mapping
+  -- (avoids "M0" being parsed as metaV.val0 instead of M=push then 0=selNull).
+  let ch := Char.ofNat ev.ch.toNat
+  if test && ks'.size > 0 && (lookup KeyMap.char ch).isNone && !"jklh".toList.contains ch then
+    let code := s!"{ch}{ks'[0]!}"
+    match (Parse.parse? code : Option Cmd) with
+    | some cmd => if !(cmd matches .arg _) then return ← runCmd cmd (ks'.extract 1 ks'.size)
+    | _ => pure ()
+  -- 2. Argument commands: prefix char + payload (: = \ / s e W L J)
+  if ArgCmd.isPfx ch then do
+    let (arg, rest) := if test && ks'.any (· == '\r') then
+      let idx := ks'.findIdx? (· == '\r') |>.getD ks'.size
+      (String.ofList (ks'.extract 0 idx).toList, ks'.extract (idx + 1) ks'.size)
+    else ("", ks')
+    let a' ← match ArgCmd.ofPfx? ch arg with
+      | some ac => runArgCmd a ac
+      | none => pure a
+    mainLoop a' test rest
+  else
+  -- 3. Single-key shortcuts (data table — all entries are Cmd obj+verb)
   match lookup KeyMap.char (evToChar ev) with
-  | some cmd => runCmd cmd
-  -- 2. Special terminal keys + nav (Enter, Backspace, Shift+Arrow, hjkl, PgUp/Dn)
+  | some cmd => runCmd cmd ks'
+  -- 4. Special terminal keys + nav (Enter, Backspace, Shift+Arrow, hjkl, PgUp/Dn)
   | none => match evToCmd ev a.stk.cur.vkind with
-    | some cmd => runCmd cmd
+    | some cmd => runCmd cmd ks'
     | none => mainLoop a test ks'
 
 -- parsed CLI arguments
