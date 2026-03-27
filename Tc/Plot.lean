@@ -320,15 +320,18 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   let _ ← Term.init
   pure (some s)
 
--- | Pure update: map Cmd to Effect
+-- | Pure update: map Cmd to Effect (plot types on col object, val 0-8)
 def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   match cmd with
-  | .plot .inc => some (s, .plot .line)
-  | .plot .dec => some (s, .plot .bar)
-  | .plot .ent => some (s, .plot .scatter)
-  | .plot .del => some (s, .plot .hist)
-  | .plot .dup => some (s, .plot .box)
-  | .plot .up  => some (s, .plot .area)
+  | .col (.val 0) => some (s, .plot .area)
+  | .col (.val 1) => some (s, .plot .line)
+  | .col (.val 2) => some (s, .plot .scatter)
+  | .col (.val 3) => some (s, .plot .bar)
+  | .col (.val 4) => some (s, .plot .box)
+  | .col (.val 5) => some (s, .plot .step)
+  | .col (.val 6) => some (s, .plot .hist)
+  | .col (.val 7) => some (s, .plot .density)
+  | .col (.val 8) => some (s, .plot .violin)
   | _ => none
 
 end Tc.Plot

@@ -9,7 +9,7 @@ import Tc.Meta
 import Tc.Theme
 import Tc.Plot
 import Tc.Export
-import Tc.Clip
+import Tc.Join
 
 namespace Tc
 
@@ -97,9 +97,9 @@ def runStackEffect (s : ViewStack AdbcTable) (eff : Effect) : IO (ViewStack Adbc
       | some v => pure (s.setCur v)
       | none => pure s
     | none => pure s
-  | .clip ce => Clip.run s ce
   | .export fmt => Export.run s fmt
-  | .sessionSave | .sessionLoad | .join | .quit | .themeLoad _
+  | .join => opt (Join.run s)  -- .join is an Effect (fzf picker), not a Cmd object; stk verbs bypass via ArgCmd
+  | .sessionSave | .sessionLoad | .quit
   | .transpose | .diff => pure s  -- handled in runEffectCore, not here
 
 end Runner

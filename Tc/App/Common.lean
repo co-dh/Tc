@@ -5,7 +5,6 @@ import Tc.SourceConfig
 import Tc.TmpDir
 import Tc.Meta
 import Tc.Plot
-import Tc.Clip
 import Tc.Transpose
 import Tc.Join
 import Tc.Fzf
@@ -45,8 +44,8 @@ namespace AppState
 
 -- | Commands that reset ViewState to default (clear scroll/cursor) because view content changes substantially
 def resetsVS (cmd : Cmd) : Bool :=
-  cmd matches .stk .dec | .colSel .inc | .colSel .dec | .metaV _ | .freq _ | .fld _
-    | .col .ent | .rowSel .inc | .rowSel .dec
+  cmd matches .stk .dec | .col .lbr | .col .rbr | .metaV _ | .freq _ | .fld _
+    | .col .search | .row .search | .row .filter
 
 -- | Update stk, reset vs if needed
 def withStk (a : AppState) (cmd : Cmd) (s' : ViewStack AdbcTable) : AppState :=
@@ -58,28 +57,28 @@ private def liftStk (a : AppState) (cmd : Cmd) (r : Option (ViewStack AdbcTable 
 
 -- | Route by Cmd discriminant, fallback to view for nav/selection
 def update (a : AppState) (cmd : Cmd) : Option (AppState × Effect) :=
-  let viewUp := View.update a.stk.cur cmd 20 |>.map fun (v', e) => (withStk a cmd (a.stk.setCur v'), e)
+  let viewUp := fun () => View.update a.stk.cur cmd 20 |>.map fun (v', e) => (withStk a cmd (a.stk.setCur v'), e)
   match cmd with
-  | .stk .del      => some (a, .quit)        -- Q: force quit
-  | .stk .up       => some (a, .transpose)   -- X: transpose push
-  | .stk (.val 0)  => some (a, .diff)        -- V: diff / show-same
-  | .col .dup      => some (a, .fzf .cmd)    -- Space: command menu
-  | .prev .dec  => some ({ a with prevScroll := a.prevScroll - min a.prevScroll 5 }, .none)
-  | .prev .inc  => some ({ a with prevScroll := a.prevScroll + 5 }, .none)
-  | .prev _     => some (a, .none)
-  | .heat (.val n) => some ({ a with heatMode := min 3 n }, .none)  -- m0=off, m1=numeric, m2=categorical, m3=both
-  | .heat _        => some (a, .none)  -- ignore inc/dec (use m0-m3 directly)
-  | .thm _    => a.theme.update cmd |>.map fun (t', e) => ({ a with theme := t' }, e)
-  | .info _   => a.info.update cmd |>.map fun (i', e) => ({ a with info := i' }, e)
+  | .stk .lbc      => some (a, .quit)        -- s{: quit
+  | .stk (.val 1)  => some (a, .transpose)   -- s1: transpose push
+  | .stk (.val 2)  => some (a, .diff)        -- s2: diff / show-same
+  | .stk .search   => some (a, .fzf .cmd)    -- s/: command menu (SPC)
+  | .info .lbr  => some ({ a with prevScroll := a.prevScroll - min a.prevScroll 5 }, .none)  -- i[: scroll up
+  | .info .rbr  => some ({ a with prevScroll := a.prevScroll + 5 }, .none)                   -- i]: scroll down
+  | .info .dec  => some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj - 1 } }, .none)  -- i<: prec dec
+  | .info .inc  => some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj + 1 } }, .none)  -- i>: prec inc
+  | .info .lbc  => some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := -4 } }, .none)  -- i{: 0dp
+  | .info .rbc  => some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := 13 } }, .none)  -- i}: 17dp max
+  | .info (.val n) => some ({ a with heatMode := min 3 n }, .none)  -- i0-i3: heat mode
+  | .info .ent => a.info.update cmd |>.map fun (i', e) => ({ a with info := i' }, e)  -- i~: toggle info
   | .stk _    => liftStk a cmd (ViewStack.update a.stk cmd)
-  | .fld _    => liftStk a cmd (Folder.update a.stk cmd) <|> viewUp
-  | .metaV _  => liftStk a cmd (Meta.update a.stk cmd) <|> viewUp
-  | .freq _   => liftStk a cmd (Freq.update a.stk cmd) <|> viewUp
-  | .plot _   => liftStk a cmd (Plot.update a.stk cmd)
-  | .yank _   => liftStk a cmd (Clip.update a.stk cmd)
-  | .col .ent | .rowSel _ => liftStk a cmd (Filter.update a.stk cmd) <|> viewUp
-  | .grp .inc | .grp .dec => liftStk a cmd (Filter.update a.stk cmd)
-  | _ => viewUp
+  | .fld _    => liftStk a cmd (Folder.update a.stk cmd) <|> viewUp ()
+  | .metaV _  => liftStk a cmd (Meta.update a.stk cmd) <|> viewUp ()
+  | .freq _   => liftStk a cmd (Freq.update a.stk cmd) <|> viewUp ()
+  | .col (.val _) => liftStk a cmd (Plot.update a.stk cmd)
+  | .col .search | .row .search | .row .filter | .row .dup | .row .del =>
+    liftStk a cmd (Filter.update a.stk cmd) <|> viewUp ()
+  | _ => viewUp ()
 
 instance : Update (AppState) where update := update
 
@@ -132,7 +131,6 @@ where
         | none => pure a
       else
         pure { a with stk := a.stk.setCur (Diff.showSame a.stk.cur), vs := .default }
-  | .themeLoad d => do let th ← a.theme.runEffect d; pure { a with theme := th }
   | _ => do
     let s ← Runner.runStackEffect a.stk e
     let vs' := if e.isNone then a.vs else .default
@@ -221,34 +219,54 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   if ev.type == 1 && ev.key == 0x16 then IO.sleep 50; return ← mainLoop a test ks'
   -- Empty event (socket wake-up with no key press) → re-render and loop
   if ev.type == 0 then return ← mainLoop a test ks'
-  -- Argument commands: prefix char + payload (: = \ / s e W L J)
-  if ArgCmd.isPfx (Char.ofNat ev.ch.toNat) then do
-    let pfxCh := Char.ofNat ev.ch.toNat
-    let (arg, rest) := if test && ks'.any (· == '\r') then
-      let idx := ks'.findIdx? (· == '\r') |>.getD ks'.size
-      (String.ofList (ks'.extract 0 idx).toList, ks'.extract (idx + 1) ks'.size)
-    else ("", ks')
-    let a' ← match ArgCmd.ofPfx? pfxCh arg with
-      | some ac => runArgCmd a ac
-      | none => pure a
-    mainLoop a' test rest
-  else
   -- Dispatch: Cmd → update → runEffect → loop
-  let runCmd (cmd : Cmd) : IO AppState := do
+  let runCmd (cmd : Cmd) (rest : Array Char) : IO AppState := do
+    -- Verb shortcuts → ArgCmd: these bypass the Effect system and call runArgCmd directly.
+    -- Join indices match JoinOp order: 0=inner 1=left 2=right 3=union 4=diff
+    let argShortcut := match cmd with
+      | .col .split  => some (.split "")
+      | .col .derive => some (.derive "")
+      | .stk .rbc    => some (.join "0")  -- inner
+      | .stk .lbr    => some (.join "1")  -- left
+      | .stk .rbr    => some (.join "2")  -- right
+      | .stk .dup    => some (.join "3")  -- union
+      | .stk .del    => some (.join "4")  -- diff
+      | _ => none
+    if let some ac := argShortcut then return ← mainLoop (← runArgCmd a ac) test rest
     match a.update cmd with
-    | none => mainLoop a test ks'
+    | none => mainLoop a test rest
     | some (a', e) =>
       if e == .quit then pure a'
       else let a'' ← if e.isNone then pure a' else runEffect a' e
            let a'' := if e.isNone then a'' else { a'' with sparklines := #[] }
-           let a'' := if cmd matches .prev _ then a'' else { a'' with prevScroll := 0 }
-           mainLoop a'' test ks'
-  -- 1. Single-key shortcuts (data table — all entries are Cmd obj+verb)
+           let a'' := if cmd matches .info .lbr | .info .rbr then a'' else { a'' with prevScroll := 0 }
+           mainLoop a'' test rest
+  -- 1. Test mode: 2-char obj+verb codes (e.g. "s1"=stk.val1, "c["=col.lbr)
+  -- Only when the first char has no single-key mapping and no nav mapping
+  -- (avoids "M0" being parsed as metaV.val0 instead of M=push then 0=selNull).
+  let ch := Char.ofNat ev.ch.toNat
+  if test && ks'.size > 0 && (lookup KeyMap.char ch).isNone && !"jklh".toList.contains ch then
+    let code := s!"{ch}{ks'[0]!}"
+    match (Parse.parse? code : Option Cmd) with
+    | some cmd => if !(cmd matches .arg _) then return ← runCmd cmd (ks'.extract 1 ks'.size)
+    | _ => pure ()
+  -- 2. Argument commands: prefix char + payload (: = \ / s e W L J)
+  if ArgCmd.isPfx ch then do
+    let (arg, rest) := if test && ks'.any (· == '\r') then
+      let idx := ks'.findIdx? (· == '\r') |>.getD ks'.size
+      (String.ofList (ks'.extract 0 idx).toList, ks'.extract (idx + 1) ks'.size)
+    else ("", ks')
+    let a' ← match ArgCmd.ofPfx? ch arg with
+      | some ac => runArgCmd a ac
+      | none => pure a
+    mainLoop a' test rest
+  else
+  -- 3. Single-key shortcuts (data table — all entries are Cmd obj+verb)
   match lookup KeyMap.char (evToChar ev) with
-  | some cmd => runCmd cmd
-  -- 2. Special terminal keys + nav (Enter, Backspace, Shift+Arrow, hjkl, PgUp/Dn)
+  | some cmd => runCmd cmd ks'
+  -- 4. Special terminal keys + nav (Enter, Backspace, Shift+Arrow, hjkl, PgUp/Dn)
   | none => match evToCmd ev a.stk.cur.vkind with
-    | some cmd => runCmd cmd
+    | some cmd => runCmd cmd ks'
     | none => mainLoop a test ks'
 
 -- parsed CLI arguments

@@ -7,175 +7,126 @@ import Tc.Term
 
 open Tc
 
--- Lookup in (key, value) array
 def lookup [BEq α] (tbl : Array (α × β)) (k : α) : Option β :=
   tbl.findSome? fun (k', v) => if k == k' then some v else none
 
--- | Key mapping tables grouped by category
 namespace KeyMap
-  -- Arrow/special keys → navigation char (hjkl)
   private def arrow : Array (UInt16 × Char) := #[
     (Term.keyArrowDown, 'j'), (Term.keyArrowUp, 'k'),
     (Term.keyArrowRight, 'l'), (Term.keyArrowLeft, 'h')
   ]
 
-  -- Navigation chars → (isRow, isFwd) for directional dispatch
   private def nav : Array (Char × Bool × Bool) := #[
     ('j', true, true), ('k', true, false), ('l', false, true), ('h', false, false)
   ]
 
-  -- Special keys → Cmd (PageUp/Down, Home/End)
   private def special : Array (UInt16 × Cmd) := #[
-    (Term.keyPageDown, .vPage .inc), (Term.keyPageUp, .vPage .dec),
-    (Term.keyHome, .ver .dec), (Term.keyEnd, .ver .inc)
+    (Term.keyPageDown, .row .rbr), (Term.keyPageUp, .row .lbr),
+    (Term.keyHome, .row .lbc), (Term.keyEnd, .row .rbc)
   ]
 
-  -- Ctrl keys → Cmd (Ctrl-D=pgdn, Ctrl-U=pgup) - termbox reports in ev.key, not ev.ch
   private def ctrl : Array (UInt16 × Cmd) := #[
-    (Term.ctrlD.toUInt16, .vPage .inc), (Term.ctrlU.toUInt16, .vPage .dec)
+    (Term.ctrlD.toUInt16, .row .rbr), (Term.ctrlU.toUInt16, .row .lbr)
   ]
 
-  -- | Single-key shortcuts — the single source of truth for all one-key mappings.
-  -- Every entry is a Cmd (obj+verb). Sorted ascending by estimated usage frequency.
   def char : Array (Char × Cmd) := #[
-    -- rarely used
-    ('{', .prev .dec),              -- preview scroll up
-    ('}', .prev .inc),              -- preview scroll down
-    -- occasionally used
-    ('0', .metaV (.val 0)),         -- alias for M0: select null cols
-    ('1', .metaV (.val 1)),         -- alias for M1: select single-val cols
-    ('X', .stk .up),               -- transpose push (s^)
-    ('V', .stk (.val 0)),          -- diff / show-same (s0)
-    ('I', .info .ent),             -- toggle info overlay
-    ('D', .fld .dup),              -- open folder view
-    ('M', .metaV .dup),            -- open meta view
-    ('S', .stk .ent),              -- stack swap
-    -- frequently used
-    ('F', .freq .dup),             -- frequency view
-    ('[', .colSel .inc),           -- sort ascending
-    (']', .colSel .dec),           -- sort descending
-    ('!', .grp .ent),              -- toggle group
-    ('T', .rowSel .ent),           -- toggle row filter
-    ('t', .colSel .ent),           -- toggle column sort
-    ('n', .grp .inc),              -- search next
-    ('N', .grp .dec),              -- search prev
-    -- very frequently used
-    (' ', .col .dup),              -- command menu (cc)
-    ('q', .stk .dec),              -- pop view / back (s<)
-    ('Q', .stk .del)              -- exit application (sd)
+    ('{', .info .lbr),              -- preview scroll up
+    ('}', .info .rbr),              -- preview scroll down
+    ('[', .col .lbr),               -- sort ascending
+    (']', .col .rbr),               -- sort descending
+    ('!', .col .ent),               -- toggle group
+    ('T', .row .ent),               -- toggle row selection
+    ('n', .row .dup),               -- search next match
+    ('N', .row .del),               -- search prev match
+    (' ', .stk .search),            -- command menu
+    ('q', .stk .dec)                -- pop view / back
   ]
 end KeyMap
 
--- Normalize event to char (arrow→hjkl, Enter→\r, or raw char)
 def evToChar (ev : Term.Event) : Char :=
   if ev.key == Term.keyEnter then '\r'
   else (lookup KeyMap.arrow ev.key).getD (Char.ofNat ev.ch.toNat)
 
--- Navigation cmd from char + shift state
-private def navCmd (c : Char) (shift : Bool) : Option Cmd :=
+private def navCmd (c : Char) : Option Cmd :=
   KeyMap.nav.findSome? fun (ch, isRow, fwd) =>
-    if c.toLower == ch then
-      let pg := shift || c.isUpper  -- shift or uppercase = page
+    if c == ch then
       let v := if fwd then Verb.inc else .dec
-      some (if pg then (if isRow then .vPage v else .hPage v)
-                  else (if isRow then .row v else .col v))
+      some (if isRow then .row v else .col v)
     else none
 
--- | Object menu for command mode (space key)
 def objMenu : Array (Char × String × (Verb → Cmd)) := #[
-  -- navigation
-  ('r', "row    : cursor up/down",       .row),
-  ('c', "col    : cursor left/right",    .col),
-  ('v', "vPage  : vertical page",        .vPage),
-  ('h', "hPage  : horizontal page",      .hPage),
-  ('V', "ver    : top/bottom",           .ver),
-  ('H', "hor    : first/last column",    .hor),
-  -- selection
-  ('R', "rowSel : filter/search/toggle", .rowSel),
-  ('C', "colSel : sort/toggle/hide",     .colSel),
-  ('g', "grp    : group prev/next",      .grp),
-  -- options
-  ('s', "stk    : view stack pop/swap",  .stk),
-  ('p', "prec   : decimal precision",    .prec),
-  ('w', "width  : column width",         .width),
-  ('T', "thm    : theme cycle",          .thm),
-  ('i', "info   : overlay toggle",       .info),
-  -- views
-  ('M', "metaV  : meta view",            .metaV),
-  ('F', "freq   : frequency view",       .freq),
-  ('D', "fld    : folder view",          .fld),
-  ('P', "plot   : ggplot2 chart (group ! for x-axis, cursor on numeric y)", .plot),
-  ('K', "colShift : reorder key cols", .colShift),
-  ('m', "heat   : heatmap mode 0-3", .heat),
-  ('y', "yank   : copy to clipboard", .yank)
+  ('r', "", .row), ('c', "", .col), ('s', "", .stk), ('i', "", .info),
+  ('M', "", .metaV), ('F', "", .freq), ('D', "", .fld)
 ]
 
--- | Verb menu for command mode, context-sensitive per object and view kind
 def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
   match obj with
-  -- navigation
-  | 'r' => #[('<', "up",    .dec), ('>', "down",  .inc)]
-  | 'c' => #[('<', "left",  .dec), ('>', "right", .inc), ('~', "fzf jump", .ent)]
-  | 'v' => #[('<', "page up",   .dec), ('>', "page down",  .inc)]
-  | 'h' => #[('<', "page left", .dec), ('>', "page right", .inc)]
-  | 'V' => #[('<', "top",    .dec), ('>', "bottom", .inc)]
-  | 'H' => #[('<', "first",  .dec), ('>', "last",   .inc)]
-  -- selection
-  | 'R' => #[('<', "filter", .dec), ('>', "search", .inc), ('~', "toggle", .ent)]
-  | 'C' => #[('<', "sort desc", .dec), ('>', "sort asc", .inc), ('~', "toggle", .ent), ('h', "hide", .dup)]
-  | 'g' => #[('<', "prev match", .dec), ('>', "next match", .inc), ('~', "toggle group", .ent)]
-  -- options
-  | 's' => #[('<', "pop", .dec), ('~', "swap", .ent), ('c', "dup", .dup)]
-  | 'p' => #[('<', "less digits",  .dec), ('>', "more digits",  .inc)]
-  | 'w' => #[('<', "narrower",     .dec), ('>', "wider",        .inc)]
-  | 'T' => #[('<', "prev theme",   .dec), ('>', "next theme",   .inc)]
-  | 'i' => #[('~', "toggle info", .ent)]
-  -- views
-  | 'M' => #[('0', "sel nulls", .val 0), ('1', "sel singles", .val 1), ('~', "enter", .ent), ('c', "push meta", .dup)]
+  | 'r' => #[('/', "Search for value in current column", .search),
+             ('\\', "Filter rows by PRQL expression", .filter),
+             ('~', "Select/deselect current row", .ent),
+             ('+', "Jump to next search match", .dup), ('-', "Jump to previous search match", .del),
+             ('[', "Page up", .lbr), (']', "Page down", .rbr),
+             ('{', "Jump to top", .lbc), ('}', "Jump to bottom", .rbc),
+             ('<', "Move cursor up", .dec), ('>', "Move cursor down", .inc)]
+  | 'c' => #[('/', "Jump to column by name", .search),
+             ('~', "Toggle group on current column", .ent),
+             ('\\', "Hide/unhide current column", .filter),
+             ('[', "Sort ascending", .lbr), (']', "Sort descending", .rbr),
+             (':', "Split column by delimiter", .split), ('=', "Derive new column (name = expr)", .derive),
+             ('-', "Shift key column left", .del), ('+', "Shift key column right", .dup),
+             ('{', "Jump to first column", .lbc), ('}', "Jump to last column", .rbc),
+             ('<', "Move cursor left", .dec), ('>', "Move cursor right", .inc),
+             ('0', "Plot: area chart", .val 0), ('1', "Plot: line chart", .val 1),
+             ('2', "Plot: scatter plot", .val 2), ('3', "Plot: bar chart", .val 3),
+             ('4', "Plot: boxplot", .val 4), ('5', "Plot: step chart", .val 5),
+             ('6', "Plot: histogram", .val 6), ('7', "Plot: density plot", .val 7),
+             ('8', "Plot: violin plot", .val 8)]
+  | 's' => #[('/', "Open command menu", .search),
+             ('~', "Swap top two views", .ent),
+             ('<', "Close current view", .dec), ('>', "Duplicate current view", .inc),
+             ('{', "Quit application", .lbc),
+             ('1', "Transpose table (rows ↔ columns)", .val 1),
+             ('2', "Diff top two views", .val 2),
+             ('}', "Join: inner", .rbc), ('[', "Join: left", .lbr), (']', "Join: right", .rbr),
+             ('+', "Join: union", .dup), ('-', "Join: set difference", .del)]
+  | 'i' => #[('~', "Toggle info overlay", .ent),
+             ('<', "Decrease decimal precision", .dec), ('>', "Increase decimal precision", .inc),
+             ('{', "Set precision to 0 decimals", .lbc), ('}', "Set precision to max (17)", .rbc),
+             ('[', "Scroll cell preview up", .lbr), (']', "Scroll cell preview down", .rbr),
+             ('0', "Heatmap: off", .val 0), ('1', "Heatmap: numeric columns", .val 1),
+             ('2', "Heatmap: categorical columns", .val 2), ('3', "Heatmap: all columns", .val 3)]
+  | 'M' => #[('+', "Open column metadata view", .dup), ('~', "Set selected rows as key columns", .ent),
+             ('0', "Select columns with null values", .val 0), ('1', "Select columns with single value", .val 1)]
   | 'F' => match vk with
-    | .freqV _ _ => #[('~', "filter by row", .ent), ('c', "push freq", .dup)]
-    | _ => #[('c', "push freq", .dup)]
-  | 'D' => #[('<', "depth--", .dec), ('>', "depth++", .inc), ('~', "enter", .ent), ('d', "trash", .del), ('c', "push folder", .dup)]
-  | 'P' => #[('>', "line — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .inc), ('<', "bar — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .dec), ('s', "scatter — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .ent), ('h', "histogram — just put cursor on a numeric column, no grouping needed", .del), ('b', "boxplot — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .dup), ('a', "area — group ! sets x-axis, cursor on numeric y, group 2nd col for color", .up)]
-  | 'K' => #[('<', "shift left", .dec), ('>', "shift right", .inc)]
-  | 'm' => #[('0', "off", .val 0), ('1', "numeric", .val 1), ('2', "categorical", .val 2), ('3', "both", .val 3)]
-  | 'y' => #[('~', "cell", .ent), ('>', "row", .inc), ('<', "column", .dec)]
+    | .freqV _ _ => #[('+', "Open frequency view", .dup), ('~', "Filter parent table by current row", .ent)]
+    | _ => #[('+', "Open frequency view", .dup)]
+  | 'D' => #[('~', "Open file or enter directory", .ent), ('{', "Go to parent directory", .lbc),
+             ('-', "Move to trash", .del),
+             ('<', "Decrease folder depth", .dec), ('>', "Increase folder depth", .inc)]
   | _   => #[]
 
--- | Enter key → context-specific command based on view kind
 def enterCmd (vk : ViewKind) : Option Cmd :=
   match vk with
-  | .freqV _ _ => some (.freq .ent)  -- filter by row
-  | .colMeta  => some (.metaV .ent)  -- set group key
-  | .fld _ _  => some (.fld .ent)    -- enter dir/file
-  | .tbl      => none                -- no action in table view
+  | .freqV _ _ => some (.freq .ent)
+  | .colMeta  => some (.metaV .ent)
+  | .fld _ _  => some (.fld .ent)
+  | .tbl      => none
 
 theorem enterCmd_tbl_none : enterCmd .tbl = none := by rfl
-
-theorem enterCmd_freq : ∀ cols total, enterCmd (.freqV cols total) = some (.freq .ent) := by
-  intros; rfl
-
+theorem enterCmd_freq : ∀ cols total, enterCmd (.freqV cols total) = some (.freq .ent) := by intros; rfl
 theorem enterCmd_meta : enterCmd .colMeta = some (.metaV .ent) := by rfl
+theorem enterCmd_fld : ∀ p d, enterCmd (.fld p d) = some (.fld .ent) := by intros; rfl
 
-theorem enterCmd_fld : ∀ p d, enterCmd (.fld p d) = some (.fld .ent) := by
-  intros; rfl
-
--- | Convert Term.Event to Cmd: special terminal keys (Enter/Backspace/Shift+Arrow) + nav/special/ctrl.
--- KeyMap.char is handled separately in mainLoop via lookup.
 def evToCmd (ev : Term.Event) (vk : ViewKind) : Option Cmd :=
   if ev.type != Term.eventKey then none else
   if ev.key == Term.keyEnter then enterCmd vk else
-  -- Backspace in folder view → go to parent directory
-  if (ev.key == Term.keyBackspace || ev.key == Term.keyBackspace2) && vk matches .fld _ _ then some (.fld .up) else
+  if (ev.key == Term.keyBackspace || ev.key == Term.keyBackspace2) && vk matches .fld _ _ then some (.fld .lbc) else
   let c := evToChar ev
   let shift := ev.mod &&& Term.modShift != 0
-  -- Shift+Arrow left/right → reorder key columns (before nav normalization)
-  if shift && ev.key == Term.keyArrowLeft then some (.colShift .dec)
-  else if shift && ev.key == Term.keyArrowRight then some (.colShift .inc)
-  else navCmd c shift <|> lookup KeyMap.special ev.key <|> lookup KeyMap.ctrl ev.key
+  if shift && ev.key == Term.keyArrowLeft then some (.col .del)
+  else if shift && ev.key == Term.keyArrowRight then some (.col .dup)
+  else navCmd c <|> lookup KeyMap.special ev.key <|> lookup KeyMap.ctrl ev.key
 
--- | Parse key notation: <ret> → \r, <C-d> → Ctrl-D, etc.
--- Arrow keys use \x1c-\x1f (FS/GS/RS/US — unmapped control chars)
 def parseKeys (s : String) : String :=
   s.replace "<ret>" "\r"
    |>.replace "<esc>" "\x1b"
@@ -190,31 +141,23 @@ def parseKeys (s : String) : String :=
    |>.replace "<bs>" "\x7f"
    |>.replace "<backslash>" "\\"
    |>.replace "<key>" "!"
-   |>.replace "<wait>" "\x16"  -- test-only: pause for socket commands
+   |>.replace "<wait>" "\x16"
 
--- | Convert char to synthetic Term.Event (matches termbox behavior)
 def charToEvent (c : Char) : Term.Event :=
   let ch := c.toNat.toUInt32
-  -- Synthetic shift+arrow for test mode (\x11/\x12 shadow Ctrl-Q/R)
   if ch == 0x11 then ⟨Term.eventKey, Term.modShift, Term.keyArrowLeft, 0, 0, 0⟩
   else if ch == 0x12 then ⟨Term.eventKey, Term.modShift, Term.keyArrowRight, 0, 0, 0⟩
-  -- Synthetic arrow keys (\x1c-\x1f)
   else if ch == 0x1c then ⟨Term.eventKey, 0, Term.keyArrowDown, 0, 0, 0⟩
   else if ch == 0x1d then ⟨Term.eventKey, 0, Term.keyArrowUp, 0, 0, 0⟩
   else if ch == 0x1e then ⟨Term.eventKey, 0, Term.keyArrowRight, 0, 0, 0⟩
   else if ch == 0x1f then ⟨Term.eventKey, 0, Term.keyArrowLeft, 0, 0, 0⟩
-  -- Backspace (0x7f): termbox reports key=0x7f, ch=0
   else if ch == 0x7f then ⟨Term.eventKey, 0, Term.keyBackspace2, 0, 0, 0⟩
-  -- Ctrl chars: termbox reports key=ctrl_code, ch=0, mod=2
   else if ch < 32 then ⟨Term.eventKey, 2, ch.toUInt16, 0, 0, 0⟩
   else ⟨Term.eventKey, 0, 0, ch, 0, 0⟩
 
--- | Check if event is a key press for given char
 def isKey (ev : Term.Event) (c : Char) : Bool :=
   ev.type == Term.eventKey && ev.ch == c.toNat.toUInt32
 
--- | Get next event from replay keys or poll
 def nextEvent (keys : Array Char) : IO (Term.Event × Array Char) :=
   if h : keys.size > 0 then pure (charToEvent keys[0], keys.extract 1 keys.size)
   else do let e ← Term.pollEvent; pure (e, #[])
-

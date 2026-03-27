@@ -1,15 +1,15 @@
 # Financial Plot Types - Implementation Summary
 
 ## Current State
-5 plot types: line, scatter, bar, histogram, boxplot
+9 plot types: line, scatter, bar, histogram, boxplot, area, density, step, violin
 All rendered via R/ggplot2, displayed via kitty/viu/xdg-open.
-Interactive mode: h/l cycles plot types, ,/. adjusts downsampling.
+Interactive mode: c0-c8 selects plot type by digit, +/- adjusts downsampling.
 
 ## New Plot Types (Finance-focused)
 
 ### 1. Area Chart (`geom_area`)
 - **Use**: Portfolio NAV, cumulative returns, AUM over time
-- **Key**: `Pa` (mapped via Verb.up)
+- **Key**: `c0` (digit selection via col .val)
 - **Data flow**: Same as line chart (x + y + optional category)
 - **R**: `geom_area(alpha = 0.4)` with `scale_fill_viridis_d()`
 
@@ -29,13 +29,10 @@ Interactive mode: h/l cycles plot types, ,/. adjusts downsampling.
 - **R**: `geom_violin()` with optional `geom_boxplot(width=0.1)`
 
 ## Architecture Notes
-- PlotKind enum in Cmd.lean: add .area, .density, .step, .violin
-- cyclableKinds in Plot.lean: add all 4 (accessible via h/l cycling)
-- rScript in Plot.lean: add geom cases for each new type
-- Plot.update: map Verb.up → .area; density/step/violin via cycling only
-- Key.lean verbsFor 'P': add ('a', "area", .up) entry
-- Info.lean: no change needed (hints are compact)
-- Tests: add R render tests for area, density, step, violin
+- PlotKind enum in Cmd.lean: .line, .bar, .scatter, .hist, .box, .area, .density, .step, .violin
+- Plot type selected via `col .val n` (c0-c8 digit keys)
+- rScript in Plot.lean: geom cases for each plot type
+- Key.lean verbsFor 'c': digit entries ('0'-'8') map to plot types
 
 ## fzf Pitfalls
 - **`execute-silent` commands with special shell chars (`>`, `|`, `$`, `"`) break under `--tmux`** because fzf re-launches inside a tmux popup, and the args get shell-corrupted during re-launch.

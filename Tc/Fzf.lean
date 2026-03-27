@@ -75,7 +75,8 @@ private def flatItems (vk : ViewKind) : Array String :=
     let verbs := verbsFor objKey vk
     verbs.foldl (fun acc (_, verbLabel, verb) =>
       let cmd := mk verb
-      acc.push s!"{cmd}\t{objLabel} {verbLabel}"
+      let label := if objLabel.isEmpty then verbLabel else s!"{objLabel} {verbLabel}"
+      acc.push s!"{cmd}\t{label}"
     ) acc
   ) #[]
 

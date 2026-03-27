@@ -41,70 +41,59 @@ def test_sort_desc : IO Unit := do
 
 def test_meta_shows : IO Unit := do
   log "meta"
-  assert (contains (footer (← run "M" "data/basic.csv")).1 "meta") "M shows meta in tab"
+  assert (contains (footer (← run "M+" "data/basic.csv")).1 "meta") "M+ shows meta in tab"
 
 def test_meta_col_info : IO Unit := do
   log "meta_col_info"
-  assert (contains (← run "M" "data/basic.csv") "column" || contains (← run "M" "data/basic.csv") "name") "Meta shows column info"
+  assert (contains (← run "M+" "data/basic.csv") "column" || contains (← run "M+" "data/basic.csv") "name") "Meta shows column info"
 
 def test_meta_no_garbage : IO Unit := do
   log "meta_tab_no_garbage"
-  assert (!contains (footer (← run "M" "data/basic.csv")).1 "â") "Meta tab has no garbage chars"
+  assert (!contains (footer (← run "M+" "data/basic.csv")).1 "â") "Meta tab has no garbage chars"
 
 -- === Freq tests (CSV) ===
 
 def test_freq_shows : IO Unit := do
   log "freq"
-  assert (contains (footer (← run "F" "data/basic.csv")).1 "freq") "F shows freq in tab"
+  assert (contains (footer (← run "F+" "data/basic.csv")).1 "freq") "F+ shows freq in tab"
 
 def test_freq_after_meta : IO Unit := do
   log "freq_after_meta"
-  assert (contains (footer (← run "MqF" "data/basic.csv")).1 "freq") "MqF shows freq"
+  assert (contains (footer (← run "M+qF+" "data/basic.csv")).1 "freq") "M+qF+ shows freq"
 
 def test_freq_by_key : IO Unit := do
   log "freq_by_key"
-  assert (contains (footer (← run "l!F" "data/full.csv")).1 "freq") "l!F shows freq by key"
+  assert (contains (footer (← run "l!F+" "data/full.csv")).1 "freq") "l!F+ shows freq by key"
 
 def test_freq_multi_key : IO Unit := do
   log "freq_multi_key"
-  assert (contains (footer (← run "!l!F" "data/multi_freq.csv")).1 "freq") "!l!F shows multi-key freq"
+  assert (contains (footer (← run "!l!F+" "data/multi_freq.csv")).1 "freq") "!l!F+ shows multi-key freq"
 
 def test_freq_keeps_grp : IO Unit := do
   log "freq_keeps_grp"
-  assert (contains (footer (← run "!F" "data/basic.csv")).2 "grp=1") "Freq view keeps grp columns"
-
--- === Precision/Width adjustment ===
-
-def test_prec_inc : IO Unit := do
-  log "prec_inc"
-  assert (contains (← run "," "data/floats.csv") "1.123" || contains (← run "," "data/floats.csv") "1.1235") ", prefix works"
-
-def test_prec_dec : IO Unit := do
-  log "prec_dec"
-  let first := (dataLines (← run "." "data/floats.csv")).headD ""
-  assert (contains first "1.1") ". prefix works"
+  assert (contains (footer (← run "!F+" "data/basic.csv")).2 "grp=1") "Freq view keeps grp columns"
 
 -- === Meta selection tests (M0/M1) ===
 
 def test_meta_0 : IO Unit := do
   log "meta_0"
-  let status := (footer (← run "M0" "data/null_col.csv")).2
-  assert (contains status "sel=1" || contains status "rows=1") "M0 selects null columns"
+  let status := (footer (← run "M+M0" "data/null_col.csv")).2
+  assert (contains status "sel=1" || contains status "rows=1") "M+M0 selects null columns"
 
 def test_meta_1 : IO Unit := do
   log "meta_1"
-  let status := (footer (← run "M1" "data/single_val.csv")).2
-  assert (contains status "sel=1" || contains status "rows=1") "M1 selects single-value columns"
+  let status := (footer (← run "M+M1" "data/single_val.csv")).2
+  assert (contains status "sel=1" || contains status "rows=1") "M+M1 selects single-value columns"
 
 def test_meta_0_enter : IO Unit := do
   log "meta_0_enter"
-  let hdr := header (← run "M0<ret>" "data/null_col.csv")
-  assert (contains hdr "║" || contains hdr "|") "M0<ret> sets key cols"
+  let hdr := header (← run "M+M0<ret>" "data/null_col.csv")
+  assert (contains hdr "║" || contains hdr "|") "M+M0<ret> sets key cols"
 
 def test_meta_1_enter : IO Unit := do
   log "meta_1_enter"
-  let hdr := header (← run "M1<ret>" "data/single_val.csv")
-  assert (contains hdr "║" || contains hdr "|") "M1<ret> sets key cols"
+  let hdr := header (← run "M+M1<ret>" "data/single_val.csv")
+  assert (contains hdr "║" || contains hdr "|") "M+M1<ret> sets key cols"
 
 
 -- === Stdin parsing tests ===
@@ -117,9 +106,9 @@ def test_spaced_header : IO Unit := do
 
 def test_freq_enter : IO Unit := do
   log "freq_enter"
-  let (tab, status) := footer (← run "F<ret>" "data/multi_freq.csv")
-  assert (contains tab "multi_freq") "F<ret> pops to parent"
-  assert (contains status "r0/3") "F<ret> filters to 3 rows"
+  let (tab, status) := footer (← run "F+<ret>" "data/multi_freq.csv")
+  assert (contains tab "multi_freq") "F+<ret> pops to parent"
+  assert (contains status "r0/3") "F+<ret> filters to 3 rows"
 
 -- === No stderr ===
 
@@ -180,7 +169,7 @@ def test_folder_no_args : IO Unit := do
 
 def test_folder_D : IO Unit := do
   log "folder_D_key"
-  assert (contains (← run "D" "data/basic.csv") "[/") "D pushes folder view with absolute path"
+  assert (contains (← run "D+" "data/basic.csv") "[/") "D+ pushes folder view with absolute path"
 
 -- Folder tab shows the current working directory as an absolute path
 def test_folder_tab : IO Unit := do
@@ -451,7 +440,7 @@ def test_osquery_meta_description : IO Unit := do
   log "osquery_meta_description"
   unless (← hasOsquery) do log "  skip (no osqueryi)"; return
   -- Enter first safe table, then press M for meta view
-  let output ← run "<ret>M" "osquery://"
+  let output ← run "<ret>M+" "osquery://"
   assert (contains output "description") "Meta view on osquery table shows description column"
 
 def test_osquery_direct_table : IO Unit := do
@@ -642,11 +631,11 @@ def test_export_csv : IO Unit := do
 
 -- === Transpose tests ===
 
--- test_transpose: X swaps rows/columns; original col names become row values
+-- test_transpose: s1 (stk.val1) swaps rows/columns; original col names become row values
 def test_transpose : IO Unit := do
   log "transpose"
-  let output ← run "X" "data/basic.csv"
-  assert (contains output "column") "X shows 'column' header"
+  let output ← run "s1" "data/basic.csv"
+  assert (contains output "column") "transpose shows 'column' header"
   -- original column names a, b appear as data in the "column" column
   let lines := dataLines output
   assert (lines.any (contains · " a ")) "transposed row for col 'a'"
@@ -658,7 +647,7 @@ def test_transpose : IO Unit := do
 -- test_transpose_pop: q pops back from transposed view
 def test_transpose_pop : IO Unit := do
   log "transpose_pop"
-  let output ← run "Xq" "data/basic.csv"
+  let output ← run "s1q" "data/basic.csv"
   let (_, status) := footer output
   assert (contains status "r0/5") "q pops back to original 5-row view"
 
@@ -669,7 +658,7 @@ def test_join_inner : IO Unit := do
   log "join_inner"
   -- [ sorts asc → row0=.., row1=left.csv, row2=right.csv (alphabetical)
   -- j<ret> enter left, ! key id, S swap (cursor stays row1), j<ret> enter right, ! key id, S swap, q pop, J join
-  let output ← run "[j<ret><key>Sj<ret><key>SqJ" "data/join_test"
+  let output ← run "[j<ret><key>s~j<ret><key>s~qJ" "data/join_test"
   assert (contains output "alice") "J shows alice from left table"
   assert (contains output "90") "J shows score=90 from right table"
   let (_, status) := footer output
@@ -680,7 +669,7 @@ def test_join_union : IO Unit := do
   log "join_union"
   -- [ sorts asc → row0=.., row1=left.csv. j→left, <ret>→open, S→swap (cursor stays at row1),
   -- <ret>→open left again, S→swap, q→pop folder, J→union left∪left
-  let output ← run "[j<ret>S<ret>SqJ" "data/join_test"
+  let output ← run "[j<ret>s~<ret>s~qJ" "data/join_test"
   assert (contains output "name") "Union shows name column"
   let (_, status) := footer output
   assert (contains status "r0/6") "Union of same 3-row table = 6 rows"
@@ -884,16 +873,16 @@ def test_session_missing : IO Unit := do
 
 -- === Diff tests ===
 
--- | Diff: open before.csv and after.csv, press V to diff.
+-- | Diff: open before.csv and after.csv, s2 (stk.val2) to diff.
 --   cost column is same across all rows → hidden (sameHide).
 --   sales column differs → visible with Δ prefix.
 def test_diff : IO Unit := do
   log "diff"
   -- [ sorts asc → row0=.., row1=after.csv, row2=before.csv
-  -- j<ret> enter after, S swap, jj<ret> enter before, S swap, q pop folder, V diff
-  let output ← run "[j<ret>Sjj<ret>SqV" "data/diff_test"
+  -- j<ret> enter after, S swap, jj<ret> enter before, S swap, q pop folder, s2 diff
+  let output ← run "[j<ret>s~jj<ret>s~qs2" "data/diff_test"
   let (tab, status) := footer output
-  assert (contains tab "diff") "V shows diff in tab"
+  assert (contains tab "diff") "s2 shows diff in tab"
   assert (contains status "r0/3") "diff has 3 rows"
   -- Δ prefix marks changed columns
   assert (contains output "Δ") "diff columns have Δ prefix"
@@ -901,13 +890,13 @@ def test_diff : IO Unit := do
   assert (contains output "name") "diff shows key column name"
   assert (contains output "regi") "diff shows key column region (truncated)"
 
--- | Diff show same: V on diff view reveals hidden same-value columns
+-- | Diff show same: s2 on diff view reveals hidden same-value columns
 def test_diff_show_same : IO Unit := do
   log "diff_show_same"
-  -- Same as above but press V again to reveal sameHide columns
-  let output ← run "[j<ret>Sjj<ret>SqVV" "data/diff_test"
-  -- After second V, cost columns should expand (no longer hidden width=1)
-  assert (contains output "cos") "VV reveals same-value cost columns"
+  -- Same as above but press s2 again to reveal sameHide columns
+  let output ← run "[j<ret>s~jj<ret>s~qs2s2" "data/diff_test"
+  -- After second s2, cost columns should expand (no longer hidden width=1)
+  assert (contains output "cos") "s2s2 reveals same-value cost columns"
 
 -- === Plot tests ===
 
@@ -1094,7 +1083,6 @@ def ciTests : Array (String × IO Unit) := #[
   ("freq_shows", test_freq_shows), ("freq_after_meta", test_freq_after_meta),
   ("freq_by_key", test_freq_by_key), ("freq_multi_key", test_freq_multi_key),
   ("freq_keeps_grp", test_freq_keeps_grp),
-  ("prec_inc", test_prec_inc), ("prec_dec", test_prec_dec),
   ("meta_0", test_meta_0), ("meta_1", test_meta_1),
   ("meta_0_enter", test_meta_0_enter), ("meta_1_enter", test_meta_1_enter),
   ("freq_enter", test_freq_enter),

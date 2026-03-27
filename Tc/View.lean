@@ -53,10 +53,6 @@ def fromTbl (tbl : T) (path : String)
     else none
   else none
 
--- | Verb to delta: inc=+1, dec=-1
-private def verbDelta (verb : Verb) : Int := if verb == .inc then 1 else -1
-
-
 -- | Rebuild view with new table, preserving all attributes from old view.
 -- Only nRows/nCols/nav change; everything else (vkind, disp, prec, etc.) is kept.
 def rebuild (old : View T) (tbl : T) (col : Nat := old.nav.col.cur.val)
@@ -75,23 +71,17 @@ def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
   let n := v.nav; let names := TblOps.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   match cmd with
-  -- pure: precision/width adjustment
-  | .prec verb  => some ({ v with precAdj := v.precAdj + verbDelta verb }, .none)
-  | .width verb => some ({ v with widthAdj := v.widthAdj + verbDelta verb }, .none)
   -- effect: sort (runner will execute and rebuild view)
-  | .colSel .inc =>
+  | .col .lbr | .col .rbr =>
+    let asc := cmd == .col .lbr
     let selIdxs := n.col.sels.filterMap names.idxOf?
     let grpIdxs := n.grp.filterMap names.idxOf?
-    some (v, .query (.sort curCol selIdxs grpIdxs true))
-  | .colSel .dec =>
-    let selIdxs := n.col.sels.filterMap names.idxOf?
-    let grpIdxs := n.grp.filterMap names.idxOf?
-    some (v, .query (.sort curCol selIdxs grpIdxs false))
+    some (v, .query (.sort curCol selIdxs grpIdxs asc))
   -- pure: navigation (detect at-bottom for fetchMore on downward scroll)
-  | _ => (NavState.exec cmd n rowPg colPageSize).map fun nav' =>
+  | _ => (NavState.exec cmd n rowPg).map fun nav' =>
     let needsMore := nav'.row.cur.val + 1 >= v.nRows
       && TblOps.totalRows n.tbl > v.nRows
-      && (cmd matches .row .inc | .vPage .inc | .ver .inc)
+      && (cmd matches .row .inc | .row .rbr | .row .rbc)
     ({ v with nav := nav' }, if needsMore then .fetchMore else .none)
 
 instance : Update (View T) where update v cmd := update v cmd defaultRowPg
@@ -131,7 +121,7 @@ def tabNames (s : ViewStack T) : Array String := (s.hd :: s.tl).toArray.map (·.
 -- | Pure update: returns (new stack, effect). q on empty stack → quit
 def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
   match cmd with
-  | .stk .inc | .stk .dup => some (s.dup, .none)
+  | .stk .inc => some (s.dup, .none)
   | .stk .dec => match s.pop with
     | some s' => some (s', .none)
     | none => some (s, .quit)

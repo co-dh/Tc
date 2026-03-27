@@ -22,9 +22,6 @@ def reservedLines (sparkOn : Bool := false) : Nat := if sparkOn then 5 else 4
 -- Max visible rows (no terminal should exceed this)
 def maxVisRows : Nat := 200
 
--- Column page size (fixed, since widths vary)
-def colPageSize : Nat := 5
-
 -- Default row page size (fallback when terminal height unknown)
 def defaultRowPg : Nat := 20
 

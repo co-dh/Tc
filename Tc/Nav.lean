@@ -138,46 +138,44 @@ def newAt (tbl : t) (hRows : TblOps.nRows tbl = nRows) (hCols : (TblOps.colNames
   ⟨tbl, hRows, hCols, ⟨⟨r, hltr⟩, #[]⟩, ⟨⟨c, hltc⟩, #[]⟩, grp, #[], dispOrder grp (TblOps.colNames tbl)⟩
 
 -- Execute Cmd, returns Option NavState (always some for nav commands)
-def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option (NavState nRows nCols t) :=
+def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg : Nat) : Option (NavState nRows nCols t) :=
   let r d := some { nav with row := { nav.row with cur := nav.row.cur.clamp d } }
   let c d := some { nav with col := { nav.col with cur := nav.col.cur.clamp d } }
   match cmd with
   | .row .inc   => r 1            | .row .dec   => r (-1)
   | .col .inc   => c 1            | .col .dec   => c (-1)
-  | .vPage .inc => r rowPg        | .vPage .dec => r (-rowPg)
-  | .hPage .inc => c colPg        | .hPage .dec => c (-colPg)
-  | .ver .inc   => r (nRows - 1 - nav.row.cur.val) | .ver .dec => r (-nav.row.cur.val)
-  | .hor .inc   => c (nCols - 1 - nav.col.cur.val) | .hor .dec => c (-nav.col.cur.val)
-  | .rowSel .ent => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
-  | .colSel .ent => some { nav with col := { nav.col with sels := nav.col.sels.toggle nav.curColName } }
-  | .grp .ent    =>
+  | .row .rbr   => r rowPg        | .row .lbr   => r (-rowPg)
+  | .row .rbc   => r (nRows - 1 - nav.row.cur.val) | .row .lbc => r (-nav.row.cur.val)
+  | .col .lbc   => c (-nav.col.cur.val) | .col .rbc => c (nCols - 1 - nav.col.cur.val)
+  | .row .ent => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
+  | .col .ent =>
     let newGrp := nav.grp.toggle nav.curColName
     some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames }
-  | .colSel .dup =>
+  | .col .filter =>  -- c\: hide column
     some { nav with hidden := nav.hidden.toggle nav.curColName }
-  -- Shift+Arrow: swap key column with neighbor in grp array, cursor follows
-  | .colShift v =>
+  -- c-/c+: swap key column with neighbor in grp array, cursor follows
+  | .col .del | .col .dup =>
     let name := nav.curColName
     match nav.grp.idxOf? name with
     | some i =>
-      -- Boundary check: can't shift left at 0 or right at last
-      if v == .inc && i + 1 ≥ nav.grp.size then none
-      else if v == .dec && i == 0 then none
+      let fwd := cmd == .col .dup
+      if fwd && i + 1 ≥ nav.grp.size then none
+      else if !fwd && i == 0 then none
       else
-        let j := if v == .inc then i + 1 else i - 1
+        let j := if fwd then i + 1 else i - 1
         let gi := nav.grp.getD i ""
         let gj := nav.grp.getD j ""
         let newGrp := nav.grp.set! i gj |>.set! j gi
-        let d := if v == .inc then (1 : Int) else -1
+        let d := if fwd then (1 : Int) else -1
         some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames,
                         col := { nav.col with cur := nav.col.cur.clamp d } }
     | none => none
-  | _ => none  -- unhandled: .col .del, .colSel .sort*, .prec, .width, etc.
+  | _ => none
 
 -- | Pure update: wrap exec to return Effect
-def update (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat)
+def update (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg : Nat)
     : Option (NavState nRows nCols t × Effect) :=
-  (exec cmd nav rowPg colPg).map (·, .none)
+  (exec cmd nav rowPg).map (·, .none)
 
 end NavState
 

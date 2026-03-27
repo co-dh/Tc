@@ -56,7 +56,7 @@ The architecture separates pure state logic from IO effects:
 │                   Pure State Machine                     │
 │  update : AppState → Cmd → Option (AppState × Effect)   │
 │  - Nav.update (cursor, selection, group)                │
-│  - Theme.update (returns Effect.themeLoad)              │
+│  - Theme.init (load on startup)                         │
 │  - Info.update (toggle visibility)                      │
 │  - View.update (prec/width, returns query effects)      │
 │  - Filter.update (returns fzf effects)                  │
@@ -117,90 +117,43 @@ The architecture separates pure state logic from IO effects:
 └──────────────┴──────────────────┴───────────────────────┘
 ```
 
-## Cmd System (Cmd.lean)
+## Key → Cmd Mapping
 
-### Verb (7 actions)
+Three sources, checked in order by `evToCmd` + main loop:
 
-| Verb   | Char | Meaning                       |
-|--------|------|-------------------------------|
-| inc    | >    | increment, forward, next      |
-| dec    | <    | decrement, backward, prev     |
-| ent    | ~    | enter, toggle                 |
-| del    | d    | delete, destroy               |
-| dup    | c    | copy, push, create            |
-| up     | ^    | go up / parent                |
-| val n  | 0-9  | direct value selection         |
+1. **`evToCmd`**: terminal special keys (Enter, Backspace, Shift+Arrow, arrows, PageUp/Down, Home/End, Ctrl-D/U)
+2. **`KeyMap.char`**: single-key shortcuts (the single source of truth for all one-key mappings)
+3. **`objMenu`+`verbsFor`**: space → fzf object picker → verb picker
 
-### Cmd Objects (22 objects)
-
-| Obj      | Char | Purpose                          |
-|----------|------|----------------------------------|
-| row      | r    | row cursor                       |
-| col      | c    | column cursor, c=fzf cmd menu    |
-| vPage    | v    | vertical page scroll             |
-| hPage    | h    | horizontal page scroll           |
-| ver      | V    | vertical end (top/bottom)        |
-| hor      | H    | horizontal end (first/last col)  |
-| rowSel   | R    | row selection/search/filter      |
-| colSel   | C    | column selection/sort/hide       |
-| grp      | g    | group (key columns)              |
-| stk      | s    | view stack: pop/swap/dup/quit/xpose/diff |
-| prec     | p    | decimal precision                |
-| width    | w    | column width                     |
-| thm      | T    | theme                            |
-| info     | i    | info overlay                     |
-| metaV    | M    | meta view (0=selNull, 1=selSingle) |
-| freq     | F    | frequency view                   |
-| fld      | D    | folder view                      |
-| plot     | P    | R/ggplot2 chart                  |
-| colShift | K    | reorder key columns              |
-| heat     | m    | heatmap mode (0-3)               |
-| yank     | y    | copy to clipboard                |
-| prev     | B    | preview scroll ({/} keys)        |
-
-### Isomorphism
-
-```lean
-theorem parse_toString (c : Cmd) : Parse.parse? (toString c) = some c
-theorem ofChar_toChar (v : Verb) : Verb.ofChar? (Verb.toChar v) = some v
-```
-
-## Obj/Verb Matrix (Key.lean)
-
-`KeyMap.char` is the single source of truth for all one-key shortcuts.
-All entries are `Cmd` (obj+verb). Command mode: `space` → fzf object picker → verb picker.
+Key = single-key shortcut. Name = implemented via space menu / `-c` code only.
 
 ```
-                 │ DEC │ INC │ ENT │ DEL │ DUP │ UP  │ VAL │
-                 │  <  │  >  │  ~  │  d  │  c  │  ^  │ 0-9 │
-Char │ Obj       │     │     │     │     │     │     │     │ Description
-─────┴───────────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴───────────
- --- Navigation (direct keys, via evToCmd) ---
- r   │ row       │  k  │  j  │     │     │     │     │     │ cursor up/down
- c   │ col       │  h  │  l  │  s  │     │ SPC │     │     │ cursor, s=fzf, SPC=cmd menu
- v   │ vPage     │ ^U  │ ^D  │     │     │     │     │     │ page (also JK)
- h   │ hPage     │     │     │     │     │     │     │     │ horizontal page
- V   │ ver       │Home │End  │     │     │     │     │     │ top/bottom
- H   │ hor       │  ←  │  →  │     │     │     │     │     │ first/last col
- --- Selection ---
- R   │ rowSel    │  \  │  /  │  T  │     │     │     │     │ \=filter, /=search, T=toggle
- C   │ colSel    │  ]  │  [  │  t  │     │     │     │     │ sort/toggle (hide via Ch)
- g   │ grp       │  N  │  n  │  !  │     │     │     │     │ prev/next/toggle
- --- Options ---
- s   │ stk       │  q  │     │  S  │  Q  │     │  X  │ V=0 │ q=pop S=swap Q=quit X=xpose V=diff
- p   │ prec      │     │     │     │     │     │     │     │ (space p </>)
- w   │ width     │     │     │     │     │     │     │     │ (space w </>)
- T   │ thm       │     │     │     │     │     │     │     │ (space T </>)
- i   │ info      │     │     │  I  │     │     │     │     │ I=toggle overlay
- B   │ prev      │  {  │  }  │     │     │     │     │     │ preview scroll
- --- Views ---
- M   │ metaV     │     │     │ ⏎   │     │  M  │     │0  1 │ M=push, 0=null, 1=single
- F   │ freq      │     │     │ ⏎   │     │  F  │     │     │ ⏎=filter by row, F=push
- D   │ fld       │     │     │ ⏎   │  d  │  D  │     │     │ ⏎=enter, d=trash, D=push
- P   │ plot      │     │     │     │     │     │     │     │ (space P for type selection)
- K   │ colShift  │S-←  │S-→  │     │     │     │     │     │ reorder key cols
- m   │ heat      │     │     │     │     │     │     │0-3  │ heatmap mode (0=off)
- y   │ yank      │     │  >  │  ~  │     │     │     │     │ ~=cell, >=row, <=col
+Verb │ r:row      │ c:col      │ s:stk    │ i:info   │ M:metaV  │ F:freq   │ D:fld    │ desc
+─────┼────────────┼────────────┼──────────┼──────────┼──────────┼──────────┼──────────┼──────────────────────────────
+  ~  │ T togRow   │ ! group    │ swap     │ togInfo  │ ⏎* setKey│ ⏎* filt  │ ⏎* enter │ M~:set key cols from selected  F~:filter parent table by current row
+  <  │ k up       │ h left     │ q pop    │ precDec  │          │          │ depth--  │
+  >  │ j down     │ l right    │ dup      │ precInc  │          │          │ depth++  │ s>:clone current view
+  [  │ ^U pgUp    │ [ sortAsc  │ joinLeft │ { scrUp  │          │          │          │ i[:scroll cell preview up
+  ]  │ ^D pgDn    │ ] sortDesc │ joinRigh │ } scrDn  │          │          │          │ i]:scroll cell preview down
+  {  │ Home top   │ first      │ quit     │ 0dp      │          │          │ ⌫ parent │
+  }  │ End bot    │ last       │ inner    │ 17dp max │          │          │          │
+  -  │ N prevMat  │ S-← shift  │ setDiff  │          │          │          │ trash    │
+  +  │ n nextMat  │ S-→ shift  │ union    │          │ open     │ open     │          │ M+:column metadata  F+:value frequency counts
+  /  │ / search   │ search     │ SPC menu │          │          │          │          │ c/:jump to col by name
+  \  │ \ filter   │ hide       │          │          │          │          │          │ r\:PRQL filter expr
+  :  │            │ : split    │          │          │          │          │          │
+  =  │            │ = derive   │          │          │          │          │          │ c=:name = expr
+  0  │            │ area       │          │ heat off │ selNull  │          │          │ M0:select null cols
+  1  │            │ line       │ xpose    │ heat num │ selSing  │          │          │ M1:select single-val cols  s1:rows↔cols
+  2  │            │ scat       │ diff     │ heat cat │          │          │          │ s2:compare top 2 views
+  3  │            │ bar        │          │ heat all │          │          │          │
+  4  │            │ box        │          │          │          │          │          │
+  5  │            │ step       │          │          │          │          │          │
+  6  │            │ hist       │          │          │          │          │          │
+  7  │            │ dens       │          │          │          │          │          │
+  8  │            │ violin     │          │          │          │          │          │
+
+* ⏎ context-sensitive: freq→filter, meta→enter, fld→enter, tbl→none
 ```
 
 ## Effect DSL (Cmd.lean)
@@ -229,8 +182,6 @@ inductive Effect where
   | search : SearchEffect → Effect
   | plot : PlotKind → Effect
   | colMeta : MetaEffect → Effect
-  | clip : ClipEffect → Effect
-  | themeLoad (delta : Int)
   | fetchMore
   | export : ExportFmt → Effect
   | sessionSave | sessionLoad | join
@@ -253,14 +204,14 @@ Interactive plot with interval control. After display, `+`/`-` cycles intervals:
 │  Plot.run                                               │
 │  1. Determine x/y columns from group + cursor           │
 │  2. Detect x-axis type (time/timestamp/date/str/num)    │
-│  3. Infer date/time from string values if needed         │
-│  4. Term.shutdown                                        │
-│  5. Loop:                                                │
+│  3. Infer date/time from string values if needed        │
+│  4. Term.shutdown                                       │
+│  5. Loop:                                               │
 │     export data (DB-side or Lean fallback)              │
 │     Rscript (ggplot2) → PNG → viu                       │
 │     show interval selector: [1d] 1M 1Y                  │
 │     read key: +/- → change interval, else → exit        │
-│  6. Term.init                                            │
+│  6. Term.init                                           │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -281,8 +232,8 @@ Interactive plot with interval control. After display, `+`/`-` cycles intervals:
 
 | Struct       | Purpose                                      |
 |--------------|----------------------------------------------|
-| Verb         | Action type: inc/dec/ent/del/dup/up/val (7 verbs) |
-| Cmd          | Object + Verb command pattern (22 objects)   |
+| Verb         | Action type: 14 named + val 0-9              |
+| Cmd          | Object + Verb command pattern (7 objects)    |
 | Effect       | IO operation descriptor (30+ variants)       |
 | NavState     | Table + row/col cursors + selections + group |
 | NavAxis      | Generic axis: cur (Fin n) + sels (Array)     |
