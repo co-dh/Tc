@@ -221,15 +221,16 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   if ev.type == 0 then return ← mainLoop a test ks'
   -- Dispatch: Cmd → update → runEffect → loop
   let runCmd (cmd : Cmd) (rest : Array Char) : IO AppState := do
-    -- Verb shortcuts that route to ArgCmd (interactive fzf / join ops)
+    -- Verb shortcuts → ArgCmd: these bypass the Effect system and call runArgCmd directly.
+    -- Join indices match JoinOp order: 0=inner 1=left 2=right 3=union 4=diff
     let argShortcut := match cmd with
-      | .col .split => some (.split "")
+      | .col .split  => some (.split "")
       | .col .derive => some (.derive "")
-      | .stk .lbr => some (.join "1")   -- join left
-      | .stk .rbr => some (.join "2")   -- join right
-      | .stk .rbc => some (.join "0")   -- inner join
-      | .stk .del => some (.join "4")   -- set diff
-      | .stk .dup => some (.join "3")   -- union
+      | .stk .rbc    => some (.join "0")  -- inner
+      | .stk .lbr    => some (.join "1")  -- left
+      | .stk .rbr    => some (.join "2")  -- right
+      | .stk .dup    => some (.join "3")  -- union
+      | .stk .del    => some (.join "4")  -- diff
       | _ => none
     if let some ac := argShortcut then return ← mainLoop (← runArgCmd a ac) test rest
     match a.update cmd with
