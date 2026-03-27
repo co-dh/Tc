@@ -14,7 +14,7 @@ FONT = 20
 BOX_W = int(W * 0.618)  # golden ratio title box
 
 NYSE = "data/nyse10k.parquet"
-_HIDE_INFO = ("", None, "I", 0.3)  # turn off info overlay
+_HIDE_INFO = ("", None, "!i~", 0.3)  # turn off info overlay (socket: info toggle)
 
 def F(cli_args, steps):
     """Feature with info overlay disabled."""
@@ -48,60 +48,52 @@ FEATURES = {
 
     "freq": F(NYSE, [
         ("Move cursor to Exchange column",                 "l",       "l",   2.0),
-        ("Press F for frequency count",                    "F",       "F",   3.5),
+        ("Open frequency count",                           "F+",      "!F+", 3.5),
         ("Select a value and press Enter\nOnly matching rows remain", "j Enter", "j\r", 4.0),
     ]),
 
-    # heatmap: Space opens fzf cmd menu, type "hea" to find heatmap, Enter applies.
-    # Each apply cycles: 0(off)→1(numeric)→2(categorical)→3(both).
-    # Mode 3 (both) has a bug where categorical isn't colored, so show only 1→2.
-    # fzf char loss: Space opens fzf, dots pad, ctrl-u clears, then type "hea".
+    # heatmap: direct via socket — i1=numeric, i2=categorical (merged heat→info)
     "heatmap": F(NYSE, [
-        ("",                                    None,     " .....",    3.0),  # Space opens fzf + padding
-        ("",                                    None,     "\x15hea",   3.0),  # ctrl-u + type (fzf visible with input)
-        ("Color numeric columns by value",      None,     "\r",        4.0),
-        ("",                                    None,     " .....",    3.0),
-        ("",                                    None,     "\x15hea",   3.0),
-        ("Color categorical columns by group",  None,     "\r",        4.0),
+        ("Color numeric columns by value",       "i1",    "!i1",       4.0),
+        ("Color categorical columns by group",   "i2",    "!i2",       4.0),
     ]),
 
+    # plot: direct via socket — c6=histogram (merged plot→col)
     "plot": F(NYSE, [
-        ("Move cursor to a numeric column",                  "lll",        "lll",    2.0),
-        ("Open command menu with Space",                     None,         None,     2.0),
-        ("",                                                 None,         " .....", 3.0),  # fzf char loss padding
-        ("",                                                 None,         "\x15hist", 3.0),  # type command (fzf visible)
-        ("Render a histogram with ggplot2\nPress q to close", None,        "\r",     5.0),
-        ("",                                                 None,         "q",      1.0),
+        ("Move cursor to a numeric column",                    "lll",   "lll",  2.0),
+        ("Render a histogram with ggplot2\nPress q to close",  "c6",    "!c6",  5.0),
+        ("",                                                   None,    "q",    1.0),
     ]),
 
     "fzf": F(NYSE, [
         ("Press Space to open the command menu", None,       None,         2.0),
         ("",                                     None,       " .....",     3.0),  # fzf char loss padding
-        ("Type to search, Enter to run",         None,       "\x15th",    3.5),  # type (fzf visible with input)
+        ("Type to search, Enter to run",         None,       "\x15sort",  3.5),  # type (fzf visible with input)
         ("",                                     None,       "\r",        3.5),
     ]),
 
     "meta": F(NYSE, [
-        ("M shows column names, types, nulls, and unique counts", "M",     "M",  3.5),
-        ("Press 0 to select all-null columns\nPress 1 to select single-value columns", "0 1", "01", 3.5),
-        ("Enter hides the selected columns from the table",       "Enter", "\r", 3.5),
+        ("Column metadata: names, types, nulls, unique counts",  "M+",    "!M+",  3.5),
+        ("Select all-null columns",                              "M0",    "!M0",  2.0),
+        ("Select single-value columns",                          "M1",    "!M1",  2.0),
+        ("Enter hides the selected columns from the table",      "Enter", "\r",   3.5),
     ]),
 
     "sort": F(NYSE, [
         ("Press [ to sort ascending\nPress ] to sort descending", "[", "l[", 3.0),
         ("",                                                      None, "l]", 3.0),
         ("Press ! to pin a column as key (left)\nPress ! again to unpin", "!", "l!", 3.0),
-        ("",                                                      None, "!",  3.0),
+        ("",                                                      None, "!c~",  3.0),
     ]),
 
     # split: send :- via socket (bypasses fzf, works in pty recording)
     "split": F("data/split_test.csv", [
         ("A table with a column containing a-b values",           None, None,                        3.0),
         ("Press : to split, type - and Enter",                     ": - Enter", "!:-",                3.0),
-        ("New columns appear from the split parts",               None, "!c+",                      0.5),
-        ("",                                                      None, "!c+",                      0.5),
-        ("",                                                      None, "!c+",                      0.5),
-        ("",                                                      None, "!c+",                      5.0),
+        ("New columns appear from the split parts",               None, "!c>",                      0.5),
+        ("",                                                      None, "!c>",                      0.5),
+        ("",                                                      None, "!c>",                      0.5),
+        ("",                                                      None, "!c>",                      5.0),
     ]),
 
     # filter: send \expr via socket (bypasses fzf)
@@ -115,18 +107,20 @@ FEATURES = {
     "derive": F("data/numeric.csv", [
         ("A simple table with columns x, y, z",               None, None,                     3.0),
         ("Press = to derive: double = x * 2",                 "= double = x * 2 Enter", "!=double = x * 2", 3.0),
-        ("The new 'double' column appears",                    None, "!c+",                   0.5),
-        ("",                                                   None, "!c+",                   0.5),
-        ("",                                                   None, "!c+",                   5.0),
+        ("The new 'double' column appears",                    None, "!c>",                   0.5),
+        ("",                                                   None, "!c>",                   0.5),
+        ("",                                                   None, "!c>",                   5.0),
     ]),
 
     # diff_compare: static side-by-side showing first, second, and diff result
     # folder sorts asc: row0=.., 1=after, 2=before, 3=first, 4=second
     "diff": F("data/diff_test/", [
         ("Table 1: first.csv",                                 "jjjj Enter", "[jjjj\r", 5.0),
-        ("",                                                   None,         "S",       0.5),  # swap back to folder
+        ("",                                                   None,         "!s~",     0.5),  # swap back to folder
         ("Table 2: second.csv\nbob's sales changed, bonus→rating swapped", "j Enter", "j\r", 5.0),
-        ("V compares the two tables\nChanged columns get a Δ prefix",      "V",       "SqV",  5.0),
+        ("",                                                   None,         "!s~",     0.3),  # swap folder to top
+        ("",                                                   None,         "q",       0.3),  # pop folder
+        ("Diff compares the two tables\nChanged columns get a Δ prefix", "s2", "!s2", 5.0),
     ]),
 
     # "theme": F(NYSE, [
