@@ -1,7 +1,7 @@
 /-
   Command system: Verb + Obj pattern for nav/toggle, ArgCmd for argument commands.
-  - Verb: movement, toggle, del, sort
-  - Cmd: Obj + Verb (row, col, rowSel, colSel, grp) or .arg ArgCmd
+  - Verb: < > ~ - + ^ / \ 0-9
+  - Cmd: Obj + Verb (row, col, stk, info, metaV, freq, fld, plot, heat) or .arg ArgCmd
   - ArgCmd: prefix char + payload, bypasses fzf (socket/demo/test)
 -/
 
@@ -11,25 +11,29 @@ class Parse (α : Type) where
 
 -- | Verb: action type
 inductive Verb where
-  | inc | dec         -- >/< movement (colSel:[/], rowSel:/\, grp:n/N)
-  | dup               -- copy/dup (info: select single-val cols)
-  | del               -- delete
-  | ent               -- toggle/enter (col:s, rowSel:T, grp:!)
-  | up                -- go up/parent (fld: backspace → parent dir)
-  | val (n : UInt8)   -- direct value selection (heat mode 0-3, etc.)
+  | inc | dec         -- >/< movement
+  | ent               -- ~ toggle/enter
+  | del               -- - delete/remove/prev
+  | dup               -- + create/push/next
+  | up                -- ^ go up/parent
+  | search            -- / search
+  | filter            -- \ filter
+  | val (n : UInt8)   -- 0-9 direct value selection
   deriving Repr, BEq, DecidableEq
 
 namespace Verb
 
--- | Verb to char (<> for inc/dec, digits for val)
+-- | Verb to char
 def toChar : Verb → Char
-  | .inc => '>' | .dec => '<' | .ent => '~' | .del => 'd' | .dup => 'c' | .up => '^'
+  | .inc => '>' | .dec => '<' | .ent => '~' | .del => '-' | .dup => '+' | .up => '^'
+  | .search => '/' | .filter => '\\'
   | .val n => Char.ofNat (n.toNat + '0'.toNat)
 
--- | Char to verb (<> and +- both accepted for inc/dec)
+-- | Char to verb
 def ofChar? : Char → Option Verb
-  | '>' | '+' => some .inc | '<' | '-' => some .dec | '~' => some .ent
-  | 'd' => some .del | 'c' => some .dup | '^' => some .up
+  | '>' => some .inc | '<' => some .dec | '~' => some .ent
+  | '-' => some .del | '+' => some .dup | '^' => some .up
+  | '/' => some .search | '\\' => some .filter
   | c => if c.isDigit then some (.val (c.toNat - '0'.toNat).toUInt8) else none
 
 instance : ToString Verb where toString v := v.toChar.toString
@@ -77,27 +81,17 @@ instance : ToString ArgCmd where toString ac := s!"{ac.pfx}{match ac with
 
 end ArgCmd
 
--- | Command: Obj + Verb pattern
+-- | Command: Obj + Verb pattern (9 objects)
 inductive Cmd where
-  | row (v : Verb)     -- row </>: step, 1/8: page, 0/9: top/bottom, ^: yank row, c: yank cell
-  | col (v : Verb)     -- col </>: step, 0/9: first/last, 1/8: page, 5/6: shift, ^: yank col, c: fzf menu
-
-  | rowSel (v : Verb)  -- rowSel +=search(/), -=filter(\), ~=toggle(T)
-  | colSel (v : Verb)  -- colSel +=sortAsc([), -=sortDesc(]), ~=toggle(t)
-  | grp (v : Verb)     -- grp +=next(n), -=prev(N), ~=toggle(!)
-
-  | stk (v : Verb)     -- stk <pop/~swap/c=dup/d=quit/^=xpose/0=diff
-
-  | prec (v : Verb)    -- prec -=dec, +=inc precision
-  | width (v : Verb)   -- width -=dec, +=inc width
-  | thm (v : Verb)     -- thm -=prev, +=next theme
-  | info (v : Verb)    -- info +=show, -=hide, ~=toggle
-  | metaV (v : Verb)   -- metaV c=push, 0=selNull, 1=selSingle, ~=enter
-  | freq (v : Verb)    -- freq c=push, ~=filter
-  | fld (v : Verb)     -- fld c=push, +/-=depth, ~=enter dir/file
-  | plot (v : Verb)    -- plot 0-8: line/bar/scatter/hist/box/area/density/step/violin
-  | heat (v : Verb)     -- heat +=more color, -=less color (mode 0-3)
-  | prev (v : Verb)    -- prev >=scroll down, <=scroll up ({/} keys)
+  | row (v : Verb)     -- row: </>step 0/9top/bot 1/8page ~toggle -prev +next /search \filter
+  | col (v : Verb)     -- col: </>step 0/9first/last 1/8page 2/3sort 5/6shift ~group -hide /search
+  | stk (v : Verb)     -- stk: <pop ~swap -quit +dup ^xpose /menu 0diff
+  | info (v : Verb)    -- info: </>scroll preview ~toggle 0-9 precision
+  | metaV (v : Verb)   -- metaV: +push ~enter 0selNull 1selSingle
+  | freq (v : Verb)    -- freq: +push ~filter
+  | fld (v : Verb)     -- fld: </>depth ~enter -trash +push ^parent
+  | plot (v : Verb)    -- plot 0-8: area/line/scatter/bar/box/step/hist/density/violin
+  | heat (v : Verb)    -- heat 0-3: off/numeric/categorical/both
   | arg (ac : ArgCmd)  -- argument commands (prefix + payload, bypass fzf)
   deriving Repr, BEq, DecidableEq
 
@@ -105,27 +99,22 @@ namespace Cmd
 
 -- | Obj chars
 private def objs : Array (Char × (Verb → Cmd)) := #[
-  ('r', .row), ('c', .col), ('R', .rowSel), ('C', .colSel), ('g', .grp), ('s', .stk),
-  ('p', .prec), ('w', .width),
-  ('T', .thm), ('i', .info), ('M', .metaV), ('F', .freq), ('D', .fld),
-  ('P', .plot), ('m', .heat),
-  ('B', .prev)
+  ('r', .row), ('c', .col), ('s', .stk), ('i', .info),
+  ('M', .metaV), ('F', .freq), ('D', .fld),
+  ('P', .plot), ('m', .heat)
 ]
 
 -- | Get obj char for Cmd
 private def objChar : Cmd → Char
-  | .row _ => 'r' | .col _ => 'c' | .rowSel _ => 'R' | .colSel _ => 'C'
-  | .grp _ => 'g' | .stk _ => 's'
-  | .prec _ => 'p' | .width _ => 'w' | .thm _ => 'T' | .info _ => 'i'
+  | .row _ => 'r' | .col _ => 'c' | .stk _ => 's' | .info _ => 'i'
   | .metaV _ => 'M' | .freq _ => 'F' | .fld _ => 'D' | .plot _ => 'P'
-  | .heat _ => 'm' | .prev _ => 'B'
+  | .heat _ => 'm'
   | .arg ac => ac.pfx
 
 -- | Get verb from Cmd
 private def verb : Cmd → Verb
-  | .row v | .col v | .rowSel v | .colSel v | .grp v | .stk v => v
-  | .prec v | .width v => v
-  | .thm v | .info v | .metaV v | .freq v | .fld v | .plot v | .heat v | .prev v => v
+  | .row v | .col v | .stk v | .info v => v
+  | .metaV v | .freq v | .fld v | .plot v | .heat v => v
   | .arg _ => .ent
 
 instance : ToString Cmd where toString
@@ -167,7 +156,6 @@ instance : ToString PlotKind where
            | .area => "area" | .density => "density" | .step => "step" | .violin => "violin"
 inductive MetaEffect where | selNull | selSingle | setKey deriving Repr, BEq
 inductive ExportFmt where | csv | parquet | json | ndjson deriving Repr, BEq
-inductive ClipEffect where | cell | row | col deriving Repr, BEq
 
 -- | Effect: describes an IO operation to perform (Runner interprets)
 inductive Effect where
@@ -178,8 +166,6 @@ inductive Effect where
   | search : SearchEffect → Effect
   | plot : PlotKind → Effect
   | colMeta : MetaEffect → Effect
-  | clip : ClipEffect → Effect
-  | themeLoad (delta : Int)
   | fetchMore
   | export : ExportFmt → Effect
   | sessionSave

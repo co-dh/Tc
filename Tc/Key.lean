@@ -36,19 +36,18 @@ namespace KeyMap
   ]
 
   -- | Single-key shortcuts — the single source of truth for all one-key mappings.
-  -- Every entry is a Cmd (obj+verb). Sorted ascending by estimated usage frequency.
+  -- Every entry is a Cmd (obj+verb).
   def char : Array (Char × Cmd) := #[
-    ('{', .prev .dec),              -- preview scroll up
-    ('}', .prev .inc),              -- preview scroll down
-    ('[', .colSel .inc),           -- sort ascending
-    (']', .colSel .dec),           -- sort descending
-    ('!', .grp .ent),              -- toggle group
-    ('T', .rowSel .ent),           -- toggle row filter
-    ('t', .colSel .ent),           -- toggle column sort
-    ('n', .grp .inc),              -- search next
-    ('N', .grp .dec),              -- search prev
-    (' ', .col .dup),              -- command menu (cc)
-    ('q', .stk .dec)               -- pop view / back (s<)
+    ('{', .info .dec),              -- preview scroll up
+    ('}', .info .inc),              -- preview scroll down
+    ('[', .col (.val 2)),           -- sort ascending
+    (']', .col (.val 3)),           -- sort descending
+    ('!', .col .ent),               -- toggle group
+    ('T', .row .ent),               -- toggle row selection
+    ('n', .row .dup),               -- search next match
+    ('N', .row .del),               -- search prev match
+    (' ', .stk .search),            -- command menu
+    ('q', .stk .dec)                -- pop view / back
   ]
 end KeyMap
 
@@ -57,7 +56,7 @@ def evToChar (ev : Term.Event) : Char :=
   if ev.key == Term.keyEnter then '\r'
   else (lookup KeyMap.arrow ev.key).getD (Char.ofNat ev.ch.toNat)
 
--- Navigation cmd from char + shift state
+-- Navigation cmd from char (hjkl only, no shift/uppercase page)
 private def navCmd (c : Char) (shift : Bool) : Option Cmd :=
   KeyMap.nav.findSome? fun (ch, isRow, fwd) =>
     if c == ch then
@@ -70,15 +69,9 @@ def objMenu : Array (Char × String × (Verb → Cmd)) := #[
   -- navigation
   ('r', "", .row),
   ('c', "", .col),
-  -- selection
-  ('R', "", .rowSel),
-  ('C', "", .colSel),
-  ('g', "", .grp),
-  -- options
+  -- stack
   ('s', "", .stk),
-  ('p', "", .prec),
-  ('w', "", .width),
-  ('T', "", .thm),
+  -- options
   ('i', "", .info),
   -- views
   ('M', "", .metaV),
@@ -92,25 +85,32 @@ def objMenu : Array (Char × String × (Verb → Cmd)) := #[
 def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
   match obj with
   -- navigation
-  | 'r' => #[('<', "up", .dec), ('>', "down", .inc), ('1', "page up", .val 1), ('8', "page down", .val 8), ('0', "top", .val 0), ('9', "bottom", .val 9), ('^', "yank row", .up), ('c', "yank cell", .dup)]
-  | 'c' => #[('<', "left", .dec), ('>', "right", .inc), ('1', "page left", .val 1), ('8', "page right", .val 8), ('0', "first", .val 0), ('9', "last", .val 9), ('5', "shift left", .val 5), ('6', "shift right", .val 6), ('~', "fzf jump", .ent), ('^', "yank col", .up)]
-  -- selection
-  | 'R' => #[('<', "filter", .dec), ('>', "search", .inc), ('~', "toggle", .ent)]
-  | 'C' => #[('<', "sort desc", .dec), ('>', "sort asc", .inc), ('~', "toggle", .ent), ('h', "hide", .dup)]
-  | 'g' => #[('<', "prev match", .dec), ('>', "next match", .inc), ('~', "toggle group", .ent)]
+  | 'r' => #[('<', "up", .dec), ('>', "down", .inc), ('1', "page up", .val 1), ('8', "page down", .val 8),
+             ('0', "top", .val 0), ('9', "bottom", .val 9),
+             ('~', "toggle row", .ent), ('+', "next match", .dup), ('-', "prev match", .del),
+             ('/', "search", .search), ('\\', "filter", .filter)]
+  | 'c' => #[('<', "left", .dec), ('>', "right", .inc), ('1', "page left", .val 1), ('8', "page right", .val 8),
+             ('0', "first", .val 0), ('9', "last", .val 9),
+             ('2', "sort asc", .val 2), ('3', "sort desc", .val 3),
+             ('5', "shift left", .val 5), ('6', "shift right", .val 6),
+             ('~', "toggle group", .ent), ('-', "hide", .del), ('/', "search col", .search)]
+  -- stack
+  | 's' => #[('<', "pop", .dec), ('~', "swap", .ent), ('+', "dup", .dup), ('-', "quit", .del),
+             ('^', "transpose", .up), ('/', "cmd menu", .search), ('0', "diff", .val 0)]
   -- options
-  | 's' => #[('<', "pop", .dec), ('~', "swap", .ent), ('c', "dup", .dup), ('d', "quit", .del), ('^', "transpose", .up), ('0', "diff", .val 0)]
-  | 'p' => #[('<', "less digits",  .dec), ('>', "more digits",  .inc)]
-  | 'w' => #[('<', "narrower",     .dec), ('>', "wider",        .inc)]
-  | 'T' => #[('<', "prev theme",   .dec), ('>', "next theme",   .inc)]
-  | 'i' => #[('~', "toggle info", .ent)]
+  | 'i' => #[('<', "scroll up", .dec), ('>', "scroll down", .inc), ('~', "toggle info", .ent),
+             ('0', "0 dp", .val 0), ('1', "1 dp", .val 1), ('2', "2 dp", .val 2), ('3', "3 dp", .val 3),
+             ('4', "4 dp", .val 4), ('5', "5 dp", .val 5), ('6', "6 dp", .val 6), ('7', "7 dp", .val 7),
+             ('8', "8 dp", .val 8), ('9', "9 dp", .val 9)]
   -- views
-  | 'M' => #[('0', "sel nulls", .val 0), ('1', "sel singles", .val 1), ('~', "enter", .ent), ('c', "push meta", .dup)]
+  | 'M' => #[('0', "sel nulls", .val 0), ('1', "sel singles", .val 1), ('~', "enter", .ent), ('+', "push meta", .dup)]
   | 'F' => match vk with
-    | .freqV _ _ => #[('~', "filter by row", .ent), ('c', "push freq", .dup)]
-    | _ => #[('c', "push freq", .dup)]
-  | 'D' => #[('<', "depth--", .dec), ('>', "depth++", .inc), ('~', "enter", .ent), ('d', "trash", .del), ('c', "push folder", .dup)]
-  | 'P' => #[('0', "line", .val 0), ('1', "bar", .val 1), ('2', "scatter", .val 2), ('3', "histogram", .val 3), ('4', "boxplot", .val 4), ('5', "area", .val 5), ('6', "density", .val 6), ('7', "step", .val 7), ('8', "violin", .val 8)]
+    | .freqV _ _ => #[('~', "filter by row", .ent), ('+', "push freq", .dup)]
+    | _ => #[('+', "push freq", .dup)]
+  | 'D' => #[('<', "depth--", .dec), ('>', "depth++", .inc), ('~', "enter", .ent), ('-', "trash", .del), ('+', "push folder", .dup)]
+  | 'P' => #[('0', "area", .val 0), ('1', "line", .val 1), ('2', "scatter", .val 2), ('3', "bar", .val 3),
+             ('4', "boxplot", .val 4), ('5', "step", .val 5), ('6', "histogram", .val 6), ('7', "density", .val 7),
+             ('8', "violin", .val 8)]
   | 'm' => #[('0', "off", .val 0), ('1', "numeric", .val 1), ('2', "categorical", .val 2), ('3', "both", .val 3)]
   | _   => #[]
 
@@ -189,4 +189,3 @@ def isKey (ev : Term.Event) (c : Char) : Bool :=
 def nextEvent (keys : Array Char) : IO (Term.Event × Array Char) :=
   if h : keys.size > 0 then pure (charToEvent keys[0], keys.extract 1 keys.size)
   else do let e ← Term.pollEvent; pure (e, #[])
-

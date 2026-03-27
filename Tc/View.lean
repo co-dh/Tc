@@ -75,15 +75,14 @@ def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
   let n := v.nav; let names := TblOps.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   match cmd with
-  -- pure: precision/width adjustment
-  | .prec verb  => some ({ v with precAdj := v.precAdj + verbDelta verb }, .none)
-  | .width verb => some ({ v with widthAdj := v.widthAdj + verbDelta verb }, .none)
+  -- precision: info val 0-9 sets decimal places
+  | .info (.val n) => some ({ v with precAdj := n.toNat - 4 }, .none)  -- default=4dp, so 0→-4, 9→+5
   -- effect: sort (runner will execute and rebuild view)
-  | .colSel .inc =>
+  | .col (.val 2) =>
     let selIdxs := n.col.sels.filterMap names.idxOf?
     let grpIdxs := n.grp.filterMap names.idxOf?
     some (v, .query (.sort curCol selIdxs grpIdxs true))
-  | .colSel .dec =>
+  | .col (.val 3) =>
     let selIdxs := n.col.sels.filterMap names.idxOf?
     let grpIdxs := n.grp.filterMap names.idxOf?
     some (v, .query (.sort curCol selIdxs grpIdxs false))

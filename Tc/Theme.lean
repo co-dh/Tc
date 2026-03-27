@@ -129,14 +129,7 @@ def init : IO State := do
   let styles ← load "theme.csv" "default" variant <|> pure defaultDark
   pure ⟨styles, Theme.themeIdx "default" variant⟩
 
--- | Pure update: returns Effect.themeLoad to defer IO
-def update (s : State) (cmd : Cmd) : Option (State × Effect) :=
-  match cmd with
-  | .thm .inc => some (s, .themeLoad 1)
-  | .thm .dec => some (s, .themeLoad (-1))
-  | _ => none
-
-instance : Update State where update := update
+-- Theme update removed — theme cycling not exposed in current UI
 
 -- | Execute theme effect: load theme with delta
 def runEffect (s : State) (delta : Int) : IO State := do

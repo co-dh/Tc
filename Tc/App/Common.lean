@@ -45,8 +45,8 @@ namespace AppState
 
 -- | Commands that reset ViewState to default (clear scroll/cursor) because view content changes substantially
 def resetsVS (cmd : Cmd) : Bool :=
-  cmd matches .stk .dec | .colSel .inc | .colSel .dec | .metaV _ | .freq _ | .fld _
-    | .col .ent | .rowSel .inc | .rowSel .dec
+  cmd matches .stk .dec | .col (.val 2) | .col (.val 3) | .metaV _ | .freq _ | .fld _
+    | .col .search | .row .search | .row .filter
 
 -- | Update stk, reset vs if needed
 def withStk (a : AppState) (cmd : Cmd) (s' : ViewStack AdbcTable) : AppState :=
@@ -60,25 +60,22 @@ private def liftStk (a : AppState) (cmd : Cmd) (r : Option (ViewStack AdbcTable 
 def update (a : AppState) (cmd : Cmd) : Option (AppState × Effect) :=
   let viewUp := View.update a.stk.cur cmd 20 |>.map fun (v', e) => (withStk a cmd (a.stk.setCur v'), e)
   match cmd with
-  | .stk .del      => some (a, .quit)        -- Q: force quit
-  | .stk .up       => some (a, .transpose)   -- X: transpose push
-  | .stk (.val 0)  => some (a, .diff)        -- V: diff / show-same
-  | .col .dup      => some (a, .fzf .cmd)    -- Space: command menu
-  | .prev .dec  => some ({ a with prevScroll := a.prevScroll - min a.prevScroll 5 }, .none)
-  | .prev .inc  => some ({ a with prevScroll := a.prevScroll + 5 }, .none)
-  | .prev _     => some (a, .none)
-  | .heat (.val n) => some ({ a with heatMode := min 3 n }, .none)  -- m0=off, m1=numeric, m2=categorical, m3=both
-  | .heat _        => some (a, .none)  -- ignore inc/dec (use m0-m3 directly)
-  | .thm _    => a.theme.update cmd |>.map fun (t', e) => ({ a with theme := t' }, e)
-  | .info _   => a.info.update cmd |>.map fun (i', e) => ({ a with info := i' }, e)
+  | .stk .del      => some (a, .quit)        -- s-: quit
+  | .stk .up       => some (a, .transpose)   -- s^: transpose push
+  | .stk (.val 0)  => some (a, .diff)        -- s0: diff / show-same
+  | .stk .search   => some (a, .fzf .cmd)    -- s/: command menu (SPC)
+  | .info .dec  => some ({ a with prevScroll := a.prevScroll - min a.prevScroll 5 }, .none)  -- i<: { scroll up
+  | .info .inc  => some ({ a with prevScroll := a.prevScroll + 5 }, .none)                   -- i>: } scroll down
+  | .heat (.val n) => some ({ a with heatMode := min 3 n }, .none)
+  | .heat _        => some (a, .none)
+  | .info .ent => a.info.update cmd |>.map fun (i', e) => ({ a with info := i' }, e)  -- i~: toggle info
   | .stk _    => liftStk a cmd (ViewStack.update a.stk cmd)
   | .fld _    => liftStk a cmd (Folder.update a.stk cmd) <|> viewUp
   | .metaV _  => liftStk a cmd (Meta.update a.stk cmd) <|> viewUp
   | .freq _   => liftStk a cmd (Freq.update a.stk cmd) <|> viewUp
   | .plot _   => liftStk a cmd (Plot.update a.stk cmd)
-  | .row .up | .row .dup | .col .up => liftStk a cmd (Clip.update a.stk cmd)
-  | .col .ent | .rowSel _ => liftStk a cmd (Filter.update a.stk cmd) <|> viewUp
-  | .grp .inc | .grp .dec => liftStk a cmd (Filter.update a.stk cmd)
+  | .col .search | .row .search | .row .filter | .row .dup | .row .del =>
+    liftStk a cmd (Filter.update a.stk cmd) <|> viewUp
   | _ => viewUp
 
 instance : Update (AppState) where update := update
@@ -132,7 +129,6 @@ where
         | none => pure a
       else
         pure { a with stk := a.stk.setCur (Diff.showSame a.stk.cur), vs := .default }
-  | .themeLoad d => do let th ← a.theme.runEffect d; pure { a with theme := th }
   | _ => do
     let s ← Runner.runStackEffect a.stk e
     let vs' := if e.isNone then a.vs else .default
@@ -229,7 +225,7 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
       if e == .quit then pure a'
       else let a'' ← if e.isNone then pure a' else runEffect a' e
            let a'' := if e.isNone then a'' else { a'' with sparklines := #[] }
-           let a'' := if cmd matches .prev _ then a'' else { a'' with prevScroll := 0 }
+           let a'' := if cmd matches .info .dec | .info .inc then a'' else { a'' with prevScroll := 0 }
            mainLoop a'' test rest
   -- 1. Test mode: 2-char obj+verb codes (e.g. "s^"=stk.up, "s0"=stk.val0)
   -- Only when the first char has no single-key mapping and no nav mapping

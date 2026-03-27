@@ -148,12 +148,11 @@ def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg colPg : Nat) : Option
   | .col (.val 8) => c colPg      | .col (.val 1) => c (-colPg)
   | .row (.val 9) => r (nRows - 1 - nav.row.cur.val) | .row (.val 0) => r (-nav.row.cur.val)
   | .col (.val 9) => c (nCols - 1 - nav.col.cur.val) | .col (.val 0) => c (-nav.col.cur.val)
-  | .rowSel .ent => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
-  | .colSel .ent => some { nav with col := { nav.col with sels := nav.col.sels.toggle nav.curColName } }
-  | .grp .ent    =>
+  | .row .ent => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
+  | .col .ent =>
     let newGrp := nav.grp.toggle nav.curColName
     some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames }
-  | .colSel .dup =>
+  | .col .del =>
     some { nav with hidden := nav.hidden.toggle nav.curColName }
   -- Shift+Arrow: swap key column with neighbor in grp array, cursor follows
   | .col (.val 5) | .col (.val 6) =>

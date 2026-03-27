@@ -41,70 +41,59 @@ def test_sort_desc : IO Unit := do
 
 def test_meta_shows : IO Unit := do
   log "meta"
-  assert (contains (footer (← run "Mc" "data/basic.csv")).1 "meta") "Mc shows meta in tab"
+  assert (contains (footer (← run "M+" "data/basic.csv")).1 "meta") "M+ shows meta in tab"
 
 def test_meta_col_info : IO Unit := do
   log "meta_col_info"
-  assert (contains (← run "Mc" "data/basic.csv") "column" || contains (← run "Mc" "data/basic.csv") "name") "Meta shows column info"
+  assert (contains (← run "M+" "data/basic.csv") "column" || contains (← run "M+" "data/basic.csv") "name") "Meta shows column info"
 
 def test_meta_no_garbage : IO Unit := do
   log "meta_tab_no_garbage"
-  assert (!contains (footer (← run "Mc" "data/basic.csv")).1 "â") "Meta tab has no garbage chars"
+  assert (!contains (footer (← run "M+" "data/basic.csv")).1 "â") "Meta tab has no garbage chars"
 
 -- === Freq tests (CSV) ===
 
 def test_freq_shows : IO Unit := do
   log "freq"
-  assert (contains (footer (← run "Fc" "data/basic.csv")).1 "freq") "Fc shows freq in tab"
+  assert (contains (footer (← run "F+" "data/basic.csv")).1 "freq") "F+ shows freq in tab"
 
 def test_freq_after_meta : IO Unit := do
   log "freq_after_meta"
-  assert (contains (footer (← run "McqFc" "data/basic.csv")).1 "freq") "McqFc shows freq"
+  assert (contains (footer (← run "M+qF+" "data/basic.csv")).1 "freq") "M+qF+ shows freq"
 
 def test_freq_by_key : IO Unit := do
   log "freq_by_key"
-  assert (contains (footer (← run "l!Fc" "data/full.csv")).1 "freq") "l!Fc shows freq by key"
+  assert (contains (footer (← run "l!F+" "data/full.csv")).1 "freq") "l!F+ shows freq by key"
 
 def test_freq_multi_key : IO Unit := do
   log "freq_multi_key"
-  assert (contains (footer (← run "!l!Fc" "data/multi_freq.csv")).1 "freq") "!l!Fc shows multi-key freq"
+  assert (contains (footer (← run "!l!F+" "data/multi_freq.csv")).1 "freq") "!l!F+ shows multi-key freq"
 
 def test_freq_keeps_grp : IO Unit := do
   log "freq_keeps_grp"
-  assert (contains (footer (← run "!Fc" "data/basic.csv")).2 "grp=1") "Freq view keeps grp columns"
-
--- === Precision/Width adjustment ===
-
-def test_prec_inc : IO Unit := do
-  log "prec_inc"
-  assert (contains (← run "," "data/floats.csv") "1.123" || contains (← run "," "data/floats.csv") "1.1235") ", prefix works"
-
-def test_prec_dec : IO Unit := do
-  log "prec_dec"
-  let first := (dataLines (← run "." "data/floats.csv")).headD ""
-  assert (contains first "1.1") ". prefix works"
+  assert (contains (footer (← run "!F+" "data/basic.csv")).2 "grp=1") "Freq view keeps grp columns"
 
 -- === Meta selection tests (M0/M1) ===
 
 def test_meta_0 : IO Unit := do
   log "meta_0"
-  let status := (footer (← run "McM0" "data/null_col.csv")).2
-  assert (contains status "sel=1" || contains status "rows=1") "McM0 selects null columns"
+  let status := (footer (← run "M+M0" "data/null_col.csv")).2
+  assert (contains status "sel=1" || contains status "rows=1") "M+M0 selects null columns"
 
 def test_meta_1 : IO Unit := do
   log "meta_1"
-  let status := (footer (← run "McM1" "data/single_val.csv")).2
-  assert (contains status "sel=1" || contains status "rows=1") "McM1 selects single-value columns"
+  let status := (footer (← run "M+M1" "data/single_val.csv")).2
+  assert (contains status "sel=1" || contains status "rows=1") "M+M1 selects single-value columns"
 
 def test_meta_0_enter : IO Unit := do
   log "meta_0_enter"
-  let hdr := header (← run "McM0<ret>" "data/null_col.csv")
-  assert (contains hdr "║" || contains hdr "|") "McM0<ret> sets key cols"
+  let hdr := header (← run "M+M0<ret>" "data/null_col.csv")
+  assert (contains hdr "║" || contains hdr "|") "M+M0<ret> sets key cols"
 
 def test_meta_1_enter : IO Unit := do
   log "meta_1_enter"
-  let hdr := header (← run "McM1<ret>" "data/single_val.csv")
-  assert (contains hdr "║" || contains hdr "|") "McM1<ret> sets key cols"
+  let hdr := header (← run "M+M1<ret>" "data/single_val.csv")
+  assert (contains hdr "║" || contains hdr "|") "M+M1<ret> sets key cols"
 
 
 -- === Stdin parsing tests ===
@@ -117,9 +106,9 @@ def test_spaced_header : IO Unit := do
 
 def test_freq_enter : IO Unit := do
   log "freq_enter"
-  let (tab, status) := footer (← run "Fc<ret>" "data/multi_freq.csv")
-  assert (contains tab "multi_freq") "Fc<ret> pops to parent"
-  assert (contains status "r0/3") "Fc<ret> filters to 3 rows"
+  let (tab, status) := footer (← run "F+<ret>" "data/multi_freq.csv")
+  assert (contains tab "multi_freq") "F+<ret> pops to parent"
+  assert (contains status "r0/3") "F+<ret> filters to 3 rows"
 
 -- === No stderr ===
 
@@ -180,7 +169,7 @@ def test_folder_no_args : IO Unit := do
 
 def test_folder_D : IO Unit := do
   log "folder_D_key"
-  assert (contains (← run "Dc" "data/basic.csv") "[/") "Dc pushes folder view with absolute path"
+  assert (contains (← run "D+" "data/basic.csv") "[/") "D+ pushes folder view with absolute path"
 
 -- Folder tab shows the current working directory as an absolute path
 def test_folder_tab : IO Unit := do
@@ -451,7 +440,7 @@ def test_osquery_meta_description : IO Unit := do
   log "osquery_meta_description"
   unless (← hasOsquery) do log "  skip (no osqueryi)"; return
   -- Enter first safe table, then press M for meta view
-  let output ← run "<ret>Mc" "osquery://"
+  let output ← run "<ret>M+" "osquery://"
   assert (contains output "description") "Meta view on osquery table shows description column"
 
 def test_osquery_direct_table : IO Unit := do
@@ -1094,7 +1083,6 @@ def ciTests : Array (String × IO Unit) := #[
   ("freq_shows", test_freq_shows), ("freq_after_meta", test_freq_after_meta),
   ("freq_by_key", test_freq_by_key), ("freq_multi_key", test_freq_multi_key),
   ("freq_keeps_grp", test_freq_keeps_grp),
-  ("prec_inc", test_prec_inc), ("prec_dec", test_prec_dec),
   ("meta_0", test_meta_0), ("meta_1", test_meta_1),
   ("meta_0_enter", test_meta_0_enter), ("meta_1_enter", test_meta_1_enter),
   ("freq_enter", test_freq_enter),

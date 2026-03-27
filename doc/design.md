@@ -128,24 +128,17 @@ Three sources, checked in order by `evToCmd` + main loop:
 Key = single-key shortcut. Name = implemented via space menu / `-c` code only.
 
 ```
-     │ Obj       │ <       │ >       │ ~       │ d      │ c       │ ^       │ 0       │ 1       │ 2    │ 3    │ 4   │ 5       │ 6       │ 7    │ 8       │ 9       │ Key desc
-─────┼───────────┼─────────┼─────────┼─────────┼────────┼─────────┼─────────┼─────────┼─────────┼──────┼──────┼─────┼─────────┼─────────┼──────┼─────────┼─────────┼─────────
- r   │ row       │ k       │ j       │         │        │ yankCell│ yankRow │ Home    │ ^U      │      │      │     │         │         │      │ ^D      │ End     │ hjkl/arrows
- c   │ col       │ h       │ l       │ fzfJump │        │         │ yankCol │ first   │ pgLeft  │      │      │     │ S-←     │ S-→     │      │ pgRight │ last    │ SPC=cmd menu
- R   │ rowSel    │ \       │ /       │ T       │        │         │         │         │         │      │      │     │         │         │      │         │         │ \=filter /=search T=toggle
- C   │ colSel    │ ]       │ [       │ t       │        │ hide    │         │         │         │      │      │     │         │         │      │         │         │ []=sort t=toggle
- g   │ grp       │ N       │ n       │ !       │        │         │         │         │         │      │      │     │         │         │      │         │         │ n/N=search !=toggle
- s   │ stk       │ q       │         │ swap    │ quit   │ dup     │ xpose   │ diff    │         │      │      │     │         │         │      │         │         │ q=pop
- p   │ prec      │ decPrec │ incPrec │         │        │         │         │         │         │      │      │     │         │         │      │         │         │
- w   │ width     │ narrower│ wider   │         │        │         │         │         │         │      │      │     │         │         │      │         │         │
- T   │ thm       │ prevThm │ nextThm │         │        │         │         │         │         │      │      │     │         │         │      │         │         │
- i   │ info      │         │         │ togInfo │        │         │         │         │         │      │      │     │         │         │      │         │         │
- B   │ prev      │ {       │ }       │         │        │         │         │         │         │      │      │     │         │         │      │         │         │ {/}=scroll preview
- M   │ metaV     │         │         │ ⏎*      │        │ push    │         │ selNull │ selSing │      │      │     │         │         │      │         │         │ ⏎=enter
- F   │ freq      │         │         │ ⏎*      │        │ push    │         │         │         │      │      │     │         │         │      │         │         │ ⏎=filter
- D   │ fld       │ depth-- │ depth++ │ ⏎*      │ trash  │ push    │ ⌫       │         │         │      │      │     │         │         │      │         │         │ ⏎=enter ⌫=parent
- P   │ plot      │         │         │         │        │         │         │ line    │ bar     │ scat │ hist │ box │ area    │ density │ step │ violin  │         │
- m   │ heat      │         │         │         │        │         │         │ off     │ numeric │ cat  │ both │     │         │         │      │         │         │
+     │ Obj       │ <       │ >       │ ~       │ -      │ +       │ ^       │ /       │ \       │ 0       │ 1       │ 2      │ 3      │ 4   │ 5       │ 6       │ 7    │ 8       │ 9       │ Key desc
+─────┼───────────┼─────────┼─────────┼─────────┼────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼────────┼────────┼─────┼─────────┼─────────┼──────┼─────────┼─────────┼─────────
+ r   │ row       │ k       │ j       │ T       │ N      │ n       │         │ /       │ \       │ Home    │ ^U      │        │        │     │         │         │      │ ^D      │ End     │ n/N=match /=search \=filter T=toggle row
+ c   │ col       │ h       │ l       │ !       │ hide   │         │         │ search  │         │ first   │ pgLeft  │ [      │ ]      │     │ S-←     │ S-→     │      │ pgRight │ last    │ !group
+ s   │ stk       │ q       │         │ swap    │ quit   │ dup     │ xpose   │ SPC     │         │ diff    │         │        │        │     │         │         │      │         │         │ q=pop SPC=cmd menu
+ i   │ info      │ {       │ }       │ togInfo │        │         │         │         │         │ 0dp     │ 1dp     │ 2dp    │ 3dp    │ 4dp │ 5dp     │ 6dp     │ 7dp  │ 8dp     │ 9dp     │ {/}=scroll preview
+ M   │ metaV     │         │         │ ⏎*      │        │ push    │         │         │         │ selNull │ selSing │        │        │     │         │         │      │         │         │ ⏎=enter
+ F   │ freq      │         │         │ ⏎*      │        │ push    │         │         │         │         │         │        │        │     │         │         │      │         │         │ ⏎=filter
+ D   │ fld       │ depth-- │ depth++ │ ⏎*      │ trash  │ push    │ ⌫       │         │         │         │         │        │        │     │         │         │      │         │         │ ⏎=enter ⌫=parent
+ P   │ plot      │         │         │         │        │         │         │         │         │ area    │ line    │ scat   │ bar    │ box │ step    │ hist    │ dens │ violin  │         │
+ m   │ heat      │         │         │         │        │         │         │         │         │ off     │ numeric │ cat    │ both   │     │         │         │      │         │         │
 
 * ⏎ context-sensitive: freq→filter, meta→enter, fld→enter, tbl→none
 ```
