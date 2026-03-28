@@ -3,8 +3,9 @@ on:
   push:
     branches: [main, 'demo-*']
     paths: [scripts/gen_demo.py]
-  pull_request:
-    paths: [scripts/gen_demo.py]
+  # pull_request disabled: GIFs generated locally, CI auto-commit causes conflicts
+  # pull_request:
+  #   paths: [scripts/gen_demo.py]
 
 permissions:
   contents: write
