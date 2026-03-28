@@ -26,10 +26,10 @@ def F(cli_args, steps):
 # before typing into the fzf prompt — fzf needs startup time.
 
 FEATURES = {
-    # folder: enter subfolder, backspace to parent, open csv, open parquet
+    # folder: sort asc first (worktrees lack dirs-first ordering), then navigate
     # sorted asc: row0=.., row1=basic.csv, row2=diff_test(dir), row3=filtered_test.parquet
     "folder": F("data/", [
-        ("Browse a folder of data files",                     "tv data/",   None,    3.0),
+        ("Browse a folder of data files",                     "tv data/",   "[",     3.0),  # sort asc for stable order
         ("Enter a subfolder",                                 "jj Enter",   "jj\r",  3.0),  # row2=diff_test
         ("Backspace goes to parent folder",                   "Backspace",  "\x7f",  3.0),
         ("Press / to search for a file",                      None,         None,    2.0),
