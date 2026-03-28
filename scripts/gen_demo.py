@@ -77,7 +77,7 @@ FEATURES = {
     "fzf": F(NYSE, [
         ("Press Space to open the command menu", None,       None,         2.0),
         ("",                                     None,       " .....",     3.0),  # fzf char loss padding
-        ("Type to search, Enter to run",         None,       "\x15sort",  3.5),  # type (fzf visible with input)
+        ("Type to search, Enter to run",         None,       "\x15Sort ascending",  3.5),
         ("",                                     None,       "\r",        3.5),
     ]),
 
