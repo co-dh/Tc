@@ -14,7 +14,7 @@ FONT = 20
 BOX_W = int(W * 0.618)  # golden ratio title box
 
 NYSE = "data/nyse10k.parquet"
-_HIDE_INFO = ("", None, "!i~", 0.3)  # turn off info overlay (socket: info toggle)
+_HIDE_INFO = ("", None, "!i~", 0.3)  # turn off info overlay via socket
 
 def F(cli_args, steps):
     """Feature with info overlay disabled."""
@@ -26,18 +26,16 @@ def F(cli_args, steps):
 # before typing into the fzf prompt — fzf needs startup time.
 
 FEATURES = {
-    # folder: sort asc first (worktrees lack dirs-first ordering), then navigate
-    # sorted asc: row0=.., row1=basic.csv, row2=diff_test(dir), row3=filtered_test.parquet
+    # folder: use / search to navigate (jj is fragile, depends on sort order)
     "folder": F("data/", [
-        ("Browse a folder of data files",                     "tv data/",   "[",     3.0),  # sort asc for stable order
-        ("Enter a subfolder",                                 "jj Enter",   "jj\r",  3.0),  # row2=diff_test
+        ("Browse a folder of data files",                     "tv data/",   None,    3.0),
+        ("Search for a subfolder",                            None,         "/.....",   3.0),
+        ("",                                                  None,         "\x15diff", 3.0),
+        ("Enter a subfolder",                                 "/ diff Enter Enter", "\r\r",  3.0),
         ("Backspace goes to parent folder",                   "Backspace",  "\x7f",  3.0),
-        ("Press / to search for a file",                      None,         None,    2.0),
-        ("",                                                  None,         "/.....",  3.0),  # fzf char loss padding
-        ("",                                                  None,         "\x15nyse",  3.0),  # ctrl-u + type (fzf visible with input)
-        ("",                                                  None,         "\r",      2.0),  # enter; linger on result
-        ("Cursor jumps to the matched file\nPress Enter to open", None,    None,    3.0),
-        ("",                                                  None,         "\r",    3.0),
+        ("Search for a parquet file",                         None,         "/.....",      3.0),
+        ("",                                                  None,         "\x15nyse10k", 3.0),
+        ("Cursor jumps to the matched file\nPress Enter to open", "/ nyse10k Enter Enter", "\r\r", 3.0),
         ("",                                                  None,         "q",     1.0),
         ("Open a CSV file",                                   "j Enter",    "j\r",   3.0),
     ]),
@@ -50,8 +48,10 @@ FEATURES = {
         ("Move cursor to Exchange column",                 "l",       "l",   2.0),
         ("Open command menu, select frequency view",       None,      " .....",       3.0),
         ("",                                               None,      "\x15frequency", 3.0),
-        ("Open frequency count",                           None,      "\r",           3.5),
-        ("Select a value and press Enter\nOnly matching rows remain", "j Enter", "j\r", 4.0),
+        ("",                                                None,      "\r",           1.5),
+        ("Frequency count of each Exchange value\nSelect a value and press Enter", "j Enter", "j", 5.0),
+        ("",                                                None,      "\r",            1.0),
+        ("Only matching rows remain",                       None,      None,            5.0),
     ]),
 
     # heatmap: Space opens fzf cmd menu, select heatmap modes
@@ -244,10 +244,9 @@ def record(cli_args, steps, cast_path):
             if buf:
                 t = time.monotonic() - t0
                 text = buf.decode("utf-8", errors="replace")
-                # Alt-screen-exit frames: replace with clear screen (agg doesn't track alt buffers)
-                if "\x1b[?1049l" in text:
-                    text = "\x1b[2J\x1b[H"  # clear screen + home cursor
-                cast_f.write(json.dumps([round(t, 3), "o", text]) + "\n")
+                # Drop alternate-screen-exit frames — they cause a black frame in GIFs
+                if "\x1b[?1049l" not in text:
+                    cast_f.write(json.dumps([round(t, 3), "o", text]) + "\n")
                 sys.stdout.buffer.write(buf)
                 sys.stdout.buffer.flush()
 
@@ -328,6 +327,21 @@ def record(cli_args, steps, cast_path):
     print(f"  {cast_path} ({elapsed:.1f}s)")
     return True
 
+def verify_cast(cast_path):
+    """Check cast for known issues. Returns True if OK."""
+    with open(cast_path) as f:
+        lines = f.readlines()
+    table_seen = False
+    for i, line in enumerate(lines[1:], 1):
+        text = json.loads(line)[2]
+        if any(k in text for k in ("Time", "name", "column")):
+            table_seen = True
+        # Clear screen after table is a bug — unless inside alt-screen-enter (tb_init) or fzf start
+        if table_seen and "\x1b[2J" in text and "\x1b[?1049h" not in text and "\x1b[?2004h" not in text:
+            print(f"  WARN: {cast_path} frame {i} clears screen after table")
+            return False
+    return True
+
 def gen(name):
     cli_args, steps = FEATURES[name]
     cast = f"doc/{name}.cast"
@@ -335,6 +349,9 @@ def gen(name):
     if not record(cli_args, steps, cast):
         if os.path.exists(cast):
             os.remove(cast)
+        return False
+    if not verify_cast(cast):
+        print(f"  FAIL: {cast} failed verification")
         return False
     subprocess.run([AGG, cast, gif, "--font-size", str(FONT)], check=True)
     sz = os.path.getsize(gif)
