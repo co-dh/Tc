@@ -14,11 +14,11 @@ FONT = 20
 BOX_W = int(W * 0.618)  # golden ratio title box
 
 NYSE = "data/nyse10k.parquet"
-_HIDE_INFO = ("", None, "I", 0.3)  # turn off info overlay
+_HIDE_INFO = ("", None, "!i~", 0.3)  # turn off info overlay via socket
 
-def F(cli_args, steps):
-    """Feature with info overlay disabled."""
-    return (cli_args, [_HIDE_INFO] + steps)
+def F(cli_args, steps, expects=None):
+    """Feature with info overlay disabled. expects: strings that must appear in cast."""
+    return (cli_args, [_HIDE_INFO] + steps, expects or [])
 
 # -- Feature definitions: (cli_args, steps) ------------------------------------
 # Steps: (description, keys_shown, keys_to_send, pause_seconds)
@@ -26,108 +26,126 @@ def F(cli_args, steps):
 # before typing into the fzf prompt — fzf needs startup time.
 
 FEATURES = {
-    # folder: enter subfolder, backspace to parent, open csv, open parquet
-    # sorted asc: row0=.., row1=basic.csv, row2=diff_test(dir), row3=filtered_test.parquet
+    # folder: use / search to navigate (jj is fragile, depends on sort order)
     "folder": F("data/", [
         ("Browse a folder of data files",                     "tv data/",   None,    3.0),
-        ("Enter a subfolder",                                 "jj Enter",   "jj\r",  3.0),  # row2=diff_test
+        ("",                                                  None,         "/.....",   3.0),
+        ("",                                                  None,         "\x15diff", 3.0),
+        ("Enter a subfolder",                                 "/ diff Enter Enter", "\r\r",  3.0),
         ("Backspace goes to parent folder",                   "Backspace",  "\x7f",  3.0),
-        ("Press / to search for a file",                      None,         None,    2.0),
-        ("",                                                  None,         "/.....",  3.0),  # fzf char loss padding
-        ("",                                                  None,         "\x15nyse",  3.0),  # ctrl-u + type (fzf visible with input)
-        ("",                                                  None,         "\r",      2.0),  # enter; linger on result
-        ("Cursor jumps to the matched file\nPress Enter to open", None,    None,    3.0),
-        ("",                                                  None,         "\r",    3.0),
+        ("",                                                  None,         "/.....",      3.0),
+        ("",                                                  None,         "\x15nyse10k", 3.0),
+        ("Cursor jumps to the matched file\nPress Enter to open", "/ nyse10k Enter Enter", "\r\r", 3.0),
         ("",                                                  None,         "q",     1.0),
         ("Open a CSV file",                                   "j Enter",    "j\r",   3.0),
-    ]),
+    ], expects=["diff_test", "nyse10k.parquet"]),
 
     "sparkline": F(NYSE, [
-        ("Each column header has a sparkline\nshowing the value distribution", None, None, 5.0),
-    ]),
+        ("Each column header has a sparkline\nshowing the value distribution", None, None, 7.0),
+    ], expects=["Bid_Pri"]),
 
     "freq": F(NYSE, [
         ("Move cursor to Exchange column",                 "l",       "l",   2.0),
-        ("Press F for frequency count",                    "F",       "F",   3.5),
-        ("Select a value and press Enter\nOnly matching rows remain", "j Enter", "j\r", 4.0),
-    ]),
+        ("",                                               None,      " .....",       3.0),
+        ("",                                               None,      "\x15^F+", 3.0),
+        ("",                                                None,      "\r",           1.5),
+        ("Frequency count of each Exchange value\nSelect a value and press Enter", "j Enter", "j", 5.0),
+        ("",                                                None,      "\r",            1.0),
+        ("Only matching rows remain",                       None,      None,            5.0),
+    ], expects=["freq Exchange", "51.800", "filter Exchange"]),
 
-    # heatmap: Space opens fzf cmd menu, type "hea" to find heatmap, Enter applies.
-    # Each apply cycles: 0(off)→1(numeric)→2(categorical)→3(both).
-    # Mode 3 (both) has a bug where categorical isn't colored, so show only 1→2.
-    # fzf char loss: Space opens fzf, dots pad, ctrl-u clears, then type "hea".
+    # heatmap: use ^code to match fzf item by obj/verb prefix
     "heatmap": F(NYSE, [
-        ("",                                    None,     " .....",    3.0),  # Space opens fzf + padding
-        ("",                                    None,     "\x15hea",   3.0),  # ctrl-u + type (fzf visible with input)
-        ("Color numeric columns by value",      None,     "\r",        4.0),
-        ("",                                    None,     " .....",    3.0),
-        ("",                                    None,     "\x15hea",   3.0),
-        ("Color categorical columns by group",  None,     "\r",        4.0),
-    ]),
+        ("",                                              None,  " .....",          3.0),
+        ("",                                              None,  "\x15^i1",         3.0),
+        ("",                                              None,  "\r",              1.0),
+        ("Color numeric columns by value",                None,  None,              5.0),
+        ("",                                              None,  None,              0.5),
+        ("",                                              None,  " .....",          3.0),
+        ("",                                              None,  "\x15^i2",         3.0),
+        ("",                                              None,  "\r",              1.0),
+        ("Color categorical columns by group",            None,  None,              5.0),
+    ], expects=["Bid_Pri"]),
 
+    # plot: Space opens fzf cmd menu, select histogram
     "plot": F(NYSE, [
-        ("Move cursor to a numeric column",                  "lll",        "lll",    2.0),
-        ("Open command menu with Space",                     None,         None,     2.0),
-        ("",                                                 None,         " .....", 3.0),  # fzf char loss padding
-        ("",                                                 None,         "\x15hist", 3.0),  # type command (fzf visible)
-        ("Render a histogram with ggplot2\nPress q to close", None,        "\r",     5.0),
-        ("",                                                 None,         "q",      1.0),
-    ]),
+        ("Move cursor to a numeric column",                    "lll",   "lll",  2.0),
+        ("Open command menu with Space",                       None,    None,   2.0),
+        ("",                                                   None,    " .....",       3.0),  # fzf char loss padding
+        ("",                                                   None,    "\x15^c6", 3.0),
+        ("Render a histogram with ggplot2\nPress q to close",  None,    "\r",           5.0),
+        ("",                                                   None,    "q",            1.0),
+    ], expects=["histogram"]),
 
     "fzf": F(NYSE, [
         ("Press Space to open the command menu", None,       None,         2.0),
         ("",                                     None,       " .....",     3.0),  # fzf char loss padding
-        ("Type to search, Enter to run",         None,       "\x15th",    3.5),  # type (fzf visible with input)
+        ("",                                     None,       "\x15^c[",  3.5),
         ("",                                     None,       "\r",        3.5),
-    ]),
+    ], expects=["Sort ascending"]),
 
     "meta": F(NYSE, [
-        ("M shows column names, types, nulls, and unique counts", "M",     "M",  3.5),
-        ("Press 0 to select all-null columns\nPress 1 to select single-value columns", "0 1", "01", 3.5),
-        ("Enter hides the selected columns from the table",       "Enter", "\r", 3.5),
-    ]),
+        ("",                                                     None,    " .....",        3.0),
+        ("",                                                     None,    "\x15^M+",  3.0),
+        ("Column metadata: names, types, nulls, unique counts",  None,    "\r",            3.5),
+        ("",                                                     None,    " .....",        3.0),
+        ("",                                                     None,    "\x15^M0",      3.0),
+        ("",                                                     None,    "\r",            2.0),
+        ("",                                                     None,    " .....",        3.0),
+        ("",                                                     None,    "\x15^M1",    3.0),
+        ("",                                                     None,    "\r",            2.0),
+        ("Enter hides the selected columns from the table",      "Enter", "\r",            3.5),
+    ], expects=["meta", "coltype", "null"]),
 
     "sort": F(NYSE, [
         ("Press [ to sort ascending\nPress ] to sort descending", "[", "l[", 3.0),
         ("",                                                      None, "l]", 3.0),
         ("Press ! to pin a column as key (left)\nPress ! again to unpin", "!", "l!", 3.0),
-        ("",                                                      None, "!",  3.0),
-    ]),
+        ("",                                                      None, "!c~",  3.0),
+    ], expects=["sort"]),
 
     # split: send :- via socket (bypasses fzf, works in pty recording)
     "split": F("data/split_test.csv", [
         ("A table with a column containing a-b values",           None, None,                        3.0),
         ("Press : to split, type - and Enter",                     ": - Enter", "!:-",                3.0),
-        ("New columns appear from the split parts",               None, "!c+",                      0.5),
-        ("",                                                      None, "!c+",                      0.5),
-        ("",                                                      None, "!c+",                      0.5),
-        ("",                                                      None, "!c+",                      5.0),
-    ]),
+        ("New columns appear from the split parts",               None, "!c>",                      0.5),
+        ("",                                                      None, "!c>",                      0.5),
+        ("",                                                      None, "!c>",                      0.5),
+        ("",                                                      None, "!c>",                      5.0),
+    ], expects=["split_test.csv"]),
 
-    # filter: send \expr via socket (bypasses fzf)
+    # filter: press \ to open filter prompt, type expression
     "filter": F(NYSE, [
         ("Move to the Exchange column",                             "l",   "l",                         2.0),
-        ("Filter rows where Exchange contains 'P'",                 "\\Exchange ~= 'P'",  "!\\Exchange ~= 'P'",  3.0),
-        ("Only matching rows remain",                               None,  None,                        5.0),
-    ]),
+        ("Press \\\\ to filter, type Exchange ~= 'P'",               None,  None,                        3.0),
+        ("",                                                        None,  None,                        0.5),
+        ("",                                                        None,  "\\........",                 3.0),
+        ("",                                                        None,  "\x15Exchange ~= 'P'",        3.0),
+        ("",                                                        None,  "\r",                        1.0),
+        ("Only rows where Exchange contains P remain",              None,  None,                        5.0),
+    ], expects=["filter Exchange"]),
 
     # derive: send =expr via socket (bypasses fzf)
     "derive": F("data/numeric.csv", [
         ("A simple table with columns x, y, z",               None, None,                     3.0),
         ("Press = to derive: double = x * 2",                 "= double = x * 2 Enter", "!=double = x * 2", 3.0),
-        ("The new 'double' column appears",                    None, "!c+",                   0.5),
-        ("",                                                   None, "!c+",                   0.5),
-        ("",                                                   None, "!c+",                   5.0),
-    ]),
+        ("The new 'double' column appears",                    None, "!c>",                   0.5),
+        ("",                                                   None, "!c>",                   0.5),
+        ("",                                                   None, "!c>",                   5.0),
+    ], expects=["double"]),
 
     # diff_compare: static side-by-side showing first, second, and diff result
     # folder sorts asc: row0=.., 1=after, 2=before, 3=first, 4=second
     "diff": F("data/diff_test/", [
         ("Table 1: first.csv",                                 "jjjj Enter", "[jjjj\r", 5.0),
-        ("",                                                   None,         "S",       0.5),  # swap back to folder
+        ("",                                                   None,         "!s~",     0.5),  # swap back to folder
         ("Table 2: second.csv\nbob's sales changed, bonus→rating swapped", "j Enter", "j\r", 5.0),
-        ("V compares the two tables\nChanged columns get a Δ prefix",      "V",       "SqV",  5.0),
-    ]),
+        ("",                                                   None,         "!s~",     0.3),  # swap folder to top
+        ("",                                                   None,         "q",       0.3),  # pop folder
+        ("",                                                           None, " .....",     3.0),
+        ("",                                                           None, "\x15^s2",   3.0),
+        ("Diff compares the two tables\nChanged columns get a Δ prefix", None, "\r",       5.0),
+    ], expects=["diff", "first.csv", "second.csv"]),
 
     # "theme": F(NYSE, [
     #     ("Cycle through color themes",  "Space", " ",    1.5),
@@ -146,7 +164,7 @@ FEATURES = {
     "hf": F("hf://", [
         ("List all HuggingFace datasets",                        "tv hf://",  None,   4.0),
         ("Sort by downloads and open the top dataset\nBrowse the dataset files", "] Enter", "l]\r", 5.0),
-    ]),
+    ], expects=["hf://"]),
 }
 
 # -- Title overlay -------------------------------------------------------------
@@ -189,7 +207,7 @@ def record(cli_args, steps, cast_path):
            "LD_LIBRARY_PATH": "/usr/local/lib:" + os.environ.get("LD_LIBRARY_PATH", ""),
            "TERM": "xterm-256color",
            "TMPDIR": "/tmp"}  # real /tmp for socket; gen_demo.py is in excludedCommands
-    env.pop("TMUX", None)  # fzf --tmux fails in pty; force inline mode
+    env.pop("TMUX", None)  # fzf --tmux popup not captured by pty recording; force inline
 
     header = {"version": 2, "width": W, "height": H,
               "env": {"TERM": "xterm-256color", "SHELL": "/bin/bash"}}
@@ -233,10 +251,9 @@ def record(cli_args, steps, cast_path):
             if buf:
                 t = time.monotonic() - t0
                 text = buf.decode("utf-8", errors="replace")
-                # Alt-screen-exit frames: replace with clear screen (agg doesn't track alt buffers)
-                if "\x1b[?1049l" in text:
-                    text = "\x1b[2J\x1b[H"  # clear screen + home cursor
-                cast_f.write(json.dumps([round(t, 3), "o", text]) + "\n")
+                # Drop alternate-screen-exit frames — they cause a black frame in GIFs
+                if "\x1b[?1049l" not in text:
+                    cast_f.write(json.dumps([round(t, 3), "o", text]) + "\n")
                 sys.stdout.buffer.write(buf)
                 sys.stdout.buffer.flush()
 
@@ -265,8 +282,8 @@ def record(cli_args, steps, cast_path):
             for desc, keys_shown, keys, pause in steps:
                 if child_dead:
                     break
-                # Clear previous title overlay before drawing a new one
-                if last_title_lines > 0 and desc:
+                # Clear previous title overlay before each step
+                if last_title_lines > 0:
                     margin = (W - BOX_W) // 2
                     indent = f"\x1b[{margin + 1}G"
                     clr = "\x1b7"
@@ -289,7 +306,9 @@ def record(cli_args, steps, cast_path):
                 if title:
                     emit(title)
                     last_title_lines = nlines
-                time.sleep(pause)
+                # Marker: desired pause for this step (post-process rewrites timestamps)
+                emit(f"\x1b]999;pause={pause}\x07")
+                time.sleep(min(pause, 0.3))
                 drain(0.1)
         except OSError:
             pass
@@ -314,16 +333,70 @@ def record(cli_args, steps, cast_path):
     if child_dead and rc != 0:
         print(f"  ERROR: {TC} died early (exit {rc}, {elapsed:.1f}s)")
         return False
+
+    # Post-process: rewrite timestamps using pause markers.
+    # Markers are \x1b]999;pause=N\x07 embedded in frames.
+    # All frames between markers get compressed to 0.1s gaps,
+    # then the marker adds N seconds of hold time.
+    import re as _re
+    with open(cast_path) as f:
+        raw = f.readlines()
+    header, frames = raw[0], [json.loads(l) for l in raw[1:]]
+    t = 0.0
+    new_frames = []
+    for frame in frames:
+        text = frame[2]
+        m = _re.search(r'\x1b\]999;pause=([\d.]+)\x07', text)
+        if m:
+            pause_dur = float(m.group(1))
+            clean = text.replace(m.group(0), "")
+            if clean:
+                new_frames.append([round(t, 3), "o", clean])
+            t += pause_dur
+        else:
+            new_frames.append([round(t, 3), "o", text])
+            t += 0.1  # compress real gaps to 0.1s between frames
+    with open(cast_path, "w") as f:
+        f.write(header)
+        for frame in new_frames:
+            f.write(json.dumps(frame) + "\n")
+
     print(f"  {cast_path} ({elapsed:.1f}s)")
     return True
 
+def verify_cast(cast_path, expects=None):
+    """Check cast for known issues and expected content. Returns True if OK."""
+    with open(cast_path) as f:
+        lines = f.readlines()
+    all_text = ""
+    table_seen = False
+    for i, line in enumerate(lines[1:], 1):
+        text = json.loads(line)[2]
+        all_text += text
+        if any(k in text for k in ("Time", "name", "column")):
+            table_seen = True
+        # Clear screen after table is a bug — unless inside alt-screen-enter (tb_init) or fzf start
+        if table_seen and "\x1b[2J" in text and "\x1b[?1049h" not in text and "\x1b[?2004h" not in text:
+            print(f"  WARN: {cast_path} frame {i} clears screen after table")
+            return False
+    # Check expected content appears in cast
+    if expects:
+        for exp in expects:
+            if exp not in all_text:
+                print(f"  WARN: {cast_path} missing expected content: {exp!r}")
+                return False
+    return True
+
 def gen(name):
-    cli_args, steps = FEATURES[name]
+    cli_args, steps, expects = FEATURES[name]
     cast = f"doc/{name}.cast"
     gif = f"doc/{name}.gif"
     if not record(cli_args, steps, cast):
         if os.path.exists(cast):
             os.remove(cast)
+        return False
+    if not verify_cast(cast, expects):
+        print(f"  FAIL: {cast} failed verification")
         return False
     subprocess.run([AGG, cast, gif, "--font-size", str(FONT)], check=True)
     sz = os.path.getsize(gif)

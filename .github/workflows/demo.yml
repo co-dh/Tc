@@ -3,8 +3,12 @@ on:
   push:
     branches: [main, 'demo-*']
     paths: [scripts/gen_demo.py]
-  pull_request:
-    paths: [scripts/gen_demo.py]
+  # pull_request disabled: GIFs generated locally, CI auto-commit causes conflicts
+  # pull_request:
+  #   paths: [scripts/gen_demo.py]
+
+permissions:
+  contents: write
 
 jobs:
   gif:
@@ -13,6 +17,8 @@ jobs:
       PATH: /home/runner/.elan/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref }}
 
       - name: Cache tools
         id: tools
@@ -57,3 +63,16 @@ jobs:
           name: demo-gifs
           path: doc/*.gif
           retention-days: 7
+
+      - name: Commit GIFs
+        if: github.event_name == 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add doc/*.gif
+          if git diff --cached --quiet; then
+            echo "No GIF changes to commit"
+          else
+            git commit -m "Regenerate demo GIFs"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
