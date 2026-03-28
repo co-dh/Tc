@@ -200,7 +200,7 @@ def record(cli_args, steps, cast_path):
            "LD_LIBRARY_PATH": "/usr/local/lib:" + os.environ.get("LD_LIBRARY_PATH", ""),
            "TERM": "xterm-256color",
            "TMPDIR": "/tmp"}  # real /tmp for socket; gen_demo.py is in excludedCommands
-    env.pop("TMUX", None)  # fzf --tmux fails in pty; force inline mode
+    env.pop("TMUX", None)  # fzf --tmux popup not captured by pty recording; force inline
 
     header = {"version": 2, "width": W, "height": H,
               "env": {"TERM": "xterm-256color", "SHELL": "/bin/bash"}}
