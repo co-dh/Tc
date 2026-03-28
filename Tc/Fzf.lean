@@ -30,7 +30,7 @@ def fzfCore (opts : Array String) (input : String) (poll : IO Unit := pure ()) :
     let inTmux := (← IO.getEnv "TMUX").isSome
     let baseArgs := if inTmux
       then #["--tmux=bottom,80%,40%", "--layout=reverse", "--exact", "+i"]  -- compact popup at bottom
-      else #["--height=~15", "--layout=reverse", "--exact", "+i"]            -- compact inline at bottom
+      else #["--height=50%", "--layout=reverse", "--exact", "+i"]             -- bottom half inline
     if !inTmux then Term.shutdown
     let child ← IO.Process.spawn { cmd := "fzf", args := baseArgs ++ opts, stdin := .piped, stdout := .piped }
     child.stdin.putStr input
