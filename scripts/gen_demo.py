@@ -48,7 +48,9 @@ FEATURES = {
 
     "freq": F(NYSE, [
         ("Move cursor to Exchange column",                 "l",       "l",   2.0),
-        ("Open frequency count",                           "F+",      "!F+", 3.5),
+        ("Open command menu, select frequency view",       None,      " .....",       3.0),
+        ("",                                               None,      "\x15frequency", 3.0),
+        ("Open frequency count",                           None,      "\r",           3.5),
         ("Select a value and press Enter\nOnly matching rows remain", "j Enter", "j\r", 4.0),
     ]),
 
@@ -80,10 +82,16 @@ FEATURES = {
     ]),
 
     "meta": F(NYSE, [
-        ("Column metadata: names, types, nulls, unique counts",  "M+",    "!M+",  3.5),
-        ("Select all-null columns",                              "M0",    "!M0",  2.0),
-        ("Select single-value columns",                          "M1",    "!M1",  2.0),
-        ("Enter hides the selected columns from the table",      "Enter", "\r",   3.5),
+        ("Open command menu, select metadata view",              None,    " .....",        3.0),
+        ("",                                                     None,    "\x15metadata",  3.0),
+        ("Column metadata: names, types, nulls, unique counts",  None,    "\r",            3.5),
+        ("Select all-null columns",                              None,    " .....",        3.0),
+        ("",                                                     None,    "\x15null",      3.0),
+        ("",                                                     None,    "\r",            2.0),
+        ("Select single-value columns",                          None,    " .....",        3.0),
+        ("",                                                     None,    "\x15single",    3.0),
+        ("",                                                     None,    "\r",            2.0),
+        ("Enter hides the selected columns from the table",      "Enter", "\r",            3.5),
     ]),
 
     "sort": F(NYSE, [
@@ -127,7 +135,9 @@ FEATURES = {
         ("Table 2: second.csv\nbob's sales changed, bonus→rating swapped", "j Enter", "j\r", 5.0),
         ("",                                                   None,         "!s~",     0.3),  # swap folder to top
         ("",                                                   None,         "q",       0.3),  # pop folder
-        ("Diff compares the two tables\nChanged columns get a Δ prefix", "s2", "!s2", 5.0),
+        ("Open command menu, select Diff",                              None, " .....",     3.0),
+        ("",                                                           None, "\x15Diff",   3.0),
+        ("Diff compares the two tables\nChanged columns get a Δ prefix", None, "\r",       5.0),
     ]),
 
     # "theme": F(NYSE, [
