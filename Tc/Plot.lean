@@ -132,15 +132,19 @@ def handleKey (key : Char) : KeyAction :=
 -- | Generate R script for ggplot2 rendering
 def rScript (dataPath pngPath : String) (kind : PlotKind)
     (xName yName : String) (hasCat : Bool) (catName : String)
-    (hasFacet : Bool) (facetName : String) (xIsTime : Bool) : String :=
+    (hasFacet : Bool) (facetName : String) (xType : String) : String :=
   let rq (s : String) := s!"`{s}`"
   let xR := rq xName; let yR := rq yName; let catR := rq catName; let facetR := rq facetName
   let readData := s!"d <- read.delim('{dataPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n"
   let convY := s!"d[['{yName}']] <- as.numeric(d[['{yName}']])\n"
-  let convX := if xIsTime then s!"d[['{xName}']] <- as.POSIXct(d[['{xName}']])\n"
-    else if !isSingleColPlot kind then
-      "tryCatch(d[['" ++ xName ++ "']] <- as.numeric(d[['" ++ xName ++ "']]), warning=function(w) NULL)\n"
-    else ""
+  -- "time" is HH:MM:SS only — prepend dummy date for as.POSIXct
+  let convX := match xType with
+    | "time"      => s!"d[['{xName}']] <- as.POSIXct(paste('1970-01-01', d[['{xName}']]))\n"
+    | "timestamp" => s!"d[['{xName}']] <- as.POSIXct(d[['{xName}']])\n"
+    | "date"      => s!"d[['{xName}']] <- as.Date(d[['{xName}']])\n"
+    | _ => if !isSingleColPlot kind then
+        "tryCatch(d[['" ++ xName ++ "']] <- as.numeric(d[['" ++ xName ++ "']]), warning=function(w) NULL)\n"
+      else ""
   let aes := if isSingleColPlot kind then s!"aes(x = {yR})"
     else if usesCategoryAsX kind then
       if hasCat then s!"aes(x = {catR}, y = {yR})" else s!"aes(x = factor(''), y = {yR})"
@@ -168,6 +172,7 @@ def rScript (dataPath pngPath : String) (kind : PlotKind)
 
 -- | Run Rscript to render plot; returns error message on failure
 private def renderR (script : String) : IO (Option String) := do
+  Log.write "plot-R" script
   let rPath ← Tc.tmpPath "plot.R"
   IO.FS.writeFile rPath script
   let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
@@ -229,7 +234,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
     let vals := match cols.getD 0 default with
       | .strs vs => vs | .ints vs => vs.map toString | .floats vs => vs.map toString
     IO.FS.writeFile datPath (yName ++ "\n" ++ "\n".intercalate (vals.filter (!·.isEmpty)).toList ++ "\n")
-    let script := rScript datPath pngPath kind "" yName false "" false "" false
+    let script := rScript datPath pngPath kind "" yName false "" false "" ""
     let err? ← renderR script
     clearScreen
     if err?.isNone then showPng pngPath
@@ -304,7 +309,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
       else pure none
     let err? ← match exportResult with
       | some msg => pure (some msg)
-      | none => renderR (rScript datPath pngPath curKind xName yName hasCat catName hasFacet facetName xIsTime)
+      | none => renderR (rScript datPath pngPath curKind xName yName hasCat catName hasFacet facetName xType)
     renderFrame pngPath curKind xName yName intervals idx err?
     let key ← readKeyRaw
     match handleKey key with

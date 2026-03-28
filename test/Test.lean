@@ -969,8 +969,8 @@ def test_plot_r_installed : IO Unit := do
 
 -- | Run rScript and assert PNG output is non-empty
 def runPlotR (kind : PlotKind) (datPath pngPath : String)
-    (xName yName : String) (hasCat : Bool) (catName : String) (xIsTime := false) : IO Unit := do
-  let script := Tc.Plot.rScript datPath pngPath kind xName yName hasCat catName false "" xIsTime
+    (xName yName : String) (hasCat : Bool) (catName : String) (xType : String := "") : IO Unit := do
+  let script := Tc.Plot.rScript datPath pngPath kind xName yName hasCat catName false "" xType
   let rPath ← Tc.tmpPath "plot_test.R"
   IO.FS.writeFile rPath script
   let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }
@@ -1053,6 +1053,16 @@ def test_plot_render_violin : IO Unit := do
   let datPath ← prepXY "data/plot/mixed.csv" "x" "y" (some "cat")
   let pngPath ← Tc.tmpPath "plot_test_violin.png"
   runPlotR .violin datPath pngPath "cat" "y" true "cat"
+
+-- | Line plot with time x-axis (bare HH:MM:SS) — R must parse without error
+def test_plot_render_time : IO Unit := do
+  log "plot_render_time"
+  unless (← hasRscript) do log "  skip (no Rscript)"; return
+  unless (← hasGgplot2) do log "  skip (no ggplot2)"; return
+  let datPath ← Tc.tmpPath "plot_time.dat"
+  IO.FS.writeFile datPath "time\tprice\n09:30:00\t100.5\n09:30:01\t101.2\n09:30:02\t100.8\n"
+  let pngPath ← Tc.tmpPath "plot_test_time.png"
+  runPlotR .line datPath pngPath "time" "price" false "" (xType := "time")
 
 -- === Replay ops tests ===
 
@@ -1182,7 +1192,8 @@ def heavyTests : Array (String × IO Unit) := #[
   ("plot_render_area", test_plot_render_area),
   ("plot_render_density", test_plot_render_density),
   ("plot_render_step", test_plot_render_step),
-  ("plot_render_violin", test_plot_render_violin)
+  ("plot_render_violin", test_plot_render_violin),
+  ("plot_render_time", test_plot_render_time)
 ]
 
 def tests : Array (String × IO Unit) := ciTests ++ heavyTests
