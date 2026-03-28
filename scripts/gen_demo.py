@@ -16,9 +16,9 @@ BOX_W = int(W * 0.618)  # golden ratio title box
 NYSE = "data/nyse10k.parquet"
 _HIDE_INFO = ("", None, "!i~", 0.3)  # turn off info overlay via socket
 
-def F(cli_args, steps):
-    """Feature with info overlay disabled."""
-    return (cli_args, [_HIDE_INFO] + steps)
+def F(cli_args, steps, expects=None):
+    """Feature with info overlay disabled. expects: strings that must appear in cast."""
+    return (cli_args, [_HIDE_INFO] + steps, expects or [])
 
 # -- Feature definitions: (cli_args, steps) ------------------------------------
 # Steps: (description, keys_shown, keys_to_send, pause_seconds)
@@ -38,11 +38,11 @@ FEATURES = {
         ("Cursor jumps to the matched file\nPress Enter to open", "/ nyse10k Enter Enter", "\r\r", 3.0),
         ("",                                                  None,         "q",     1.0),
         ("Open a CSV file",                                   "j Enter",    "j\r",   3.0),
-    ]),
+    ], expects=["diff_test", "nyse10k.parquet"]),
 
     "sparkline": F(NYSE, [
         ("Each column header has a sparkline\nshowing the value distribution", None, None, 5.0),
-    ]),
+    ], expects=["Bid_Pri"]),
 
     "freq": F(NYSE, [
         ("Move cursor to Exchange column",                 "l",       "l",   2.0),
@@ -52,7 +52,7 @@ FEATURES = {
         ("Frequency count of each Exchange value\nSelect a value and press Enter", "j Enter", "j", 5.0),
         ("",                                                None,      "\r",            1.0),
         ("Only matching rows remain",                       None,      None,            5.0),
-    ]),
+    ], expects=["freq Exchange", "51.800", "filter Exchange"]),
 
     # heatmap: Space opens fzf cmd menu, select heatmap modes
     "heatmap": F(NYSE, [
@@ -62,7 +62,7 @@ FEATURES = {
         ("",                                              None,  " .....",          3.0),
         ("",                                              None,  "\x15Heatmap: c",  3.0),
         ("Color categorical columns by group",            None,  "\r",              4.0),
-    ]),
+    ], expects=["Heatmap: n", "Heatmap: c"]),
 
     # plot: Space opens fzf cmd menu, select histogram
     "plot": F(NYSE, [
@@ -72,14 +72,14 @@ FEATURES = {
         ("",                                                   None,    "\x15histogram", 3.0),  # type command (fzf visible)
         ("Render a histogram with ggplot2\nPress q to close",  None,    "\r",           5.0),
         ("",                                                   None,    "q",            1.0),
-    ]),
+    ], expects=["histogram"]),
 
     "fzf": F(NYSE, [
         ("Press Space to open the command menu", None,       None,         2.0),
         ("",                                     None,       " .....",     3.0),  # fzf char loss padding
         ("Type to search, Enter to run",         None,       "\x15Sort ascending",  3.5),
         ("",                                     None,       "\r",        3.5),
-    ]),
+    ], expects=["Sort ascending"]),
 
     "meta": F(NYSE, [
         ("Open command menu, select metadata view",              None,    " .....",        3.0),
@@ -92,14 +92,14 @@ FEATURES = {
         ("",                                                     None,    "\x15single",    3.0),
         ("",                                                     None,    "\r",            2.0),
         ("Enter hides the selected columns from the table",      "Enter", "\r",            3.5),
-    ]),
+    ], expects=["meta", "coltype", "null"]),
 
     "sort": F(NYSE, [
         ("Press [ to sort ascending\nPress ] to sort descending", "[", "l[", 3.0),
         ("",                                                      None, "l]", 3.0),
         ("Press ! to pin a column as key (left)\nPress ! again to unpin", "!", "l!", 3.0),
         ("",                                                      None, "!c~",  3.0),
-    ]),
+    ], expects=["sort"]),
 
     # split: send :- via socket (bypasses fzf, works in pty recording)
     "split": F("data/split_test.csv", [
@@ -109,14 +109,17 @@ FEATURES = {
         ("",                                                      None, "!c>",                      0.5),
         ("",                                                      None, "!c>",                      0.5),
         ("",                                                      None, "!c>",                      5.0),
-    ]),
+    ], expects=["split_test.csv"]),
 
-    # filter: send \expr via socket (bypasses fzf)
+    # filter: press \ to open filter prompt, type expression
     "filter": F(NYSE, [
         ("Move to the Exchange column",                             "l",   "l",                         2.0),
-        ("Filter rows where Exchange contains 'P'",                 "\\Exchange ~= 'P'",  "!\\Exchange ~= 'P'",  3.0),
-        ("Only matching rows remain",                               None,  None,                        5.0),
-    ]),
+        ("Press \\ to open the filter prompt",                      None,  None,                        2.0),
+        ("",                                                        None,  "\\........",                 3.0),
+        ("Type a PRQL filter expression",                           None,  "\x15Exchange ~= 'P'",        3.0),
+        ("",                                                        None,  "\r",                        1.0),
+        ("Only rows where Exchange contains P remain",              None,  None,                        5.0),
+    ], expects=["filter Exchange"]),
 
     # derive: send =expr via socket (bypasses fzf)
     "derive": F("data/numeric.csv", [
@@ -125,7 +128,7 @@ FEATURES = {
         ("The new 'double' column appears",                    None, "!c>",                   0.5),
         ("",                                                   None, "!c>",                   0.5),
         ("",                                                   None, "!c>",                   5.0),
-    ]),
+    ], expects=["double"]),
 
     # diff_compare: static side-by-side showing first, second, and diff result
     # folder sorts asc: row0=.., 1=after, 2=before, 3=first, 4=second
@@ -138,7 +141,7 @@ FEATURES = {
         ("Open command menu, select Diff",                              None, " .....",     3.0),
         ("",                                                           None, "\x15Diff",   3.0),
         ("Diff compares the two tables\nChanged columns get a Δ prefix", None, "\r",       5.0),
-    ]),
+    ], expects=["diff", "first.csv", "second.csv"]),
 
     # "theme": F(NYSE, [
     #     ("Cycle through color themes",  "Space", " ",    1.5),
@@ -157,7 +160,7 @@ FEATURES = {
     "hf": F("hf://", [
         ("List all HuggingFace datasets",                        "tv hf://",  None,   4.0),
         ("Sort by downloads and open the top dataset\nBrowse the dataset files", "] Enter", "l]\r", 5.0),
-    ]),
+    ], expects=["hf://"]),
 }
 
 # -- Title overlay -------------------------------------------------------------
@@ -327,30 +330,38 @@ def record(cli_args, steps, cast_path):
     print(f"  {cast_path} ({elapsed:.1f}s)")
     return True
 
-def verify_cast(cast_path):
-    """Check cast for known issues. Returns True if OK."""
+def verify_cast(cast_path, expects=None):
+    """Check cast for known issues and expected content. Returns True if OK."""
     with open(cast_path) as f:
         lines = f.readlines()
+    all_text = ""
     table_seen = False
     for i, line in enumerate(lines[1:], 1):
         text = json.loads(line)[2]
+        all_text += text
         if any(k in text for k in ("Time", "name", "column")):
             table_seen = True
         # Clear screen after table is a bug — unless inside alt-screen-enter (tb_init) or fzf start
         if table_seen and "\x1b[2J" in text and "\x1b[?1049h" not in text and "\x1b[?2004h" not in text:
             print(f"  WARN: {cast_path} frame {i} clears screen after table")
             return False
+    # Check expected content appears in cast
+    if expects:
+        for exp in expects:
+            if exp not in all_text:
+                print(f"  WARN: {cast_path} missing expected content: {exp!r}")
+                return False
     return True
 
 def gen(name):
-    cli_args, steps = FEATURES[name]
+    cli_args, steps, expects = FEATURES[name]
     cast = f"doc/{name}.cast"
     gif = f"doc/{name}.gif"
     if not record(cli_args, steps, cast):
         if os.path.exists(cast):
             os.remove(cast)
         return False
-    if not verify_cast(cast):
+    if not verify_cast(cast, expects):
         print(f"  FAIL: {cast} failed verification")
         return False
     subprocess.run([AGG, cast, gif, "--font-size", str(FONT)], check=True)
