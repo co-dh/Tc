@@ -114,9 +114,14 @@ private def viewUp (a : AppState) (ci : CmdConfig.CmdInfo) : IO Action := do
   | some (v', e) => runViewEffect a ci v' e
   | none => pure .unhandled
 
--- | (handler, value, isAbsolute) — precision adjustment lookup
+-- | Must match DEFAULT_PREC / MAX_PREC in c/render.c
+private def defaultPrec : Int := 3
+private def maxPrec : Int := 17
+
+-- | (handler, precAdj value, isAbsolute)
 private def precTable : Array (String × Int × Bool) := #[
-  ("precDec", -1, false), ("precInc", 1, false), ("prec0", -4, true), ("precMax", 13, true)]
+  ("precDec", -1, false), ("precInc", 1, false),
+  ("prec0", -defaultPrec, true), ("precMax", maxPrec - defaultPrec, true)]
 
 -- | Shared pure dispatch: scroll, prec, info, heat, nav-only View.update.
 -- Both pureDispatch and dispatch delegate here to avoid duplicating logic.

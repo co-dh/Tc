@@ -75,8 +75,9 @@ static int fmt_int_comma(char* buf, size_t buflen, int64_t v) {
     return len;
 }
 
-// | Default float precision
+// | Float display: DEFAULT_PREC decimals at precAdj=0, up to MAX_PREC (double has 17 sig digits)
 #define DEFAULT_PREC 3
+#define MAX_PREC 17
 
 // | Format value from Column at row index (precAdj adjusts float decimals)
 static int format_col_cell(lean_obj_arg col, size_t row, char* buf, size_t buflen, int precAdj) {
@@ -94,7 +95,7 @@ static int format_col_cell(lean_obj_arg col, size_t row, char* buf, size_t bufle
         if (f != f) { buf[0] = '\0'; return 0; }  // NaN = null
         int prec = DEFAULT_PREC + precAdj;
         if (prec < 0) prec = 0;
-        if (prec > 15) prec = 15;
+        if (prec > MAX_PREC) prec = MAX_PREC;
         return snprintf(buf, buflen, "%.*f", prec, f);
     }
     case COL_STRS: {
