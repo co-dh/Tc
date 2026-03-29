@@ -1010,10 +1010,10 @@ def test_plot_time_downsample : IO Unit := do
   let lines := content.splitOn "\n" |>.filter (!·.isEmpty)
   -- data spans 09:00-12:00 (3h) → ~36 5-min buckets, but sparse data → fewer
   assert (lines.length >= 4) s!"expected ≥4 5-min buckets, got {lines.length}"
-  -- time values must be full timestamp format (R-parseable)
+  -- time values must be HH:MM:SS format (R-parseable via paste('1970-01-01', ...))
   for line in lines do
     let tv := (line.splitOn "\t").getD 0 ""
-    assert (tv.length >= 10) s!"time '{tv}' should be full timestamp format"
+    assert (tv.length >= 8) s!"time '{tv}' should be HH:MM:SS format"
 
 -- | Downsampling step controls row count: larger step = fewer rows.
 --   Bug: plotExport always used baseStep for ds_nth, ignoring the interval step.
