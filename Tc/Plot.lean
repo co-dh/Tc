@@ -27,18 +27,27 @@ structure Interval where
   truncLen : Nat     -- SUBSTRING length for time; step for non-time
   deriving Inhabited
 
--- | All downsampling uses ds_nth (every-Nth-row). Time intervals apply multipliers
--- on baseStep so density scales predictably: 1s=~2000, 1m=~33, 1h=~1 bars.
-private def stepIntervals (baseStep : Nat) (labels : Array (String × Nat)) : Array Interval :=
+private def timeIntervals : Array Interval := #[
+  ⟨"1s", 8⟩, ⟨"1m", 5⟩, ⟨"1h", 2⟩
+]
+
+private def tsIntervals : Array Interval := #[
+  ⟨"1s", 19⟩, ⟨"1m", 16⟩, ⟨"1h", 13⟩, ⟨"1d", 10⟩
+]
+
+private def dateIntervals : Array Interval := #[
+  ⟨"1d", 10⟩, ⟨"1M", 7⟩, ⟨"1Y", 4⟩
+]
+
+private def stepIntervals (baseStep : Nat) : Array Interval :=
   let s0 := if baseStep == 0 then 1 else baseStep
-  labels.map fun (l, m) => ⟨l, s0 * m⟩
+  #[s0, s0 * 2, s0 * 4, s0 * 8, s0 * 16].map fun s => ⟨s!"{s}x", s⟩
 
 private def getIntervals (xType : String) (baseStep : Nat) : Array Interval :=
-  if xType == "time" || xType == "timestamp" then
-    stepIntervals baseStep #[("1s", 1), ("1m", 60), ("1h", 3600)]
-  else if xType == "date" then
-    stepIntervals baseStep #[("1d", 1), ("1M", 30), ("1Y", 365)]
-  else stepIntervals baseStep #[("1x", 1), ("2x", 2), ("4x", 4), ("8x", 8), ("16x", 16)]
+  if xType == "time" then timeIntervals
+  else if xType == "timestamp" then tsIntervals
+  else if xType == "date" then dateIntervals
+  else stepIntervals baseStep
 
 -- | Try running cmd with args, return true if it ran successfully
 private def tryDisplay (cmd : String) (args : Array String) : IO Bool := do
@@ -142,13 +151,11 @@ def rScript (dataPath pngPath : String) (kind : PlotKind)
     | .density => "geom_density(fill = 'steelblue', alpha = 0.5)"
     | .step => "geom_step(linewidth = 0.5)"
     | .violin => "geom_violin() + geom_boxplot(width = 0.1, fill = 'white')"
-  -- For TIME type, show only HH:MM:SS on x-axis (hide the dummy 1970-01-01 date)
-  let timeScale := if xType == "time" then " + scale_x_datetime(date_labels = '%H:%M:%S')" else ""
   let facet := if hasFacet then s!" + facet_wrap(vars({facetR}), scales = 'free_y')" else ""
   "library(ggplot2)\n" ++ readData ++ convY ++ convX ++
     s!"p <- ggplot(d, {aes}{colorAes}{fillAes}) + {geom}{facet} + " ++
     let fillScale := if addsFill kind && !hasCat then "scale_fill_viridis_c()" else "scale_fill_viridis_d()"
-    s!"labs(x = '{xName}', y = '{yName}') + theme_classic() + scale_color_viridis_d() + {fillScale}{timeScale}\n" ++
+    s!"labs(x = '{xName}', y = '{yName}') + theme_classic() + scale_color_viridis_d() + {fillScale}\n" ++
     s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
 
 -- | Run Rscript to render plot; returns error message on failure
@@ -165,8 +172,8 @@ private def renderR (script : String) : IO (Option String) := do
 
 -- | Export plot data with headers for R (prepends column names to plotExport output)
 private def exportWithHeaders (t : T) (xName yName : String) (catName? : Option String)
-    (xIsTime : Bool) (step : Nat) : IO (Option (Array String)) := do
-  let cats ← TblOps.plotExport t xName yName catName? xIsTime step
+    (xIsTime : Bool) (step truncLen : Nat) : IO (Option (Array String)) := do
+  let cats ← TblOps.plotExport t xName yName catName? xIsTime step truncLen
   let some cats := cats | return none
   let datPath ← Tc.tmpPath "plot.dat"
   let content ← IO.FS.readFile datPath
@@ -183,7 +190,7 @@ private def renderFrame (pngPath : String) (kind : PlotKind)
   clearScreen
   if err?.isNone then showPng pngPath
   else IO.println (err?.getD "plot error")
-  IO.println s!"\n\x1b[1m─── {kind}: x={xName}  y={yName} ───\x1b[0m"
+  IO.println s!"\x1b[1m─── {kind}: x={xName}  y={yName} ───\x1b[0m"
   if intervals.size > 1 then
     let ivBar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
       if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
@@ -240,7 +247,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   if n.grp.contains yName then return ← err s "move cursor to a non-group column"
   let yType := TblOps.colType n.tbl yIdx
   if !isNumericType yType then return ← err s s!"y-axis '{yName}' must be numeric (got {yType})"
-  let nr := TblOps.totalRows n.tbl  -- use actual row count, not display limit
+  let nr := TblOps.totalRows n.tbl
   let xType0 := TblOps.colType n.tbl xIdx
   let xType ← do
     if xType0 != "str" then pure xType0
@@ -257,7 +264,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
       else pure xType0
   Log.write "plot" s!"xType={xType} (raw={xType0}) xIdx={xIdx} xName={xName}"
   let xIsTime := isTimeType xType
-  let needsDownsample := nr > maxPoints
+  let needsDownsample := nr > maxPoints || xIsTime
   let baseStep := if nr > maxPoints then nr / maxPoints else 1
   let hasCat := n.grp.size > 1 && !hasFacet
   let intervals := if needsDownsample then getIntervals xType baseStep else #[⟨"all", 1⟩]
@@ -275,9 +282,9 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   while continue_ do
     if needRender then
       let iv := intervals.getD idx default
-      Log.write "plot" s!"kind={kind} interval={iv.label} step={iv.truncLen} idx={idx}"
+      Log.write "plot" s!"kind={kind} interval={iv.label} truncLen={iv.truncLen} idx={idx}"
       let exportResult ← try
-          if let some _cats := ← exportWithHeaders n.tbl xName yName exportCatName? xIsTime iv.truncLen then
+          if let some _cats := ← exportWithHeaders n.tbl xName yName exportCatName? xIsTime baseStep iv.truncLen then
             pure (none : Option String)
           else pure (some "export returned no data")
         catch e => pure (some e.toString)

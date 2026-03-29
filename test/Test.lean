@@ -973,14 +973,14 @@ def test_plot_export_string_col : IO Unit := do
   -- mixed.csv: x(int), y(float), cat(str) — passing string col "cat" as yName triggers the bug
   let some tbl ← Tc.AdbcTable.fromFile "data/plot/mixed.csv" | throw (IO.userError "failed to open mixed.csv")
   -- xName=x, yName=cat (string!), no category, xIsTime=false, step=1
-  let result ← Tc.AdbcTable.plotExport tbl "x" "cat" none false 1
+  let result ← Tc.AdbcTable.plotExport tbl "x" "cat" none false 1 1
   assert result.isSome "plotExport with string y column should not crash with type cast error"
 
 -- | plotExport generates a valid TSV data file with correct columns
 def test_plot_export_data : IO Unit := do
   log "plot_export_data"
   let some tbl ← Tc.AdbcTable.fromFile "data/plot/mixed.csv" | throw (IO.userError "failed to open mixed.csv")
-  let result ← Tc.AdbcTable.plotExport tbl "x" "y" none false 1
+  let result ← Tc.AdbcTable.plotExport tbl "x" "y" none false 1 1
   assert result.isSome "plotExport should succeed for numeric y"
   let datPath ← Tc.tmpPath "plot.dat"
   let content ← IO.FS.readFile datPath
@@ -993,7 +993,7 @@ def test_plot_export_data : IO Unit := do
 def test_plot_export_cat : IO Unit := do
   log "plot_export_cat"
   let some tbl ← Tc.AdbcTable.fromFile "data/plot/mixed.csv" | throw (IO.userError "failed to open mixed.csv")
-  let result ← Tc.AdbcTable.plotExport tbl "x" "y" (some "cat") false 1
+  let result ← Tc.AdbcTable.plotExport tbl "x" "y" (some "cat") false 1 1
   let some cats := result | throw (IO.userError "plotExport with cat should succeed")
   assert (cats.size == 2) s!"expected 2 categories (A,B), got {cats.size}"
 
@@ -1004,12 +1004,13 @@ def test_plot_time_downsample : IO Unit := do
   let some tbl ← Tc.AdbcTable.fromFile "data/plot/time_wide.csv"
     | throw (IO.userError "failed to open time_wide.csv")
   -- step=3: keep every 3rd row → 5 of 15 rows
-  let result ← Tc.AdbcTable.plotExport tbl "t" "val" none true 3
+  -- hour-level truncLen=2 → groups by first 2 chars, padded to HH:MM:SS
+  let result ← Tc.AdbcTable.plotExport tbl "t" "val" none true 1 2
   assert result.isSome "time downsample should succeed"
   let content ← IO.FS.readFile (← Tc.tmpPath "plot.dat")
   let lines := content.splitOn "\n" |>.filter (!·.isEmpty)
-  assert (lines.length == 5) s!"expected 5 rows (15/3), got {lines.length}"
-  -- time values must be original full format, not truncated
+  assert (lines.length == 4) s!"expected 4 hour buckets, got {lines.length}"
+  -- time values must be padded to full HH:MM:SS, not truncated "HH"
   for line in lines do
     let tv := (line.splitOn "\t").getD 0 ""
     assert (tv.length >= 8) s!"time '{tv}' should be full HH:MM:SS"
@@ -1021,10 +1022,10 @@ def test_plot_downsample_step : IO Unit := do
   let some tbl ← Tc.AdbcTable.fromFile "data/plot/line.csv"
     | throw (IO.userError "failed to open line.csv")
   -- step=2 should give ~half the rows of step=1
-  let _ ← Tc.AdbcTable.plotExport tbl "x" "y" none false 1
+  let _ ← Tc.AdbcTable.plotExport tbl "x" "y" none false 1 1
   let c1 ← IO.FS.readFile (← Tc.tmpPath "plot.dat")
   let n1 := (c1.splitOn "\n" |>.filter (!·.isEmpty)).length
-  let _ ← Tc.AdbcTable.plotExport tbl "x" "y" none false 2
+  let _ ← Tc.AdbcTable.plotExport tbl "x" "y" none false 1 2
   let c2 ← IO.FS.readFile (← Tc.tmpPath "plot.dat")
   let n2 := (c2.splitOn "\n" |>.filter (!·.isEmpty)).length
   -- step=2 (every 2nd row) should produce fewer rows than step=1
@@ -1059,7 +1060,7 @@ def runPlotR (kind : PlotKind) (datPath pngPath : String)
 -- | Prepare x/y data from plotExport (prepend header)
 def prepXY (file xName yName : String) (catName? : Option String := none) : IO String := do
   let some tbl ← Tc.AdbcTable.fromFile file | throw (IO.userError s!"failed to open {file}")
-  let _ ← Tc.AdbcTable.plotExport tbl xName yName catName? false 1
+  let _ ← Tc.AdbcTable.plotExport tbl xName yName catName? false 1 1
   let datPath ← Tc.tmpPath "plot.dat"
   let content ← IO.FS.readFile datPath
   let header := match catName? with | some cn => s!"{xName}\t{yName}\t{cn}" | none => s!"{xName}\t{yName}"
@@ -1241,7 +1242,7 @@ def ciTests : Array (String × IO Unit) := #[
   ("plot_export_string_col", test_plot_export_string_col),
   ("plot_export_data", test_plot_export_data),
   ("plot_export_cat", test_plot_export_cat),
-  ("plot_time_downsample", test_plot_time_downsample),
+  ("plot_time_downsample_pad", test_plot_time_downsample),
   ("plot_downsample_step", test_plot_downsample_step),
   -- Replay ops tests
   ("replay_sort", test_replay_sort),

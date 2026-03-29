@@ -213,19 +213,29 @@ def fetchMore (t : AdbcTable) : IO (Option AdbcTable) := do
   let some qr ← Prql.query s!"{t.query.render} | take {limit}" | return none
   some <$> ofQueryResult qr t.query t.totalRows
 
--- | Export plot data to tmpdir/plot.dat via DuckDB COPY (downsample via every-Nth-row)
--- step: keep every Nth row (1 = all rows). Same path for time and non-time data.
-def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String) (xIsTime : Bool) (step : Nat)
+-- | Export plot data to tmpdir/plot.dat via DuckDB COPY (downsample in SQL)
+-- truncLen: SUBSTRING length for time truncation; step: every-Nth-row for non-time
+def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String) (xIsTime : Bool) (step : Nat) (truncLen : Nat)
     : IO (Option (Array String)) := do
   let q := Prql.quote
-  let selCols := match catName? with
-    | some cn => s!"{q xName}, {q yName}, {q cn}"
-    | none    => s!"{q xName}, {q yName}"
+  -- time-like: use PRQL ds_trunc; non-time: hand-write SQL (PRQL miscompiles ROW_NUMBER + select)
   let sql' ← do
-    let dsFn := match catName? with
-      | some cn => s!"ds_nth_cat {q yName} {q cn} {step}"
-      | none    => s!"ds_nth {q yName} {step}"
-    let prql := s!"{t.query.render} | {dsFn} | select \{{selCols}}"
+    let prql := if xIsTime then
+        -- Pad suffix so R can parse truncated time strings (e.g. "09" → "09:00:00")
+        let padSuffix := match truncLen with
+          | 2 | 13 => ":00:00" | 5 | 16 => ":00" | 7 => "-01" | 4 => "-01-01" | _ => ""
+        let pad := s!"\"{padSuffix}\""
+        match catName? with
+        | some cn => s!"{t.query.render} | ds_trunc_cat {q xName} {q yName} {q cn} {truncLen} {pad} | take 2000"
+        | none    => s!"{t.query.render} | ds_trunc {q xName} {q yName} {truncLen} {pad} | take 2000"
+      else
+        let selCols := match catName? with
+          | some cn => s!"{q xName}, {q yName}, {q cn}"
+          | none    => s!"{q xName}, {q yName}"
+        let dsFn := match catName? with
+          | some cn => s!"ds_nth_cat {q yName} {q cn} {truncLen}"
+          | none    => s!"ds_nth {q yName} {truncLen}"
+        s!"{t.query.render} | {dsFn} | select \{{selCols}}"
     Log.write "prql" prql
     let some sql ← Prql.compile prql | return none
     pure (stripSemi sql)
