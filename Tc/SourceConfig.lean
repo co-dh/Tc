@@ -239,7 +239,60 @@ private def Config.attachSql (cfg : Config) (connStr : String) : IO String := do
   let sql ← getExtdbFilteredSql
   pure s!"{ddl};\n{sql}"
 
--- | Run listing: CLI cmd → JSON → listSql, or direct SQL mode
+-- | Direct SQL mode: auto-generate attach SQL or expand listSql, execute multi-statement
+private def Config.runListSql (cfg : Config) (path tbl : String) : IO (Option AdbcTable) := do
+  let sql ← if cfg.attach && cfg.listSql.isEmpty then do
+    let connStr := if cfg.pfx.isEmpty then path else (path.drop cfg.pfx.length).toString
+    cfg.attachSql connStr
+  else do
+    let (vars, _) ← cfg.cmdVars path
+    pure (expand cfg.listSql vars)
+  let stmts := sql.splitOn ";\n" |>.map (·.trimAscii.toString) |>.filter (·.length > 0)
+  for stmt in stmts.dropLast do
+    let _ ← Adbc.query stmt
+  let selectSql := stmts.getLast?.getD sql
+  let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {selectSql}"
+  fromTbl tbl
+
+-- | CLI mode: run command, save JSON, transform via listSql, auto-unnest, add parent row
+private def Config.runListCmd (cfg : Config) (path tbl : String) : IO (Option AdbcTable) := do
+  let p := if path.endsWith "/" then path else s!"{path}/"
+  let (vars, _) ← cfg.cmdVars p
+  let cmd := expand cfg.listCmd vars
+  Log.write "src" s!"list: {cmd}"
+  let out ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
+  if out.exitCode != 0 then
+    let errMsg := out.stderr.trimAscii.toString
+    Log.write "src" s!"list failed (exit {out.exitCode}): {errMsg}"
+    errorPopup s!"List failed: {errMsg}"
+    return none
+  let raw := out.stdout
+  if raw.trimAscii.toString.isEmpty then return none
+  let tmpFile ← Tc.tmpPath "src-list.json"
+  -- FTP mode: parse ls -l in Lean; otherwise use SQL transform
+  let content := if cfg.listSql == "FTP" then Ftp.parseLs raw else raw
+  IO.FS.writeFile tmpFile content
+  let listSql := if cfg.listSql == "FTP"
+    then s!"SELECT * FROM read_csv('{tmpFile}', header=true, delim='\t')"
+    else expand cfg.listSql #[("src", tmpFile)]
+  let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {listSql}"
+  -- Auto-unnest: if result is 1 row with a struct[] column, expand it
+  try
+    let some qr ← Prql.query s!"from dcols | struct_col '{tbl}'" | throw (IO.userError "struct_col PRQL failed")
+    let some cnt ← Prql.query s!"from {tbl} | cnt" | throw (IO.userError "count PRQL failed")
+    let col ← Adbc.cellStr qr 0 0
+    let n ← Adbc.cellInt cnt 0 0
+    if n == 1 && !col.isEmpty then
+      let _ ← Adbc.query s!"CREATE OR REPLACE TEMP TABLE {tbl} AS SELECT unnest(\"{col}\", recursive:=true) FROM {tbl}"
+  catch _ => pure ()
+  -- Add ".." parent row if table has standard folder columns (name,size,date,type)
+  if cfg.parent path |>.isSome then
+    try let _ ← Adbc.query s!"INSERT INTO {tbl} SELECT '..' as name, 0 as size, '' as date, 'dir' as type"
+    catch _ => pure ()
+  try IO.FS.removeFile tmpFile catch _ => pure ()
+  fromTbl tbl
+
+-- | Run listing: cache check → setup → dispatch to sql/cmd mode → cache store.
 -- Results are cached in-memory when listing takes > 3 seconds (e.g. slow S3 buckets).
 def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
   if let some cached ← cacheLookup path then
@@ -250,59 +303,8 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
   let t0 ← IO.monoMsNow
   runSetup cfg
   let tbl ← freshTbl
-  let result ← if cfg.listCmd.isEmpty then
-    -- Auto-generate attach SQL if attach=true and no custom listSql
-    let sql ← if cfg.attach && cfg.listSql.isEmpty then do
-      let connStr := if cfg.pfx.isEmpty then path
-        else (path.drop cfg.pfx.length).toString
-      cfg.attachSql connStr
-    else do
-      let (vars, _) ← cfg.cmdVars path
-      pure (expand cfg.listSql vars)
-    -- Direct SQL mode: support multi-statement (split on ";\n")
-    let stmts := sql.splitOn ";\n" |>.map (·.trimAscii.toString) |>.filter (·.length > 0)
-    for stmt in stmts.dropLast do
-      let _ ← Adbc.query stmt
-    let selectSql := stmts.getLast?.getD sql
-    let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {selectSql}"
-    fromTbl tbl
-  else
-    -- CLI mode: run command, save JSON, transform via listSql
-    let p := if path.endsWith "/" then path else s!"{path}/"
-    let (vars, _) ← cfg.cmdVars p
-    let cmd := expand cfg.listCmd vars
-    Log.write "src" s!"list: {cmd}"
-    let out ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
-    if out.exitCode != 0 then
-      let errMsg := out.stderr.trimAscii.toString
-      Log.write "src" s!"list failed (exit {out.exitCode}): {errMsg}"
-      errorPopup s!"List failed: {errMsg}"
-      return none
-    let raw := out.stdout
-    if raw.trimAscii.toString.isEmpty then return none
-    let tmpFile ← Tc.tmpPath "src-list.json"
-    -- FTP mode: parse ls -l in Lean; otherwise use SQL transform
-    let content := if cfg.listSql == "FTP" then Ftp.parseLs raw else raw
-    IO.FS.writeFile tmpFile content
-    let listSql := if cfg.listSql == "FTP"
-      then s!"SELECT * FROM read_csv('{tmpFile}', header=true, delim='\t')"
-      else expand cfg.listSql #[("src", tmpFile)]
-    let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {listSql}"
-    -- Auto-unnest: if result is 1 row with a struct[] column, expand it
-    try
-      let some qr ← Prql.query s!"from dcols | struct_col '{tbl}'" | throw (IO.userError "struct_col PRQL failed")
-      let some cnt ← Prql.query s!"from {tbl} | cnt" | throw (IO.userError "count PRQL failed")
-      let col ← Adbc.cellStr qr 0 0
-      let n ← Adbc.cellInt cnt 0 0
-      if n == 1 && !col.isEmpty then
-        let _ ← Adbc.query s!"CREATE OR REPLACE TEMP TABLE {tbl} AS SELECT unnest(\"{col}\", recursive:=true) FROM {tbl}"
-    catch _ => pure ()
-    -- Add ".." parent row if table has standard folder columns (name,size,date,type)
-    if cfg.parent path |>.isSome then
-      try let _ ← Adbc.query s!"INSERT INTO {tbl} SELECT '..' as name, 0 as size, '' as date, 'dir' as type"
-      catch _ => pure ()
-    try IO.FS.removeFile tmpFile catch _ => pure ()
-    fromTbl tbl
+  let result ← if cfg.listCmd.isEmpty then cfg.runListSql path tbl
+    else cfg.runListCmd path tbl
   -- Cache slow listings (> 3s) so navigating back is instant
   if let some adbc := result then
     let elapsed := (← IO.monoMsNow) - t0
