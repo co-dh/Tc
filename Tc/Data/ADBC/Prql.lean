@@ -29,11 +29,15 @@ def aggName : Agg → String
   | .min => "std.min" | .max => "std.max" | .stddev => "std.stddev"
   | .dist => "std.count_distinct"
 
+-- | DuckDB-quote column name for use inside PRQL s-string (\" escapes)
+def dqQuote (s : String) : String := "\\\"" ++ s ++ "\\\""
+
 -- | Render single operation to PRQL string
 def Op.render : Op → String
   | .filter e => s!"filter {e}"
   | .sort cols => s!"sort \{{", ".intercalate (cols.map fun (c, asc) => renderSort c asc).toList}}"
   | .sel cols => s!"select \{{", ".intercalate (cols.map quote).toList}}"
+  | .exclude cols => "select s\"* EXCLUDE (" ++ ", ".intercalate (cols.map dqQuote).toList ++ ")\""
   | .derive bs => s!"derive \{{", ".intercalate (bs.map fun (n, e) => s!"{quote n} = {e}").toList}}"
   | .group keys aggs =>
     let as := aggs.map fun (fn, name, col) => s!"{name} = {aggName fn} {quote col}"

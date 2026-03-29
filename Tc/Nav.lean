@@ -148,10 +148,10 @@ def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg : Nat) : Option (NavS
   | .row .rbc   => r (nRows - 1 - nav.row.cur.val) | .row .lbc => r (-nav.row.cur.val)
   | .col .lbc   => c (-nav.col.cur.val) | .col .rbc => c (nCols - 1 - nav.col.cur.val)
   | .row .ent => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
-  | .col .ent =>
+  | .col .bang =>  -- c!: toggle group
     let newGrp := nav.grp.toggle nav.curColName
     some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames }
-  | .col .filter =>  -- c\: hide column
+  | .col .ent =>  -- c~: hide/unhide column
     some { nav with hidden := nav.hidden.toggle nav.curColName }
   -- c-/c+: swap key column with neighbor in grp array, cursor follows
   | .col .del | .col .dup =>

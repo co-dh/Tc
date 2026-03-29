@@ -77,6 +77,12 @@ def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
     let selIdxs := n.col.sels.filterMap names.idxOf?
     let grpIdxs := n.grp.filterMap names.idxOf?
     some (v, .query (.sort curCol selIdxs grpIdxs asc))
+  -- effect: delete columns (c\) — exclude hidden + current from query
+  | .col .filter =>
+    let name := names.getD curCol ""
+    let cols := if n.hidden.isEmpty then #[name]
+      else if n.hidden.contains name then n.hidden else n.hidden.push name
+    some (v, .query (.exclude cols))
   -- pure: navigation (detect at-bottom for fetchMore on downward scroll)
   | _ => (NavState.exec cmd n rowPg).map fun nav' =>
     let needsMore := nav'.row.cur.val + 1 >= v.nRows

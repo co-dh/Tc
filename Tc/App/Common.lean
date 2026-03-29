@@ -44,7 +44,7 @@ namespace AppState
 
 -- | Commands that reset ViewState to default (clear scroll/cursor) because view content changes substantially
 def resetsVS (cmd : Cmd) : Bool :=
-  cmd matches .stk .dec | .col .lbr | .col .rbr | .metaV _ | .freq _ | .fld _
+  cmd matches .stk .dec | .col .lbr | .col .rbr | .col .filter | .metaV _ | .freq _ | .fld _
     | .col .search | .row .search | .row .filter
 
 -- | Update stk, reset vs if needed

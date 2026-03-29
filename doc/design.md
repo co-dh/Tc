@@ -5,7 +5,7 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  TblOps α                 ModifyTable α [TblOps α]      │
-│    nRows, colNames          delCols, sortBy             │
+│    nRows, colNames          excludeCols, sortBy         │
 │    queryMeta, filter                                    │
 │    distinct, findRow, render                            │
 │    getCols, colType, plotExport, fetchMore              │
@@ -87,7 +87,7 @@ The architecture separates pure state logic from IO effects:
 |             | render, getCols, colType             | Render + column access     |
 |             | plotExport, fetchMore                | Plot export + pagination   |
 |             | fromFile, fromUrl                    | Load from path/URL         |
-| ModifyTable | delCols, sortBy                      | Table mutations            |
+| ModifyTable | excludeCols, sortBy                   | Table mutations            |
 | Update      | update                               | Pure: Cmd → (State, Effect)|
 
 ## Backend
@@ -130,7 +130,8 @@ Key = single-key shortcut. Name = implemented via space menu / `-c` code only.
 ```
 Verb │ r:row      │ c:col      │ s:stk    │ i:info   │ M:metaV  │ F:freq   │ D:fld    │ desc
 ─────┼────────────┼────────────┼──────────┼──────────┼──────────┼──────────┼──────────┼──────────────────────────────
-  ~  │ T togRow   │ ! group    │ swap     │ togInfo  │ ⏎* setKey│ ⏎* filt  │ ⏎* enter │ M~:set key cols from selected  F~:filter parent table by current row
+  !  │            │ ! group    │          │          │          │          │          │
+  ~  │ T togRow   │ hide       │ swap     │ togInfo  │ ⏎* setKey│ ⏎* filt  │ ⏎* enter │ M~:set key cols from selected  F~:filter parent table by current row
   <  │ k up       │ h left     │ q pop    │ precDec  │          │          │ depth--  │
   >  │ j down     │ l right    │ dup      │ precInc  │          │          │ depth++  │ s>:clone current view
   [  │ ^U pgUp    │ [ sortAsc  │ joinLeft │ { scrUp  │          │          │          │ i[:scroll cell preview up
@@ -140,7 +141,7 @@ Verb │ r:row      │ c:col      │ s:stk    │ i:info   │ M:metaV  │ F:
   -  │ N prevMat  │ S-← shift  │ setDiff  │          │          │          │ trash    │
   +  │ n nextMat  │ S-→ shift  │ union    │          │ open     │ open     │          │ M+:column metadata  F+:value frequency counts
   /  │ / search   │ search     │ SPC menu │          │          │          │          │ c/:jump to col by name
-  \  │ \ filter   │ hide       │          │          │          │          │          │ r\:PRQL filter expr
+  \  │ \ filter   │ delete     │          │          │          │          │          │ r\:PRQL filter expr  c\:delete column(s) from query
   :  │            │ : split    │          │          │          │          │          │
   =  │            │ = derive   │          │          │          │          │          │ c=:name = expr
   0  │            │ area       │          │ heat off │ selNull  │          │          │ M0:select null cols
@@ -167,6 +168,7 @@ inductive QueryEffect where
   | freqFilter (cols : Array String) (row : Nat)
   | filter (expr : String)
   | sort (colIdx : Nat) (sels : Array Nat) (grp : Array Nat) (asc : Bool)
+  | exclude (cols : Array String)
 inductive FolderEffect where | push | enter | del | parent | depth (delta : Int)
 inductive SearchEffect where | next | prev
 inductive PlotKind where | line | bar | scatter | hist | box | area | density | step | violin
@@ -232,7 +234,7 @@ Interactive plot with interval control. After display, `+`/`-` cycles intervals:
 
 | Struct       | Purpose                                      |
 |--------------|----------------------------------------------|
-| Verb         | Action type: 14 named + val 0-9              |
+| Verb         | Action type: 15 named + val 0-9              |
 | Cmd          | Object + Verb command pattern (7 objects)    |
 | Effect       | IO operation descriptor (30+ variants)       |
 | NavState     | Table + row/col cursors + selections + group |

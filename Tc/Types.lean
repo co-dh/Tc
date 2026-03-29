@@ -235,6 +235,7 @@ inductive Op where
   | filter (expr : String)
   | sort (cols : Array (String × Bool))
   | sel (cols : Array String)
+  | exclude (cols : Array String)
   | derive (bindings : Array (String × String))
   | group (keys : Array String) (aggs : Array (Agg × String × String))
   | take (n : Nat)

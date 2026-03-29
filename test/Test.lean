@@ -267,6 +267,27 @@ def test_sort_selected_not_key : IO Unit := do
   -- within filtered group, original order preserved (val=3 first for A, val=6 for B)
   assert (contains first " 3 " || contains first " 6 ") "sort on key col is no-op"
 
+-- === Delete column tests ===
+
+-- c\ deletes current column from query (grp_sort.csv has grp,val,name → delete grp)
+def test_delete_col : IO Unit := do
+  log "delete_col"
+  let out ← run "c<backslash>" "data/grp_sort.csv"
+  let hdr := header out
+  assert (!contains hdr "grp") "c\\ removes grp column from header"
+  assert (contains hdr "val") "c\\ keeps val column"
+  assert (contains hdr "nam") "c\\ keeps name column"
+
+-- c~ hides, then c\ deletes all hidden + current
+def test_delete_hidden_cols : IO Unit := do
+  log "delete_hidden_cols"
+  -- c~ hides grp (col 0), l moves to val (col 1), c\ deletes hidden(grp) + current(val)
+  let out ← run "c~lc<backslash>" "data/grp_sort.csv"
+  let hdr := header out
+  assert (!contains hdr "grp") "hidden col grp removed"
+  assert (!contains hdr "val") "current col val removed"
+  assert (contains hdr "nam") "name column remains"
+
 -- === Filter tests (parquet — checked-in) ===
 
 def test_filter_parquet_full_db : IO Unit := do
@@ -627,8 +648,7 @@ def test_filter_arg : IO Unit := do
 -- | Export via argument command: -c "ecsv<ret>" exports without fzf
 def test_export_arg : IO Unit := do
   log "export_arg"
-  let home := (← IO.getEnv "HOME").getD "."
-  let path := s!"{home}/tv_export_sort_test.csv"
+  let path := s!"{← Log.dir}/tv_export_sort_test.csv"
   try IO.FS.removeFile path catch _ => pure ()
   let _ ← run "ecsv<ret>" "data/sort_test.parquet"
   let csv ← IO.FS.readFile path
@@ -648,8 +668,7 @@ def test_col_jump_arg : IO Unit := do
 -- | Export: press 'e', fzf auto-selects csv, verify file created with correct content
 def test_export_csv : IO Unit := do
   log "export_csv"
-  let home := (← IO.getEnv "HOME").getD "."
-  let path := s!"{home}/tv_export_sort_test.csv"
+  let path := s!"{← Log.dir}/tv_export_sort_test.csv"
   try IO.FS.removeFile path catch _ => pure ()
   let out ← run "e" "data/sort_test.parquet"
   assert (contains out "name") "export_csv: table should render"
@@ -1137,6 +1156,8 @@ def ciTests : Array (String × IO Unit) := #[
   -- Parquet tests (checked-in data only)
   ("sort_excludes_key", test_sort_excludes_key),
   ("sort_selected_not_key", test_sort_selected_not_key),
+  ("delete_col", test_delete_col),
+  ("delete_hidden_cols", test_delete_hidden_cols),
   ("filter_parquet_full_db", test_filter_parquet_full_db),
   -- Rendering tests
   ("last_col_no_stretch", test_last_col_no_stretch),

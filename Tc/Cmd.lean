@@ -1,6 +1,6 @@
 /-
   Command system: Verb + Obj pattern for nav/toggle, ArgCmd for argument commands.
-  - Verb: ~ < > [ ] { } - + / \ : = 0-9
+  - Verb: ! ~ < > [ ] { } - + / \ : = 0-9
   - Cmd: Obj + Verb (row, col, stk, info, metaV, freq, fld) or .arg ArgCmd
   - ArgCmd: prefix char + payload, bypasses fzf (socket/demo/test)
 -/
@@ -21,6 +21,7 @@ inductive Verb where
   | lbc | rbc         -- { } home/end/min/max
   | split             -- : split column
   | derive            -- = derive column
+  | bang              -- ! group/key
   | val (n : UInt8)   -- 0-9 direct value selection
   deriving Repr, BEq, DecidableEq
 
@@ -29,14 +30,14 @@ namespace Verb
 def toChar : Verb → Char
   | .inc => '>' | .dec => '<' | .ent => '~' | .del => '-' | .dup => '+' | .search => '/'
   | .filter => '\\' | .lbr => '[' | .rbr => ']' | .lbc => '{' | .rbc => '}'
-  | .split => ':' | .derive => '='
+  | .split => ':' | .derive => '=' | .bang => '!'
   | .val n => Char.ofNat (n.toNat + '0'.toNat)
 
 def ofChar? : Char → Option Verb
   | '>' => some .inc | '<' => some .dec | '~' => some .ent
   | '-' => some .del | '+' => some .dup | '/' => some .search | '\\' => some .filter
   | '[' => some .lbr | ']' => some .rbr | '{' => some .lbc | '}' => some .rbc
-  | ':' => some .split | '=' => some .derive
+  | ':' => some .split | '=' => some .derive | '!' => some .bang
   | c => if c.isDigit then some (.val (c.toNat - '0'.toNat).toUInt8) else none
 
 instance : ToString Verb where toString v := v.toChar.toString
@@ -83,7 +84,7 @@ end ArgCmd
 -- | Command: Obj + Verb pattern (7 objects)
 inductive Cmd where
   | row (v : Verb)     -- row: ~togRow </>step [/]page {/}top/bot -prev +next /search \filter
-  | col (v : Verb)     -- col: ~group </>step [/]sort {/}first/last -/+shift /search \hide :split =derive 0-8plot
+  | col (v : Verb)     -- col: !group ~hide </>step [/]sort {/}first/last -/+shift /search \delete :split =derive 0-8plot
   | stk (v : Verb)     -- stk: ~swap <pop >dup [/]joinL/R {quit }inner -diff +union /menu 1xpose 2diff
   | info (v : Verb)    -- info: ~toggle </>prec [/]scroll {0dp }17dp 0-3heat
   | metaV (v : Verb)   -- metaV: ~setKey +open 0selNull 1selSingle
@@ -133,6 +134,7 @@ inductive QueryEffect where
   | freqFilter (cols : Array String) (row : Nat)
   | filter (expr : String)
   | sort (colIdx : Nat) (sels : Array Nat) (grp : Array Nat) (asc : Bool)
+  | exclude (cols : Array String)
   deriving Repr, BEq
 inductive FolderEffect where | push | enter | del | parent | depth (delta : Int) deriving Repr, BEq
 inductive SearchEffect where | next | prev deriving Repr, BEq

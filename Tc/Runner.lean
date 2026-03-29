@@ -81,6 +81,13 @@ def runStackEffect (s : ViewStack AdbcTable) (eff : Effect) : IO (ViewStack Adbc
     match s.cur.rebuild tbl' (col := colIdx) (row := s.cur.nav.row.cur.val) with
     | some v => pure (s.setCur v)
     | none => pure s
+  | .query (.exclude cols) => do
+    let tbl' ← AdbcTable.excludeCols s.tbl cols
+    let grp' := s.cur.nav.grp.filter (!cols.contains ·)
+    let hidden' := s.cur.nav.hidden.filter (!cols.contains ·)
+    match s.cur.rebuild tbl' (grp := grp') (row := s.cur.nav.row.cur.val) with
+    | some v => pure (s.setCur { v with nav := { v.nav with hidden := hidden' } })
+    | none => pure s
   | .folder .push => opt (Folder.push s)
   | .folder .enter => opt (Folder.enter s)
   | .folder .parent => opt (Folder.goParent s)

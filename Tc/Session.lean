@@ -12,8 +12,7 @@ namespace Tc.Session
 
 -- | Session directory under ~/.cache/tv/
 private def sessDir : IO String := do
-  let home := (← IO.getEnv "HOME").getD "/tmp"
-  let dir : System.FilePath := s!"{home}/.cache/tv/sessions"
+  let dir : System.FilePath := s!"{← Log.dir}/sessions"
   IO.FS.createDirAll dir
   pure dir.toString
 
@@ -48,6 +47,7 @@ def opToJson : Op → String
     let cs := cols.map fun (c, asc) => s!"[{jsonStr c},{asc}]"
     s!"\{{kv "type" (jsonStr "sort")},{kv "cols" (jsonArr cs.toList)}}"
   | .sel cols => s!"\{{kv "type" (jsonStr "sel")},{kv "cols" (jsonArr (cols.map jsonStr).toList)}}"
+  | .exclude cols => s!"\{{kv "type" (jsonStr "exclude")},{kv "cols" (jsonArr (cols.map jsonStr).toList)}}"
   | .derive bs =>
     let ds := bs.map fun (n, e) => s!"[{jsonStr n},{jsonStr e}]"
     s!"\{{kv "type" (jsonStr "derive")},{kv "bindings" (jsonArr ds.toList)}}"
@@ -178,6 +178,7 @@ def parseOp (v : JVal) : Option Op := do
     let cols := v.arrD "cols" |>.filterMap fun | .arr #[.str c, .bool asc] => some (c, asc) | _ => none
     some (.sort cols)
   | "sel" => some (.sel (v.arrD "cols" |>.map JVal.asStr))
+  | "exclude" => some (.exclude (v.arrD "cols" |>.map JVal.asStr))
   | "derive" =>
     let bs := v.arrD "bindings" |>.filterMap fun | .arr #[.str n, .str e] => some (n, e) | _ => none
     some (.derive bs)

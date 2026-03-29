@@ -34,7 +34,7 @@ namespace KeyMap
     ('}', .info .rbr),              -- preview scroll down
     ('[', .col .lbr),               -- sort ascending
     (']', .col .rbr),               -- sort descending
-    ('!', .col .ent),               -- toggle group
+    ('!', .col .bang),              -- toggle group
     ('T', .row .ent),               -- toggle row selection
     ('n', .row .dup),               -- search next match
     ('N', .row .del),               -- search prev match
@@ -69,8 +69,9 @@ def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
              ('{', "Jump to top", .lbc), ('}', "Jump to bottom", .rbc),
              ('<', "Move cursor up", .dec), ('>', "Move cursor down", .inc)]
   | 'c' => #[('/', "Jump to column by name", .search),
-             ('~', "Toggle group on current column", .ent),
-             ('\\', "Hide/unhide current column", .filter),
+             ('!', "Toggle group on current column", .bang),
+             ('~', "Hide/unhide current column", .ent),
+             ('\\', "Delete column(s) from query", .filter),
              ('[', "Sort ascending", .lbr), (']', "Sort descending", .rbr),
              (':', "Split column by delimiter", .split), ('=', "Derive new column (name = expr)", .derive),
              ('-', "Shift key column left", .del), ('+', "Shift key column right", .dup),
