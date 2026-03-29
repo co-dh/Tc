@@ -27,6 +27,30 @@ open Tc
 -- Derived from CmdConfig.Entry.isArg field — no hardcoded list needed.
 private def isArgHandler (h : String) : IO Bool := CmdConfig.isArgHandler h
 
+-- | Config-driven arg dispatch: handler name → (stk, arg) → IO stk.
+-- Adding a new arg command = add entry here + CmdConfig.commands. No match arm needed.
+private abbrev ArgFn := ViewStack AdbcTable → String → IO (ViewStack AdbcTable)
+initialize argFnMap : IO.Ref (Std.HashMap String ArgFn) ← IO.mkRef {}
+
+-- | Register all arg handlers. Called once at app startup.
+def initArgFns : IO Unit := do
+  let m : Std.HashMap String ArgFn := Std.HashMap.ofList [
+    ("split", fun s a => if a.isEmpty then Split.run s else Split.runWith s a),
+    ("derive", fun s a => if a.isEmpty then Derive.run s else Derive.runWith s a),
+    ("filter.rowFilter", fun s a => if a.isEmpty then ViewStack.rowFilter s else ViewStack.filterWith s a),
+    ("filter.rowSearch", fun s a => if a.isEmpty then ViewStack.rowSearch s else ViewStack.searchWith s a),
+    ("filter.colSearch", fun s a => if a.isEmpty then ViewStack.colSearch s else ViewStack.colJumpWith s a),
+    ("export", fun s a => if a.isEmpty then do
+      match ← Export.pickFmt with | some f => Export.run s f | none => pure s
+    else Export.runWith s a),
+    ("sessSave", fun s a => do Session.saveWith s a; pure s),
+    ("sessLoad", fun s a => do
+      match ← Session.loadWith a with | some stk' => pure stk' | none => pure s),
+    ("join", fun s a => do
+      match ← Join.runWith s a with | some s' => pure s' | none => pure s)
+  ]
+  argFnMap.set m
+
 -- | App state: view stack + render state + theme + info + preview scroll
 structure AppState where
   stk   : ViewStack AdbcTable
@@ -206,23 +230,11 @@ private partial def runStackIO (a : AppState) (f : IO (ViewStack AdbcTable)) : I
   | .ok s' => pure { a with stk := s', vs := .default, sparklines := #[] }
   | .error e => Log.error e.toString; errorPopup e.toString; pure a
 
--- | Run an arg command: dispatch by handler name (from config table)
-private partial def runArgCmd (a : AppState) (handler : String) (arg : String) : IO AppState :=
-  match handler with
-  | "split"     => runStackIO a (if arg.isEmpty then Split.run a.stk else Split.runWith a.stk arg)
-  | "derive"    => runStackIO a (if arg.isEmpty then Derive.run a.stk else Derive.runWith a.stk arg)
-  | "filter.rowFilter" => runStackIO a (if arg.isEmpty then ViewStack.rowFilter a.stk else ViewStack.filterWith a.stk arg)
-  | "filter.rowSearch" => runStackIO a (if arg.isEmpty then ViewStack.rowSearch a.stk else ViewStack.searchWith a.stk arg)
-  | "filter.colSearch" => runStackIO a (if arg.isEmpty then ViewStack.colSearch a.stk else ViewStack.colJumpWith a.stk arg)
-  | "export"    => runStackIO a (if arg.isEmpty then do
-      match ← Export.pickFmt with | some f => Export.run a.stk f | none => pure a.stk
-    else Export.runWith a.stk arg)
-  | "sessSave"  => runStackIO a (do Session.saveWith a.stk arg; pure a.stk)
-  | "sessLoad"  => runStackIO a (do
-    match ← Session.loadWith arg with | some stk' => pure stk' | none => pure a.stk)
-  | "join"      => runStackIO a (do
-    match ← Join.runWith a.stk arg with | some s' => pure s' | none => pure a.stk)
-  | _ => pure a
+-- | Run an arg command: single HashMap lookup, no per-handler match arms.
+private partial def runArgCmd (a : AppState) (handler : String) (arg : String) : IO AppState := do
+  match (← argFnMap.get).get? handler with
+  | some f => runStackIO a (f a.stk arg)
+  | none => pure a
 
 -- | Dispatch a handler name string from socket (handler name, optionally with arg after space)
 private partial def dispatchHandler (a : AppState) (cmdStr : String) : IO AppState := do

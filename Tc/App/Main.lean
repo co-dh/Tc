@@ -71,6 +71,7 @@ def appMain (args : List String) : IO Unit := do
   let err ← try AdbcTable.init catch e => IO.eprintln s!"Backend init error: {e}"; return
   if !err.isEmpty then IO.eprintln s!"Backend init failed: {err}"; return
   try CmdConfig.init catch e => Log.write "init" s!"cmdConfig: {e}"
+  initArgFns
   -- session restore: -s name
   if let some sessName := cli.session then
     try
