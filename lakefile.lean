@@ -17,11 +17,8 @@ extern_lib termshim pkg := mkCLib pkg "termshim" "term_core.c"
 extern_lib adbcshim pkg := mkCLib pkg "adbcshim" "adbc_core.c"
 -- | include_str deps: Lake doesn't track these automatically
 input_file funcsPrql where path := "Tc" / "Data" / "ADBC" / "funcs.prql"; text := true
-input_file sourcesSql where path := "cfg" / "sources.sql"; text := true
-input_file commandsSql where path := "cfg" / "commands.sql"; text := true
-
 lean_lib Tc where
-  needs := #[funcsPrql, sourcesSql, commandsSql]
+  needs := #[funcsPrql]
   roots := #[`Tc.Cmd, `Tc.Nav, `Tc.Render, `Tc.Key, `Tc.App.Common,
              `Tc.Term, `Tc.Types, `Tc.Util, `Tc.View,
              `Tc.Meta, `Tc.Fzf, `Tc.Filter, `Tc.Folder,

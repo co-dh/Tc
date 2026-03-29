@@ -12,6 +12,7 @@ import Tc.Folder
 import Tc.Data.Text
 import Tc.Util
 import Tc.Session
+import Tc.CmdConfig
 
 namespace PureTest2
 
@@ -52,25 +53,28 @@ theorem key_k : evToHandler (charToEvent 'k') .tbl = some "nav.rowDec" := by nat
 theorem key_l : evToHandler (charToEvent 'l') .tbl = some "nav.colInc" := by native_decide
 theorem key_h : evToHandler (charToEvent 'h') .tbl = some "nav.colDec" := by native_decide
 
--- Single-key shortcuts via KeyMap.char (centralized data table, handler names)
-theorem key_bang  : lookup KeyMap.char '!' = some "nav.colGrp"        := by native_decide
-theorem key_T     : lookup KeyMap.char 'T' = some "nav.rowSel"       := by native_decide
-theorem key_lbr   : lookup KeyMap.char '[' = some "sort.asc"         := by native_decide
-theorem key_rbr   : lookup KeyMap.char ']' = some "sort.desc"        := by native_decide
-theorem key_q     : lookup KeyMap.char 'q' = some "stk.pop"          := by native_decide
-theorem key_space : lookup KeyMap.char ' ' = some "menu"             := by native_decide
-theorem key_n     : lookup KeyMap.char 'n' = some "filter.searchNext" := by native_decide
-theorem key_N     : lookup KeyMap.char 'N' = some "filter.searchPrev" := by native_decide
-theorem key_lbrace: lookup KeyMap.char '{' = some "scrollUp"          := by native_decide
-theorem key_rbrace: lookup KeyMap.char '}' = some "scrollDn"          := by native_decide
-theorem key_S     : lookup KeyMap.char 'S' = some "stk.swap"         := by native_decide
-theorem key_X     : lookup KeyMap.char 'X' = some "xpose"            := by native_decide
-theorem key_d     : lookup KeyMap.char 'd' = some "diff"             := by native_decide
-theorem key_I     : lookup KeyMap.char 'I' = some "infoTog"          := by native_decide
-theorem key_M     : lookup KeyMap.char 'M' = some "meta.push"        := by native_decide
-theorem key_F     : lookup KeyMap.char 'F' = some "freq.open"        := by native_decide
-theorem key_D     : lookup KeyMap.char 'D' = some "folder.push"      := by native_decide
-theorem key_H     : lookup KeyMap.char 'H' = some "nav.colHide"      := by native_decide
+-- Single-key shortcuts via CmdConfig.commands (inline config, no SQL)
+private def findKey (c : Char) : Option String :=
+  CmdConfig.commands.findSome? fun e => if e.key == c then some e.handler else none
+
+theorem key_bang  : findKey '!' = some "nav.colGrp"         := by native_decide
+theorem key_T     : findKey 'T' = some "nav.rowSel"         := by native_decide
+theorem key_lbr   : findKey '[' = some "sort.asc"           := by native_decide
+theorem key_rbr   : findKey ']' = some "sort.desc"          := by native_decide
+theorem key_q     : findKey 'q' = some "stk.pop"            := by native_decide
+theorem key_space : findKey ' ' = some "menu"               := by native_decide
+theorem key_n     : findKey 'n' = some "filter.searchNext"  := by native_decide
+theorem key_N     : findKey 'N' = some "filter.searchPrev"  := by native_decide
+theorem key_lbrace: findKey '{' = some "scrollUp"            := by native_decide
+theorem key_rbrace: findKey '}' = some "scrollDn"            := by native_decide
+theorem key_S     : findKey 'S' = some "stk.swap"           := by native_decide
+theorem key_X     : findKey 'X' = some "xpose"              := by native_decide
+theorem key_d     : findKey 'd' = some "diff"               := by native_decide
+theorem key_I     : findKey 'I' = some "infoTog"            := by native_decide
+theorem key_M     : findKey 'M' = some "meta.push"          := by native_decide
+theorem key_F     : findKey 'F' = some "freq.open"          := by native_decide
+theorem key_D     : findKey 'D' = some "folder.push"        := by native_decide
+theorem key_H     : findKey 'H' = some "nav.colHide"        := by native_decide
 
 -- Ctrl keys via evToHandler (from test_page_down/up)
 theorem key_ctrlD : evToHandler (charToEvent '\x04') .tbl = some "nav.rowPgDn" := by native_decide

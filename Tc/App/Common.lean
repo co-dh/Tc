@@ -24,10 +24,11 @@ import Tc.Replay
 open Tc
 
 -- | Handlers that take user input (fzf or typed arg).
--- When pressed interactively, these invoke fzf. In test mode, chars until \r become the arg.
-private def isArgHandler (h : String) : Bool :=
-  h == "split" || h == "derive" || h == "filter.rowSearch" || h == "filter.rowFilter"
-  || h == "filter.colSearch" || h == "export" || h == "sessSave" || h == "sessLoad" || h == "join"
+-- Derived from config: handlers that appear in runArgCmd dispatch.
+private def argHandlers : Array String :=
+  #["split", "derive", "filter.rowSearch", "filter.rowFilter",
+    "filter.colSearch", "export", "sessSave", "sessLoad", "join"]
+private def isArgHandler (h : String) : Bool := argHandlers.contains h
 
 -- | App state: view stack + render state + theme + info + preview scroll
 structure AppState where
@@ -309,7 +310,7 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   let handler? ← do
     match ← CmdConfig.keyLookup keyChar with
     | some ci => pure (some ci.handler)
-    | none => pure ((lookup KeyMap.char keyChar) <|> evToHandler ev a.stk.cur.vkind)
+    | none => pure (evToHandler ev a.stk.cur.vkind)
   match handler? with
   | some h =>
     -- Arg commands: collect user input (in test mode, chars until \r)
