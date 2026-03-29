@@ -85,6 +85,9 @@ opaque reopenTty : IO Bool
 @[extern "lean_tb_init"]
 opaque init : IO Int32
 
+@[extern "lean_tb_inited"]
+opaque inited : IO Bool
+
 @[extern "lean_tb_shutdown"]
 opaque shutdown : IO Unit
 

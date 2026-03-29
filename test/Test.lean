@@ -553,6 +553,13 @@ def test_hf_backspace : IO Unit := do
   let output ← run "jj<ret><bs>" "hf://datasets/openai/gsm8k"
   assert (contains output "gsm8k") "backspace returns to HF repo root"
 
+-- Bad HF path (org, not dataset) must exit, not CPU-spin.
+-- The test is "does `run` return at all" — a spin would hang IO.Process.output.
+def test_hf_bad_path : IO Unit := do
+  log "hf_bad_path"
+  let _ ← run "" "hf://datasets/tablegpt/"
+  log "  exited (no hang)"
+
 -- === FTP tests ===
 
 initialize ftpAccessCache : IO.Ref (Option Bool) ← IO.mkRef none
@@ -1287,6 +1294,7 @@ def heavyTests : Array (String × IO Unit) := #[
   ("hf_readme", test_hf_readme),
   ("hf_enter_parquet", test_hf_enter_parquet),
   ("hf_backspace", test_hf_backspace),
+  ("hf_bad_path", test_hf_bad_path),
   -- FTP tests
   ("ftp_list", test_ftp_list),
   ("ftp_enter_dir", test_ftp_enter_dir),
