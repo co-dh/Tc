@@ -371,6 +371,18 @@ end BuildFilterTests
 -- Note: isDuckDB, isSQLite, isDataFile are now config-driven (IO) and tested via integration tests
 
 section FolderHelperTests
+open Tc.Folder
+-- | .gz files recognized as data files via inner extension
+#guard (findFormat "data.csv.gz").isSome
+#guard (findFormat "data.parquet.gz").isSome
+#guard (findFormat "data.json.gz").isSome
+#guard (findFormat "data.xlsx.gz").isSome
+#guard (findFormat "data.txt.gz").isNone
+#guard (findFormat "data.csv").isSome
+-- | isDataFile delegates to findFormat
+#guard isDataFile "foo.csv.gz"
+#guard isDataFile "foo.parquet.gz"
+#guard !isDataFile "foo.txt.gz"
 end FolderHelperTests
 
 /-! ## View.fromTbl Theorems -/
@@ -743,18 +755,28 @@ open Tc.SourceConfig
 #guard Remote.parent "ftp://ftp.nyse.com/a/" 3 == some "ftp://ftp.nyse.com/"
 #guard Remote.parent "ftp://ftp.nyse.com/" 3 == none
 
--- | FTP pathParts strips prefix
-#guard pathParts "ftp://" "ftp://ftp.nyse.com/Historical%20Data%20Samples" == #["ftp.nyse.com", "Historical%20Data%20Samples"]
+-- | FTP pathParts strips prefix (names are raw, not URL-encoded)
+#guard pathParts "ftp://" "ftp://ftp.nyse.com/Historical Data Samples" == #["ftp.nyse.com", "Historical Data Samples"]
 #guard pathParts "ftp://" "ftp://ftp.nyse.com/" == #["ftp.nyse.com"]
 #guard pathParts "ftp://" "ftp://ftp.nyse.com" == #["ftp.nyse.com"]
 
 -- | FTP join builds correct paths
-#guard Remote.join "ftp://ftp.nyse.com/" "DAILY%20TAQ/" == "ftp://ftp.nyse.com/DAILY%20TAQ/"
+#guard Remote.join "ftp://ftp.nyse.com/" "DAILY TAQ/" == "ftp://ftp.nyse.com/DAILY TAQ/"
 #guard Remote.join "ftp://ftp.nyse.com/a/" "file.csv" == "ftp://ftp.nyse.com/a/file.csv"
 
 -- | FTP dispName extracts last component
-#guard Remote.dispName "ftp://ftp.nyse.com/Historical%20Data" == "Historical%20Data"
+#guard Remote.dispName "ftp://ftp.nyse.com/Historical Data" == "Historical Data"
 #guard Remote.dispName "ftp://ftp.nyse.com/" == "ftp.nyse.com"
+
+-- | URL encode applied at command time, not parse time
+#guard Tc.Ftp.urlEncode "Historical Data Samples" == "Historical%20Data%20Samples"
+#guard Tc.Ftp.urlEncode "file.csv" == "file.csv"
+#guard Tc.Ftp.urlEncode "a b/c d" == "a%20b/c%20d"
+
+-- | urlEncodeUrl encodes path segments only, not protocol/host
+#guard Tc.Ftp.urlEncodeUrl "ftp://" "ftp://ftp.nyse.com/a b/c d/" == "ftp://ftp.nyse.com/a%20b/c%20d/"
+#guard Tc.Ftp.urlEncodeUrl "ftp://" "ftp://ftp.nyse.com/" == "ftp://ftp.nyse.com/"
+#guard Tc.Ftp.urlEncodeUrl "ftp://" "ftp://ftp.nyse.com/file.csv" == "ftp://ftp.nyse.com/file.csv"
 
 end FTPTests
 

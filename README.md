@@ -6,7 +6,7 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 
 ## Features
 
-tv opens CSV, Parquet, JSON, Arrow, DuckDB, SQLite, and Excel files.
+tv opens CSV, Parquet, JSON, Arrow, DuckDB, SQLite, Excel, and gzip-compressed files.
 It can also browse S3 buckets, HuggingFace datasets, FTP servers, and osquery tables.
 
 ### Folder browser
