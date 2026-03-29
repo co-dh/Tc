@@ -196,7 +196,7 @@ private def renderFrame (pngPath : String) (kind : PlotKind)
         if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
       s!"  ,/.: {bar}"
     else ""
-  IO.println s!"\n\x1b[1m─── {kind}: x={xName}  y={yName} ───\x1b[0m{ivBar}  q:exit"
+  IO.println s!"\r\x1b[1m─── {kind}: x={xName}  y={yName} ───\x1b[0m{ivBar}  q:exit"
 
 -- | Run plot with interactive controls (in-place re-rendering)
 def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
