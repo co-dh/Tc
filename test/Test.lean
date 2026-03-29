@@ -591,7 +591,7 @@ def test_gz_viewfile : IO Unit := do
   let out ← run "" "data/test.txt.gz"
   assert (contains out "hello gz world") "gz viewfile shows decompressed text"
 
--- | Opening a .txt.gz that contains CSV data should ingest as table via read_csv
+-- | Unrecognized .gz with CSV data should ingest as table via read_csv
 def test_gz_csv_ingest : IO Unit := do
   log "gz_csv_ingest"
   let out ← run "" "data/csv_data.txt.gz"

@@ -293,8 +293,8 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
         | none => if cfg.isNone then viewFile fullPath; pure (some s) else pure (some s)
       else
         let viewPath ← match cfg with | some c => c.runDownload fullPath | none => pure fullPath
-        -- Smart: try read_csv for .txt.gz before falling back to viewer
-        if p.endsWith ".txt.gz" then
+        -- Smart: try read_csv for unrecognized .gz before falling back to viewer
+        if p.endsWith ".gz" then
           if let some v ← tryReadCsv viewPath then return some (s.push v)
         viewFile viewPath; pure (some s)
   | some 's', some p =>
