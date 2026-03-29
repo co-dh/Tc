@@ -231,7 +231,9 @@ private def Config.cmdVars (cfg : Config) (path : String) : IO (Array (String ×
   let tmpDir ← Tc.tmpPath "src"
   let _ ← Log.run "src" "mkdir" #["-p", tmpDir]
   let extra ← if cfg.pfx == "s3://" then s3Extra else pure ""
-  pure (mkVars cfg path tmpDir (nameFromPath path) extra, tmpDir)
+  -- FTP: URL-encode path segments for curl (names stored raw for display)
+  let cmdPath := if cfg.pfx == "ftp://" then Ftp.urlEncodeUrl cfg.pfx path else path
+  pure (mkVars cfg cmdPath tmpDir (nameFromPath path) extra, tmpDir)
 
 -- | Cached compiled SQL for tbl_info_filtered (fixed query, compile once)
 initialize extdbFilteredSql : IO.Ref String ← IO.mkRef ""

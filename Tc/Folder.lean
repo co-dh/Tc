@@ -85,9 +85,10 @@ def fileFormats : Array FileFormat := #[
   ⟨#[".sqlite", ".sqlite3"], "", "sqlite", true, "SQLITE"⟩
 ]
 
--- | Find format by file extension
+-- | Find format by file extension (handles .gz: strip suffix, match inner ext)
 def findFormat (path : String) : Option FileFormat :=
-  fileFormats.find? fun fmt => fmt.exts.any (path.endsWith ·)
+  let p := if path.endsWith ".gz" then (path.take (path.length - 3)).toString else path
+  fileFormats.find? fun fmt => fmt.exts.any (p.endsWith ·)
 
 -- | Is file a data format we can open as a table?
 def isDataFile (p : String) : Bool :=

@@ -1,6 +1,6 @@
 /-
   FTP: parse curl's ls -l output into folder-view TSV.
-  URL-encodes names so paths with spaces/special chars navigate correctly.
+  Names stored raw (readable); URL-encoding applied at curl command time.
 -/
 namespace Tc.Ftp
 
@@ -18,6 +18,15 @@ def urlEncode (s : String) : String := Id.run do
         out := out ++ s!"%{hi}{lo}"
   return out
 
+-- | URL-encode an FTP URL: encode only path segments, not protocol/host.
+-- e.g. "ftp://host/a b/c d/" → "ftp://host/a%20b/c%20d/"
+def urlEncodeUrl (pfx url : String) : String :=
+  let rest := (url.drop pfx.length).toString
+  let segs := rest.splitOn "/"
+  match segs with
+  | host :: tail => pfx ++ host ++ "/" ++ "/".intercalate (tail.map urlEncode)
+  | [] => url
+
 -- | Parse FTP ls -l output into TSV (name\tsize\tdate\ttype).
 -- Format: perms links user group size month day time name...
 --         p[0]  p[1]  p[2] p[3]  p[4] p[5]  p[6] p[7] p[8:]
@@ -30,7 +39,7 @@ def parseLs (raw : String) : String := Id.run do
     let size := parts.getD 4 "0"
     let date := " ".intercalate (parts.drop 5 |>.take 3)
     let typ := if (parts.getD 0 "").startsWith "d" then "dir" else "file"
-    rows := rows.push s!"{urlEncode name}\t{size}\t{date}\t{typ}"
+    rows := rows.push s!"{name}\t{size}\t{date}\t{typ}"
   return "\n".intercalate rows.toList
 
 end Tc.Ftp
