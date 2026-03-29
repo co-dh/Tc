@@ -47,64 +47,64 @@ def testStack : ViewStack (MockTable 5 3) := ⟨testView, []⟩
 section KeyMapTests
 
 -- Navigation keys via evToCmd (hjkl, arrows — not in KeyMap.char)
-theorem key_j : evToCmd (charToEvent 'j') .tbl = some (.row .inc) := by native_decide
-theorem key_k : evToCmd (charToEvent 'k') .tbl = some (.row .dec) := by native_decide
-theorem key_l : evToCmd (charToEvent 'l') .tbl = some (.col .inc) := by native_decide
-theorem key_h : evToCmd (charToEvent 'h') .tbl = some (.col .dec) := by native_decide
+theorem key_j : evToCmd (charToEvent 'j') .tbl = some (Cmd.row '>') := by native_decide
+theorem key_k : evToCmd (charToEvent 'k') .tbl = some (Cmd.row '<') := by native_decide
+theorem key_l : evToCmd (charToEvent 'l') .tbl = some (Cmd.col '>') := by native_decide
+theorem key_h : evToCmd (charToEvent 'h') .tbl = some (Cmd.col '<') := by native_decide
 
 -- Single-key shortcuts via KeyMap.char (centralized data table, all obj+verb Cmd)
-theorem key_bang  : lookup KeyMap.char '!' = some (.col .bang)       := by native_decide
-theorem key_T     : lookup KeyMap.char 'T' = some (.row .ent)       := by native_decide
-theorem key_lbr   : lookup KeyMap.char '[' = some (.col .lbr)       := by native_decide
-theorem key_rbr   : lookup KeyMap.char ']' = some (.col .rbr)       := by native_decide
-theorem key_q     : lookup KeyMap.char 'q' = some (.stk .dec)       := by native_decide
-theorem key_space : lookup KeyMap.char ' ' = some (.stk .search)    := by native_decide
-theorem key_n     : lookup KeyMap.char 'n' = some (.row .dup)       := by native_decide
-theorem key_N     : lookup KeyMap.char 'N' = some (.row .del)       := by native_decide
-theorem key_lbrace: lookup KeyMap.char '{' = some (.info .lbr)       := by native_decide
-theorem key_rbrace: lookup KeyMap.char '}' = some (.info .rbr)       := by native_decide
+theorem key_bang  : lookup KeyMap.char '!' = some (Cmd.col '!')        := by native_decide
+theorem key_T     : lookup KeyMap.char 'T' = some (Cmd.row '~')       := by native_decide
+theorem key_lbr   : lookup KeyMap.char '[' = some (Cmd.col '[')       := by native_decide
+theorem key_rbr   : lookup KeyMap.char ']' = some (Cmd.col ']')       := by native_decide
+theorem key_q     : lookup KeyMap.char 'q' = some (Cmd.stk '<')       := by native_decide
+theorem key_space : lookup KeyMap.char ' ' = some (Cmd.stk '/')    := by native_decide
+theorem key_n     : lookup KeyMap.char 'n' = some (Cmd.row '+')       := by native_decide
+theorem key_N     : lookup KeyMap.char 'N' = some (Cmd.row '-')       := by native_decide
+theorem key_lbrace: lookup KeyMap.char '{' = some (Cmd.info '[')       := by native_decide
+theorem key_rbrace: lookup KeyMap.char '}' = some (Cmd.info ']')       := by native_decide
 
 -- Ctrl keys via evToCmd (from test_page_down/up)
-theorem key_ctrlD : evToCmd (charToEvent '\x04') .tbl = some (.row .rbr) := by native_decide
-theorem key_ctrlU : evToCmd (charToEvent '\x15') .tbl = some (.row .lbr) := by native_decide
+theorem key_ctrlD : evToCmd (charToEvent '\x04') .tbl = some (Cmd.row ']') := by native_decide
+theorem key_ctrlU : evToCmd (charToEvent '\x15') .tbl = some (Cmd.row '[') := by native_decide
 
 -- Context-sensitive Enter via evToCmd (from test_freq_enter, test_meta_0_enter, test_folder_enter)
-theorem enter_freq : evToCmd (charToEvent '\r') (.freqV #["a"] 10) = some (.freq .ent) := by native_decide
-theorem enter_meta : evToCmd (charToEvent '\r') .colMeta = some (.metaV .ent)           := by native_decide
-theorem enter_fld  : evToCmd (charToEvent '\r') (.fld "/tmp" 1) = some (.fld .ent)      := by native_decide
+theorem enter_freq : evToCmd (charToEvent '\r') (.freqV #["a"] 10) = some (Cmd.freq '~') := by native_decide
+theorem enter_meta : evToCmd (charToEvent '\r') .colMeta = some (Cmd.metaV '~')           := by native_decide
+theorem enter_fld  : evToCmd (charToEvent '\r') (.fld "/tmp" 1) = some (Cmd.fld '~')      := by native_decide
 theorem enter_tbl  : evToCmd (charToEvent '\r') .tbl = none                             := by native_decide
 
 -- Backspace in folder view → parent (from test_folder_backspace)
-theorem bs_fld : evToCmd (charToEvent '\x7f') (.fld "/tmp" 1) = some (.fld .lbc)       := by native_decide
+theorem bs_fld : evToCmd (charToEvent '\x7f') (.fld "/tmp" 1) = some (Cmd.fld '{')       := by native_decide
 -- Backspace outside folder view → no action
 theorem bs_tbl : evToCmd (charToEvent '\x7f') .tbl = none                               := by native_decide
 
 -- Unmodified arrow keys → single-step nav, not page (bug: termbox2 tagged \x1b[A-D as shift)
 theorem key_arrow_down : evToCmd ⟨Term.eventKey, 0, Term.keyArrowDown, 0, 0, 0⟩ .tbl
-    = some (.row .inc) := by native_decide
+    = some (Cmd.row '>') := by native_decide
 theorem key_arrow_up : evToCmd ⟨Term.eventKey, 0, Term.keyArrowUp, 0, 0, 0⟩ .tbl
-    = some (.row .dec) := by native_decide
+    = some (Cmd.row '<') := by native_decide
 theorem key_arrow_right : evToCmd ⟨Term.eventKey, 0, Term.keyArrowRight, 0, 0, 0⟩ .tbl
-    = some (.col .inc) := by native_decide
+    = some (Cmd.col '>') := by native_decide
 theorem key_arrow_left : evToCmd ⟨Term.eventKey, 0, Term.keyArrowLeft, 0, 0, 0⟩ .tbl
-    = some (.col .dec) := by native_decide
+    = some (Cmd.col '<') := by native_decide
 
 -- Synthetic arrow chars (\x1c-\x1f) via charToEvent → single-step nav
-theorem key_synth_down : evToCmd (charToEvent '\x1c') .tbl = some (.row .inc) := by native_decide
-theorem key_synth_up : evToCmd (charToEvent '\x1d') .tbl = some (.row .dec) := by native_decide
-theorem key_synth_right : evToCmd (charToEvent '\x1e') .tbl = some (.col .inc) := by native_decide
-theorem key_synth_left : evToCmd (charToEvent '\x1f') .tbl = some (.col .dec) := by native_decide
+theorem key_synth_down : evToCmd (charToEvent '\x1c') .tbl = some (Cmd.row '>') := by native_decide
+theorem key_synth_up : evToCmd (charToEvent '\x1d') .tbl = some (Cmd.row '<') := by native_decide
+theorem key_synth_right : evToCmd (charToEvent '\x1e') .tbl = some (Cmd.col '>') := by native_decide
+theorem key_synth_left : evToCmd (charToEvent '\x1f') .tbl = some (Cmd.col '<') := by native_decide
 
 -- Shift+Arrow keys (from test_key_shift: reorder key columns)
 -- Synthetic shift+arrow events: mod=4 (modShift), key=arrow code
 theorem key_shift_left : evToCmd ⟨Term.eventKey, Term.modShift, Term.keyArrowLeft, 0, 0, 0⟩ .tbl
-    = some (.col .del) := by native_decide
+    = some (Cmd.col '-') := by native_decide
 theorem key_shift_right : evToCmd ⟨Term.eventKey, Term.modShift, Term.keyArrowRight, 0, 0, 0⟩ .tbl
-    = some (.col .dup) := by native_decide
+    = some (Cmd.col '+') := by native_decide
 
 -- Test synthetic shift+arrow via charToEvent (\x11=S-left, \x12=S-right)
-theorem key_synth_shift_left : evToCmd (charToEvent '\x11') .tbl = some (.col .del) := by native_decide
-theorem key_synth_shift_right : evToCmd (charToEvent '\x12') .tbl = some (.col .dup) := by native_decide
+theorem key_synth_shift_left : evToCmd (charToEvent '\x11') .tbl = some (Cmd.col '-') := by native_decide
+theorem key_synth_shift_right : evToCmd (charToEvent '\x12') .tbl = some (Cmd.col '+') := by native_decide
 
 end KeyMapTests
 
@@ -113,20 +113,20 @@ end KeyMapTests
 section ViewUpdateTests
 
 -- [ (col.lbr) returns sort effect with asc=true (from test_sort_asc)
-#guard (View.update testView (.col .lbr) 1).map (·.2) ==
+#guard (View.update testView "sort.asc" 1).map (·.2) ==
   some (.query (.sort 0 #[] #[] true))
 
 -- ] (col.rbr) returns sort effect with asc=false (from test_sort_desc)
-#guard (View.update testView (.col .rbr) 1).map (·.2) ==
+#guard (View.update testView "sort.desc" 1).map (·.2) ==
   some (.query (.sort 0 #[] #[] false))
 
 -- Navigation delegates to NavState and returns Effect.none
 -- (from test_nav_down: "j moves to row 1")
-#guard (View.update testView (.row .inc) 1).map (·.1.nav.row.cur.val) == some 1
-#guard (View.update testView (.row .inc) 1).map (·.2) == some .none
+#guard (View.update testView "nav.rowInc" 1).map (·.1.nav.row.cur.val) == some 1
+#guard (View.update testView "nav.rowInc" 1).map (·.2) == some .none
 
 -- row.dec at 0 stays at 0 (from test_nav_up: "jk returns to row 0")
-#guard (View.update testView (.row .dec) 1).map (·.1.nav.row.cur.val) == some 0
+#guard (View.update testView "nav.rowDec" 1).map (·.1.nav.row.cur.val) == some 0
 
 end ViewUpdateTests
 
@@ -136,23 +136,23 @@ section ViewStackUpdateTests
 
 -- S (stk.ent) swaps (from test_stack_swap: "S swaps/dups view")
 -- On single-element stack, swap is identity
-#guard (ViewStack.update testStack (.stk .ent)).map (·.1.hd.path) == some "data/test.csv"
-#guard (ViewStack.update testStack (.stk .ent)).map (·.2) == some .none
+#guard (ViewStack.update testStack "stk.swap").map (·.1.hd.path) == some "data/test.csv"
+#guard (ViewStack.update testStack "stk.swap").map (·.2) == some .none
 
 -- stk.inc dups: pushes copy
-#guard (ViewStack.update testStack (.stk .inc)).map (·.1.tl.length) == some 1
-#guard (ViewStack.update testStack (.stk .inc)).map (·.2) == some .none
+#guard (ViewStack.update testStack "stk.dup").map (·.1.tl.length) == some 1
+#guard (ViewStack.update testStack "stk.dup").map (·.2) == some .none
 
 -- q (stk.dec) on empty stack → quit (from test_q_quit: "q on empty stack exits cleanly")
-#guard (ViewStack.update testStack (.stk .dec)).map (·.2) == some .quit
+#guard (ViewStack.update testStack "stk.pop").map (·.2) == some .quit
 
 -- q (stk.dec) with parent → pops (from test_meta_quit, test_freq_quit)
 def twoStack : ViewStack (MockTable 5 3) := testStack.dup
-#guard (ViewStack.update twoStack (.stk .dec)).map (·.1.tl.length) == some 0
-#guard (ViewStack.update twoStack (.stk .dec)).map (·.2) == some .none
+#guard (ViewStack.update twoStack "stk.pop").map (·.1.tl.length) == some 0
+#guard (ViewStack.update twoStack "stk.pop").map (·.2) == some .none
 
 -- Unhandled commands return none
-#guard (ViewStack.update testStack (.row .inc)).isNone
+#guard (ViewStack.update testStack "nav.rowInc").isNone
 
 end ViewStackUpdateTests
 
@@ -187,22 +187,22 @@ end TabNameTests
 section FilterUpdateTests
 
 -- / → fzf.row (from test_search_jump: row search)
-#guard (Tc.Filter.update testStack (.row .search)).map (·.2) == some (.fzf .row)
+#guard (Tc.Filter.update testStack "filter.rowSearch").map (·.2) == some (.fzf .row)
 
 -- \ → fzf.filter (from test_filter_parquet_full_db: row filter)
-#guard (Tc.Filter.update testStack (.row .filter)).map (·.2) == some (.fzf .filter)
+#guard (Tc.Filter.update testStack "filter.rowFilter").map (·.2) == some (.fzf .filter)
 
 -- s → fzf.col (from test_col_search: column search)
-#guard (Tc.Filter.update testStack (.col .search)).map (·.2) == some (.fzf .col)
+#guard (Tc.Filter.update testStack "filter.colSearch").map (·.2) == some (.fzf .col)
 
 -- n → search.next (from test_search_next)
-#guard (Tc.Filter.update testStack (.row .dup)).map (·.2) == some (.search .next)
+#guard (Tc.Filter.update testStack "filter.searchNext").map (·.2) == some (.search .next)
 
 -- N → search.prev (from test_search_prev)
-#guard (Tc.Filter.update testStack (.row .del)).map (·.2) == some (.search .prev)
+#guard (Tc.Filter.update testStack "filter.searchPrev").map (·.2) == some (.search .prev)
 
 -- Unhandled returns none
-#guard (Tc.Filter.update testStack (.row .inc)).isNone
+#guard (Tc.Filter.update testStack "nav.rowInc").isNone
 
 end FilterUpdateTests
 
@@ -210,42 +210,42 @@ end FilterUpdateTests
 
 section CmdRoundTripTests
 
--- Verb parse roundtrip (all 7 verb types)
-theorem parse_r_inc : (@Parse.parse? Cmd _ "r>") = some (.row .inc) := by native_decide
-theorem parse_r_dec : (@Parse.parse? Cmd _ "r<") = some (.row .dec) := by native_decide
-theorem parse_r_ent : (@Parse.parse? Cmd _ "r~") = some (.row .ent) := by native_decide
-theorem parse_r_del : (@Parse.parse? Cmd _ "r-") = some (.row .del) := by native_decide
-theorem parse_r_dup : (@Parse.parse? Cmd _ "r+") = some (.row .dup) := by native_decide
-theorem parse_r_lbr : (@Parse.parse? Cmd _ "r[") = some (.row .lbr) := by native_decide
-theorem parse_c_inc : (@Parse.parse? Cmd _ "c>") = some (.col .inc) := by native_decide
-theorem parse_c_dec : (@Parse.parse? Cmd _ "c<") = some (.col .dec) := by native_decide
+-- Cmd parse roundtrip (obj+verb pairs)
+theorem parse_r_inc : (@Parse.parse? Cmd _ "r>") = some (Cmd.row '>') := by native_decide
+theorem parse_r_dec : (@Parse.parse? Cmd _ "r<") = some (Cmd.row '<') := by native_decide
+theorem parse_r_ent : (@Parse.parse? Cmd _ "r~") = some (Cmd.row '~') := by native_decide
+theorem parse_r_del : (@Parse.parse? Cmd _ "r-") = some (Cmd.row '-') := by native_decide
+theorem parse_r_dup : (@Parse.parse? Cmd _ "r+") = some (Cmd.row '+') := by native_decide
+theorem parse_r_lbr : (@Parse.parse? Cmd _ "r[") = some (Cmd.row '[') := by native_decide
+theorem parse_c_inc : (@Parse.parse? Cmd _ "c>") = some (Cmd.col '>') := by native_decide
+theorem parse_c_dec : (@Parse.parse? Cmd _ "c<") = some (Cmd.col '<') := by native_decide
 -- Heat mode: now on info object (i0-i3)
-theorem parse_i0 : (@Parse.parse? Cmd _ "i0") = some (.info (.val 0)) := by native_decide
-theorem parse_i1 : (@Parse.parse? Cmd _ "i1") = some (.info (.val 1)) := by native_decide
-theorem parse_i2 : (@Parse.parse? Cmd _ "i2") = some (.info (.val 2)) := by native_decide
-theorem parse_i3 : (@Parse.parse? Cmd _ "i3") = some (.info (.val 3)) := by native_decide
+theorem parse_i0 : (@Parse.parse? Cmd _ "i0") = some (Cmd.info '0') := by native_decide
+theorem parse_i1 : (@Parse.parse? Cmd _ "i1") = some (Cmd.info '1') := by native_decide
+theorem parse_i2 : (@Parse.parse? Cmd _ "i2") = some (Cmd.info '2') := by native_decide
+theorem parse_i3 : (@Parse.parse? Cmd _ "i3") = some (Cmd.info '3') := by native_decide
 -- 2-char obj+verb takes priority over ArgCmd prefix (prevents "s~" → colJump "~" bug)
-theorem parse_s_ent : (@Parse.parse? Cmd _ "s~") = some (.stk .ent) := by native_decide
-theorem parse_s_dec : (@Parse.parse? Cmd _ "s<") = some (.stk .dec) := by native_decide
--- Argument command parse (all 9 ArgCmd variants)
-theorem parse_split   : (@Parse.parse? Cmd _ ":-")          = some (.arg (.split "-"))          := by native_decide
-theorem parse_derive  : (@Parse.parse? Cmd _ "=d = x * 2")  = some (.arg (.derive "d = x * 2")) := by native_decide
-theorem parse_filter  : (@Parse.parse? Cmd _ "\\Bid > 100") = some (.arg (.filter "Bid > 100")) := by native_decide
-theorem parse_search  : (@Parse.parse? Cmd _ "/NYSE")        = some (.arg (.search "NYSE"))      := by native_decide
-theorem parse_colJump : (@Parse.parse? Cmd _ "sExchange")    = some (.arg (.colJump "Exchange")) := by native_decide
-theorem parse_export  : (@Parse.parse? Cmd _ "ecsv")         = some (.arg (.export "csv"))       := by native_decide
-theorem parse_sessSave: (@Parse.parse? Cmd _ "Wmysess")      = some (.arg (.sessSave "mysess"))  := by native_decide
-theorem parse_sessLoad: (@Parse.parse? Cmd _ "Lmysess")      = some (.arg (.sessLoad "mysess"))  := by native_decide
-theorem parse_join    : (@Parse.parse? Cmd _ "J0")           = some (.arg (.join "0"))           := by native_decide
-theorem parse_M0    : (@Parse.parse? Cmd _ "M0") = some (.metaV (.val 0)) := by native_decide
-theorem parse_M1    : (@Parse.parse? Cmd _ "M1") = some (.metaV (.val 1)) := by native_decide
+theorem parse_s_ent : (@Parse.parse? Cmd _ "s~") = some (Cmd.stk '~') := by native_decide
+theorem parse_s_dec : (@Parse.parse? Cmd _ "s<") = some (Cmd.stk '<') := by native_decide
+-- Argument command parse (all 9 arg variants — unified as flat Cmd with arg field)
+theorem parse_split   : (@Parse.parse? Cmd _ ":-")          = some { obj := 'c', verb := ':', arg := "-" }          := by native_decide
+theorem parse_derive  : (@Parse.parse? Cmd _ "=d = x * 2")  = some { obj := 'c', verb := '=', arg := "d = x * 2" } := by native_decide
+theorem parse_filter  : (@Parse.parse? Cmd _ "\\Bid > 100") = some { obj := 'r', verb := '\\', arg := "Bid > 100" } := by native_decide
+theorem parse_search  : (@Parse.parse? Cmd _ "/NYSE")        = some { obj := 'r', verb := '/', arg := "NYSE" }      := by native_decide
+theorem parse_colJump : (@Parse.parse? Cmd _ "gExchange")    = some { obj := 'c', verb := '/', arg := "Exchange" }  := by native_decide
+theorem parse_export  : (@Parse.parse? Cmd _ "ecsv")         = some { obj := 'e', verb := '~', arg := "csv" }       := by native_decide
+theorem parse_sessSave: (@Parse.parse? Cmd _ "Wmysess")      = some { obj := 'W', verb := '~', arg := "mysess" }    := by native_decide
+theorem parse_sessLoad: (@Parse.parse? Cmd _ "Lmysess")      = some { obj := 'L', verb := '~', arg := "mysess" }    := by native_decide
+theorem parse_join    : (@Parse.parse? Cmd _ "J0")           = some { obj := 'J', verb := '~', arg := "0" }         := by native_decide
+theorem parse_M0    : (@Parse.parse? Cmd _ "M0") = some (Cmd.metaV '0') := by native_decide
+theorem parse_M1    : (@Parse.parse? Cmd _ "M1") = some (Cmd.metaV '1') := by native_decide
 -- Stk verbs: quit/transpose/diff/join reuse stk obj
-theorem parse_sd : (@Parse.parse? Cmd _ "s-") = some (.stk .del)      := by native_decide
-theorem parse_sq : (@Parse.parse? Cmd _ "s{") = some (.stk .lbc)      := by native_decide
-theorem parse_s1 : (@Parse.parse? Cmd _ "s1") = some (.stk (.val 1))  := by native_decide
-theorem parse_s2 : (@Parse.parse? Cmd _ "s2") = some (.stk (.val 2))  := by native_decide
+theorem parse_sd : (@Parse.parse? Cmd _ "s-") = some (Cmd.stk '-')      := by native_decide
+theorem parse_sq : (@Parse.parse? Cmd _ "s{") = some (Cmd.stk '{')      := by native_decide
+theorem parse_s1 : (@Parse.parse? Cmd _ "s1") = some (Cmd.stk '1')  := by native_decide
+theorem parse_s2 : (@Parse.parse? Cmd _ "s2") = some (Cmd.stk '2')  := by native_decide
 -- Fzf menu reuses col obj
-theorem parse_cc : (@Parse.parse? Cmd _ "c+") = some (.col .dup)       := by native_decide
+theorem parse_cc : (@Parse.parse? Cmd _ "c+") = some (Cmd.col '+')       := by native_decide
 
 end CmdRoundTripTests
 
@@ -273,57 +273,57 @@ section NavTheorems
 
 -- Theorem 2: row.inc then row.dec is identity (from test_nav_up: "jk returns to row 0")
 theorem nav_row_inverse :
-    (do let n1 ← NavState.exec (.row .inc) testNav 1
-        let n2 ← NavState.exec (.row .dec) n1 1
+    (do let n1 ← NavState.exec "nav.rowInc" testNav 1
+        let n2 ← NavState.exec "nav.rowDec" n1 1
         pure n2.row.cur.val) = some 0 := by
   native_decide
 
 -- Theorem 3: col.inc then col.dec is identity (from test_nav_left: "lh returns to col 0")
 theorem nav_col_inverse :
-    (do let n1 ← NavState.exec (.col .inc) testNav 1
-        let n2 ← NavState.exec (.col .dec) n1 1
+    (do let n1 ← NavState.exec "nav.colInc" testNav 1
+        let n2 ← NavState.exec "nav.colDec" n1 1
         pure n2.col.cur.val) = some 0 := by
   native_decide
 
 -- Theorem 4: group toggle twice returns to empty (from test_key_remove: "!! removes key")
 theorem grp_toggle_inverse :
-    (do let n1 ← NavState.exec (.col .bang) testNav 1
-        let n2 ← NavState.exec (.col .bang) n1 1
+    (do let n1 ← NavState.exec "nav.colGrp" testNav 1
+        let n2 ← NavState.exec "nav.colGrp" n1 1
         pure n2.grp) = some #[] := by
   native_decide
 
 -- Theorem 5: hidden toggle twice returns to empty (from test_hide_unhide: "HH unhides")
 theorem hidden_toggle_inverse :
-    (do let n1 ← NavState.exec (.col .ent) testNav 1
-        let n2 ← NavState.exec (.col .ent) n1 1
+    (do let n1 ← NavState.exec "nav.colHide" testNav 1
+        let n2 ← NavState.exec "nav.colHide" n1 1
         pure n2.hidden) = some #[] := by
   native_decide
 
 -- Theorem 6: TjT accumulates selections [0, 1] (from test_multi_select)
 theorem sel_accumulation :
-    (do let n1 ← NavState.exec (.row .ent) testNav 1
-        let n2 ← NavState.exec (.row .inc) n1 1
-        let n3 ← NavState.exec (.row .ent) n2 1
+    (do let n1 ← NavState.exec "nav.rowSel" testNav 1
+        let n2 ← NavState.exec "nav.rowInc" n1 1
+        let n3 ← NavState.exec "nav.rowSel" n2 1
         pure n3.row.sels) = some #[0, 1] := by
   native_decide
 
 -- l! groups c1 (from test_key_reorder: "Key col moves to front")
 theorem nav_grp_col :
-    (do let n1 ← NavState.exec (.col .inc) testNav 1
-        let n2 ← NavState.exec (.col .bang) n1 1
+    (do let n1 ← NavState.exec "nav.colInc" testNav 1
+        let n2 ← NavState.exec "nav.colGrp" n1 1
         pure n2.grp) = some #["c1"] := by
   native_decide
 
 -- l! → dispOrder puts c1 first (from test_key_reorder)
 theorem nav_disp_grp_first :
-    (do let n1 ← NavState.exec (.col .inc) testNav 1
-        let n2 ← NavState.exec (.col .bang) n1 1
+    (do let n1 ← NavState.exec "nav.colInc" testNav 1
+        let n2 ← NavState.exec "nav.colGrp" n1 1
         pure (n2.dispIdxs.getD 0 999)) = some 1 := by
   native_decide
 
 -- ~ hides current column (from test_hide_col)
 theorem nav_hide :
-    (do let n1 ← NavState.exec (.col .ent) testNav 1
+    (do let n1 ← NavState.exec "nav.colHide" testNav 1
         pure n1.hidden) = some #["c0"] := by
   native_decide
 
@@ -471,77 +471,77 @@ section NavTests2
 -- 5 rows, 3 cols — uses mock53/testNav already defined above
 
 -- | j (row.inc) moves cursor from 0 to 1
-#guard (NavState.exec (.row .inc) testNav 1).map (·.row.cur.val) == some 1
+#guard (NavState.exec "nav.rowInc" testNav 1).map (·.row.cur.val) == some 1
 
 -- | k (row.dec) at row 0 stays at 0 (clamped)
-#guard (NavState.exec (.row .dec) testNav 1).map (·.row.cur.val) == some 0
+#guard (NavState.exec "nav.rowDec" testNav 1).map (·.row.cur.val) == some 0
 
 -- | l (col.inc) moves cursor from 0 to 1
-#guard (NavState.exec (.col .inc) testNav 1).map (·.col.cur.val) == some 1
+#guard (NavState.exec "nav.colInc" testNav 1).map (·.col.cur.val) == some 1
 
 -- | h (col.dec) at col 0 stays at 0 (clamped)
-#guard (NavState.exec (.col .dec) testNav 1).map (·.col.cur.val) == some 0
+#guard (NavState.exec "nav.colDec" testNav 1).map (·.col.cur.val) == some 0
 
 -- | } (row.rbc = bottom) goes to last row (4)
-#guard (NavState.exec (.row .rbc) testNav 1).map (·.row.cur.val) == some 4
+#guard (NavState.exec "nav.rowBot" testNav 1).map (·.row.cur.val) == some 4
 
 -- | { (row.lbc = top) goes to first row (0)
 def navAtRow4 : NavState 5 3 (MockTable 5 3) :=
-  match NavState.exec (.row .rbc) testNav 1 with
+  match NavState.exec "nav.rowBot" testNav 1 with
   | some n => n
   | none => testNav
-#guard (NavState.exec (.row .lbc) navAtRow4 1).map (·.row.cur.val) == some 0
+#guard (NavState.exec "nav.rowTop" navAtRow4 1).map (·.row.cur.val) == some 0
 
 -- | col } (col.rbc = last) goes to last col (2)
-#guard (NavState.exec (.col .rbc) testNav 1).map (·.col.cur.val) == some 2
+#guard (NavState.exec "nav.colLast" testNav 1).map (·.col.cur.val) == some 2
 
 -- | col { (col.lbc = first) goes to first col (0)
 def navAtCol2 : NavState 5 3 (MockTable 5 3) :=
-  match NavState.exec (.col .rbc) testNav 1 with
+  match NavState.exec "nav.colLast" testNav 1 with
   | some n => n
   | none => testNav
-#guard (NavState.exec (.col .lbc) navAtCol2 1).map (·.col.cur.val) == some 0
+#guard (NavState.exec "nav.colFirst" navAtCol2 1).map (·.col.cur.val) == some 0
 
 -- | ] (row.rbr = page down) with page size 2 moves from 0 to 2
-#guard (NavState.exec (.row .rbr) testNav 2).map (·.row.cur.val) == some 2
+#guard (NavState.exec "nav.rowPgDn" testNav 2).map (·.row.cur.val) == some 2
 
 -- | [ (row.lbr = page up) at row 0 stays at 0
-#guard (NavState.exec (.row .lbr) testNav 2).map (·.row.cur.val) == some 0
+#guard (NavState.exec "nav.rowPgUp" testNav 2).map (·.row.cur.val) == some 0
 
 -- | T (row.ent) toggles row selection
-#guard (NavState.exec (.row .ent) testNav 1).map (·.row.sels) == some #[0]
+#guard (NavState.exec "nav.rowSel" testNav 1).map (·.row.sels) == some #[0]
 
 -- | T twice removes selection
 def navWithSel : NavState 5 3 (MockTable 5 3) :=
-  match NavState.exec (.row .ent) testNav 1 with
+  match NavState.exec "nav.rowSel" testNav 1 with
   | some n => n
   | none => testNav
-#guard (NavState.exec (.row .ent) navWithSel 1).map (·.row.sels) == some #[]
+#guard (NavState.exec "nav.rowSel" navWithSel 1).map (·.row.sels) == some #[]
 
--- | ! (col.bang) toggles group
-#guard (NavState.exec (.col .bang) testNav 1).map (·.grp) == some #["c0"]
+-- | ! (col.ent) toggles group
+#guard (NavState.exec "nav.colGrp" testNav 1).map (·.grp) == some #["c0"]
 
 -- | colShift (c-) on non-keyed column is no-op
-#guard (NavState.exec (.col .del) testNav 1).isNone
+#guard (NavState.exec "nav.colShiftL" testNav 1).isNone
 
 -- | colShift on keyed column swaps grp order
 -- !l! → grp=["c0","c1"], then shift-left (c-) on c1 (cursor at disp pos 1) → grp=["c1","c0"]
 def navGrp2 : NavState 5 3 (MockTable 5 3) :=
-  match do let n1 ← NavState.exec (.col .bang) testNav 1
-           let n2 ← NavState.exec (.col .inc) n1 1
-           NavState.exec (.col .bang) n2 1 with
+  match do let n1 ← NavState.exec "nav.colGrp" testNav 1
+           let n2 ← NavState.exec "nav.colInc" n1 1
+           NavState.exec "nav.colGrp" n2 1 with
   | some n => n | none => testNav
 #guard navGrp2.grp == #["c0", "c1"]
-#guard (NavState.exec (.col .del) navGrp2 1).map (·.grp) == some #["c1", "c0"]
+#guard (NavState.exec "nav.colShiftL" navGrp2 1).map (·.grp) == some #["c1", "c0"]
 
 -- | colShift at boundary is no-op (first key col can't shift left)
 def navGrp2AtFirst : NavState 5 3 (MockTable 5 3) :=
-  match NavState.exec (.col .dec) navGrp2 1 with
+  match NavState.exec "nav.colDec" navGrp2 1 with
   | some n => n | none => navGrp2
-#guard (NavState.exec (.col .del) navGrp2AtFirst 1).isNone
+#guard (NavState.exec "nav.colShiftL" navGrp2AtFirst 1).isNone
 
 -- | update returns Effect.none for nav commands
-#guard (NavState.update (.row .inc) testNav 1).map (·.2) == some .none
+#guard (NavState.exec "nav.rowInc" testNav 1).isSome
 
 end NavTests2
 
@@ -585,18 +585,18 @@ def infoOn : UI.Info.State := { vis := true }
 #guard ({} : UI.Info.State).vis == true
 
 -- | I toggles info visibility
-#guard (UI.Info.State.update infoOff (.info .ent)).map (·.1.vis) == some true
-#guard (UI.Info.State.update infoOn (.info .ent)).map (·.1.vis) == some false
+#guard (UI.Info.State.update infoOff "infoTog").map (·.1.vis) == some true
+#guard (UI.Info.State.update infoOn "infoTog").map (·.1.vis) == some false
 
 -- | info.inc/dec now handled by AppState (not Info.State), returns none here
-#guard (UI.Info.State.update infoOff (.info .inc)).isNone
-#guard (UI.Info.State.update infoOn (.info .dec)).isNone
+#guard (UI.Info.State.update infoOff "precInc").isNone
+#guard (UI.Info.State.update infoOn "precDec").isNone
 
 -- | Unhandled returns none
-#guard (UI.Info.State.update infoOff (.row .inc)).isNone
+#guard (UI.Info.State.update infoOff "nav.rowInc").isNone
 
 -- | Info update returns Effect.none
-#guard (UI.Info.State.update infoOff (.info .ent)).map (·.2) == some .none
+#guard (UI.Info.State.update infoOff "infoTog").map (·.2) == some .none
 
 end InfoTests2
 

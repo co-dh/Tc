@@ -26,15 +26,15 @@ def filterExprIO (tbl : AdbcTable) (cols : Array String) (row : Nat) : IO String
   let exprs := cols.zip vals |>.map fun (c, v) => s!"{c} == {v}"
   pure (" && ".intercalate exprs.toList)
 
--- | Pure update: returns Effect for IO operations
-def update (s : ViewStack AdbcTable) (cmd : Cmd) : Option (ViewStack AdbcTable × Effect) :=
+-- | Pure update by handler name
+def update (s : ViewStack AdbcTable) (h : String) : Option (ViewStack AdbcTable × Effect) :=
   let n := s.cur.nav; let names := TblOps.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   let curName := names.getD curCol ""
   let colNames := if n.grp.contains curName then n.grp else n.grp.push curName
-  match cmd with
-  | .freq .dup => some (s, .query (.freq colNames))
-  | .freq .ent => match s.cur.vkind with
+  match h with
+  | "freq.open" => some (s, .query (.freq colNames))
+  | "freq.filter" => match s.cur.vkind with
     | .freqV cols _ => some (s, .query (.freqFilter cols s.cur.nav.row.cur.val))
     | _ => none
   | _ => none

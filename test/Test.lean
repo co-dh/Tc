@@ -683,10 +683,10 @@ def test_export_arg : IO Unit := do
   assert (contains csv "alice") "export_arg: csv should contain data"
   IO.FS.removeFile path
 
--- | Column jump via argument command: -c "sExchange<ret>" jumps to Exchange column
+-- | Column jump via argument command: -c "gExchange<ret>" jumps to Exchange column
 def test_col_jump_arg : IO Unit := do
   log "col_jump_arg"
-  let out ← run "sExchange<ret>" "data/nyse10k.parquet"
+  let out ← run "gExchange<ret>" "data/nyse10k.parquet"
   let (_, status) := footer out
   assert (contains status "c1/") "col_jump_arg: cursor moved to Exchange column"
 

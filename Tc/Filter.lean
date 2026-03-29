@@ -100,14 +100,14 @@ namespace Tc.Filter
 
 variable {T : Type} [TblOps T]
 
--- | Pure update: returns Effect describing fzf/search operation
-def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
-  match cmd with
-  | .col .search  => some (s, .fzf .col)                        -- c/: column search
-  | .row .search  => some (s, .fzf .row)                       -- r/: row search
-  | .row .filter  => some (s, .fzf .filter)                    -- r\: row filter
-  | .row .dup     => some (s, .search .next)                   -- r+: next match
-  | .row .del     => some (s, .search .prev)                   -- r-: prev match
+-- | Pure update by handler name
+def update (s : ViewStack T) (h : String) : Option (ViewStack T × Effect) :=
+  match h with
+  | "filter.colSearch"  => some (s, .fzf .col)
+  | "filter.rowSearch"  => some (s, .fzf .row)
+  | "filter.rowFilter"  => some (s, .fzf .filter)
+  | "filter.searchNext" => some (s, .search .next)
+  | "filter.searchPrev" => some (s, .search .prev)
   | _ => none
 
 end Tc.Filter

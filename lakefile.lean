@@ -18,14 +18,15 @@ extern_lib adbcshim pkg := mkCLib pkg "adbcshim" "adbc_core.c"
 -- | include_str deps: Lake doesn't track these automatically
 input_file funcsPrql where path := "Tc" / "Data" / "ADBC" / "funcs.prql"; text := true
 input_file sourcesSql where path := "cfg" / "sources.sql"; text := true
+input_file commandsSql where path := "cfg" / "commands.sql"; text := true
 
 lean_lib Tc where
-  needs := #[funcsPrql, sourcesSql]
+  needs := #[funcsPrql, sourcesSql, commandsSql]
   roots := #[`Tc.Cmd, `Tc.Nav, `Tc.Render, `Tc.Key, `Tc.App.Common,
              `Tc.Term, `Tc.Types, `Tc.Error, `Tc.TmpDir, `Tc.View,
              `Tc.Meta, `Tc.Fzf, `Tc.Filter, `Tc.Folder,
              `Tc.Theme, `Tc.Plot, `Tc.Export, `Tc.Transpose, `Tc.Join, `Tc.Diff, `Tc.Derive, `Tc.Split, `Tc.Sparkline, `Tc.Session, `Tc.StatusAgg, `Tc.Replay, `Tc.UI.Info, `Tc.UI.Preview, `Tc.Runner, `Tc.Remote, `Tc.Ftp, `Tc.SourceConfig, `Tc.Socket,
-             `Tc.Data.Text, `Tc.Data.ADBC.Prql,
+             `Tc.CmdConfig, `Tc.Data.Text, `Tc.Data.ADBC.Prql,
              `Tc.Data.ADBC.Table, `Tc.Data.ADBC.Ops]
 
 -- | Main executable
