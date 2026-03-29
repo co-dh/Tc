@@ -11,7 +11,8 @@ initialize logDir : IO.Ref String ← do
   let _ ← IO.Process.output { cmd := "mkdir", args := #["-p", dir] }
   IO.mkRef dir
 
-def path : IO String := return s!"{← logDir.get}/tv.log"
+def dir : IO String := logDir.get
+def path : IO String := return s!"{← dir}/tv.log"
 
 @[extern "lean_set_log_path"]
 opaque setLogPath : @& String → IO Unit

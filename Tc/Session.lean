@@ -12,8 +12,7 @@ namespace Tc.Session
 
 -- | Session directory under ~/.cache/tv/
 private def sessDir : IO String := do
-  let home := (← IO.getEnv "HOME").getD "/tmp"
-  let dir : System.FilePath := s!"{home}/.cache/tv/sessions"
+  let dir : System.FilePath := s!"{← Log.dir}/sessions"
   IO.FS.createDirAll dir
   pure dir.toString
 

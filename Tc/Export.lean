@@ -34,9 +34,7 @@ def exportView (t : AdbcTable) (path : String) (fmt : ExportFmt) : IO Unit := do
 def run (s : ViewStack AdbcTable) (fmt : ExportFmt) : IO (ViewStack AdbcTable) := do
   let name := s.cur.tabName.replace "/" "_" |>.replace " " "_"
   let stem := (name.splitOn ".").head?.filter (!·.isEmpty) |>.getD name
-  let dir := (← IO.getEnv "HOME").getD "." |> (· ++ "/.cache/tv")
-  try IO.FS.createDirAll dir catch _ => pure ()
-  let path := s!"{dir}/tv_export_{stem}.{fmt.ext}"
+  let path := s!"{← Log.dir}/tv_export_{stem}.{fmt.ext}"
   exportView s.tbl path fmt
   statusMsg s!"exported {path}"
   pure s
