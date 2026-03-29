@@ -620,7 +620,7 @@ def test_filter_arg : IO Unit := do
 def test_export_arg : IO Unit := do
   log "export_arg"
   let home := (← IO.getEnv "HOME").getD "."
-  let path := s!"{home}/tv_export_sort_test.csv"
+  let path := s!"{home}/.cache/tv/tv_export_sort_test.csv"
   try IO.FS.removeFile path catch _ => pure ()
   let _ ← run "ecsv<ret>" "data/sort_test.parquet"
   let csv ← IO.FS.readFile path
@@ -641,7 +641,7 @@ def test_col_jump_arg : IO Unit := do
 def test_export_csv : IO Unit := do
   log "export_csv"
   let home := (← IO.getEnv "HOME").getD "."
-  let path := s!"{home}/tv_export_sort_test.csv"
+  let path := s!"{home}/.cache/tv/tv_export_sort_test.csv"
   try IO.FS.removeFile path catch _ => pure ()
   let out ← run "e" "data/sort_test.parquet"
   assert (contains out "name") "export_csv: table should render"
