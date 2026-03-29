@@ -4,7 +4,6 @@
 -/
 import Std.Data.HashMap
 import Tc.Data.ADBC.Table
-import Tc.Error
 
 namespace Tc.CmdConfig
 

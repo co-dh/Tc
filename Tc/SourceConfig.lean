@@ -6,11 +6,9 @@
   Or:   setup_cmd → setup_sql → list_sql directly (no CLI, e.g. HF root)
 -/
 import Tc.Data.ADBC.Table
-import Tc.Error
+import Tc.Util
 import Tc.Ftp
 import Tc.Render
-import Tc.Remote
-import Tc.TmpDir
 
 namespace Tc.SourceConfig
 

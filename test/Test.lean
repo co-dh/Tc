@@ -9,10 +9,8 @@ import Tc.Nav
 import Tc.View
 import Tc.UI.Info
 import Tc.Types
-import Tc.Remote
+import Tc.Util
 import Tc.Data.Text
-import Tc.Socket
-import Tc.TmpDir
 import Tc.Plot
 import test.TestPure
 import test.TestUtil

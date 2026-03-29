@@ -1,7 +1,7 @@
 /-
   termbox2 FFI bindings for TUI rendering
 -/
-import Tc.Error
+import Tc.Util
 
 namespace Term
 
