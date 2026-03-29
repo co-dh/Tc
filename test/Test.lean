@@ -900,27 +900,15 @@ def test_diff_show_same : IO Unit := do
 
 -- === Plot tests ===
 
--- | Only 'q' exits interactive plot; other unlisted keys are noop
+-- | q exits, ,/. change interval, everything else is noop
 def test_plot_key_dispatch : IO Unit := do
   log "plot_key_dispatch"
-  -- q exits
   assert (Tc.Plot.handleKey 'q' == .quit) "q should quit"
-  -- known keys are not quit
-  assert (Tc.Plot.handleKey '.' != .quit) ". should not quit"
-  assert (Tc.Plot.handleKey ',' != .quit) ", should not quit"
-  assert (Tc.Plot.handleKey 'h' != .quit) "h should not quit"
-  assert (Tc.Plot.handleKey 'l' != .quit) "l should not quit"
-  -- unknown keys are noop, not quit (including arrow key bytes and old +/- keys)
-  assert (Tc.Plot.handleKey 'x' == .noop) "x should be noop"
-  assert (Tc.Plot.handleKey 'a' == .noop) "a should be noop"
-  assert (Tc.Plot.handleKey ' ' == .noop) "space should be noop"
-  assert (Tc.Plot.handleKey '+' == .noop) "+ should be noop (old key, now ,/.)"
-  assert (Tc.Plot.handleKey '-' == .noop) "- should be noop (old key, now ,/.)"
-  assert (Tc.Plot.handleKey '\x1b' == .noop) "ESC (arrow key first byte) should be noop"
-  assert (Tc.Plot.handleKey '[' == .noop) "[ (arrow key second byte) should be noop"
-  assert (Tc.Plot.handleKey 'A' == .noop) "A (up arrow third byte) should be noop"
-  assert (Tc.Plot.handleKey 'j' == .noop) "j should be noop"
-  assert (Tc.Plot.handleKey 'k' == .noop) "k should be noop"
+  assert (Tc.Plot.handleKey '.' == .interval 1) ". should increase interval"
+  assert (Tc.Plot.handleKey ',' == .interval (-1)) ", should decrease interval"
+  -- unrecognized keys are noop
+  for k in ['h', 'l', 'x', 'a', ' ', '+', '-', '\x1b', '[', 'A', 'j', 'k'] do
+    assert (Tc.Plot.handleKey k == .noop) s!"{k} should be noop"
 
 -- | plotExport with string column as y should not crash.
 --   Regression: ds_nth's `y != 0` filter caused DuckDB to cast string cols to INT.

@@ -3,7 +3,7 @@
   X-axis = first group column, category = second group column (optional),
   Y-axis = current column under cursor (must be numeric).
   Facet = third group column (optional, small multiples).
-  Interactive: in-place re-rendering with interval and plot type cycling.
+  Interactive: in-place re-rendering with downsampling interval control.
 -/
 import Tc.View
 import Tc.Term
@@ -103,20 +103,10 @@ private def usesCategoryAsX (kind : PlotKind) : Bool :=
 private def addsFill (kind : PlotKind) : Bool :=
   kind == .box || kind == .violin || kind == .area
 
--- | Plot types that share the same x/y/cat data (cycleable with h/l)
-def cyclableKinds : Array PlotKind := #[.line, .scatter, .bar, .box, .area, .step, .violin]
-
-private def cycleKind (k : PlotKind) (delta : Nat) : PlotKind :=
-  let n := cyclableKinds.size
-  match cyclableKinds.idxOf? k with
-  | some i => cyclableKinds.getD ((i + delta) % n) .line
-  | none => .line
-
 -- | Result of handling a keypress in interactive plot mode
 inductive KeyAction where
   | quit                          -- q: exit plot mode
   | interval (delta : Int)        -- ,/.: change downsample interval
-  | cycleType (delta : Nat)       -- h/l: cycle plot type
   | noop                          -- unknown key: do nothing
   deriving Repr, BEq
 
@@ -125,8 +115,6 @@ def handleKey (key : Char) : KeyAction :=
   if key == 'q' then .quit
   else if key == '.' || key == '>' then .interval 1
   else if key == ',' || key == '<' then .interval (-1)
-  else if key == 'l' then .cycleType 1
-  else if key == 'h' then .cycleType (cyclableKinds.size - 1)
   else .noop
 
 -- | Generate R script for ggplot2 rendering
@@ -202,16 +190,11 @@ private def renderFrame (pngPath : String) (kind : PlotKind)
   clearScreen
   if err?.isNone then showPng pngPath
   else IO.println (err?.getD "plot error")
-  -- status bar: show all plot types with current highlighted
-  let typeBar := String.intercalate " " (cyclableKinds.toList.map fun k =>
-    if k == kind then s!"\x1b[1;7m {k} \x1b[0m" else s!" {k} ")
-  IO.println s!"\x1b[1m─── x={xName}  y={yName} ───\x1b[0m"
-  let ivLine := if intervals.size > 1 then
+  IO.println s!"\x1b[1m─── {kind}: x={xName}  y={yName} ───\x1b[0m"
+  if intervals.size > 1 then
     let ivBar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
       if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
-    s!"  ,/.:downsample {ivBar}"
-  else ""
-  IO.println s!"h/l:{typeBar}{ivLine}"
+    IO.println s!",/.:downsample {ivBar}"
   IO.print "q:exit "
 
 -- | Run plot with interactive controls (in-place re-rendering)
@@ -292,33 +275,30 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   setRaw
   let datPath ← Tc.tmpPath "plot.dat"
   let pngPath ← Tc.tmpPath "plot.png"
+  let script := rScript datPath pngPath kind xName yName hasCat catName hasFacet facetName xType
   let mut idx : Nat := 0
-  let mut curKind := kind
-  let mut needExport := true  -- skip re-export when only plot type changes
   let mut continue_ := true
+  let mut needRender := true
   while continue_ do
-    let iv := intervals.getD idx default
-    Log.write "plot" s!"kind={curKind} interval={iv.label} truncLen={iv.truncLen} idx={idx}"
-    let exportResult ← do
-      if needExport then
-        try
+    if needRender then
+      let iv := intervals.getD idx default
+      Log.write "plot" s!"kind={kind} interval={iv.label} truncLen={iv.truncLen} idx={idx}"
+      let exportResult ← try
           if let some _cats := ← exportWithHeaders n.tbl xName yName exportCatName? xIsTime baseStep iv.truncLen then
             pure (none : Option String)
           else pure (some "export returned no data")
         catch e => pure (some e.toString)
-      else pure none
-    let err? ← match exportResult with
-      | some msg => pure (some msg)
-      | none => renderR (rScript datPath pngPath curKind xName yName hasCat catName hasFacet facetName xType)
-    renderFrame pngPath curKind xName yName intervals idx err?
+      let err? ← match exportResult with
+        | some msg => pure (some msg)
+        | none => renderR script
+      renderFrame pngPath kind xName yName intervals idx err?
     let key ← readKeyRaw
     match handleKey key with
     | .quit => continue_ := false
     | .interval d =>
-      if d > 0 then idx := min (idx + 1) maxIdx else idx := if idx > 0 then idx - 1 else 0
-      needExport := true
-    | .cycleType d => curKind := cycleKind curKind d; needExport := false
-    | .noop => needExport := false
+      let newIdx := if d > 0 then min (idx + 1) maxIdx else if idx > 0 then idx - 1 else 0
+      needRender := newIdx != idx; idx := newIdx
+    | .noop => needRender := false
   -- exit plot mode: restore terminal, leave alternate screen, re-init TUI
   setSane
   leaveAltScreen
