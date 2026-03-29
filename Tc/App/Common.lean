@@ -374,9 +374,10 @@ def appMain (args : List String) : IO Unit := do
     else if path.endsWith ".txt" then
       let _ ← runTsv (Tc.TextParse.fromText (← IO.FS.readFile path)) path pipeMode testMode theme keys
     else
-      match ← Folder.openFile path with
+      -- try/catch: DuckDB throws on unrecognized formats (e.g. .txt.gz)
+      match ← try Folder.openFile path catch _ => pure none with
       | some v => let _ ← runApp v pipeMode testMode theme keys
-      | none => IO.eprintln s!"Cannot open file: {path}"
+      | none => Folder.viewFile path
   finally
     AdbcTable.shutdown
     Tc.cleanupTmp

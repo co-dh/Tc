@@ -583,6 +583,14 @@ def test_ftp_backspace : IO Unit := do
   let output ← run "j<ret><bs>" "ftp://ftp.nyse.com/"
   assert (contains output "ftp.nyse.com") "FTP backspace returns to parent"
 
+-- === Gz view tests ===
+
+-- | Opening a .txt.gz file should decompress and show readable content
+def test_gz_viewfile : IO Unit := do
+  log "gz_viewfile"
+  let out ← run "" "data/test.txt.gz"
+  assert (contains out "hello gz world") "gz viewfile shows decompressed text"
+
 -- === Derive tests ===
 
 -- | Derive: press '=', fzf auto-selects hint "a : int" which lacks "name = expr" format → no-op
@@ -1204,7 +1212,9 @@ def ciTests : Array (String × IO Unit) := #[
   ("replay_sort", test_replay_sort),
   ("replay_empty", test_replay_empty),
   -- Folder sort on PRQL keyword column
-  ("folder_sort_type", test_folder_sort_type)
+  ("folder_sort_type", test_folder_sort_type),
+  -- Gz view
+  ("gz_viewfile", test_gz_viewfile)
 ]
 
 -- Heavy tests: external tools (R, osqueryi), network (HF), databases (pg)
