@@ -1,6 +1,6 @@
 /-
   SourceConfig: config-driven file/folder handling for remote sources.
-  Each source is a row in cfg/sources.duckdb (tv_sources table).
+  Inline Lean config — no SQL file or DuckDB table needed.
 
   Flow: CLI cmd → JSON → tmp file → list_sql → DuckDB temp table
   Or:   setup_cmd → setup_sql → list_sql directly (no CLI, e.g. HF root)
@@ -14,23 +14,23 @@ namespace Tc.SourceConfig
 
 -- | Config entry for a source
 structure Config where
-  pfx            : String      -- URI prefix: "s3://", "hf://", etc. Empty = catch-all.
-  minParts       : Nat         -- min URI parts before parent returns none
-  listCmd        : String      -- shell cmd template → stdout JSON. Empty = run listSql directly.
-  listSql        : String      -- SQL to transform JSON (with {src}) or query directly (no {src})
-  downloadCmd    : String      -- shell cmd template to download a file
-  needsDownload  : Bool        -- true: download before DuckDB read. false: DuckDB reads URI
-  dirSuffix      : Bool        -- true: append "/" when joining child dir paths
-  parentFallback : String      -- fallback parent when at minParts root. Empty = none.
-  setupCmd       : String      -- shell cmd to run before first listing. Empty = skip.
-  setupSql       : String      -- SQL to run before first listing (e.g. ATTACH). Empty = skip.
-  grp            : String      -- default group column name. Empty = none.
-  enterUrl       : String      -- URL template for entering file rows. Empty = default.
-  script         : String      -- shell cmd template for enter: stdout = JSON rows. Empty = none.
-  attach         : Bool        -- true: enter uses fromDuckDBTable (for attached databases)
-  duckdbExt      : String      -- DuckDB extension to auto INSTALL/LOAD (e.g. "postgres"). Empty = none.
-  attachType     : String      -- ATTACH TYPE clause (e.g. "POSTGRES"). Empty = native DuckDB.
-  urlEncode      : Bool        -- true: URL-encode path segments for curl commands (e.g. FTP)
+  pfx            : String := ""   -- URI prefix: "s3://", "hf://", etc. Empty = catch-all.
+  minParts       : Nat := 0       -- min URI parts before parent returns none
+  listCmd        : String := ""   -- shell cmd template → stdout JSON. Empty = run listSql directly.
+  listSql        : String := ""   -- SQL to transform JSON (with {src}) or query directly (no {src})
+  downloadCmd    : String := ""   -- shell cmd template to download a file
+  needsDownload  : Bool := false  -- true: download before DuckDB read. false: DuckDB reads URI
+  dirSuffix      : Bool := false  -- true: append "/" when joining child dir paths
+  parentFallback : String := ""   -- fallback parent when at minParts root. Empty = none.
+  setupCmd       : String := ""   -- shell cmd to run before first listing. Empty = skip.
+  setupSql       : String := ""   -- SQL to run before first listing (e.g. ATTACH). Empty = skip.
+  grp            : String := ""   -- default group column name. Empty = none.
+  enterUrl       : String := ""   -- URL template for entering file rows. Empty = default.
+  script         : String := ""   -- shell cmd template for enter: stdout = JSON rows. Empty = none.
+  attach         : Bool := false  -- true: enter uses fromDuckDBTable (for attached databases)
+  duckdbExt      : String := ""   -- DuckDB extension to auto INSTALL/LOAD (e.g. "postgres"). Empty = none.
+  attachType     : String := ""   -- ATTACH TYPE clause (e.g. "POSTGRES"). Empty = native DuckDB.
+  urlEncode      : Bool := false  -- true: URL-encode path segments for curl commands (e.g. FTP)
 
 -- | Global flag: use --no-sign-request for S3 (set via +n arg)
 initialize noSign : IO.Ref Bool ← IO.mkRef false
@@ -79,73 +79,57 @@ private def validateShellSafe (s : String) (label : String) : IO Unit := do
     Log.write "src" s!"rejected unsafe {label}: {s}"
     throw (IO.userError s!"Path contains shell metacharacters: {s}")
 
-/-! ## Config DB -/
+/-! ## Source configs — inline Lean array -/
 
--- | Source config SQL, compiled into the binary
-private def sourcesSql : String := include_str "../cfg/sources.sql"
-
--- | Create tv_sources table from embedded SQL. Called once after AdbcTable.init.
-def attachDb : IO Unit := do
-  let stmts := sourcesSql.splitOn ";\n" |>.map (·.trimAscii.toString) |>.filter (·.length > 0)
-  for stmt in stmts do
-    let _ ← Adbc.query stmt
-  Log.write "init" "sources: embedded"
-
--- | A typed row accessor: bundles (qr, row, colMap) so column access
--- takes only a name. The row/col swap bug is impossible by construction —
--- there's no second UInt64 argument to confuse with the row index.
-structure QRow where
-  private mk ::
-  qr     : Adbc.QueryResult
-  row    : UInt64
-  colIdx : String → UInt64
-
-namespace QRow
-
-def ofRow (qr : Adbc.QueryResult) (row : Nat) : IO QRow := do
-  let nc ← Adbc.ncols qr
-  let mut m : Array (String × UInt64) := #[]
-  for i in [:nc.toNat] do
-    m := m.push (← Adbc.colName qr i.toUInt64, i.toUInt64)
-  pure ⟨qr, row.toUInt64, fun name => (m.find? (·.1 == name) |>.map (·.2)).getD 0⟩
-
-def str (r : QRow) (col : String) : IO String := Adbc.cellStr r.qr r.row (r.colIdx col)
-def int (r : QRow) (col : String) : IO Int   := Adbc.cellInt r.qr r.row (r.colIdx col)
-def bool (r : QRow) (col : String) : IO Bool  := (· != 0) <$> r.int col
-
-end QRow
-
--- | Parse a Config from a query result row
-private def configFromRow (qr : Adbc.QueryResult) (row : Nat) : IO Config := do
-  let r ← QRow.ofRow qr row
-  pure {
-    pfx            := ← r.str "pfx"
-    minParts       := (← r.int "min_parts").toNat
-    listCmd        := ← r.str "list_cmd"
-    listSql        := ← r.str "list_sql"
-    downloadCmd    := ← r.str "download_cmd"
-    needsDownload  := ← r.bool "needs_download"
-    dirSuffix      := ← r.bool "dir_suffix"
-    parentFallback := ← r.str "parent_fallback"
-    setupCmd       := ← r.str "setup_cmd"
-    setupSql       := ← r.str "setup_sql"
-    grp            := ← r.str "grp"
-    enterUrl       := ← r.str "enter_url"
-    script         := ← r.str "script"
-    attach         := ← r.bool "attach"
-    duckdbExt      := ← r.str "duckdb_ext"
-    attachType     := ← r.str "attach_type"
-    urlEncode      := ← r.bool "url_encode"
-  }
+-- | All source configs. Longest prefix match wins.
+def sources : Array Config := #[
+  -- S3: aws s3api JSON output, download via aws s3 cp
+  { pfx := "s3://", minParts := 3,
+    listCmd := "aws s3api list-objects-v2 --bucket {1} --delimiter / --prefix {2+}/ {extra} --output json",
+    listSql := "SELECT split_part(unnest.Key, '/', -1) as name, unnest.Size as size, unnest.LastModified as date, 'file' as type FROM (SELECT unnest(Contents) FROM read_json_auto('{src}')) WHERE unnest.Key IS NOT NULL UNION ALL SELECT split_part(unnest.Prefix, '/', -2) as name, 0 as size, '' as date, 'dir' as type FROM (SELECT unnest(CommonPrefixes) FROM read_json_auto('{src}')) WHERE unnest.Prefix IS NOT NULL",
+    downloadCmd := "aws s3 cp {extra} {path} {tmp}/{name}",
+    needsDownload := true, dirSuffix := true },
+  -- HF dataset browser: curl HF Hub API
+  { pfx := "hf://datasets/", minParts := 5,
+    listCmd := "curl -sf https://huggingface.co/api/datasets/{1}/{2}/tree/main/{3+}",
+    listSql := "SELECT split_part(path, '/', -1) as name, size, type FROM read_json_auto('{src}')",
+    downloadCmd := "curl -sfL -o {tmp}/{name} https://huggingface.co/datasets/{1}/{2}/resolve/main/{3+}",
+    dirSuffix := true, parentFallback := "hf://" },
+  -- HF root: dataset listing from pre-populated DuckDB
+  { pfx := "hf://",
+    listSql := "SELECT id, downloads, likes, description, license, task, language, created, modified FROM hf.listing ORDER BY downloads DESC",
+    setupCmd := "python3 scripts/hf_datasets.py",
+    setupSql := "ATTACH '{home}/.cache/tv/hf_datasets.duckdb' AS hf (READ_ONLY)",
+    grp := "id", enterUrl := "hf://datasets/{name}/" },
+  -- Generic REST API: curl any JSON endpoint
+  { pfx := "rest://", minParts := 1,
+    listCmd := "curl -sfL https://{1+}",
+    listSql := "SELECT * FROM read_json_auto('{src}', auto_detect=true)" },
+  -- Osquery: stub views in osq schema provide types + column comments
+  { pfx := "osquery://",
+    listSql := "SELECT name, safety, rows, description FROM osq.listing ORDER BY name",
+    setupCmd := "python3 scripts/osquery_tables.py",
+    setupSql := "ATTACH '{home}/.cache/tv/osquery.duckdb' AS osq (READ_ONLY)",
+    grp := "name",
+    script := "osqueryi --json \"SELECT * FROM {name}\"" },
+  -- FTP: curl fetches ls -l, Lean parses it
+  { pfx := "ftp://", minParts := 3,
+    listCmd := "curl -sf {path}", listSql := "FTP",
+    downloadCmd := "curl -sfL -o '{tmp}/{name}' {path}",
+    needsDownload := true, dirSuffix := true, urlEncode := true },
+  -- PostgreSQL: attach=true + duckdb_ext auto-generates ATTACH SQL
+  { pfx := "pg://", minParts := 99,
+    grp := "name", attach := true, duckdbExt := "postgres", attachType := "POSTGRES" }
+]
 
 -- | Find config for a path by prefix match (longest prefix wins)
-def findSource (path : String) : IO (Option Config) := do
-  try
-    let qr ← Adbc.queryParam "SELECT * FROM tv_sources WHERE pfx != '' AND $1 LIKE pfx || '%' ORDER BY length(pfx) DESC LIMIT 1" path
-    let n ← Adbc.nrows qr
-    if n == 0 then return none
-    some <$> configFromRow qr 0
-  catch _ => return none
+def findSource (path : String) : IO (Option Config) :=
+  pure (sources.foldl (fun best cfg =>
+    if !cfg.pfx.isEmpty && path.startsWith cfg.pfx then
+      match best with
+      | some b => if cfg.pfx.length > b.pfx.length then some cfg else best
+      | none => some cfg
+    else best) none)
 
 
 /-! ## Generic Operations -/

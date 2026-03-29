@@ -32,20 +32,6 @@ namespace KeyMap
     (Term.ctrlD.toUInt16, "nav.rowPgDn"), (Term.ctrlU.toUInt16, "nav.rowPgUp")
   ]
 
-  -- Compile-time copy of SQL 'key' column — must stay in sync with cfg/commands.sql.
-  -- Runtime uses CmdConfig.keyLookup for the full set.
-  def char : Array (Char × String) := #[
-    ('{', "scrollUp"), ('}', "scrollDn"),
-    ('[', "sort.asc"),  (']', "sort.desc"),
-    ('!', "nav.colGrp"),  ('T', "nav.rowSel"),
-    ('H', "nav.colHide"),
-    ('n', "filter.searchNext"),  ('N', "filter.searchPrev"),
-    (' ', "menu"),  ('q', "stk.pop"),
-    ('S', "stk.swap"), ('X', "xpose"), ('d', "diff"),
-    ('I', "infoTog"),
-    ('M', "meta.push"), ('F', "freq.open"), ('D', "folder.push"),
-    ('e', "export"), ('W', "sessSave"), ('J', "join")
-  ]
 end KeyMap
 
 def evToChar (ev : Term.Event) : Char :=

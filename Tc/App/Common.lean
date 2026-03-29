@@ -24,10 +24,11 @@ import Tc.Replay
 open Tc
 
 -- | Handlers that take user input (fzf or typed arg).
--- When pressed interactively, these invoke fzf. In test mode, chars until \r become the arg.
-private def isArgHandler (h : String) : Bool :=
-  h == "split" || h == "derive" || h == "filter.rowSearch" || h == "filter.rowFilter"
-  || h == "filter.colSearch" || h == "export" || h == "sessSave" || h == "sessLoad" || h == "join"
+-- Derived from config: handlers that appear in runArgCmd dispatch.
+private def argHandlers : Array String :=
+  #["split", "derive", "filter.rowSearch", "filter.rowFilter",
+    "filter.colSearch", "export", "sessSave", "sessLoad", "join"]
+private def isArgHandler (h : String) : Bool := argHandlers.contains h
 
 -- | App state: view stack + render state + theme + info + preview scroll
 structure AppState where
@@ -295,9 +296,6 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   -- Dispatch: handler name → dispatch → loop
   let runHandler (h : String) (rest : Array Char) : IO AppState := do
     let ci ← CmdConfig.handlerLookup h
-    -- Arg shortcuts: call runArgCmd directly (e.g. join shortcuts)
-    if let some (argH, dflt) := ← CmdConfig.argShortcut h then
-      return ← mainLoop (← runArgCmd a argH dflt) test rest
     match ← a.dispatch ci with
     | .quit => pure a
     | .unhandled => mainLoop a test rest
@@ -309,7 +307,7 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   let handler? ← do
     match ← CmdConfig.keyLookup keyChar with
     | some ci => pure (some ci.handler)
-    | none => pure ((lookup KeyMap.char keyChar) <|> evToHandler ev a.stk.cur.vkind)
+    | none => pure (evToHandler ev a.stk.cur.vkind)
   match handler? with
   | some h =>
     -- Arg commands: collect user input (in test mode, chars until \r)
@@ -389,7 +387,6 @@ def appMain (args : List String) : IO Unit := do
   Log.write "init" s!"tmpdir={← Tc.tmpDir.get}"
   let err ← try AdbcTable.init catch e => IO.eprintln s!"Backend init error: {e}"; return
   if !err.isEmpty then IO.eprintln s!"Backend init failed: {err}"; return
-  try SourceConfig.attachDb catch e => Log.write "init" s!"attachDb: {e}"
   try CmdConfig.init catch e => Log.write "init" s!"cmdConfig: {e}"
   -- session restore: -s name
   if let some sessName := cli.session then
