@@ -7,7 +7,7 @@ VisiData-style terminal table viewer written in Lean 4, with DuckDB backend.
 ## Features
 
 tv opens CSV, Parquet, JSON, Arrow, DuckDB, SQLite, and Excel files.
-It can also browse S3 buckets, HuggingFace datasets, and osquery tables.
+It can also browse S3 buckets, HuggingFace datasets, FTP servers, and osquery tables.
 
 ### Folder browser
 
@@ -106,8 +106,9 @@ get a `Δ` prefix.
 
 ### Remote sources
 
-Browse S3 buckets (`tv s3://bucket/ +n`) and HuggingFace datasets
-(`tv hf://datasets/user/dataset`) the same way you browse local folders.
+Browse S3 buckets (`tv s3://bucket/ +n`), HuggingFace datasets
+(`tv hf://datasets/user/dataset`), and FTP servers (`tv ftp://ftp.nyse.com/`)
+the same way you browse local folders.
 
 ### Also
 
@@ -148,6 +149,7 @@ tv s3://bucket/prefix              # Browse S3 bucket
 tv s3://bucket/path/file.csv       # Open S3 file directly
 tv s3://bucket/prefix +n           # S3 public bucket (no credentials)
 tv hf://datasets/user/dataset      # HuggingFace Hub dataset
+tv ftp://ftp.nyse.com/             # Browse FTP server
 tv osquery://                      # Browse osquery tables
 tv osquery://processes             # Query osquery table directly
 cat data.csv | tv                  # Pipe mode (stdin)
