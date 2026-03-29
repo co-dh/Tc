@@ -77,9 +77,15 @@ INSERT INTO tv_sources VALUES
    'name', '',
    'osqueryi --json "SELECT * FROM {name}"', false, '', ''),
 
-  -- FTP: curl ls -l output, python URL-encodes names for navigation
+  -- FTP: parse Unix ls -l and Windows IIS formats, URL-encode names
   ('ftp://', 3,
-   'curl -sf {path} | python3 -c "import sys,re,urllib.parse as u;[print(u.quote(m[4].rstrip(),safe='''')+''\t''+m[2]+''\t''+m[3]+''\t''+(''dir''if m[1][0]==''d''else''file'')) for l in sys.stdin for m in[re.match(r''(\S+)\s+\S+\s+\S+\s+\S+\s+(\S+)\s+(\S+\s+\S+\s+\S+)\s+(.*)'',l)]if m]"',
+   'curl -sf {path} | python3 -c ''import sys,re,urllib.parse as u
+for l in sys.stdin:
+ m=re.match(r"(\S+)\s+\S+\s+\S+\s+\S+\s+(\S+)\s+(\S+\s+\S+\s+\S+)\s+(.*)",l)
+ if m:print(u.quote(re.sub(" -> .*","",m[4].rstrip()),safe="")+"\t"+m[2]+"\t"+m[3]+"\t"+("dir"if m[1][0]=="d"else"file"));continue
+ m=re.match(r"(\S+\s+\S+)\s+(<DIR>|\d+)\s+(.*)",l)
+ if m:print(u.quote(m[3].rstrip(),safe="")+"\t"+("0"if m[2]=="<DIR>"else m[2])+"\t"+m[1]+"\t"+("dir"if m[2]=="<DIR>"else"file"))
+''',
    'SELECT column0 as name, TRY_CAST(column1 AS BIGINT) as size, column2 as date, column3 as type
     FROM read_csv(''{src}'', header=false, delim=''\t'', auto_detect=false,
     columns={''column0'':''VARCHAR'',''column1'':''VARCHAR'',''column2'':''VARCHAR'',''column3'':''VARCHAR''})
