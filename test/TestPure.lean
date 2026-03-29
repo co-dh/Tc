@@ -114,11 +114,11 @@ section ViewUpdateTests
 
 -- [ (col.lbr) returns sort effect with asc=true (from test_sort_asc)
 #guard (View.update testView "sort.asc" 1).map (·.2) ==
-  some (.query (.sort 0 #[] #[] true))
+  some (.sort 0 #[] #[] true)
 
 -- ] (col.rbr) returns sort effect with asc=false (from test_sort_desc)
 #guard (View.update testView "sort.desc" 1).map (·.2) ==
-  some (.query (.sort 0 #[] #[] false))
+  some (.sort 0 #[] #[] false)
 
 -- Navigation delegates to NavState and returns Effect.none
 -- (from test_nav_down: "j moves to row 1")
@@ -182,29 +182,10 @@ def freqView' : View (MockTable 5 3) :=
 
 end TabNameTests
 
-/-! ## Filter.update Effect Tests (derived from screen tests) -/
+/-! ## Filter.dispatch Tests (dispatch returns IO action directly, no Effect) -/
 
-section FilterUpdateTests
-
--- / → fzf.row (from test_search_jump: row search)
-#guard (Tc.Filter.update testStack "filter.rowSearch").map (·.2) == some (.fzf .row)
-
--- \ → fzf.filter (from test_filter_parquet_full_db: row filter)
-#guard (Tc.Filter.update testStack "filter.rowFilter").map (·.2) == some (.fzf .filter)
-
--- s → fzf.col (from test_col_search: column search)
-#guard (Tc.Filter.update testStack "filter.colSearch").map (·.2) == some (.fzf .col)
-
--- n → search.next (from test_search_next)
-#guard (Tc.Filter.update testStack "filter.searchNext").map (·.2) == some (.search .next)
-
--- N → search.prev (from test_search_prev)
-#guard (Tc.Filter.update testStack "filter.searchPrev").map (·.2) == some (.search .prev)
-
--- Unhandled returns none
-#guard (Tc.Filter.update testStack "nav.rowInc").isNone
-
-end FilterUpdateTests
+-- Filter.dispatch takes AdbcTable (does IO), so can't test with MockTable.
+-- Coverage via screen tests (test_search_jump, test_filter_parquet_full_db, etc.).
 
 /-! ## Cmd Parse/ToString Round-Trip Theorems -/
 
@@ -585,8 +566,8 @@ def infoOn : UI.Info.State := { vis := true }
 #guard ({} : UI.Info.State).vis == true
 
 -- | I toggles info visibility
-#guard (UI.Info.State.update infoOff "infoTog").map (·.1.vis) == some true
-#guard (UI.Info.State.update infoOn "infoTog").map (·.1.vis) == some false
+#guard (UI.Info.State.update infoOff "infoTog").map (·.vis) == some true
+#guard (UI.Info.State.update infoOn "infoTog").map (·.vis) == some false
 
 -- | info.inc/dec now handled by AppState (not Info.State), returns none here
 #guard (UI.Info.State.update infoOff "precInc").isNone
@@ -594,9 +575,6 @@ def infoOn : UI.Info.State := { vis := true }
 
 -- | Unhandled returns none
 #guard (UI.Info.State.update infoOff "nav.rowInc").isNone
-
--- | Info update returns Effect.none
-#guard (UI.Info.State.update infoOff "infoTog").map (·.2) == some .none
 
 end InfoTests2
 

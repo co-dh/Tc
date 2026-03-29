@@ -1,4 +1,4 @@
--- App: app state, dispatch, effect runner, main loop, entry point
+-- App: app state, dispatch, main loop, entry point
 import Tc.Filter
 import Tc.Folder
 import Tc.SourceConfig
@@ -23,6 +23,7 @@ import Tc.Sparkline
 import Tc.Session
 import Tc.Diff
 import Tc.StatusAgg
+import Tc.Export
 import Tc.Replay
 import Tc.Socket
 
@@ -40,61 +41,145 @@ structure AppState where
   statusCache : String × String × String := ("", "", "")  -- (path, col, desc) — avoids per-frame DB query
   aggCache : StatusAgg.Cache := StatusAgg.Cache.empty
 
+-- | Dispatch result: quit, unhandled, or new state
+inductive Action where | quit | unhandled | ok (a : AppState)
+
 namespace AppState
 
 -- | Update stk, reset vs if ci.resetsVS
 def withStk (a : AppState) (ci : CmdConfig.CmdInfo) (s' : ViewStack AdbcTable) : AppState :=
   { a with stk := s', vs := if ci.resetsVS then .default else a.vs }
 
-private def liftStk (a : AppState) (ci : CmdConfig.CmdInfo) (r : Option (ViewStack AdbcTable × Effect)) : Option (AppState × Effect) :=
-  r.map fun (s', eff) => (withStk a ci s', eff)
+-- | Try/catch wrapper for stack-level IO (resets vs+sparklines on success)
+private def tryStk (a : AppState) (ci : CmdConfig.CmdInfo)
+    (f : IO (Option (ViewStack AdbcTable))) : IO Action := do
+  match ← f.toBaseIO with
+  | .ok (some s') =>
+    let r := a.withStk ci s'
+    pure (.ok { r with vs := .default, sparklines := #[] })
+  | .ok none => pure (.ok a)
+  | .error e => Log.error e.toString; errorPopup e.toString; pure (.ok a)
 
--- | Dispatch by handler name. Domain modules receive handler, not (obj,verb).
-def dispatch (a : AppState) (ci : CmdConfig.CmdInfo) : Option (AppState × Effect) :=
+-- | Execute a residual Effect from View.update/Freq.update inline
+private def runViewEffect (a : AppState) (ci : CmdConfig.CmdInfo)
+    (v' : View AdbcTable) (e : Effect) : IO Action := do
+  let s := a.stk
+  let a' := a.withStk ci (s.setCur v')
+  match e with
+  | .none => pure (.ok a')
+  | .quit => pure .quit
+  | .fetchMore =>
+    match ← (TblOps.fetchMore s.tbl).toBaseIO with
+    | .ok (some tbl') => match v'.rebuild tbl' (row := v'.nav.row.cur.val) with
+      | some rv => pure (.ok { a' with stk := s.setCur rv, vs := .default, sparklines := #[] })
+      | none => pure (.ok a')
+    | .ok none => pure (.ok a')
+    | .error err => Log.error err.toString; errorPopup err.toString; pure (.ok a')
+  | .sort colIdx sels grp asc => tryStk a ci do
+    let tbl' ← ModifyTable.sort s.tbl colIdx sels grp asc
+    pure (v'.rebuild tbl' (col := colIdx) (row := v'.nav.row.cur.val) |>.map s.setCur)
+  | .exclude cols => tryStk a ci do
+    let tbl' ← AdbcTable.excludeCols s.tbl cols
+    let grp' := v'.nav.grp.filter (!cols.contains ·)
+    let hidden' := v'.nav.hidden.filter (!cols.contains ·)
+    pure (v'.rebuild tbl' (grp := grp') (row := v'.nav.row.cur.val) |>.map fun rv =>
+      s.setCur { rv with nav := { rv.nav with hidden := hidden' } })
+  | .freq colNames => tryStk a ci do
+    let some (adbc, totalGroups) ← AdbcTable.freqTable s.tbl colNames | return none
+    match View.fromTbl adbc s.cur.path 0 colNames with
+    | some fv => pure (some (s.push { fv with vkind := .freqV colNames totalGroups, disp := s!"freq {",".intercalate colNames.toList}" }))
+    | none => pure none
+  | .freqFilter cols row => tryStk a ci do
+    match s.cur.vkind, s.pop with
+    | .freqV _ _, some s' => do
+      let expr ← Freq.filterExprIO s.tbl cols row
+      match ← TblOps.filter s'.tbl expr with
+      | some tbl' => match s'.cur.rebuild tbl' (row := 0) with
+        | some rv => pure (some (s'.push rv))
+        | none => pure none
+      | none => pure none
+    | _, _ => pure none
+
+-- | Pure-only dispatch for preview polling (fzf cmd mode). No IO effects executed.
+def pureDispatch (a : AppState) (ci : CmdConfig.CmdInfo) : Option AppState :=
   let h := ci.handler
-  let viewUp := fun () => View.update a.stk.cur h 20 |>.map fun (v', e) => (withStk a ci (a.stk.setCur v'), e)
-  -- top-level effects
-  if h == "quit" then some (a, .quit)
-  else if h == "xpose" then some (a, .transpose)
-  else if h == "diff" then some (a, .diff)
-  else if h == "menu" then some (a, .fzf .cmd)
-  -- info panel
-  else if h == "scrollUp" then some ({ a with prevScroll := a.prevScroll - min a.prevScroll 5 }, .none)
-  else if h == "scrollDn" then some ({ a with prevScroll := a.prevScroll + 5 }, .none)
-  else if h == "precDec" then some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj - 1 } }, .none)
-  else if h == "precInc" then some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj + 1 } }, .none)
-  else if h == "prec0" then some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := -4 } }, .none)
-  else if h == "precMax" then some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := 13 } }, .none)
-  else if h == "infoTog" then a.info.update h |>.map fun (i', e) => ({ a with info := i' }, e)
+  if h == "scrollUp" then some { a with prevScroll := a.prevScroll - min a.prevScroll 5 }
+  else if h == "scrollDn" then some { a with prevScroll := a.prevScroll + 5 }
+  else if h == "precDec" then some { a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj - 1 } }
+  else if h == "precInc" then some { a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj + 1 } }
+  else if h == "prec0" then some { a with stk := a.stk.setCur { a.stk.cur with precAdj := -4 } }
+  else if h == "precMax" then some { a with stk := a.stk.setCur { a.stk.cur with precAdj := 13 } }
+  else if h == "infoTog" then a.info.update h |>.map fun i' => { a with info := i' }
   else if h.startsWith "heat." then
-    let digit := h.back.toNat - '0'.toNat
-    some ({ a with heatMode := min 3 digit.toUInt8 }, .none)
-  -- domain dispatch by prefix
-  else if h.startsWith "stk." then liftStk a ci (ViewStack.update a.stk h)
-  else if h.startsWith "folder." then liftStk a ci (Folder.update a.stk h) <|> viewUp ()
-  else if h.startsWith "meta." then liftStk a ci (Meta.update a.stk h) <|> viewUp ()
-  else if h.startsWith "freq." then liftStk a ci (Freq.update a.stk h) <|> viewUp ()
-  else if h.startsWith "plot." then liftStk a ci (Plot.update a.stk h)
-  else if h.startsWith "filter." then liftStk a ci (Filter.update a.stk h) <|> viewUp ()
-  -- nav + sort → viewUp (View.update handles sort.* specially, delegates nav.* to NavState.exec)
-  else viewUp ()
+    some { a with heatMode := min 3 (h.back.toNat - '0'.toNat).toUInt8 }
+  else if h.startsWith "stk." then
+    ViewStack.update a.stk h |>.bind fun (s', _) => some (a.withStk ci s')
+  else
+    -- Nav-only: try View.update, keep only .none effects
+    View.update a.stk.cur h 20 |>.bind fun (v', e) =>
+      if e.isNone then some (a.withStk ci (a.stk.setCur v')) else none
 
-end AppState
-
--- run effect, recurse on fzfCmd; errors are logged and shown as popup, never crash
-partial def runEffect (a : AppState) (e : Effect) : IO AppState := do
-  match ← (runEffectCore a e |>.toBaseIO) with
-  | .ok a' => pure a'
-  | .error err => do
-    let msg := err.toString
-    Log.error msg
-    errorPopup msg
-    pure a
+-- | Full dispatch: handles all commands, executes IO inline with error handling.
+-- Returns .quit to exit, .unhandled if command not recognized, .ok for everything else.
+partial def dispatch (a : AppState) (ci : CmdConfig.CmdInfo) : IO Action := do
+  let h := ci.handler
+  -- quit
+  if h == "quit" then return .quit
+  -- stk operations (may produce .quit on empty stack pop)
+  if h.startsWith "stk." then
+    return match ViewStack.update a.stk h with
+    | some (_, .quit) => .quit
+    | some (s', _) => .ok (a.withStk ci s')
+    | none => .unhandled
+  -- pure state updates
+  if h == "scrollUp" then return .ok { a with prevScroll := a.prevScroll - min a.prevScroll 5 }
+  if h == "scrollDn" then return .ok { a with prevScroll := a.prevScroll + 5 }
+  if h == "precDec" then return .ok { a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj - 1 } }
+  if h == "precInc" then return .ok { a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj + 1 } }
+  if h == "prec0" then return .ok { a with stk := a.stk.setCur { a.stk.cur with precAdj := -4 } }
+  if h == "precMax" then return .ok { a with stk := a.stk.setCur { a.stk.cur with precAdj := 13 } }
+  if h == "infoTog" then return match a.info.update h with
+    | some i' => .ok { a with info := i' } | none => .unhandled
+  if h.startsWith "heat." then
+    return .ok { a with heatMode := min 3 (h.back.toNat - '0'.toNat).toUInt8 }
+  -- menu (fzf command picker with live polling)
+  if h == "menu" then return ← runMenu a
+  -- IO domain dispatch: transpose, diff
+  if h == "xpose" then return ← tryStk a ci (Transpose.push a.stk)
+  if h == "diff" then
+    if a.stk.cur.sameHide.isEmpty then return ← tryStk a ci (Diff.run a.stk)
+    else return .ok { a with stk := a.stk.setCur (Diff.showSame a.stk.cur), vs := .default, sparklines := #[] }
+  -- IO domain dispatch by prefix: folder, meta, plot, filter
+  if h.startsWith "folder." then
+    if let some f := Folder.dispatch a.stk h then return ← tryStk a ci f
+    -- fallthrough to viewUp below
+  else if h.startsWith "meta." then
+    if let some f := Meta.dispatch a.stk h then return ← tryStk a ci f
+  else if h.startsWith "plot." then
+    if let some kind := Plot.kindOf? h then
+      return ← tryStk a ci (Plot.run a.stk kind)
+  else if h.startsWith "filter." then
+    if let some f := Filter.dispatch a.stk h then
+      return ← tryStk a ci (some <$> f)
+  else if h.startsWith "freq." then pure ()  -- handled via Freq.update + viewUp below
+  -- View.update: nav, sort, exclude, fetchMore + freq
+  let viewUp := fun () => do
+    match View.update a.stk.cur h 20 with
+    | some (v', e) => runViewEffect a ci v' e
+    | none => pure .unhandled
+  if h.startsWith "freq." then
+    match Freq.update a.stk h with
+    | some (s', e) =>
+      -- Execute freq effect inline
+      return ← runViewEffect (a.withStk ci s') ci s'.cur e
+    | none => return ← viewUp ()
+  if h.startsWith "folder." || h.startsWith "meta." then
+    -- Fallthrough from folder/meta when domain dispatch returned none
+    return ← viewUp ()
+  viewUp ()
 where
-  runEffectCore (a : AppState) (e : Effect) : IO AppState := match e with
-  | .none | .quit => pure a
-  | .fzf .cmd => do
-    -- Live dispatch: poll socket + apply previewable cmds while fzf popup is open
+  -- | fzf command menu with live socket polling for preview
+  runMenu (a : AppState) : IO Action := do
     let ref ← IO.mkRef a
     let poll : IO Unit := do
       match ← Socket.pollCmd with
@@ -103,8 +188,9 @@ where
         match (Parse.parse? cmdStr : Option Cmd) with
         | some cmd =>
           let ci ← CmdConfig.lookup cmd.obj cmd.verb
-          match (← ref.get).dispatch ci with
-          | some (a', _) =>  -- Effect discarded: poll is preview-only (re-render suffices)
+          -- Pure-only dispatch for preview (no IO effects)
+          match (← ref.get).pureDispatch ci with
+          | some a' =>
             let (vs', v') ← a'.stk.cur.doRender a'.vs a'.theme.styles a'.heatMode a'.sparklines
             ref.set { a' with stk := a'.stk.setCur v', vs := vs' }
             Term.present
@@ -112,31 +198,15 @@ where
         | none => Log.write "sock" s!"parse failed: {cmdStr}"
       | none => pure ()
     let cmd ← Fzf.cmdMode a.stk.cur.vkind poll
-    let a ← ref.get
+    let a' ← ref.get
     let _ ← Socket.pollCmd  -- drain stale preview command from fzf focus
     match cmd with
     | some c =>
       let ci ← CmdConfig.lookup c.obj c.verb
-      match a.dispatch ci with
-      | some (a', e') => if e'.isNone then pure a' else runEffect a' e'
-      | none => pure a
-    | none => pure a
-  | .transpose => do
-      match ← Transpose.push a.stk with
-      | some s' => pure { a with stk := s', vs := .default, sparklines := #[] }
-      | none => pure a
-  | .diff => do
-      if a.stk.cur.sameHide.isEmpty then
-        match ← Diff.run a.stk with
-        | some s' => pure { a with stk := s', vs := .default, sparklines := #[] }
-        | none => pure a
-      else
-        pure { a with stk := a.stk.setCur (Diff.showSame a.stk.cur), vs := .default }
-  | _ => do
-    let s ← Runner.runStackEffect a.stk e
-    let vs' := if e.isNone then a.vs else .default
-    let sp := if e.isNone then a.sparklines else #[]
-    pure { a with stk := s, vs := vs', sparklines := sp }
+      a'.dispatch ci
+    | none => pure (.ok a')
+
+end AppState
 
 -- | Run a stack-level IO action with shared error handling and state reset
 private partial def runStackIO (a : AppState) (f : IO (ViewStack AdbcTable)) : IO AppState := do
@@ -169,14 +239,12 @@ private partial def dispatchCmd (a : AppState) (cmdStr : String) : IO AppState :
   | some cmd =>
     let ci ← CmdConfig.lookup cmd.obj cmd.verb
     if !cmd.arg.isEmpty then runArgCmd a ci.handler cmd.arg
-    else match a.dispatch ci with
-      | some (a', e) =>
-        let a'' ← if e.isNone then pure a' else runEffect a' e
-        pure (if e.isNone then a'' else { a'' with sparklines := #[], prevScroll := 0 })
-      | none => pure a
+    else match ← a.dispatch ci with
+      | .ok a' => pure { a' with prevScroll := 0 }
+      | _ => pure a
   | none => pure a
 
--- main loop: render → input → update → effect → loop
+-- main loop: render → input → dispatch → loop
 partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppState := do
   -- Lazy sparkline computation: recompute when cache is empty
   let a ← if a.sparklines.isEmpty then
@@ -224,20 +292,18 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   if ev.type == 1 && ev.key == 0x16 then IO.sleep 50; return ← mainLoop a test ks'
   -- Empty event (socket wake-up with no key press) → re-render and loop
   if ev.type == 0 then return ← mainLoop a test ks'
-  -- Dispatch: Cmd → update → runEffect → loop
+  -- Dispatch: Cmd → dispatch → loop
   let runCmd (cmd : Cmd) (rest : Array Char) : IO AppState := do
     let ci ← CmdConfig.lookup cmd.obj cmd.verb
-    -- Verb→arg shortcuts: bypass Effect system, call runArgCmd directly
+    -- Verb→arg shortcuts: call runArgCmd directly
     if let some (argH, dflt) := ← CmdConfig.argShortcut cmd.obj cmd.verb then
       return ← mainLoop (← runArgCmd a argH dflt) test rest
-    match a.dispatch ci with
-    | none => mainLoop a test rest
-    | some (a', e) =>
-      if e == .quit then pure a'
-      else let a'' ← if e.isNone then pure a' else runEffect a' e
-           let a'' := if e.isNone then a'' else { a'' with sparklines := #[] }
-           let a'' := if ci.handler == "scrollUp" || ci.handler == "scrollDn" then a'' else { a'' with prevScroll := 0 }
-           mainLoop a'' test rest
+    match ← a.dispatch ci with
+    | .quit => pure a
+    | .unhandled => mainLoop a test rest
+    | .ok a'' =>
+      let a'' := if ci.handler == "scrollUp" || ci.handler == "scrollDn" then a'' else { a'' with prevScroll := 0 }
+      mainLoop a'' test rest
   -- 1. Test mode: 2-char obj+verb codes (e.g. "s1"=stk.1, "c["=col.[)
   -- Only when the first char has no single-key mapping and no nav mapping
   let ch := Char.ofNat ev.ch.toNat

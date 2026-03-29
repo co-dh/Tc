@@ -51,13 +51,13 @@ def setKey (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
     return some (s'.setCur { s'.cur with nav := nav' })
   | none => return some s
 
--- | Pure update by handler name
-def update (s : ViewStack AdbcTable) (h : String) : Option (ViewStack AdbcTable × Effect) :=
+-- | Dispatch meta handler to IO action. Returns none if handler not recognized.
+def dispatch (s : ViewStack AdbcTable) (h : String) : Option (IO (Option (ViewStack AdbcTable))) :=
   match h with
-  | "meta.push"      => some (s, .query .colMeta)
-  | "meta.selNull"   => some (s, .colMeta .selNull)
-  | "meta.selSingle" => some (s, .colMeta .selSingle)
-  | "meta.setKey"    => if s.cur.vkind matches .colMeta then some (s, .colMeta .setKey) else none
+  | "meta.push"      => some (push s)
+  | "meta.selNull"   => some (some <$> selNull s)
+  | "meta.selSingle" => some (some <$> selSingle s)
+  | "meta.setKey"    => if s.cur.vkind matches .colMeta then some (setKey s) else none
   | _ => none
 
 end Tc.Meta

@@ -316,18 +316,13 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   let _ ← Term.init
   pure (some s)
 
--- | Pure update by handler name
-def update (s : ViewStack T) (h : String) : Option (ViewStack T × Effect) :=
+-- | Map handler name to plot kind
+def kindOf? (h : String) : Option PlotKind :=
   match h with
-  | "plot.area"    => some (s, .plot .area)
-  | "plot.line"    => some (s, .plot .line)
-  | "plot.scatter" => some (s, .plot .scatter)
-  | "plot.bar"     => some (s, .plot .bar)
-  | "plot.box"     => some (s, .plot .box)
-  | "plot.step"    => some (s, .plot .step)
-  | "plot.hist"    => some (s, .plot .hist)
-  | "plot.density" => some (s, .plot .density)
-  | "plot.violin"  => some (s, .plot .violin)
-  | _ => none
+  | "plot.area"    => some .area    | "plot.line"    => some .line
+  | "plot.scatter" => some .scatter | "plot.bar"     => some .bar
+  | "plot.box"     => some .box     | "plot.step"    => some .step
+  | "plot.hist"    => some .hist    | "plot.density" => some .density
+  | "plot.violin"  => some .violin  | _ => none
 
 end Tc.Plot

@@ -1,11 +1,12 @@
 /-
-  Filter: fzf-based column/row filtering and search
-  Pure update returns Effect; Runner executes IO.
+  Filter: fzf-based column/row filtering and search.
+  dispatch returns IO action directly; no intermediate Effect.
 -/
 import Tc.Error
 import Tc.Fzf
 import Tc.Render
 import Tc.View
+import Tc.Data.ADBC.Ops
 
 namespace Tc.ViewStack
 
@@ -98,16 +99,14 @@ end Tc.ViewStack
 
 namespace Tc.Filter
 
-variable {T : Type} [TblOps T]
-
--- | Pure update by handler name
-def update (s : ViewStack T) (h : String) : Option (ViewStack T × Effect) :=
+-- | Dispatch filter handler to IO action. Returns none if handler not recognized.
+def dispatch (s : ViewStack AdbcTable) (h : String) : Option (IO (ViewStack AdbcTable)) :=
   match h with
-  | "filter.colSearch"  => some (s, .fzf .col)
-  | "filter.rowSearch"  => some (s, .fzf .row)
-  | "filter.rowFilter"  => some (s, .fzf .filter)
-  | "filter.searchNext" => some (s, .search .next)
-  | "filter.searchPrev" => some (s, .search .prev)
+  | "filter.colSearch"  => some (s.colSearch)
+  | "filter.rowSearch"  => some (s.rowSearch)
+  | "filter.rowFilter"  => some (s.rowFilter)
+  | "filter.searchNext" => some (s.searchDir true)
+  | "filter.searchPrev" => some (s.searchDir false)
   | _ => none
 
 end Tc.Filter
