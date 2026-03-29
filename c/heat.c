@@ -3,7 +3,7 @@
 #include <math.h>
 #include <string.h>
 
-// style indices that suppress heatmap (must match term_shim.c STYLE_* defines)
+// style indices that suppress heatmap (must match render.c STYLE_* defines)
 #define STYLE_CURSOR   0
 #define STYLE_SEL_ROW  1
 #define STYLE_SEL_CUR  2
