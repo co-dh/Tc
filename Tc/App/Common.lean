@@ -101,8 +101,9 @@ private def runViewEffect (a : AppState) (ci : CmdConfig.CmdInfo)
       | none => pure none
     | _, _ => pure none
 
--- | Pure-only dispatch for preview polling (fzf cmd mode). No IO effects executed.
-def pureDispatch (a : AppState) (ci : CmdConfig.CmdInfo) : Option AppState :=
+-- | Shared pure dispatch: scroll, prec, info, heat, nav-only View.update.
+-- Both pureDispatch and dispatch delegate here to avoid duplicating logic.
+private def sharedPure (a : AppState) (ci : CmdConfig.CmdInfo) : Option AppState :=
   let h := ci.handler
   if h == "scrollUp" then some { a with prevScroll := a.prevScroll - min a.prevScroll 5 }
   else if h == "scrollDn" then some { a with prevScroll := a.prevScroll + 5 }
@@ -113,12 +114,17 @@ def pureDispatch (a : AppState) (ci : CmdConfig.CmdInfo) : Option AppState :=
   else if h == "infoTog" then a.info.update h |>.map fun i' => { a with info := i' }
   else if h.startsWith "heat." then
     some { a with heatMode := min 3 (h.back.toNat - '0'.toNat).toUInt8 }
-  else if h.startsWith "stk." then
-    ViewStack.update a.stk h |>.bind fun (s', _) => some (a.withStk ci s')
   else
     -- Nav-only: try View.update, keep only .none effects
     View.update a.stk.cur h 20 |>.bind fun (v', e) =>
       if e.isNone then some (a.withStk ci (a.stk.setCur v')) else none
+
+-- | Pure-only dispatch for preview polling (fzf cmd mode). No IO effects executed.
+def pureDispatch (a : AppState) (ci : CmdConfig.CmdInfo) : Option AppState :=
+  let h := ci.handler
+  if h.startsWith "stk." then
+    ViewStack.update a.stk h |>.bind fun (s', _) => some (a.withStk ci s')
+  else sharedPure a ci
 
 -- | Full dispatch: handles all commands, executes IO inline with error handling.
 -- Returns .quit to exit, .unhandled if command not recognized, .ok for everything else.
@@ -132,17 +138,8 @@ partial def dispatch (a : AppState) (ci : CmdConfig.CmdInfo) : IO Action := do
     | some (_, .quit) => .quit
     | some (s', _) => .ok (a.withStk ci s')
     | none => .unhandled
-  -- pure state updates
-  if h == "scrollUp" then return .ok { a with prevScroll := a.prevScroll - min a.prevScroll 5 }
-  if h == "scrollDn" then return .ok { a with prevScroll := a.prevScroll + 5 }
-  if h == "precDec" then return .ok { a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj - 1 } }
-  if h == "precInc" then return .ok { a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj + 1 } }
-  if h == "prec0" then return .ok { a with stk := a.stk.setCur { a.stk.cur with precAdj := -4 } }
-  if h == "precMax" then return .ok { a with stk := a.stk.setCur { a.stk.cur with precAdj := 13 } }
-  if h == "infoTog" then return match a.info.update h with
-    | some i' => .ok { a with info := i' } | none => .unhandled
-  if h.startsWith "heat." then
-    return .ok { a with heatMode := min 3 (h.back.toNat - '0'.toNat).toUInt8 }
+  -- pure state updates (shared with pureDispatch)
+  if let some a' := sharedPure a ci then return .ok a'
   -- menu (fzf command picker with live polling)
   if h == "menu" then return ← runMenu a
   -- IO domain dispatch: transpose, diff
