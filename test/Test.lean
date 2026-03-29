@@ -997,23 +997,22 @@ def test_plot_export_cat : IO Unit := do
   let some cats := result | throw (IO.userError "plotExport with cat should succeed")
   assert (cats.size == 2) s!"expected 2 categories (A,B), got {cats.size}"
 
--- | Time downsample at hour level must produce full HH:MM:SS strings, not truncated "HH".
---   Bug: SUBSTRING(CAST(time AS VARCHAR), 1, 2) gives "09" which R's as.POSIXct
---   parses as midnight, collapsing all hours to the same x-position ("black box").
+-- | Time data uses ds_nth (row sampling) — original time values preserved.
+--   Verifies step parameter controls output density and time format is intact.
 def test_plot_time_downsample : IO Unit := do
   log "plot_time_downsample"
   let some tbl ← Tc.AdbcTable.fromFile "data/plot/time_wide.csv"
     | throw (IO.userError "failed to open time_wide.csv")
-  -- hour-level downsample: truncLen=2 → groups by first 2 chars of time, padded to HH:MM:SS
-  let result ← Tc.AdbcTable.plotExport tbl "t" "val" none true 2
+  -- step=3: keep every 3rd row → 5 of 15 rows
+  let result ← Tc.AdbcTable.plotExport tbl "t" "val" none true 3
   assert result.isSome "time downsample should succeed"
   let content ← IO.FS.readFile (← Tc.tmpPath "plot.dat")
   let lines := content.splitOn "\n" |>.filter (!·.isEmpty)
-  assert (lines.length == 4) s!"expected 4 hour buckets (09,10,11,12), got {lines.length}"
-  -- each time value must be full HH:MM:SS (≥8 chars), not truncated "HH" (2 chars)
+  assert (lines.length == 5) s!"expected 5 rows (15/3), got {lines.length}"
+  -- time values must be original full format, not truncated
   for line in lines do
     let tv := (line.splitOn "\t").getD 0 ""
-    assert (tv.length >= 8) s!"time '{tv}' should be full HH:MM:SS, not truncated"
+    assert (tv.length >= 8) s!"time '{tv}' should be full HH:MM:SS"
 
 -- | Downsampling step controls row count: larger step = fewer rows.
 --   Bug: plotExport always used baseStep for ds_nth, ignoring the interval step.

@@ -27,27 +27,18 @@ structure Interval where
   truncLen : Nat     -- SUBSTRING length for time; step for non-time
   deriving Inhabited
 
-private def timeIntervals : Array Interval := #[
-  ⟨"1s", 8⟩, ⟨"1m", 5⟩, ⟨"1h", 2⟩
-]
-
-private def tsIntervals : Array Interval := #[
-  ⟨"1s", 19⟩, ⟨"1m", 16⟩, ⟨"1h", 13⟩, ⟨"1d", 10⟩
-]
-
-private def dateIntervals : Array Interval := #[
-  ⟨"1d", 10⟩, ⟨"1M", 7⟩, ⟨"1Y", 4⟩
-]
-
-private def stepIntervals (baseStep : Nat) : Array Interval :=
+-- | All downsampling uses ds_nth (every-Nth-row). Time intervals apply multipliers
+-- on baseStep so density scales predictably: 1s=~2000, 1m=~33, 1h=~1 bars.
+private def stepIntervals (baseStep : Nat) (labels : Array (String × Nat)) : Array Interval :=
   let s0 := if baseStep == 0 then 1 else baseStep
-  #[s0, s0 * 2, s0 * 4, s0 * 8, s0 * 16].map fun s => ⟨s!"{s}x", s⟩
+  labels.map fun (l, m) => ⟨l, s0 * m⟩
 
 private def getIntervals (xType : String) (baseStep : Nat) : Array Interval :=
-  if xType == "time" then timeIntervals
-  else if xType == "timestamp" then tsIntervals
-  else if xType == "date" then dateIntervals
-  else stepIntervals baseStep
+  if xType == "time" || xType == "timestamp" then
+    stepIntervals baseStep #[("1s", 1), ("1m", 60), ("1h", 3600)]
+  else if xType == "date" then
+    stepIntervals baseStep #[("1d", 1), ("1M", 30), ("1Y", 365)]
+  else stepIntervals baseStep #[("1x", 1), ("2x", 2), ("4x", 4), ("8x", 8), ("16x", 16)]
 
 -- | Try running cmd with args, return true if it ran successfully
 private def tryDisplay (cmd : String) (args : Array String) : IO Bool := do
@@ -155,7 +146,7 @@ def rScript (dataPath pngPath : String) (kind : PlotKind)
   "library(ggplot2)\n" ++ readData ++ convY ++ convX ++
     s!"p <- ggplot(d, {aes}{colorAes}{fillAes}) + {geom}{facet} + " ++
     let fillScale := if addsFill kind && !hasCat then "scale_fill_viridis_c()" else "scale_fill_viridis_d()"
-    s!"labs(x = '{xName}', y = '{yName}') + theme_gray() + scale_color_viridis_d() + {fillScale}\n" ++
+    s!"labs(x = '{xName}', y = '{yName}') + theme_classic() + scale_color_viridis_d() + {fillScale}\n" ++
     s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
 
 -- | Run Rscript to render plot; returns error message on failure
@@ -264,7 +255,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
       else pure xType0
   Log.write "plot" s!"xType={xType} (raw={xType0}) xIdx={xIdx} xName={xName}"
   let xIsTime := isTimeType xType
-  let needsDownsample := nr > maxPoints || xIsTime
+  let needsDownsample := nr > maxPoints
   let baseStep := if nr > maxPoints then nr / maxPoints else 1
   let hasCat := n.grp.size > 1 && !hasFacet
   let intervals := if needsDownsample then getIntervals xType baseStep else #[⟨"all", 1⟩]
