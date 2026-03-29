@@ -151,11 +151,12 @@ def rScript (dataPath pngPath : String) (kind : PlotKind)
     | .density => "geom_density(fill = 'steelblue', alpha = 0.5)"
     | .step => "geom_step(linewidth = 0.5)"
     | .violin => "geom_violin() + geom_boxplot(width = 0.1, fill = 'white')"
+  let timeScale := if xType == "time" then " + scale_x_datetime(date_labels = '%H:%M:%S')" else ""
   let facet := if hasFacet then s!" + facet_wrap(vars({facetR}), scales = 'free_y')" else ""
   "library(ggplot2)\n" ++ readData ++ convY ++ convX ++
     s!"p <- ggplot(d, {aes}{colorAes}{fillAes}) + {geom}{facet} + " ++
     let fillScale := if addsFill kind && !hasCat then "scale_fill_viridis_c()" else "scale_fill_viridis_d()"
-    s!"labs(x = '{xName}', y = '{yName}') + theme_classic() + scale_color_viridis_d() + {fillScale}\n" ++
+    s!"labs(x = '{xName}', y = '{yName}') + theme_classic() + scale_color_viridis_d() + {fillScale}{timeScale}\n" ++
     s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
 
 -- | Run Rscript to render plot; returns error message on failure
@@ -190,12 +191,12 @@ private def renderFrame (pngPath : String) (kind : PlotKind)
   clearScreen
   if err?.isNone then showPng pngPath
   else IO.println (err?.getD "plot error")
-  IO.println s!"\x1b[1m─── {kind}: x={xName}  y={yName} ───\x1b[0m"
-  if intervals.size > 1 then
-    let ivBar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
-      if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
-    IO.println s!",/.:downsample {ivBar}"
-  IO.print "q:exit "
+  let ivBar := if intervals.size > 1 then
+      let bar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
+        if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
+      s!"  ,/.: {bar}"
+    else ""
+  IO.println s!"\x1b[1m─── {kind}: x={xName}  y={yName} ───\x1b[0m{ivBar}  q:exit"
 
 -- | Run plot with interactive controls (in-place re-rendering)
 def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
