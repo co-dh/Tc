@@ -15,7 +15,8 @@ CREATE TABLE tv_sources (
   dir_suffix BOOLEAN, parent_fallback VARCHAR,
   setup_cmd VARCHAR, setup_sql VARCHAR, grp VARCHAR, enter_url VARCHAR,
   script VARCHAR, attach BOOLEAN,
-  duckdb_ext VARCHAR, attach_type VARCHAR
+  duckdb_ext VARCHAR, attach_type VARCHAR,
+  url_encode BOOLEAN
 );
 
 INSERT INTO tv_sources VALUES
@@ -34,7 +35,7 @@ INSERT INTO tv_sources VALUES
    'aws s3 cp {extra} {path} {tmp}/{name}',
    true, true, '',
    '', '', '', '',
-   '', false, '', ''),
+   '', false, '', '', false),
 
   -- HF dataset browser: curl HF Hub API, DuckDB reads via httpfs
   ('hf://datasets/', 5,
@@ -44,7 +45,7 @@ INSERT INTO tv_sources VALUES
    'curl -sfL -o {tmp}/{name} https://huggingface.co/datasets/{1}/{2}/resolve/main/{3+}',
    false, true, 'hf://',
    '', '', '', '',
-   '', false, '', ''),
+   '', false, '', '', false),
 
   -- HF root: dataset listing from pre-populated DuckDB
   ('hf://', 0,
@@ -56,7 +57,7 @@ INSERT INTO tv_sources VALUES
    'python3 scripts/hf_datasets.py',
    'ATTACH ''{home}/.cache/tv/hf_datasets.duckdb'' AS hf (READ_ONLY)',
    'id', 'hf://datasets/{name}/',
-   '', false, '', ''),
+   '', false, '', '', false),
 
   -- Generic REST API: curl any JSON endpoint
   ('rest://', 1,
@@ -65,7 +66,7 @@ INSERT INTO tv_sources VALUES
    '',
    false, false, '',
    '', '', '', '',
-   '', false, '', ''),
+   '', false, '', '', false),
 
   -- Osquery: stub views in osq schema provide types + column comments.
   ('osquery://', 0,
@@ -75,18 +76,18 @@ INSERT INTO tv_sources VALUES
    'python3 scripts/osquery_tables.py',
    'ATTACH ''{home}/.cache/tv/osquery.duckdb'' AS osq (READ_ONLY)',
    'name', '',
-   'osqueryi --json "SELECT * FROM {name}"', false, '', ''),
+   'osqueryi --json "SELECT * FROM {name}"', false, '', '', false),
 
-  -- FTP: curl fetches ls -l, Lean parses it (parseFtpLs in SourceConfig.lean)
+  -- FTP: curl fetches ls -l, Lean parses it; url_encode=true for curl paths
   ('ftp://', 3,
    'curl -sf {path}',
    'FTP',
-   'curl -sfL -o {tmp}/{name} {path}',
+   'curl -sfL -o ''{tmp}/{name}'' {path}',
    true, true, '',
    '', '', '', '',
-   '', false, '', ''),
+   '', false, '', '', true),
 
   -- PostgreSQL: attach=true + duckdb_ext auto-generates ATTACH SQL
   ('pg://', 99, '', '', '', false, false, '',
    '', '', 'name', '',
-   '', true, 'postgres', 'POSTGRES');
+   '', true, 'postgres', 'POSTGRES', false);

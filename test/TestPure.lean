@@ -773,6 +773,11 @@ open Tc.SourceConfig
 #guard Tc.Ftp.urlEncode "file.csv" == "file.csv"
 #guard Tc.Ftp.urlEncode "a b/c d" == "a%20b/c%20d"
 
+-- | urlEncodeUrl encodes path segments only, not protocol/host
+#guard Tc.Ftp.urlEncodeUrl "ftp://" "ftp://ftp.nyse.com/a b/c d/" == "ftp://ftp.nyse.com/a%20b/c%20d/"
+#guard Tc.Ftp.urlEncodeUrl "ftp://" "ftp://ftp.nyse.com/" == "ftp://ftp.nyse.com/"
+#guard Tc.Ftp.urlEncodeUrl "ftp://" "ftp://ftp.nyse.com/file.csv" == "ftp://ftp.nyse.com/file.csv"
+
 end FTPTests
 
 /-! ## FreqResult Construction Tests -/

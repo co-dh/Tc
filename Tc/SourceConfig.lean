@@ -32,6 +32,7 @@ structure Config where
   attach         : Bool        -- true: enter uses fromDuckDBTable (for attached databases)
   duckdbExt      : String      -- DuckDB extension to auto INSTALL/LOAD (e.g. "postgres"). Empty = none.
   attachType     : String      -- ATTACH TYPE clause (e.g. "POSTGRES"). Empty = native DuckDB.
+  urlEncode      : Bool        -- true: URL-encode path segments for curl commands (e.g. FTP)
 
 -- | Global flag: use --no-sign-request for S3 (set via +n arg)
 initialize noSign : IO.Ref Bool ← IO.mkRef false
@@ -136,6 +137,7 @@ private def configFromRow (qr : Adbc.QueryResult) (row : Nat) : IO Config := do
     attach         := ← r.bool "attach"
     duckdbExt      := ← r.str "duckdb_ext"
     attachType     := ← r.str "attach_type"
+    urlEncode      := ← r.bool "url_encode"
   }
 
 -- | Find config for a path by prefix match (longest prefix wins)
@@ -231,8 +233,8 @@ private def Config.cmdVars (cfg : Config) (path : String) : IO (Array (String ×
   let tmpDir ← Tc.tmpPath "src"
   let _ ← Log.run "src" "mkdir" #["-p", tmpDir]
   let extra ← if cfg.pfx == "s3://" then s3Extra else pure ""
-  -- FTP: URL-encode path segments for curl (names stored raw for display)
-  let cmdPath := if cfg.pfx == "ftp://" then Ftp.urlEncodeUrl cfg.pfx path else path
+  -- URL-encode path segments for curl when configured (e.g. FTP)
+  let cmdPath := if cfg.urlEncode then Ftp.urlEncodeUrl cfg.pfx path else path
   pure (mkVars cfg cmdPath tmpDir (nameFromPath path) extra, tmpDir)
 
 -- | Cached compiled SQL for tbl_info_filtered (fixed query, compile once)
