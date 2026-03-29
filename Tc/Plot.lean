@@ -27,11 +27,27 @@ structure Interval where
   truncLen : Nat     -- SUBSTRING length for time; step for non-time
   deriving Inhabited
 
--- | All downsampling uses row sampling (ds_nth): keep every Nth row.
--- Preserves original x values so bar width stays constant across levels.
+private def timeIntervals : Array Interval := #[
+  ⟨"1s", 8⟩, ⟨"1m", 5⟩, ⟨"1h", 2⟩
+]
+
+private def tsIntervals : Array Interval := #[
+  ⟨"1s", 19⟩, ⟨"1m", 16⟩, ⟨"1h", 13⟩, ⟨"1d", 10⟩
+]
+
+private def dateIntervals : Array Interval := #[
+  ⟨"1d", 10⟩, ⟨"1M", 7⟩, ⟨"1Y", 4⟩
+]
+
 private def stepIntervals (baseStep : Nat) : Array Interval :=
   let s0 := if baseStep == 0 then 1 else baseStep
   #[s0, s0 * 2, s0 * 4, s0 * 8, s0 * 16].map fun s => ⟨s!"{s}x", s⟩
+
+private def getIntervals (xType : String) (baseStep : Nat) : Array Interval :=
+  if xType == "time" then timeIntervals
+  else if xType == "timestamp" then tsIntervals
+  else if xType == "date" then dateIntervals
+  else stepIntervals baseStep
 
 -- | Try running cmd with args, return true if it ran successfully
 private def tryDisplay (cmd : String) (args : Array String) : IO Bool := do
@@ -248,10 +264,10 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
       else pure xType0
   Log.write "plot" s!"xType={xType} (raw={xType0}) xIdx={xIdx} xName={xName}"
   let xIsTime := isTimeType xType
-  let needsDownsample := nr > maxPoints
+  let needsDownsample := nr > maxPoints || xIsTime
   let baseStep := if nr > maxPoints then nr / maxPoints else 1
   let hasCat := n.grp.size > 1 && !hasFacet
-  let intervals := if needsDownsample then stepIntervals baseStep else #[⟨"all", 1⟩]
+  let intervals := if needsDownsample then getIntervals xType baseStep else #[⟨"all", 1⟩]
   let maxIdx := intervals.size - 1
   -- enter plot mode: shutdown TUI, alternate screen, raw mode
   Term.shutdown
