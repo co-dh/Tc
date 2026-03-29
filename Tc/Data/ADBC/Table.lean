@@ -214,16 +214,16 @@ def fetchMore (t : AdbcTable) : IO (Option AdbcTable) := do
   some <$> ofQueryResult qr t.query t.totalRows
 
 -- | Export plot data to tmpdir/plot.dat via DuckDB COPY (downsample in SQL)
--- truncLen: SUBSTRING length for time truncation; step for non-time (every Nth row)
-def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String) (xIsTime : Bool) (step : Nat) (truncLen : Nat)
+-- truncLen: SUBSTRING length for time truncation; step multiplier for non-time (every Nth row)
+def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String) (xIsTime : Bool) (truncLen : Nat)
     : IO (Option (Array String)) := do
   let q := Prql.quote
-  -- Pad suffix so truncated time strings are full-format (R-parseable).
-  -- E.g. truncLen=2 gives "09" → pad ":00:00" → "09:00:00"
-  let pad := match truncLen with
-    | 2 | 13 => "\":00:00\"" | 5 | 16 => "\":00\"" | 7 => "\"-01\"" | 4 => "\"-01-01\""
-    | _ => "\"\""
-  let maxRows := 2000
+  -- Pad suffix so R can parse truncated time strings. Must stay in sync with
+  -- interval truncLen values in Plot.lean (timeIntervals/tsIntervals/dateIntervals).
+  let padSuffix := match truncLen with
+    | 2 | 13 => ":00:00" | 5 | 16 => ":00" | 7 => "-01" | 4 => "-01-01" | _ => ""
+  let pad := s!"\"{padSuffix}\""
+  let maxRows := 2000  -- matches Plot.maxPoints
   -- time-like: use PRQL ds_trunc; non-time: hand-write SQL (PRQL miscompiles ROW_NUMBER + select)
   let sql' ← do
     let prql := if xIsTime then

@@ -172,8 +172,8 @@ private def renderR (script : String) : IO (Option String) := do
 
 -- | Export plot data with headers for R (prepends column names to plotExport output)
 private def exportWithHeaders (t : T) (xName yName : String) (catName? : Option String)
-    (xIsTime : Bool) (step truncLen : Nat) : IO (Option (Array String)) := do
-  let cats ← TblOps.plotExport t xName yName catName? xIsTime step truncLen
+    (xIsTime : Bool) (truncLen : Nat) : IO (Option (Array String)) := do
+  let cats ← TblOps.plotExport t xName yName catName? xIsTime truncLen
   let some cats := cats | return none
   let datPath ← Tc.tmpPath "plot.dat"
   let content ← IO.FS.readFile datPath
@@ -284,7 +284,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
       let iv := intervals.getD idx default
       Log.write "plot" s!"kind={kind} interval={iv.label} truncLen={iv.truncLen} idx={idx}"
       let exportResult ← try
-          if let some _cats := ← exportWithHeaders n.tbl xName yName exportCatName? xIsTime baseStep iv.truncLen then
+          if let some _cats := ← exportWithHeaders n.tbl xName yName exportCatName? xIsTime iv.truncLen then
             pure (none : Option String)
           else pure (some "export returned no data")
         catch e => pure (some e.toString)
