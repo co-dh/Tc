@@ -54,7 +54,6 @@ inductive Column where
 
 namespace Column
 
--- | Apply array transform per variant (factor out 3-way match)
 @[inline] def mapArr (col : Column)
     (fi : Array Int64 → Array Int64) (ff : Array Float → Array Float) (fs : Array String → Array String) : Column :=
   match col with | .ints d => .ints (fi d) | .floats d => .floats (ff d) | .strs d => .strs (fs d)

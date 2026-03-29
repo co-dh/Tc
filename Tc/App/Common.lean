@@ -114,10 +114,8 @@ private def viewUp (a : AppState) (ci : CmdConfig.CmdInfo) : IO Action := do
   | some (v', e) => runViewEffect a ci v' e
   | none => pure .unhandled
 
--- | Precision adjustment table: handler name → precAdj delta or absolute value
--- Lookup table instead of if/else chain (arth_full pattern: data not code)
+-- | (handler, value, isAbsolute) — precision adjustment lookup
 private def precTable : Array (String × Int × Bool) := #[
-  -- (handler, value, isAbsolute)
   ("precDec", -1, false), ("precInc", 1, false), ("prec0", -4, true), ("precMax", 13, true)]
 
 -- | Shared pure dispatch: scroll, prec, info, heat, nav-only View.update.
