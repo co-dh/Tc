@@ -383,6 +383,12 @@ open Tc.Folder
 #guard isDataFile "foo.csv.gz"
 #guard isDataFile "foo.parquet.gz"
 #guard !isDataFile "foo.txt.gz"
+-- | isTxtFile: matches .txt and .txt.gz
+#guard isTxtFile "data.txt"
+#guard isTxtFile "data.txt.gz"
+#guard !isTxtFile "data.csv"
+#guard !isTxtFile "data.csv.gz"
+#guard !isTxtFile "data.parquet"
 end FolderHelperTests
 
 /-! ## View.fromTbl Theorems -/

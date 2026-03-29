@@ -104,6 +104,23 @@ def findFormat (path : String) : Option FileFormat :=
 def isDataFile (p : String) : Bool :=
   (findFormat p).isSome
 
+-- | Is file a .txt (or .txt.gz)?
+def isTxtFile (p : String) : Bool :=
+  let p' := if p.endsWith ".gz" then (p.take (p.length - 3)).toString else p
+  p'.endsWith ".txt"
+
+-- | Try to ingest file as CSV via DuckDB read_csv (handles .gz natively).
+-- Returns none on failure (not valid CSV) so caller can fall back to viewer.
+def tryReadCsv (path : String) : IO (Option (View AdbcTable)) := do
+  let absPath ← do
+    let rp ← IO.Process.output { cmd := "realpath", args := #[path] }
+    pure (if rp.exitCode == 0 then rp.stdout.trimAscii.toString else path)
+  try
+    match ← AdbcTable.fromFileWith absPath "read_csv" "" with
+    | some tbl => pure (View.fromTbl tbl path)
+    | none => pure none
+  catch e => Log.write "tryReadCsv" s!"{path}: {e}"; pure none
+
 -- | ATTACH a database file and list its tables as a folder view
 private def attachFile (absPath : String) (fmt : FileFormat) : IO (Option (View AdbcTable)) := do
   if !fmt.duckdbExt.isEmpty then
@@ -276,6 +293,9 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
         | none => if cfg.isNone then viewFile fullPath; pure (some s) else pure (some s)
       else
         let viewPath ← match cfg with | some c => c.runDownload fullPath | none => pure fullPath
+        -- Smart: try read_csv for unrecognized .gz before falling back to viewer
+        if p.endsWith ".gz" then
+          if let some v ← tryReadCsv viewPath then return some (s.push v)
         viewFile viewPath; pure (some s)
   | some 's', some p =>
     if cfg.isSome then pure (some s) else

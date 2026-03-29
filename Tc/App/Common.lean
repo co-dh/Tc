@@ -373,8 +373,13 @@ def appMain (args : List String) : IO Unit := do
       | none => IO.eprintln s!"Cannot browse: {p}"
     else if path.endsWith ".txt" then
       let _ ← runTsv (Tc.TextParse.fromText (← IO.FS.readFile path)) path pipeMode testMode theme keys
+    else if path.endsWith ".gz" && !Folder.isDataFile path then
+      -- Smart: try read_csv for unrecognized .gz (handles decompression natively)
+      match ← Folder.tryReadCsv path with
+      | some v => let _ ← runApp v pipeMode testMode theme keys
+      | none => Folder.viewFile path
     else
-      -- try/catch: DuckDB throws on unrecognized formats (e.g. .txt.gz)
+      -- try/catch: DuckDB throws on unrecognized formats
       match ← try Folder.openFile path catch e => Log.write "open" s!"{e}"; pure none with
       | some v => let _ ← runApp v pipeMode testMode theme keys
       | none => Folder.viewFile path
