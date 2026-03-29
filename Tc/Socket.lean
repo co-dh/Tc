@@ -1,5 +1,5 @@
 /-
-  Unix socket command channel: external tools send 2-char Cmd strings
+  Unix socket command channel: external tools send handler name strings
   Socket path: $TMPDIR/tv-$PID.sock (set as TV_SOCK env var for children)
 -/
 import Tc.Error

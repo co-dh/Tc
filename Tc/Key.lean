@@ -1,6 +1,7 @@
 /-
-  Key mapping: Term.Event → Cmd via lookup tables
-  Arrows normalized to hjkl, then unified processing
+  Key mapping: Term.Event → handler name via lookup tables
+  Arrows normalized to hjkl, then unified processing.
+  No Cmd struct — maps directly to handler name strings.
 -/
 import Tc.Nav
 import Tc.Term
@@ -17,27 +18,33 @@ namespace KeyMap
     (Term.keyArrowRight, 'l'), (Term.keyArrowLeft, 'h')
   ]
 
-  private def nav : Array (Char × Bool × Bool) := #[
-    ('j', true, true), ('k', true, false), ('l', false, true), ('h', false, false)
+  private def nav : Array (Char × String) := #[
+    ('j', "nav.rowInc"), ('k', "nav.rowDec"),
+    ('l', "nav.colInc"), ('h', "nav.colDec")
   ]
 
-  private def special : Array (UInt16 × Cmd) := #[
-    (Term.keyPageDown, Cmd.row ']'), (Term.keyPageUp, Cmd.row '['),
-    (Term.keyHome, Cmd.row '{'), (Term.keyEnd, Cmd.row '}')
+  private def special : Array (UInt16 × String) := #[
+    (Term.keyPageDown, "nav.rowPgDn"), (Term.keyPageUp, "nav.rowPgUp"),
+    (Term.keyHome, "nav.rowTop"), (Term.keyEnd, "nav.rowBot")
   ]
 
-  private def ctrl : Array (UInt16 × Cmd) := #[
-    (Term.ctrlD.toUInt16, Cmd.row ']'), (Term.ctrlU.toUInt16, Cmd.row '[')
+  private def ctrl : Array (UInt16 × String) := #[
+    (Term.ctrlD.toUInt16, "nav.rowPgDn"), (Term.ctrlU.toUInt16, "nav.rowPgUp")
   ]
 
-  -- Compile-time copy of SQL 'key' column — for native_decide theorems only.
-  -- Runtime uses CmdConfig.keyLookup. Must stay in sync with cfg/commands.sql.
-  def char : Array (Char × Cmd) := #[
-    ('{', Cmd.info '['), ('}', Cmd.info ']'),
-    ('[', Cmd.col '['),  (']', Cmd.col ']'),
-    ('!', Cmd.col '!'),  ('T', Cmd.row '~'),
-    ('n', Cmd.row '+'),  ('N', Cmd.row '-'),
-    (' ', Cmd.stk '/'),  ('q', Cmd.stk '<')
+  -- Compile-time copy of SQL 'key' column — must stay in sync with cfg/commands.sql.
+  -- Runtime uses CmdConfig.keyLookup for the full set.
+  def char : Array (Char × String) := #[
+    ('{', "scrollUp"), ('}', "scrollDn"),
+    ('[', "sort.asc"),  (']', "sort.desc"),
+    ('!', "nav.colGrp"),  ('T', "nav.rowSel"),
+    ('H', "nav.colHide"),
+    ('n', "filter.searchNext"),  ('N', "filter.searchPrev"),
+    (' ', "menu"),  ('q', "stk.pop"),
+    ('S', "stk.swap"), ('X', "xpose"), ('d', "diff"),
+    ('I', "infoTog"),
+    ('M', "meta.push"), ('F', "freq.open"), ('D', "folder.push"),
+    ('e', "export"), ('W', "sessSave"), ('J', "join")
   ]
 end KeyMap
 
@@ -45,35 +52,27 @@ def evToChar (ev : Term.Event) : Char :=
   if ev.key == Term.keyEnter then '\r'
   else (lookup KeyMap.arrow ev.key).getD (Char.ofNat ev.ch.toNat)
 
-private def navCmd (c : Char) : Option Cmd :=
-  KeyMap.nav.findSome? fun (ch, isRow, fwd) =>
-    if c == ch then
-      let v := if fwd then '>' else '<'
-      some (if isRow then Cmd.row v else Cmd.col v)
-    else none
+private def navHandler (c : Char) : Option String :=
+  KeyMap.nav.findSome? fun (ch, h) => if c == ch then some h else none
 
--- | Context-sensitive Enter key mapping
-def enterCmd (vk : ViewKind) : Option Cmd :=
+-- | Context-sensitive Enter key handler
+def enterHandler (vk : ViewKind) : Option String :=
   match vk with
-  | .freqV _ _ => some (Cmd.freq '~')
-  | .colMeta  => some (Cmd.metaV '~')
-  | .fld _ _  => some (Cmd.fld '~')
+  | .freqV _ _ => some "freq.filter"
+  | .colMeta  => some "meta.setKey"
+  | .fld _ _  => some "folder.enter"
   | .tbl      => none
 
-theorem enterCmd_tbl_none : enterCmd .tbl = none := by rfl
-theorem enterCmd_freq : ∀ cols total, enterCmd (.freqV cols total) = some (Cmd.freq '~') := by intros; rfl
-theorem enterCmd_meta : enterCmd .colMeta = some (Cmd.metaV '~') := by rfl
-theorem enterCmd_fld : ∀ p d, enterCmd (.fld p d) = some (Cmd.fld '~') := by intros; rfl
-
-def evToCmd (ev : Term.Event) (vk : ViewKind) : Option Cmd :=
+-- | Map event → handler name (for special/context-sensitive keys)
+def evToHandler (ev : Term.Event) (vk : ViewKind) : Option String :=
   if ev.type != Term.eventKey then none else
-  if ev.key == Term.keyEnter then enterCmd vk else
-  if (ev.key == Term.keyBackspace || ev.key == Term.keyBackspace2) && vk matches .fld _ _ then some (Cmd.fld '{') else
+  if ev.key == Term.keyEnter then enterHandler vk else
+  if (ev.key == Term.keyBackspace || ev.key == Term.keyBackspace2) && vk matches .fld _ _ then some "folder.parent" else
   let c := evToChar ev
   let shift := ev.mod &&& Term.modShift != 0
-  if shift && ev.key == Term.keyArrowLeft then some (Cmd.col '-')
-  else if shift && ev.key == Term.keyArrowRight then some (Cmd.col '+')
-  else navCmd c <|> lookup KeyMap.special ev.key <|> lookup KeyMap.ctrl ev.key
+  if shift && ev.key == Term.keyArrowLeft then some "nav.colShiftL"
+  else if shift && ev.key == Term.keyArrowRight then some "nav.colShiftR"
+  else navHandler c <|> lookup KeyMap.special ev.key <|> lookup KeyMap.ctrl ev.key
 
 def parseKeys (s : String) : String :=
   s.replace "<ret>" "\r"

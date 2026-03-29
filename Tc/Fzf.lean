@@ -68,21 +68,21 @@ def fzfIdx (opts : Array String) (items : Array String) : IO (Option Nat) := do
     | some n => return some n
     | none => return none
 
--- | Build flat menu items from config: "{code}\t{label}"
+-- | Build flat menu items from config: "{handler}\t{label}"
 private def flatItems (vk : ViewKind) : IO (Array String) := do
   let vkStr := match vk with
     | .freqV _ _ => "freqV" | .colMeta => "colMeta" | .fld _ _ => "fld" | .tbl => "tbl"
   let items ← CmdConfig.menuItems vkStr
-  return items.map fun (code, label) => s!"{code}\t{label}"
+  return items.map fun (handler, label) => s!"{handler}\t{label}"
 
--- | Parse flat selection: extract 2-char Cmd code before \t
-def parseFlatSel (sel : String) : Option Cmd :=
-  let cmdStr := (sel.splitOn "\t").headD ""
-  (Parse.parse? cmdStr : Option Cmd)
+-- | Parse flat selection: extract handler name before \t
+def parseFlatSel (sel : String) : Option String :=
+  let h := (sel.splitOn "\t").headD ""
+  if h.isEmpty then none else some h
 
--- | Command mode: space → flat fzf menu → return Cmd
+-- | Command mode: space → flat fzf menu → return handler name
 -- poll: callback invoked while fzf popup is open (for external socket dispatch + re-render)
-def cmdMode (vk : ViewKind) (poll : IO Unit := pure ()) : IO (Option Cmd) := do
+def cmdMode (vk : ViewKind) (poll : IO Unit := pure ()) : IO (Option String) := do
   let items ← flatItems vk
   if items.isEmpty then return none
   let input := "\n".intercalate items.toList

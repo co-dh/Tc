@@ -29,6 +29,12 @@ import Tc.Socket
 
 open Tc
 
+-- | Handlers that take user input (fzf or typed arg).
+-- When pressed interactively, these invoke fzf. In test mode, chars until \r become the arg.
+private def isArgHandler (h : String) : Bool :=
+  h == "split" || h == "derive" || h == "filter.rowSearch" || h == "filter.rowFilter"
+  || h == "filter.colSearch" || h == "export" || h == "sessSave" || h == "sessLoad" || h == "join"
+
 -- | App state: view stack + render state + theme + info + preview scroll
 structure AppState where
   stk   : ViewStack AdbcTable
@@ -185,24 +191,21 @@ where
       match ← Socket.pollCmd with
       | some cmdStr =>
         Log.write "sock" s!"poll cmd={cmdStr}"
-        match (Parse.parse? cmdStr : Option Cmd) with
-        | some cmd =>
-          let ci ← CmdConfig.lookup cmd.obj cmd.verb
-          -- Pure-only dispatch for preview (no IO effects)
-          match (← ref.get).pureDispatch ci with
-          | some a' =>
-            let (vs', v') ← a'.stk.cur.doRender a'.vs a'.theme.styles a'.heatMode a'.sparklines
-            ref.set { a' with stk := a'.stk.setCur v', vs := vs' }
-            Term.present
-          | none => pure ()
-        | none => Log.write "sock" s!"parse failed: {cmdStr}"
+        -- Socket sends handler names directly
+        let ci ← CmdConfig.handlerLookup cmdStr
+        match (← ref.get).pureDispatch ci with
+        | some a' =>
+          let (vs', v') ← a'.stk.cur.doRender a'.vs a'.theme.styles a'.heatMode a'.sparklines
+          ref.set { a' with stk := a'.stk.setCur v', vs := vs' }
+          Term.present
+        | none => pure ()
       | none => pure ()
-    let cmd ← Fzf.cmdMode a.stk.cur.vkind poll
+    let handler? ← Fzf.cmdMode a.stk.cur.vkind poll
     let a' ← ref.get
     let _ ← Socket.pollCmd  -- drain stale preview command from fzf focus
-    match cmd with
-    | some c =>
-      let ci ← CmdConfig.lookup c.obj c.verb
+    match handler? with
+    | some h =>
+      let ci ← CmdConfig.handlerLookup h
       a'.dispatch ci
     | none => pure (.ok a')
 
@@ -232,17 +235,20 @@ private partial def runArgCmd (a : AppState) (handler : String) (arg : String) :
     match ← Join.runWith a.stk arg with | some s' => pure s' | none => pure a.stk)
   | _ => pure a
 
--- | Dispatch a command string: parse → lookup handler → dispatch
-private partial def dispatchCmd (a : AppState) (cmdStr : String) : IO AppState := do
+-- | Dispatch a handler name string from socket (handler name, optionally with arg after space)
+private partial def dispatchHandler (a : AppState) (cmdStr : String) : IO AppState := do
   Log.write "sock" s!"cmd={cmdStr}"
-  match (Parse.parse? cmdStr : Option Cmd) with
-  | some cmd =>
-    let ci ← CmdConfig.lookup cmd.obj cmd.verb
-    if !cmd.arg.isEmpty then runArgCmd a ci.handler cmd.arg
-    else match ← a.dispatch ci with
-      | .ok a' => pure { a' with prevScroll := 0 }
-      | _ => pure a
-  | none => pure a
+  -- Handler names may include arg after space: "filter.rowFilter Bid > 100"
+  let (h, arg) := match cmdStr.splitOn " " with
+    | [h] => (h, "")
+    | h :: rest => (h, " ".intercalate rest)
+    | [] => (cmdStr, "")
+  if isArgHandler h && !arg.isEmpty then runArgCmd a h arg
+  else
+    let ci ← CmdConfig.handlerLookup h
+    match ← a.dispatch ci with
+    | .ok a' => pure { a' with prevScroll := 0 }
+    | _ => pure a
 
 -- main loop: render → input → dispatch → loop
 partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppState := do
@@ -284,56 +290,43 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   Term.present
   if test && ks.isEmpty then IO.print (← Term.bufferStr); return a
   let (ev, ks') ← nextEvent ks
-  -- Socket commands from external tools
+  -- Socket commands from external tools (handler names)
   let a ← match ← Socket.pollCmd with
-    | some cmdStr => dispatchCmd a cmdStr
+    | some cmdStr => dispatchHandler a cmdStr
     | none => pure a
   -- \x16 = <wait> test key: sleep to let socket commands arrive
   if ev.type == 1 && ev.key == 0x16 then IO.sleep 50; return ← mainLoop a test ks'
   -- Empty event (socket wake-up with no key press) → re-render and loop
   if ev.type == 0 then return ← mainLoop a test ks'
-  -- Dispatch: Cmd → dispatch → loop
-  let runCmd (cmd : Cmd) (rest : Array Char) : IO AppState := do
-    let ci ← CmdConfig.lookup cmd.obj cmd.verb
-    -- Verb→arg shortcuts: call runArgCmd directly
-    if let some (argH, dflt) := ← CmdConfig.argShortcut cmd.obj cmd.verb then
+  -- Dispatch: handler name → dispatch → loop
+  let runHandler (h : String) (rest : Array Char) : IO AppState := do
+    let ci ← CmdConfig.handlerLookup h
+    -- Arg shortcuts: call runArgCmd directly (e.g. join shortcuts)
+    if let some (argH, dflt) := ← CmdConfig.argShortcut h then
       return ← mainLoop (← runArgCmd a argH dflt) test rest
     match ← a.dispatch ci with
     | .quit => pure a
     | .unhandled => mainLoop a test rest
     | .ok a'' =>
-      let a'' := if ci.handler == "scrollUp" || ci.handler == "scrollDn" then a'' else { a'' with prevScroll := 0 }
+      let a'' := if h == "scrollUp" || h == "scrollDn" then a'' else { a'' with prevScroll := 0 }
       mainLoop a'' test rest
-  -- 1. Test mode: 2-char obj+verb codes (e.g. "s1"=stk.1, "c["=col.[)
-  -- Only when the first char has no single-key mapping and no nav mapping
-  let ch := Char.ofNat ev.ch.toNat
-  if test && ks'.size > 0 && (lookup KeyMap.char ch).isNone && !"jklh".toList.contains ch then
-    let code := s!"{ch}{ks'[0]!}"
-    match (Parse.parse? code : Option Cmd) with
-    | some cmd => if cmd.arg.isEmpty then return ← runCmd cmd (ks'.extract 1 ks'.size)
-    | _ => pure ()
-  -- 2. Argument commands: prefix char + payload
-  if Cmd.isArgPfx ch then do
-    let (arg, rest) := if test && ks'.any (· == '\r') then
-      let idx := ks'.findIdx? (· == '\r') |>.getD ks'.size
-      (String.ofList (ks'.extract 0 idx).toList, ks'.extract (idx + 1) ks'.size)
-    else ("", ks')
-    let argCmd := Cmd.fromArg ch arg
-    let argCi ← CmdConfig.lookup argCmd.obj argCmd.verb
-    mainLoop (← runArgCmd a argCi.handler argCmd.arg) test rest
-  else
-  -- 3. Single-key shortcuts — runtime from config, fallback to compile-time KeyMap.char
+  -- 1. Resolve key → handler name (config first, then compile-time KeyMap, then special keys)
   let keyChar := evToChar ev
-  let keyCmd ← do
+  let handler? ← do
     match ← CmdConfig.keyLookup keyChar with
-    | some (o, v) => pure (some { obj := o, verb := v : Cmd })
-    | none => pure (lookup KeyMap.char keyChar)
-  match keyCmd with
-  | some cmd => runCmd cmd ks'
-  -- 4. Special terminal keys + nav (Enter, Backspace, Shift+Arrow, hjkl, PgUp/Dn)
-  | none => match evToCmd ev a.stk.cur.vkind with
-    | some cmd => runCmd cmd ks'
-    | none => mainLoop a test ks'
+    | some ci => pure (some ci.handler)
+    | none => pure ((lookup KeyMap.char keyChar) <|> evToHandler ev a.stk.cur.vkind)
+  match handler? with
+  | some h =>
+    -- Arg commands: collect user input (in test mode, chars until \r)
+    if isArgHandler h then
+      let (arg, rest) := if test && ks'.any (· == '\r') then
+        let idx := ks'.findIdx? (· == '\r') |>.getD ks'.size
+        (String.ofList (ks'.extract 0 idx).toList, ks'.extract (idx + 1) ks'.size)
+      else ("", ks')
+      mainLoop (← runArgCmd a h arg) test rest
+    else runHandler h ks'
+  | none => mainLoop a test ks'
 
 -- parsed CLI arguments
 structure CliArgs where
