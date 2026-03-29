@@ -77,6 +77,15 @@ INSERT INTO tv_sources VALUES
    'name', '',
    'osqueryi --json "SELECT * FROM {name}"', false, '', ''),
 
+  -- FTP: curl fetches ls -l, Lean parses it (parseFtpLs in SourceConfig.lean)
+  ('ftp://', 3,
+   'curl -sf {path}',
+   'FTP',
+   'curl -sfL -o {tmp}/{name} {path}',
+   true, true, '',
+   '', '', '', '',
+   '', false, '', ''),
+
   -- PostgreSQL: attach=true + duckdb_ext auto-generates ATTACH SQL
   ('pg://', 99, '', '', '', false, false, '',
    '', '', 'name', '',

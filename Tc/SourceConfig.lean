@@ -7,6 +7,7 @@
 -/
 import Tc.Data.ADBC.Table
 import Tc.Error
+import Tc.Ftp
 import Tc.Render
 import Tc.Remote
 import Tc.TmpDir
@@ -291,11 +292,15 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
       Log.write "src" s!"list failed (exit {out.exitCode}): {errMsg}"
       errorPopup s!"List failed: {errMsg}"
       return none
-    let json := out.stdout
-    if json.trimAscii.toString.isEmpty then return none
+    let raw := out.stdout
+    if raw.trimAscii.toString.isEmpty then return none
     let tmpFile ← Tc.tmpPath "src-list.json"
-    IO.FS.writeFile tmpFile json
-    let listSql := expand cfg.listSql #[("src", tmpFile)]
+    -- FTP mode: parse ls -l in Lean; otherwise use SQL transform
+    let content := if cfg.listSql == "FTP" then Ftp.parseLs raw else raw
+    IO.FS.writeFile tmpFile content
+    let listSql := if cfg.listSql == "FTP"
+      then s!"SELECT * FROM read_csv('{tmpFile}', header=true, delim='\t')"
+      else expand cfg.listSql #[("src", tmpFile)]
     let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {listSql}"
     -- Auto-unnest: if result is 1 row with a struct[] column, expand it
     try

@@ -733,6 +733,31 @@ section HFTests
 
 end HFTests
 
+/-! ## FTP Path Helper Tests -/
+
+section FTPTests
+open Tc.SourceConfig
+
+-- | FTP parent via Remote.parent (minParts=3: ftp://host is root)
+#guard Remote.parent "ftp://ftp.nyse.com/a/b/" 3 == some "ftp://ftp.nyse.com/a/"
+#guard Remote.parent "ftp://ftp.nyse.com/a/" 3 == some "ftp://ftp.nyse.com/"
+#guard Remote.parent "ftp://ftp.nyse.com/" 3 == none
+
+-- | FTP pathParts strips prefix
+#guard pathParts "ftp://" "ftp://ftp.nyse.com/Historical%20Data%20Samples" == #["ftp.nyse.com", "Historical%20Data%20Samples"]
+#guard pathParts "ftp://" "ftp://ftp.nyse.com/" == #["ftp.nyse.com"]
+#guard pathParts "ftp://" "ftp://ftp.nyse.com" == #["ftp.nyse.com"]
+
+-- | FTP join builds correct paths
+#guard Remote.join "ftp://ftp.nyse.com/" "DAILY%20TAQ/" == "ftp://ftp.nyse.com/DAILY%20TAQ/"
+#guard Remote.join "ftp://ftp.nyse.com/a/" "file.csv" == "ftp://ftp.nyse.com/a/file.csv"
+
+-- | FTP dispName extracts last component
+#guard Remote.dispName "ftp://ftp.nyse.com/Historical%20Data" == "Historical%20Data"
+#guard Remote.dispName "ftp://ftp.nyse.com/" == "ftp.nyse.com"
+
+end FTPTests
+
 /-! ## FreqResult Construction Tests -/
 
 section FreqTests
