@@ -119,7 +119,7 @@ def tryReadCsv (path : String) : IO (Option (View AdbcTable)) := do
     match ← AdbcTable.fromFileWith absPath "read_csv" "" with
     | some tbl => pure (View.fromTbl tbl path)
     | none => pure none
-  catch _ => pure none
+  catch e => Log.write "tryReadCsv" s!"{path}: {e}"; pure none
 
 -- | ATTACH a database file and list its tables as a folder view
 private def attachFile (absPath : String) (fmt : FileFormat) : IO (Option (View AdbcTable)) := do
