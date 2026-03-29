@@ -77,14 +77,14 @@ INSERT INTO tv_sources VALUES
    'name', '',
    'osqueryi --json "SELECT * FROM {name}"', false, '', ''),
 
-  -- FTP: parse Unix ls -l and Windows IIS formats, URL-encode names
+  -- FTP: parse ls -l output, URL-encode names for navigation
+  -- Format: drwxr-xr-x 2 user group 4096 Jan 02 05:20 dirname
+  --         perms      _ _    _     size mon dd hh:mm name
   ('ftp://', 3,
    'curl -sf {path} | python3 -c ''import sys,re,urllib.parse as u
 for l in sys.stdin:
  m=re.match(r"(\S+)\s+\S+\s+\S+\s+\S+\s+(\S+)\s+(\S+\s+\S+\s+\S+)\s+(.*)",l)
- if m:print(u.quote(re.sub(" -> .*","",m[4].rstrip()),safe="")+"\t"+m[2]+"\t"+m[3]+"\t"+("dir"if m[1][0]=="d"else"file"));continue
- m=re.match(r"(\S+\s+\S+)\s+(<DIR>|\d+)\s+(.*)",l)
- if m:print(u.quote(m[3].rstrip(),safe="")+"\t"+("0"if m[2]=="<DIR>"else m[2])+"\t"+m[1]+"\t"+("dir"if m[2]=="<DIR>"else"file"))
+ if m:print(u.quote(re.sub(" -> .*","",m[4].rstrip()),safe="")+"\t"+m[2]+"\t"+m[3]+"\t"+("dir"if m[1][0]=="d"else"file"))
 ''',
    'SELECT column0 as name, TRY_CAST(column1 AS BIGINT) as size, column2 as date, column3 as type
     FROM read_csv(''{src}'', header=false, delim=''\t'', auto_detect=false,
