@@ -296,9 +296,6 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   -- Dispatch: handler name → dispatch → loop
   let runHandler (h : String) (rest : Array Char) : IO AppState := do
     let ci ← CmdConfig.handlerLookup h
-    -- Arg shortcuts: call runArgCmd directly (e.g. join shortcuts)
-    if let some (argH, dflt) := ← CmdConfig.argShortcut h then
-      return ← mainLoop (← runArgCmd a argH dflt) test rest
     match ← a.dispatch ci with
     | .quit => pure a
     | .unhandled => mainLoop a test rest
@@ -390,7 +387,6 @@ def appMain (args : List String) : IO Unit := do
   Log.write "init" s!"tmpdir={← Tc.tmpDir.get}"
   let err ← try AdbcTable.init catch e => IO.eprintln s!"Backend init error: {e}"; return
   if !err.isEmpty then IO.eprintln s!"Backend init failed: {err}"; return
-  try SourceConfig.attachDb catch e => Log.write "init" s!"attachDb: {e}"
   try CmdConfig.init catch e => Log.write "init" s!"cmdConfig: {e}"
   -- session restore: -s name
   if let some sessName := cli.session then

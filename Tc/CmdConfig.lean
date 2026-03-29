@@ -16,11 +16,9 @@ structure CmdInfo where
 -- | Entry for menus and arg shortcuts
 structure Entry where
   handler : String
-  key : Char := '\x00'      -- physical key binding ('\x00' = none)
+  key : Option Char := none
   label : String := ""      -- fzf menu label (empty = hidden from menu)
   resetsVS : Bool := false
-  argHandler : String := "" -- arg shortcut target handler
-  argDefault : String := "" -- arg shortcut default arg
   viewCtx : String := ""    -- menu filter context (empty = all)
 
 -- | Command matrix — single source of truth
@@ -73,12 +71,6 @@ def commands : Array Entry := #[
   { handler := "quit" },
   { handler := "xpose",           key := 'X', label := "Transpose table (rows <-> columns)" },
   { handler := "diff",            key := 'd', label := "Diff top two views" },
-  -- stk join shortcuts (verb→arg: call join handler directly)
-  { handler := "stk.dup",         argHandler := "join", argDefault := "0" },
-  { handler := "stk.dup",         argHandler := "join", argDefault := "1" },
-  { handler := "stk.dup",         argHandler := "join", argDefault := "2" },
-  { handler := "stk.dup",         argHandler := "join", argDefault := "3" },
-  { handler := "stk.dup",         argHandler := "join", argDefault := "4" },
   -- info: precision, heatmap, scroll
   { handler := "infoTog",         key := 'I', label := "Toggle info overlay" },
   { handler := "precDec",         label := "Decrease decimal precision" },
@@ -117,8 +109,6 @@ def commands : Array Entry := #[
 initialize keyInfoMap : IO.Ref (Std.HashMap Char CmdInfo) ← IO.mkRef {}
 -- | Cached: handler name → CmdInfo (socket/programmatic dispatch)
 initialize handlerInfoMap : IO.Ref (Std.HashMap String CmdInfo) ← IO.mkRef {}
--- | Cached: entries for menus and arg shortcuts
-initialize entryList : IO.Ref (Array Entry) ← IO.mkRef #[]
 
 -- | Build caches from inline config. No DuckDB needed.
 def init : IO Unit := do
@@ -126,11 +116,10 @@ def init : IO Unit := do
   let mut handlerInfo : Std.HashMap String CmdInfo := {}
   for e in commands do
     let ci : CmdInfo := { handler := e.handler, resetsVS := e.resetsVS }
-    if e.key != '\x00' then keyInfo := keyInfo.insert e.key ci
+    if let some k := e.key then keyInfo := keyInfo.insert k ci
     handlerInfo := handlerInfo.insert e.handler ci
   keyInfoMap.set keyInfo
   handlerInfoMap.set handlerInfo
-  entryList.set commands
   Log.write "init" s!"commands: {commands.size} entries"
 
 -- | O(1) lookup by physical key char → handler + resetsVS.
@@ -141,18 +130,11 @@ def keyLookup (c : Char) : IO (Option CmdInfo) := do
 def handlerLookup (h : String) : IO CmdInfo := do
   pure ((← handlerInfoMap.get).getD h { handler := h, resetsVS := false })
 
--- | Arg shortcut by handler name: returns (argHandler, defaultArg) if this handler has one
-def argShortcut (handler : String) : IO (Option (String × String)) := do
-  let es ← entryList.get
-  return es.findSome? fun e =>
-    if e.handler == handler && !e.argHandler.isEmpty then some (e.argHandler, e.argDefault) else none
-
 -- | Menu items for fzf, filtered by view context. Returns (handler, label).
-def menuItems (viewCtx : String) : IO (Array (String × String)) := do
-  let es ← entryList.get
-  return es.filterMap fun e =>
+def menuItems (viewCtx : String) : IO (Array (String × String)) :=
+  pure (commands.filterMap fun e =>
     if e.label.isEmpty then none
     else if !e.viewCtx.isEmpty && e.viewCtx != viewCtx then none
-    else some (e.handler, e.label)
+    else some (e.handler, e.label))
 
 end Tc.CmdConfig

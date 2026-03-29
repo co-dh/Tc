@@ -1310,7 +1310,6 @@ def main (args : List String) : IO Unit := do
   IO.FS.createDirAll "/tmp/tc_test"
   let err ← Tc.AdbcTable.init
   if !err.isEmpty then throw (IO.userError s!"Backend init failed: {err}")
-  try Tc.SourceConfig.attachDb catch _ => pure ()
   let ci := args.contains "--ci"
   let filter := args.filter (· != "--ci") |>.head?
   let pool := if ci then ciTests else tests

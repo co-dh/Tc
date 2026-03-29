@@ -55,7 +55,7 @@ theorem key_h : evToHandler (charToEvent 'h') .tbl = some "nav.colDec" := by nat
 
 -- Single-key shortcuts via CmdConfig.commands (inline config, no SQL)
 private def findKey (c : Char) : Option String :=
-  CmdConfig.commands.findSome? fun e => if e.key == c then some e.handler else none
+  CmdConfig.commands.findSome? fun e => if e.key == some c then some e.handler else none
 
 theorem key_bang  : findKey '!' = some "nav.colGrp"         := by native_decide
 theorem key_T     : findKey 'T' = some "nav.rowSel"         := by native_decide

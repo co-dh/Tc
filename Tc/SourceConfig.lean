@@ -122,9 +122,6 @@ def sources : Array Config := #[
     grp := "name", attach := true, duckdbExt := "postgres", attachType := "POSTGRES" }
 ]
 
--- | No-op: kept for backward compat (callers already wrap in try/catch)
-def attachDb : IO Unit := Log.write "init" "sources: inline"
-
 -- | Find config for a path by prefix match (longest prefix wins)
 def findSource (path : String) : IO (Option Config) :=
   pure (sources.foldl (fun best cfg =>
