@@ -3,7 +3,7 @@
 ## Current State
 9 plot types: line, scatter, bar, histogram, boxplot, area, density, step, violin
 All rendered via R/ggplot2, displayed via kitty/viu/xdg-open.
-Interactive mode: c0-c8 selects plot type by digit, +/- adjusts downsampling.
+Interactive mode: c0-c8 selects plot type by digit, ,/. adjusts downsampling.
 
 ## New Plot Types (Finance-focused)
 
