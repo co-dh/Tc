@@ -27,16 +27,17 @@ structure Interval where
   truncLen : Nat     -- SUBSTRING length for time; step for non-time
   deriving Inhabited
 
+-- truncLen = bucket size in seconds for time_bucket
 private def timeIntervals : Array Interval := #[
-  ⟨"1s", 8⟩, ⟨"1m", 5⟩, ⟨"1h", 2⟩
+  ⟨"1s", 1⟩, ⟨"1m", 60⟩, ⟨"5m", 300⟩, ⟨"30m", 1800⟩
 ]
 
 private def tsIntervals : Array Interval := #[
-  ⟨"1s", 19⟩, ⟨"1m", 16⟩, ⟨"1h", 13⟩, ⟨"1d", 10⟩
+  ⟨"1s", 1⟩, ⟨"1m", 60⟩, ⟨"5m", 300⟩, ⟨"30m", 1800⟩
 ]
 
 private def dateIntervals : Array Interval := #[
-  ⟨"1d", 10⟩, ⟨"1M", 7⟩, ⟨"1Y", 4⟩
+  ⟨"1d", 86400⟩, ⟨"1M", 2592000⟩, ⟨"1Y", 31536000⟩
 ]
 
 private def stepIntervals (baseStep : Nat) : Array Interval :=
@@ -151,11 +152,12 @@ def rScript (dataPath pngPath : String) (kind : PlotKind)
     | .density => "geom_density(fill = 'steelblue', alpha = 0.5)"
     | .step => "geom_step(linewidth = 0.5)"
     | .violin => "geom_violin() + geom_boxplot(width = 0.1, fill = 'white')"
+  let timeScale := if xType == "time" then " + scale_x_datetime(date_labels = '%H:%M:%S')" else ""
   let facet := if hasFacet then s!" + facet_wrap(vars({facetR}), scales = 'free_y')" else ""
   "library(ggplot2)\n" ++ readData ++ convY ++ convX ++
     s!"p <- ggplot(d, {aes}{colorAes}{fillAes}) + {geom}{facet} + " ++
     let fillScale := if addsFill kind && !hasCat then "scale_fill_viridis_c()" else "scale_fill_viridis_d()"
-    s!"labs(x = '{xName}', y = '{yName}') + theme_gray() + scale_color_viridis_d() + {fillScale}\n" ++
+    s!"labs(x = '{xName}', y = '{yName}') + theme_classic() + scale_color_viridis_d() + {fillScale}{timeScale}\n" ++
     s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
 
 -- | Run Rscript to render plot; returns error message on failure
@@ -190,12 +192,21 @@ private def renderFrame (pngPath : String) (kind : PlotKind)
   clearScreen
   if err?.isNone then showPng pngPath
   else IO.println (err?.getD "plot error")
-  IO.println s!"\x1b[1m─── {kind}: x={xName}  y={yName} ───\x1b[0m"
-  if intervals.size > 1 then
-    let ivBar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
-      if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
-    IO.println s!",/.:downsample {ivBar}"
-  IO.print "q:exit "
+  let hi (s : String) := s!"\x1b[33m{s}\x1b[0m"  -- yellow for keys
+  let ivBar := if intervals.size > 1 then
+      let bar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
+        if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
+      s!"  {hi ","}/{hi "."}:{bar}"
+    else ""
+  let status := s!"\x1b[1m─── {kind}: x={xName}  y={yName} ───\x1b[0m{ivBar}  {hi "q"}:exit"
+  -- right-align status line to match plot image right edge
+  let cols ← do
+    let r ← IO.Process.output { cmd := "tput", args := #["cols"] }
+    pure (r.stdout.trimAscii.toString.toNat?.getD 80)
+  let ivLabels := intervals.foldl (fun (acc : Nat) iv => acc + iv.label.length + 2) 0
+  let visLen := 8 + (toString kind).length + xName.length + yName.length + ivLabels + 20
+  let pad := String.ofList (List.replicate (cols - min visLen cols) ' ')
+  IO.println s!"\r{pad}{status}\n"
 
 -- | Run plot with interactive controls (in-place re-rendering)
 def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
@@ -247,7 +258,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   if n.grp.contains yName then return ← err s "move cursor to a non-group column"
   let yType := TblOps.colType n.tbl yIdx
   if !isNumericType yType then return ← err s s!"y-axis '{yName}' must be numeric (got {yType})"
-  let nr := TblOps.nRows n.tbl
+  let nr := TblOps.totalRows n.tbl
   let xType0 := TblOps.colType n.tbl xIdx
   let xType ← do
     if xType0 != "str" then pure xType0

@@ -229,8 +229,8 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
           | some cn => s!"{q xName}, {q yName}, {q cn}"
           | none    => s!"{q xName}, {q yName}"
         let dsFn := match catName? with
-          | some cn => s!"ds_nth_cat {q yName} {q cn} {step}"
-          | none    => s!"ds_nth {q yName} {step}"
+          | some cn => s!"ds_nth_cat {q yName} {q cn} {truncLen}"
+          | none    => s!"ds_nth {q yName} {truncLen}"
         s!"{t.query.render} | {dsFn} | select \{{selCols}}"
     Log.write "prql" prql
     let some sql ← Prql.compile prql | return none
