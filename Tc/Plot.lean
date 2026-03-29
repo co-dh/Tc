@@ -181,6 +181,7 @@ private def renderFrame (pngPath : String) (kind : PlotKind)
   clearScreen
   if err?.isNone then showPng pngPath
   else IO.println (err?.getD "plot error")
+  IO.print "\r"  -- ensure cursor at column 0 after image render
   IO.println s!"\x1b[1m─── {kind}: x={xName}  y={yName} ───\x1b[0m"
   if intervals.size > 1 then
     let ivBar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
