@@ -4,6 +4,7 @@
   Lookup by key char or handler name.
 -/
 import Std.Data.HashMap
+import Std.Data.HashSet
 import Tc.Util
 
 namespace Tc.CmdConfig
@@ -20,6 +21,7 @@ structure Entry where
   label : String := ""      -- fzf menu label (empty = hidden from menu)
   resetsVS : Bool := false
   viewCtx : String := ""    -- menu filter context (empty = all)
+  isArg : Bool := false     -- handler takes user input (fzf or typed arg)
 
 -- | Command matrix — single source of truth
 def commands : Array Entry := #[
@@ -32,8 +34,8 @@ def commands : Array Entry := #[
   { handler := "nav.rowBot" },
   { handler := "nav.rowSel",      key := 'T', label := "Select/deselect current row" },
   -- row search/filter
-  { handler := "filter.rowSearch", key := '/', label := "Search for value in current column", resetsVS := true },
-  { handler := "filter.rowFilter", key := '\\', label := "Filter rows by PRQL expression", resetsVS := true },
+  { handler := "filter.rowSearch", key := '/', label := "Search for value in current column", resetsVS := true, isArg := true },
+  { handler := "filter.rowFilter", key := '\\', label := "Filter rows by PRQL expression", resetsVS := true, isArg := true },
   { handler := "filter.searchNext",key := 'n', label := "Jump to next search match" },
   { handler := "filter.searchPrev",key := 'N', label := "Jump to previous search match" },
   -- col navigation
@@ -50,9 +52,9 @@ def commands : Array Entry := #[
   { handler := "sort.asc",        key := '[', label := "Sort ascending", resetsVS := true },
   { handler := "sort.desc",       key := ']', label := "Sort descending", resetsVS := true },
   -- col arg commands
-  { handler := "split",           key := ':', label := "Split column by delimiter" },
-  { handler := "derive",          key := '=', label := "Derive new column (name = expr)" },
-  { handler := "filter.colSearch", key := 'g', label := "Jump to column by name", resetsVS := true },
+  { handler := "split",           key := ':', label := "Split column by delimiter", isArg := true },
+  { handler := "derive",          key := '=', label := "Derive new column (name = expr)", isArg := true },
+  { handler := "filter.colSearch", key := 'g', label := "Jump to column by name", resetsVS := true, isArg := true },
   -- col plot
   { handler := "plot.area",       label := "Plot: area chart" },
   { handler := "plot.line",       label := "Plot: line chart" },
@@ -99,27 +101,32 @@ def commands : Array Entry := #[
   { handler := "folder.depthDec", label := "Decrease folder depth", resetsVS := true },
   { handler := "folder.depthInc", label := "Increase folder depth", resetsVS := true },
   -- arg-only commands
-  { handler := "export",          key := 'e', label := "Export table (csv/parquet/json/ndjson)" },
-  { handler := "sessSave",        key := 'W', label := "Save session" },
-  { handler := "sessLoad",        label := "Load session" },
-  { handler := "join",            key := 'J', label := "Join tables" }
+  { handler := "export",          key := 'e', label := "Export table (csv/parquet/json/ndjson)", isArg := true },
+  { handler := "sessSave",        key := 'W', label := "Save session", isArg := true },
+  { handler := "sessLoad",        label := "Load session", isArg := true },
+  { handler := "join",            key := 'J', label := "Join tables", isArg := true }
 ]
 
 -- | Cached: key char → CmdInfo (physical key → handler)
 initialize keyInfoMap : IO.Ref (Std.HashMap Char CmdInfo) ← IO.mkRef {}
 -- | Cached: handler name → CmdInfo (socket/programmatic dispatch)
 initialize handlerInfoMap : IO.Ref (Std.HashMap String CmdInfo) ← IO.mkRef {}
+-- | Cached: handlers that take user input (isArg = true)
+initialize argHandlerSet : IO.Ref (Std.HashSet String) ← IO.mkRef {}
 
 -- | Build caches from inline config. No DuckDB needed.
 def init : IO Unit := do
   let mut keyInfo : Std.HashMap Char CmdInfo := {}
   let mut handlerInfo : Std.HashMap String CmdInfo := {}
+  let mut argSet : Std.HashSet String := {}
   for e in commands do
     let ci : CmdInfo := { handler := e.handler, resetsVS := e.resetsVS }
     if let some k := e.key then keyInfo := keyInfo.insert k ci
     handlerInfo := handlerInfo.insert e.handler ci
+    if e.isArg then argSet := argSet.insert e.handler
   keyInfoMap.set keyInfo
   handlerInfoMap.set handlerInfo
+  argHandlerSet.set argSet
   Log.write "init" s!"commands: {commands.size} entries"
 
 -- | O(1) lookup by physical key char → handler + resetsVS.
@@ -129,6 +136,10 @@ def keyLookup (c : Char) : IO (Option CmdInfo) := do
 -- | O(1) lookup by handler name → CmdInfo. For socket/programmatic dispatch.
 def handlerLookup (h : String) : IO CmdInfo := do
   pure ((← handlerInfoMap.get).getD h { handler := h, resetsVS := false })
+
+-- | O(1) check if handler takes user input (derived from isArg field in config).
+def isArgHandler (h : String) : IO Bool := do
+  pure ((← argHandlerSet.get).contains h)
 
 -- | Menu items for fzf, filtered by view context. Returns (handler, label).
 def menuItems (viewCtx : String) : IO (Array (String × String)) :=

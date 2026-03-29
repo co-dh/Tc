@@ -24,11 +24,8 @@ import Tc.Replay
 open Tc
 
 -- | Handlers that take user input (fzf or typed arg).
--- Derived from config: handlers that appear in runArgCmd dispatch.
-private def argHandlers : Array String :=
-  #["split", "derive", "filter.rowSearch", "filter.rowFilter",
-    "filter.colSearch", "export", "sessSave", "sessLoad", "join"]
-private def isArgHandler (h : String) : Bool := argHandlers.contains h
+-- Derived from CmdConfig.Entry.isArg field — no hardcoded list needed.
+private def isArgHandler (h : String) : IO Bool := CmdConfig.isArgHandler h
 
 -- | App state: view stack + render state + theme + info + preview scroll
 structure AppState where
@@ -238,7 +235,7 @@ private partial def dispatchHandler (a : AppState) (cmdStr : String) : IO AppSta
     | [h] => (h, "")
     | h :: rest => (h, " ".intercalate rest)
     | [] => (cmdStr, "")
-  if isArgHandler h && !arg.isEmpty then runArgCmd a h arg
+  if (← isArgHandler h) && !arg.isEmpty then runArgCmd a h arg
   else
     let ci ← CmdConfig.handlerLookup h
     match ← a.dispatch ci with
@@ -311,7 +308,7 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   match handler? with
   | some h =>
     -- Arg commands: collect user input (in test mode, chars until \r)
-    if isArgHandler h then
+    if ← isArgHandler h then
       let (arg, rest) := if test && ks'.any (· == '\r') then
         let idx := ks'.findIdx? (· == '\r') |>.getD ks'.size
         (String.ofList (ks'.extract 0 idx).toList, ks'.extract (idx + 1) ks'.size)
