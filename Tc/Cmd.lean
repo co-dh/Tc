@@ -1,6 +1,6 @@
 /-
   Command system: Verb + Obj pattern for nav/toggle, ArgCmd for argument commands.
-  - Verb: ~ < > [ ] { } - + / \ : = 0-9
+  - Verb: ! ~ < > [ ] { } - + / \ : = 0-9
   - Cmd: Obj + Verb (row, col, stk, info, metaV, freq, fld) or .arg ArgCmd
   - ArgCmd: prefix char + payload, bypasses fzf (socket/demo/test)
 -/

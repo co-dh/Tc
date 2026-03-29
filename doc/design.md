@@ -5,7 +5,7 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  TblOps α                 ModifyTable α [TblOps α]      │
-│    nRows, colNames          delCols, sortBy             │
+│    nRows, colNames          excludeCols, sortBy         │
 │    queryMeta, filter                                    │
 │    distinct, findRow, render                            │
 │    getCols, colType, plotExport, fetchMore              │
@@ -87,7 +87,7 @@ The architecture separates pure state logic from IO effects:
 |             | render, getCols, colType             | Render + column access     |
 |             | plotExport, fetchMore                | Plot export + pagination   |
 |             | fromFile, fromUrl                    | Load from path/URL         |
-| ModifyTable | delCols, sortBy                      | Table mutations            |
+| ModifyTable | excludeCols, sortBy                   | Table mutations            |
 | Update      | update                               | Pure: Cmd → (State, Effect)|
 
 ## Backend
@@ -234,7 +234,7 @@ Interactive plot with interval control. After display, `+`/`-` cycles intervals:
 
 | Struct       | Purpose                                      |
 |--------------|----------------------------------------------|
-| Verb         | Action type: 14 named + val 0-9              |
+| Verb         | Action type: 15 named + val 0-9              |
 | Cmd          | Object + Verb command pattern (7 objects)    |
 | Effect       | IO operation descriptor (30+ variants)       |
 | NavState     | Table + row/col cursors + selections + group |
