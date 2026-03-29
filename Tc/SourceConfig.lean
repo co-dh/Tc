@@ -31,6 +31,8 @@ structure Config where
   duckdbExt      : String := ""   -- DuckDB extension to auto INSTALL/LOAD (e.g. "postgres"). Empty = none.
   attachType     : String := ""   -- ATTACH TYPE clause (e.g. "POSTGRES"). Empty = native DuckDB.
   urlEncode      : Bool := false  -- true: URL-encode path segments for curl commands (e.g. FTP)
+  fallbackCmd    : String := ""   -- shell cmd template if listCmd fails (e.g. org-level listing)
+  fallbackSql    : String := ""   -- SQL transform for fallbackCmd output
 
 -- | Global flag: use --no-sign-request for S3 (set via +n arg)
 initialize noSign : IO.Ref Bool ← IO.mkRef false
@@ -89,12 +91,14 @@ def sources : Array Config := #[
     listSql := "SELECT split_part(unnest.Key, '/', -1) as name, unnest.Size as size, unnest.LastModified as date, 'file' as type FROM (SELECT unnest(Contents) FROM read_json_auto('{src}')) WHERE unnest.Key IS NOT NULL UNION ALL SELECT split_part(unnest.Prefix, '/', -2) as name, 0 as size, '' as date, 'dir' as type FROM (SELECT unnest(CommonPrefixes) FROM read_json_auto('{src}')) WHERE unnest.Prefix IS NOT NULL",
     downloadCmd := "aws s3 cp {extra} {path} {tmp}/{name}",
     needsDownload := true, dirSuffix := true },
-  -- HF dataset browser: curl HF Hub API
+  -- HF dataset browser: curl HF Hub API; fallback to org-level listing
   { pfx := "hf://datasets/", minParts := 5,
     listCmd := "curl -sf https://huggingface.co/api/datasets/{1}/{2}/tree/main/{3+}",
     listSql := "SELECT split_part(path, '/', -1) as name, size, type FROM read_json_auto('{src}')",
     downloadCmd := "curl -sfL -o {tmp}/{name} https://huggingface.co/datasets/{1}/{2}/resolve/main/{3+}",
-    dirSuffix := true, parentFallback := "hf://" },
+    dirSuffix := true, parentFallback := "hf://",
+    fallbackCmd := "curl -sf 'https://huggingface.co/api/datasets?author={1}'",
+    fallbackSql := "SELECT split_part(id, '/', -1) as name, downloads, likes, description, 'directory' as type FROM read_json_auto('{src}')" },
   -- HF root: dataset listing from pre-populated DuckDB
   { pfx := "hf://",
     listSql := "SELECT id, downloads, likes, description, license, task, language, created, modified FROM hf.listing ORDER BY downloads DESC",
@@ -262,6 +266,18 @@ private def Config.runListCmd (cfg : Config) (path tbl : String) : IO (Option Ad
   Log.write "src" s!"list: {cmd}"
   let out ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
   if out.exitCode != 0 then
+    -- Try fallback command (e.g. org-level listing when repo listing fails)
+    if !cfg.fallbackCmd.isEmpty then
+      let fbCmd := expand cfg.fallbackCmd vars
+      Log.write "src" s!"fallback: {fbCmd}"
+      let fbOut ← IO.Process.output { cmd := "sh", args := #["-c", fbCmd] }
+      if fbOut.exitCode == 0 && !fbOut.stdout.trimAscii.toString.isEmpty then
+        let tmpFile ← Tc.tmpPath "src-list.json"
+        IO.FS.writeFile tmpFile fbOut.stdout
+        let fbSql := expand cfg.fallbackSql #[("src", tmpFile)]
+        let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {fbSql}"
+        try IO.FS.removeFile tmpFile catch _ => pure ()
+        return ← fromTbl tbl
     let errMsg := out.stderr.trimAscii.toString
     Log.write "src" s!"list failed (exit {out.exitCode}): {errMsg}"
     errorPopup s!"List failed: {errMsg}"
