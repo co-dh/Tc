@@ -77,24 +77,10 @@ INSERT INTO tv_sources VALUES
    'name', '',
    'osqueryi --json "SELECT * FROM {name}"', false, '', ''),
 
-  -- FTP: parse ls -l, URL-encode names for navigation
-  -- ls -l fields: perms links user group size month day time name...
-  --               p[0]  p[1]  p[2] p[3]  p[4] p[5]  p[6] p[7] p[8:]
+  -- FTP: curl fetches ls -l, Lean parses it (parseFtpLs in SourceConfig.lean)
   ('ftp://', 3,
-   'curl -sf {path} | python3 -c ''import sys,urllib.parse as u
-for l in sys.stdin:
- p=l.split()
- if len(p)<9:continue  # skip blank/header lines
- name=" ".join(p[8:])  # multi-word filenames
- name=name.split(" -> ")[0]  # strip symlink target
- size,date=p[4]," ".join(p[5:8])
- typ="dir" if p[0][0]=="d" else "file"
- print(u.quote(name,safe="")+"\t"+size+"\t"+date+"\t"+typ)
-''',
-   'SELECT column0 as name, TRY_CAST(column1 AS BIGINT) as size, column2 as date, column3 as type
-    FROM read_csv(''{src}'', header=false, delim=''\t'', auto_detect=false,
-    columns={''column0'':''VARCHAR'',''column1'':''VARCHAR'',''column2'':''VARCHAR'',''column3'':''VARCHAR''})
-    WHERE length(column0) > 0',
+   'curl -sf {path}',
+   'FTP',
    'curl -sfL -o {tmp}/{name} {path}',
    true, true, '',
    '', '', '', '',
