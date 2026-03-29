@@ -494,19 +494,20 @@ def test_width_grows_on_scroll : IO Unit := do
   let lines := dataLines output
   assert (lines.any (contains · "input-required")) "scrolled data should show full 'input-required'"
 
--- === HF tests ===
-
--- | Check if HuggingFace API is reachable (cached to avoid repeated 3s timeouts)
-initialize hfAccessCache : IO.Ref (Option Bool) ← IO.mkRef none
-
-def hasHfAccess : IO Bool := do
-  match ← hfAccessCache.get with
+-- | Cached network reachability check: curl once, cache result
+def cachedCurlCheck (ref : IO.Ref (Option Bool)) (url : String) : IO Bool := do
+  match ← ref.get with
   | some v => pure v
   | none =>
-    let r ← IO.Process.output { cmd := "curl", args := #["-sf", "--max-time", "3", "https://huggingface.co/api/datasets/openai/gsm8k"] }
+    let r ← IO.Process.output { cmd := "curl", args := #["-sf", "--max-time", "3", url] }
     let ok := r.exitCode == 0
-    hfAccessCache.set (some ok)
+    ref.set (some ok)
     pure ok
+
+-- === HF tests ===
+
+initialize hfAccessCache : IO.Ref (Option Bool) ← IO.mkRef none
+def hasHfAccess : IO Bool := cachedCurlCheck hfAccessCache "https://huggingface.co/api/datasets/openai/gsm8k"
 
 def test_hf_readme : IO Unit := do
   log "hf_readme"
@@ -535,17 +536,8 @@ def test_hf_backspace : IO Unit := do
 
 -- === FTP tests ===
 
--- | Check if NYSE FTP is reachable (cached)
 initialize ftpAccessCache : IO.Ref (Option Bool) ← IO.mkRef none
-
-def hasFtpAccess : IO Bool := do
-  match ← ftpAccessCache.get with
-  | some v => pure v
-  | none =>
-    let r ← IO.Process.output { cmd := "curl", args := #["-sf", "--max-time", "3", "ftp://ftp.nyse.com/"] }
-    let ok := r.exitCode == 0
-    ftpAccessCache.set (some ok)
-    pure ok
+def hasFtpAccess : IO Bool := cachedCurlCheck ftpAccessCache "ftp://ftp.nyse.com/"
 
 -- List NYSE FTP root: should show directory entries
 def test_ftp_list : IO Unit := do
@@ -555,22 +547,20 @@ def test_ftp_list : IO Unit := do
   assert (contains output "dir") "FTP listing shows dir type"
   assert (contains output "Historical") "FTP listing shows Historical Data folder"
 
--- Enter a subdirectory from FTP root
+-- Enter first subdirectory from FTP root
 def test_ftp_enter_dir : IO Unit := do
   log "ftp_enter_dir"
   unless (← hasFtpAccess) do log "  skip (no FTP access)"; return
-  -- Navigate to Historical Data Samples (row varies, find by content)
-  let output ← run "jjjjjj<ret>" "ftp://ftp.nyse.com/"
-  assert (contains output "TAQ" || contains output "dir" || contains output "file")
+  let output ← run "j<ret>" "ftp://ftp.nyse.com/"
+  assert (contains output "dir" || contains output "file")
     "FTP enter dir shows subdirectory contents"
 
 -- Backspace in FTP folder view navigates to parent directory
 def test_ftp_backspace : IO Unit := do
   log "ftp_backspace"
   unless (← hasFtpAccess) do log "  skip (no FTP access)"; return
-  let output ← run "jjjjjj<ret><bs>" "ftp://ftp.nyse.com/"
-  assert (contains output "Historical" || contains output "ftp.nyse.com")
-    "FTP backspace returns to parent"
+  let output ← run "j<ret><bs>" "ftp://ftp.nyse.com/"
+  assert (contains output "ftp.nyse.com") "FTP backspace returns to parent"
 
 -- === Derive tests ===
 
