@@ -196,7 +196,16 @@ private def renderFrame (pngPath : String) (kind : PlotKind)
         if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
       s!"  ,/.: {bar}"
     else ""
-  IO.println s!"\r\x1b[1m─── {kind}: x={xName}  y={yName} ───\x1b[0m{ivBar}  q:exit"
+  let status := s!"\x1b[1m─── {kind}: x={xName}  y={yName} ───\x1b[0m{ivBar}  q:exit"
+  -- center status line to align with plot image
+  let cols ← do
+    let r ← IO.Process.output { cmd := "tput", args := #["cols"] }
+    pure (r.stdout.trimAscii.toString.toNat?.getD 80)
+  -- approximate visible length (strip ANSI codes from count)
+  let ivLabels := intervals.foldl (fun (acc : Nat) iv => acc + iv.label.length + 2) 0
+  let visLen := 8 + (toString kind).length + xName.length + yName.length + ivLabels + 20
+  let pad := String.ofList (List.replicate ((cols - min visLen cols) / 2) ' ')
+  IO.println s!"\r{pad}{status}\n"
 
 -- | Run plot with interactive controls (in-place re-rendering)
 def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do

@@ -226,8 +226,8 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
           | 2 | 13 => ":00:00" | 5 | 16 => ":00" | 7 => "-01" | 4 => "-01-01" | _ => ""
         let pad := s!"\"{padSuffix}\""
         match catName? with
-        | some cn => s!"{t.query.render} | ds_trunc_cat {q xName} {q yName} {q cn} {truncLen} {pad} | take 2000"
-        | none    => s!"{t.query.render} | ds_trunc {q xName} {q yName} {truncLen} {pad} | take 2000"
+        | some cn => s!"{t.query.render} | ds_trunc_cat {q xName} {q yName} {q cn} {truncLen} {pad}"
+        | none    => s!"{t.query.render} | ds_trunc {q xName} {q yName} {truncLen} {pad}"
       else
         let selCols := match catName? with
           | some cn => s!"{q xName}, {q yName}, {q cn}"
