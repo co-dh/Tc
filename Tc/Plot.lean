@@ -27,16 +27,17 @@ structure Interval where
   truncLen : Nat     -- SUBSTRING length for time; step for non-time
   deriving Inhabited
 
+-- truncLen = bucket size in seconds for time_bucket
 private def timeIntervals : Array Interval := #[
-  ⟨"1s", 8⟩, ⟨"1m", 5⟩, ⟨"1h", 2⟩
+  ⟨"1s", 1⟩, ⟨"1m", 60⟩, ⟨"5m", 300⟩, ⟨"30m", 1800⟩
 ]
 
 private def tsIntervals : Array Interval := #[
-  ⟨"1s", 19⟩, ⟨"1m", 16⟩, ⟨"1h", 13⟩, ⟨"1d", 10⟩
+  ⟨"1s", 1⟩, ⟨"1m", 60⟩, ⟨"5m", 300⟩, ⟨"30m", 1800⟩
 ]
 
 private def dateIntervals : Array Interval := #[
-  ⟨"1d", 10⟩, ⟨"1M", 7⟩, ⟨"1Y", 4⟩
+  ⟨"1d", 86400⟩, ⟨"1M", 2592000⟩, ⟨"1Y", 31536000⟩
 ]
 
 private def stepIntervals (baseStep : Nat) : Array Interval :=

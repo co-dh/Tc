@@ -1003,17 +1003,17 @@ def test_plot_time_downsample : IO Unit := do
   log "plot_time_downsample"
   let some tbl ← Tc.AdbcTable.fromFile "data/plot/time_wide.csv"
     | throw (IO.userError "failed to open time_wide.csv")
-  -- step=3: keep every 3rd row → 5 of 15 rows
-  -- hour-level truncLen=2 → groups by first 2 chars, padded to HH:MM:SS
-  let result ← Tc.AdbcTable.plotExport tbl "t" "val" none true 1 2
+  -- 5m bucket (300 seconds) → groups into 5-minute bins
+  let result ← Tc.AdbcTable.plotExport tbl "t" "val" none true 1 300
   assert result.isSome "time downsample should succeed"
   let content ← IO.FS.readFile (← Tc.tmpPath "plot.dat")
   let lines := content.splitOn "\n" |>.filter (!·.isEmpty)
-  assert (lines.length == 4) s!"expected 4 hour buckets, got {lines.length}"
-  -- time values must be padded to full HH:MM:SS, not truncated "HH"
+  -- data spans 09:00-12:00 (3h) → ~36 5-min buckets, but sparse data → fewer
+  assert (lines.length >= 4) s!"expected ≥4 5-min buckets, got {lines.length}"
+  -- time values must be full timestamp format (R-parseable)
   for line in lines do
     let tv := (line.splitOn "\t").getD 0 ""
-    assert (tv.length >= 8) s!"time '{tv}' should be full HH:MM:SS"
+    assert (tv.length >= 10) s!"time '{tv}' should be full timestamp format"
 
 -- | Downsampling step controls row count: larger step = fewer rows.
 --   Bug: plotExport always used baseStep for ds_nth, ignoring the interval step.

@@ -43,21 +43,21 @@ let meta = func c tbl <relation> -> (
 # columns, so `!= 0` on a string column causes a cast-to-INT error.
 
 # Downsample time series: last value per truncated time bucket
-# pad: suffix to append so R can parse truncated strings (e.g. ":00:00" for hour)
-let ds_trunc = func x y len pad tbl <relation> -> (
+# Downsample time series: last value per time bucket (bucket_secs = interval in seconds)
+let ds_trunc = func x y bucket_secs tbl <relation> -> (
   from tbl
   filter (y != null)
-  derive {_sec = s"SUBSTRING(CAST({x} AS VARCHAR), 1, {len}) || {pad}"}
+  derive {_sec = s"CAST(time_bucket(INTERVAL '{bucket_secs} seconds', ('1970-01-01 ' || CAST({x} AS VARCHAR))::TIMESTAMP) AS VARCHAR)"}
   group {_sec} (sort {-x} | take 1)
   sort {_sec}
   select {_sec, y}
 )
 
-# Downsample time series with category and parameterized truncation
-let ds_trunc_cat = func x y c len pad tbl <relation> -> (
+# Downsample time series with category
+let ds_trunc_cat = func x y c bucket_secs tbl <relation> -> (
   from tbl
   filter (y != null)
-  derive {_sec = s"SUBSTRING(CAST({x} AS VARCHAR), 1, {len}) || {pad}"}
+  derive {_sec = s"CAST(time_bucket(INTERVAL '{bucket_secs} seconds', ('1970-01-01 ' || CAST({x} AS VARCHAR))::TIMESTAMP) AS VARCHAR)"}
   group {_sec, c} (sort {-x} | take 1)
   sort {_sec}
   select {_sec, y, c}

@@ -221,13 +221,9 @@ def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String)
   -- time-like: use PRQL ds_trunc; non-time: hand-write SQL (PRQL miscompiles ROW_NUMBER + select)
   let sql' ← do
     let prql := if xIsTime then
-        -- Pad suffix so R can parse truncated time strings (e.g. "09" → "09:00:00")
-        let padSuffix := match truncLen with
-          | 2 | 13 => ":00:00" | 5 | 16 => ":00" | 7 => "-01" | 4 => "-01-01" | _ => ""
-        let pad := s!"\"{padSuffix}\""
         match catName? with
-        | some cn => s!"{t.query.render} | ds_trunc_cat {q xName} {q yName} {q cn} {truncLen} {pad}"
-        | none    => s!"{t.query.render} | ds_trunc {q xName} {q yName} {truncLen} {pad}"
+        | some cn => s!"{t.query.render} | ds_trunc_cat {q xName} {q yName} {q cn} {truncLen}"
+        | none    => s!"{t.query.render} | ds_trunc {q xName} {q yName} {truncLen}"
       else
         let selCols := match catName? with
           | some cn => s!"{q xName}, {q yName}, {q cn}"
