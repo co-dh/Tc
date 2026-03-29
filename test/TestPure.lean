@@ -53,7 +53,7 @@ theorem key_l : evToCmd (charToEvent 'l') .tbl = some (.col .inc) := by native_d
 theorem key_h : evToCmd (charToEvent 'h') .tbl = some (.col .dec) := by native_decide
 
 -- Single-key shortcuts via KeyMap.char (centralized data table, all obj+verb Cmd)
-theorem key_bang  : lookup KeyMap.char '!' = some (.col .ent)        := by native_decide
+theorem key_bang  : lookup KeyMap.char '!' = some (.col .bang)       := by native_decide
 theorem key_T     : lookup KeyMap.char 'T' = some (.row .ent)       := by native_decide
 theorem key_lbr   : lookup KeyMap.char '[' = some (.col .lbr)       := by native_decide
 theorem key_rbr   : lookup KeyMap.char ']' = some (.col .rbr)       := by native_decide
@@ -287,15 +287,15 @@ theorem nav_col_inverse :
 
 -- Theorem 4: group toggle twice returns to empty (from test_key_remove: "!! removes key")
 theorem grp_toggle_inverse :
-    (do let n1 ← NavState.exec (.col .ent) testNav 1
-        let n2 ← NavState.exec (.col .ent) n1 1
+    (do let n1 ← NavState.exec (.col .bang) testNav 1
+        let n2 ← NavState.exec (.col .bang) n1 1
         pure n2.grp) = some #[] := by
   native_decide
 
 -- Theorem 5: hidden toggle twice returns to empty (from test_hide_unhide: "HH unhides")
 theorem hidden_toggle_inverse :
-    (do let n1 ← NavState.exec (.col .filter) testNav 1
-        let n2 ← NavState.exec (.col .filter) n1 1
+    (do let n1 ← NavState.exec (.col .ent) testNav 1
+        let n2 ← NavState.exec (.col .ent) n1 1
         pure n2.hidden) = some #[] := by
   native_decide
 
@@ -310,20 +310,20 @@ theorem sel_accumulation :
 -- l! groups c1 (from test_key_reorder: "Key col moves to front")
 theorem nav_grp_col :
     (do let n1 ← NavState.exec (.col .inc) testNav 1
-        let n2 ← NavState.exec (.col .ent) n1 1
+        let n2 ← NavState.exec (.col .bang) n1 1
         pure n2.grp) = some #["c1"] := by
   native_decide
 
 -- l! → dispOrder puts c1 first (from test_key_reorder)
 theorem nav_disp_grp_first :
     (do let n1 ← NavState.exec (.col .inc) testNav 1
-        let n2 ← NavState.exec (.col .ent) n1 1
+        let n2 ← NavState.exec (.col .bang) n1 1
         pure (n2.dispIdxs.getD 0 999)) = some 1 := by
   native_decide
 
--- \ hides current column (from test_hide_col)
+-- ~ hides current column (from test_hide_col)
 theorem nav_hide :
-    (do let n1 ← NavState.exec (.col .filter) testNav 1
+    (do let n1 ← NavState.exec (.col .ent) testNav 1
         pure n1.hidden) = some #["c0"] := by
   native_decide
 
@@ -500,8 +500,8 @@ def navWithSel : NavState 5 3 (MockTable 5 3) :=
   | none => testNav
 #guard (NavState.exec (.row .ent) navWithSel 1).map (·.row.sels) == some #[]
 
--- | ! (col.ent) toggles group
-#guard (NavState.exec (.col .ent) testNav 1).map (·.grp) == some #["c0"]
+-- | ! (col.bang) toggles group
+#guard (NavState.exec (.col .bang) testNav 1).map (·.grp) == some #["c0"]
 
 -- | colShift (c-) on non-keyed column is no-op
 #guard (NavState.exec (.col .del) testNav 1).isNone
@@ -509,9 +509,9 @@ def navWithSel : NavState 5 3 (MockTable 5 3) :=
 -- | colShift on keyed column swaps grp order
 -- !l! → grp=["c0","c1"], then shift-left (c-) on c1 (cursor at disp pos 1) → grp=["c1","c0"]
 def navGrp2 : NavState 5 3 (MockTable 5 3) :=
-  match do let n1 ← NavState.exec (.col .ent) testNav 1
+  match do let n1 ← NavState.exec (.col .bang) testNav 1
            let n2 ← NavState.exec (.col .inc) n1 1
-           NavState.exec (.col .ent) n2 1 with
+           NavState.exec (.col .bang) n2 1 with
   | some n => n | none => testNav
 #guard navGrp2.grp == #["c0", "c1"]
 #guard (NavState.exec (.col .del) navGrp2 1).map (·.grp) == some #["c1", "c0"]
@@ -933,6 +933,9 @@ private def vkindRoundTrip (vk : ViewKind) : ViewKind :=
 -- ViewKind.fld round-trips
 #guard vkindRoundTrip (.fld "/tmp/data" 3) == .fld "/tmp/data" 3
 #guard vkindRoundTrip (.fld "s3://bucket/key" 1) == .fld "s3://bucket/key" 1
+
+-- Op.exclude round-trips
+#guard opRoundTrip (.exclude #["col1", "col2"]) == some (.exclude #["col1", "col2"])
 
 -- JSON escaping round-trips for strings with special chars
 #guard opRoundTrip (.filter "col == \"hello\"") == some (.filter "col == \"hello\"")

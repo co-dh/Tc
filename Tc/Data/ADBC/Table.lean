@@ -201,6 +201,11 @@ def hideCols (t : AdbcTable) (hideIdxs : Array Nat) : IO AdbcTable := do
   match ← requery (t.query.pipe (.sel (keepCols t.colNames.size hideIdxs t.colNames))) t.totalRows with
   | some t' => pure t' | none => pure t
 
+-- | Exclude columns: append EXCLUDE op and re-query (DuckDB SELECT * EXCLUDE)
+def excludeCols (t : AdbcTable) (cols : Array String) : IO AdbcTable := do
+  match ← requery (t.query.pipe (.exclude cols)) t.totalRows with
+  | some t' => pure t' | none => pure t
+
 -- | Fetch more rows (increase limit by prqlLimit)
 def fetchMore (t : AdbcTable) : IO (Option AdbcTable) := do
   if t.nRows >= t.totalRows then return none

@@ -130,7 +130,8 @@ Key = single-key shortcut. Name = implemented via space menu / `-c` code only.
 ```
 Verb │ r:row      │ c:col      │ s:stk    │ i:info   │ M:metaV  │ F:freq   │ D:fld    │ desc
 ─────┼────────────┼────────────┼──────────┼──────────┼──────────┼──────────┼──────────┼──────────────────────────────
-  ~  │ T togRow   │ ! group    │ swap     │ togInfo  │ ⏎* setKey│ ⏎* filt  │ ⏎* enter │ M~:set key cols from selected  F~:filter parent table by current row
+  !  │            │ ! group    │          │          │          │          │          │
+  ~  │ T togRow   │ hide       │ swap     │ togInfo  │ ⏎* setKey│ ⏎* filt  │ ⏎* enter │ M~:set key cols from selected  F~:filter parent table by current row
   <  │ k up       │ h left     │ q pop    │ precDec  │          │          │ depth--  │
   >  │ j down     │ l right    │ dup      │ precInc  │          │          │ depth++  │ s>:clone current view
   [  │ ^U pgUp    │ [ sortAsc  │ joinLeft │ { scrUp  │          │          │          │ i[:scroll cell preview up
@@ -140,7 +141,7 @@ Verb │ r:row      │ c:col      │ s:stk    │ i:info   │ M:metaV  │ F:
   -  │ N prevMat  │ S-← shift  │ setDiff  │          │          │          │ trash    │
   +  │ n nextMat  │ S-→ shift  │ union    │          │ open     │ open     │          │ M+:column metadata  F+:value frequency counts
   /  │ / search   │ search     │ SPC menu │          │          │          │          │ c/:jump to col by name
-  \  │ \ filter   │ hide       │          │          │          │          │          │ r\:PRQL filter expr
+  \  │ \ filter   │ delete     │          │          │          │          │          │ r\:PRQL filter expr  c\:delete column(s) from query
   :  │            │ : split    │          │          │          │          │          │
   =  │            │ = derive   │          │          │          │          │          │ c=:name = expr
   0  │            │ area       │          │ heat off │ selNull  │          │          │ M0:select null cols
@@ -167,6 +168,7 @@ inductive QueryEffect where
   | freqFilter (cols : Array String) (row : Nat)
   | filter (expr : String)
   | sort (colIdx : Nat) (sels : Array Nat) (grp : Array Nat) (asc : Bool)
+  | exclude (cols : Array String)
 inductive FolderEffect where | push | enter | del | parent | depth (delta : Int)
 inductive SearchEffect where | next | prev
 inductive PlotKind where | line | bar | scatter | hist | box | area | density | step | violin
