@@ -585,11 +585,30 @@ def test_ftp_backspace : IO Unit := do
 
 -- === Gz view tests ===
 
--- | Opening a .txt.gz file should decompress and show readable content
+-- | Opening a plain-text .txt.gz falls back to viewFile (not valid CSV)
 def test_gz_viewfile : IO Unit := do
   log "gz_viewfile"
   let out ← run "" "data/test.txt.gz"
   assert (contains out "hello gz world") "gz viewfile shows decompressed text"
+
+-- | Opening a .txt.gz that contains CSV data should ingest as table via read_csv
+def test_gz_csv_ingest : IO Unit := do
+  log "gz_csv_ingest"
+  let out ← run "" "data/csv_data.txt.gz"
+  let (_, status) := footer out
+  assert (contains out "name") "gz csv ingest: has name column"
+  assert (contains out "alpha") "gz csv ingest: has data"
+  assert (contains status "r0/3") "gz csv ingest: 3 rows"
+
+-- | Plain-text .txt.gz falls back to viewFile (not table)
+def test_gz_txt_fallback : IO Unit := do
+  log "gz_txt_fallback"
+  -- test.txt.gz is NOT valid CSV → tryReadCsv fails → viewFile fallback
+  let out ← run "" "data/test.txt.gz"
+  assert (contains out "hello gz world") "gz txt fallback: shows text content"
+  -- Should NOT show table status line (r0/N)
+  let (_, status) := footer out
+  assert (!(contains status "r0/")) "gz txt fallback: not a table view"
 
 -- === Derive tests ===
 
@@ -1214,7 +1233,9 @@ def ciTests : Array (String × IO Unit) := #[
   -- Folder sort on PRQL keyword column
   ("folder_sort_type", test_folder_sort_type),
   -- Gz view
-  ("gz_viewfile", test_gz_viewfile)
+  ("gz_viewfile", test_gz_viewfile),
+  ("gz_csv_ingest", test_gz_csv_ingest),
+  ("gz_txt_fallback", test_gz_txt_fallback)
 ]
 
 -- Heavy tests: external tools (R, osqueryi), network (HF), databases (pg)
