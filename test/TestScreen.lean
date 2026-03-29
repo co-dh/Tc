@@ -51,8 +51,8 @@ def test_key_reorder : IO Unit := do
   assert ((header (← run "l!" "data/basic.csv")).take 5 |>.any (· == 'b')) "Key col moves to front"
 
 -- === Hide ===
--- H single-key removed; hide accessible via Space > C > h (Ch).
--- Logic still covered by pure theorems: hidden_toggle_inverse, nav_hide in TestPure.lean.
+-- H key bound to nav.colHide.
+-- Logic covered by pure theorems: hidden_toggle_inverse, nav_hide in TestPure.lean.
 
 -- === Selection ===
 -- Pure: key_T (T → rowSel.ent)

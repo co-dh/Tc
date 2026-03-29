@@ -75,12 +75,12 @@ def update (v : View T) (h : String) (rowPg : Nat) : Option (View T × Effect) :
     let asc := h == "sort.asc"
     let selIdxs := n.col.sels.filterMap names.idxOf?
     let grpIdxs := n.grp.filterMap names.idxOf?
-    some (v, .query (.sort curCol selIdxs grpIdxs asc))
+    some (v, .sort curCol selIdxs grpIdxs asc)
   | "nav.colExclude" =>
     let name := names.getD curCol ""
     let cols := if n.hidden.isEmpty then #[name]
       else if n.hidden.contains name then n.hidden else n.hidden.push name
-    some (v, .query (.exclude cols))
+    some (v, .exclude cols)
   | _ => (NavState.exec h n rowPg).map fun nav' =>
     let needsMore := nav'.row.cur.val + 1 >= v.nRows
       && TblOps.totalRows n.tbl > v.nRows

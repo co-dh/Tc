@@ -1,7 +1,8 @@
 -- Command matrix: single source of truth for all tv commands.
 -- handler: dispatch name used by Lean code (decouples keys from logic).
+-- key: physical key binding (single char). Handler names used for socket/programmatic dispatch.
 -- Dotted names route to domain modules: nav.*, stk.*, folder.*, meta.*, freq.*, plot.*, filter.*.
--- arg_handler: for verb→arg shortcuts, the target handler name (e.g. stk join shortcuts → 'join').
+-- arg_handler: for arg shortcuts, the target handler name (e.g. stk join shortcuts → 'join').
 
 DROP TABLE IF EXISTS tv_commands;
 CREATE TABLE tv_commands (
@@ -17,7 +18,7 @@ CREATE TABLE tv_commands (
 );
 
 INSERT INTO tv_commands VALUES
-  -- row navigation
+  -- row navigation (hjkl and arrows handled in Key.lean, not here)
   ('r', '>', 'Move cursor down',              'nav.rowInc',    '', false, '', NULL, ''),
   ('r', '<', 'Move cursor up',                'nav.rowDec',    '', false, '', NULL, ''),
   ('r', '[', 'Page up',                       'nav.rowPgUp',   '', false, '', NULL, ''),
@@ -25,9 +26,9 @@ INSERT INTO tv_commands VALUES
   ('r', '{', 'Jump to top',                   'nav.rowTop',    '', false, '', NULL, ''),
   ('r', '}', 'Jump to bottom',                'nav.rowBot',    '', false, '', NULL, ''),
   ('r', '~', 'Select/deselect current row',   'nav.rowSel',    'T', false, '', NULL, ''),
-  -- row search/filter
-  ('r', '/', 'Search for value in current column', 'filter.rowSearch', '', true, '', '', ''),
-  ('r', '\', 'Filter rows by PRQL expression',     'filter.rowFilter', '', true, '', '', ''),
+  -- row search/filter (arg prefix: / = search, \ = filter)
+  ('r', '/', 'Search for value in current column', 'filter.rowSearch', '/', true, '', '', ''),
+  ('r', '\', 'Filter rows by PRQL expression',     'filter.rowFilter', '\', true, '', '', ''),
   ('r', '+', 'Jump to next search match',     'filter.searchNext', 'n', false, '', NULL, ''),
   ('r', '-', 'Jump to previous search match', 'filter.searchPrev', 'N', false, '', NULL, ''),
 
@@ -37,17 +38,17 @@ INSERT INTO tv_commands VALUES
   ('c', '{', 'Jump to first column',          'nav.colFirst',  '', false, '', NULL, ''),
   ('c', '}', 'Jump to last column',           'nav.colLast',   '', false, '', NULL, ''),
   ('c', '!', 'Toggle group on current column','nav.colGrp',    '!', false, '', NULL, ''),
-  ('c', '~', 'Hide/unhide current column',    'nav.colHide',   '', false, '', NULL, ''),
-  ('c', '\', 'Delete column(s) from query',   'nav.colExclude','', true,  '', NULL, ''),
+  ('c', '~', 'Hide/unhide current column',    'nav.colHide',   'H', false, '', NULL, ''),
+  ('c', '\', 'Delete column(s) from query',   'nav.colExclude','x', true,  '', NULL, ''),
   ('c', '-', 'Shift key column left',         'nav.colShiftL', '', false, '', NULL, ''),
   ('c', '+', 'Shift key column right',        'nav.colShiftR', '', false, '', NULL, ''),
   -- col sort
   ('c', '[', 'Sort ascending',                'sort.asc',      '[', true,  '', NULL, ''),
   ('c', ']', 'Sort descending',               'sort.desc',     ']', true,  '', NULL, ''),
-  -- col arg commands
-  ('c', ':', 'Split column by delimiter',     'split',         '', false, '', '', ''),
-  ('c', '=', 'Derive new column (name = expr)', 'derive',      '', false, '', '', ''),
-  ('c', '/', 'Jump to column by name',        'filter.colSearch', '', true, '', '', ''),
+  -- col arg commands (prefix: : = split, = = derive, g = col jump)
+  ('c', ':', 'Split column by delimiter',     'split',         ':', false, '', '', ''),
+  ('c', '=', 'Derive new column (name = expr)', 'derive',      '=', false, '', '', ''),
+  ('c', '/', 'Jump to column by name',        'filter.colSearch', 'g', true, '', '', ''),
   -- col plot
   ('c', '0', 'Plot: area chart',              'plot.area',     '', false, '', NULL, ''),
   ('c', '1', 'Plot: line chart',              'plot.line',     '', false, '', NULL, ''),
@@ -61,12 +62,12 @@ INSERT INTO tv_commands VALUES
 
   -- stk: view stack operations
   ('s', '/', 'Open command menu',              'menu',         ' ', false, '', NULL, ''),
-  ('s', '~', 'Swap top two views',             'stk.swap',     '', false, '', NULL, ''),
+  ('s', '~', 'Swap top two views',             'stk.swap',     'S', false, '', NULL, ''),
   ('s', '<', 'Close current view',             'stk.pop',      'q', true,  '', NULL, ''),
   ('s', '>', 'Duplicate current view',         'stk.dup',      '', false, '', NULL, ''),
   ('s', '{', 'Quit application',               'quit',         '', false, '', NULL, ''),
-  ('s', '1', 'Transpose table (rows <-> columns)', 'xpose',   '', false, '', NULL, ''),
-  ('s', '2', 'Diff top two views',             'diff',         '', false, '', NULL, ''),
+  ('s', '1', 'Transpose table (rows <-> columns)', 'xpose',   'X', false, '', NULL, ''),
+  ('s', '2', 'Diff top two views',             'diff',         'd', false, '', NULL, ''),
   -- stk join shortcuts (verb→arg: bypass Effect, call join handler directly)
   ('s', '}', 'Join: inner',                    'stk.dup',      '', false, 'join', '0', ''),
   ('s', '[', 'Join: left',                     'stk.dup',      '', false, 'join', '1', ''),
@@ -75,7 +76,7 @@ INSERT INTO tv_commands VALUES
   ('s', '-', 'Join: set difference',           'stk.dup',      '', false, 'join', '4', ''),
 
   -- info: precision, heatmap, scroll
-  ('i', '~', 'Toggle info overlay',            'infoTog',      '', false, '', NULL, ''),
+  ('i', '~', 'Toggle info overlay',            'infoTog',      'I', false, '', NULL, ''),
   ('i', '<', 'Decrease decimal precision',     'precDec',      '', false, '', NULL, ''),
   ('i', '>', 'Increase decimal precision',     'precInc',      '', false, '', NULL, ''),
   ('i', '{', 'Set precision to 0 decimals',    'prec0',        '', false, '', NULL, ''),
@@ -88,17 +89,17 @@ INSERT INTO tv_commands VALUES
   ('i', '3', 'Heatmap: all columns',           'heat.3',       '', false, '', NULL, ''),
 
   -- metaV: column metadata view
-  ('M', '+', 'Open column metadata view',      'meta.push',    '', true, '', NULL, ''),
+  ('M', '+', 'Open column metadata view',      'meta.push',    'M', true, '', NULL, ''),
   ('M', '~', 'Set selected rows as key columns','meta.setKey', '', true, '', NULL, 'colMeta'),
-  ('M', '0', 'Select columns with null values', 'meta.selNull', '', true, '', NULL, ''),
-  ('M', '1', 'Select columns with single value','meta.selSingle','', true, '', NULL, ''),
+  ('M', '0', 'Select columns with null values', 'meta.selNull', '0', true, '', NULL, ''),
+  ('M', '1', 'Select columns with single value','meta.selSingle','1', true, '', NULL, ''),
 
   -- freq: frequency table
-  ('F', '+', 'Open frequency view',            'freq.open',    '', true, '', NULL, ''),
+  ('F', '+', 'Open frequency view',            'freq.open',    'F', true, '', NULL, ''),
   ('F', '~', 'Filter parent table by current row','freq.filter','', true, '', NULL, 'freqV'),
 
   -- fld: folder/file browser
-  ('D', '+', 'Browse folder',                  'folder.push',  '', true, '', NULL, ''),
+  ('D', '+', 'Browse folder',                  'folder.push',  'D', true, '', NULL, ''),
   ('D', '~', 'Open file or enter directory',   'folder.enter', '', true, '', NULL, ''),
   ('D', '{', 'Go to parent directory',         'folder.parent','', true, '', NULL, ''),
   ('D', '-', 'Move to trash',                  'folder.del',   '', true, '', NULL, ''),
@@ -106,7 +107,7 @@ INSERT INTO tv_commands VALUES
   ('D', '>', 'Increase folder depth',          'folder.depthInc','', true, '', NULL, ''),
 
   -- arg-only commands (prefix+payload via socket/test)
-  ('e', '~', 'Export table (csv/parquet/json/ndjson)', 'export', '', false, '', '', ''),
-  ('W', '~', 'Save session',                   'sessSave',     '', false, '', '', ''),
+  ('e', '~', 'Export table (csv/parquet/json/ndjson)', 'export', 'e', false, '', '', ''),
+  ('W', '~', 'Save session',                   'sessSave',     'W', false, '', '', ''),
   ('L', '~', 'Load session',                   'sessLoad',     '', false, '', '', ''),
-  ('J', '~', 'Join tables',                    'join',         '', false, '', '', '');
+  ('J', '~', 'Join tables',                    'join',         'J', false, '', '', '');

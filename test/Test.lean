@@ -39,59 +39,59 @@ def test_sort_desc : IO Unit := do
 
 def test_meta_shows : IO Unit := do
   log "meta"
-  assert (contains (footer (← run "M+" "data/basic.csv")).1 "meta") "M+ shows meta in tab"
+  assert (contains (footer (← run "M" "data/basic.csv")).1 "meta") "M shows meta in tab"
 
 def test_meta_col_info : IO Unit := do
   log "meta_col_info"
-  assert (contains (← run "M+" "data/basic.csv") "column" || contains (← run "M+" "data/basic.csv") "name") "Meta shows column info"
+  assert (contains (← run "M" "data/basic.csv") "column" || contains (← run "M" "data/basic.csv") "name") "Meta shows column info"
 
 def test_meta_no_garbage : IO Unit := do
   log "meta_tab_no_garbage"
-  assert (!contains (footer (← run "M+" "data/basic.csv")).1 "â") "Meta tab has no garbage chars"
+  assert (!contains (footer (← run "M" "data/basic.csv")).1 "â") "Meta tab has no garbage chars"
 
 -- === Freq tests (CSV) ===
 
 def test_freq_shows : IO Unit := do
   log "freq"
-  assert (contains (footer (← run "F+" "data/basic.csv")).1 "freq") "F+ shows freq in tab"
+  assert (contains (footer (← run "F" "data/basic.csv")).1 "freq") "F shows freq in tab"
 
 def test_freq_after_meta : IO Unit := do
   log "freq_after_meta"
-  assert (contains (footer (← run "M+qF+" "data/basic.csv")).1 "freq") "M+qF+ shows freq"
+  assert (contains (footer (← run "MqF" "data/basic.csv")).1 "freq") "MqF shows freq"
 
 def test_freq_by_key : IO Unit := do
   log "freq_by_key"
-  assert (contains (footer (← run "l!F+" "data/full.csv")).1 "freq") "l!F+ shows freq by key"
+  assert (contains (footer (← run "l!F" "data/full.csv")).1 "freq") "l!F shows freq by key"
 
 def test_freq_multi_key : IO Unit := do
   log "freq_multi_key"
-  assert (contains (footer (← run "!l!F+" "data/multi_freq.csv")).1 "freq") "!l!F+ shows multi-key freq"
+  assert (contains (footer (← run "!l!F" "data/multi_freq.csv")).1 "freq") "!l!F shows multi-key freq"
 
 def test_freq_keeps_grp : IO Unit := do
   log "freq_keeps_grp"
-  assert (contains (footer (← run "!F+" "data/basic.csv")).2 "grp=1") "Freq view keeps grp columns"
+  assert (contains (footer (← run "!F" "data/basic.csv")).2 "grp=1") "Freq view keeps grp columns"
 
 -- === Meta selection tests (M0/M1) ===
 
 def test_meta_0 : IO Unit := do
   log "meta_0"
-  let status := (footer (← run "M+M0" "data/null_col.csv")).2
-  assert (contains status "sel=1" || contains status "rows=1") "M+M0 selects null columns"
+  let status := (footer (← run "M0" "data/null_col.csv")).2
+  assert (contains status "sel=1" || contains status "rows=1") "M0 selects null columns"
 
 def test_meta_1 : IO Unit := do
   log "meta_1"
-  let status := (footer (← run "M+M1" "data/single_val.csv")).2
-  assert (contains status "sel=1" || contains status "rows=1") "M+M1 selects single-value columns"
+  let status := (footer (← run "M1" "data/single_val.csv")).2
+  assert (contains status "sel=1" || contains status "rows=1") "M1 selects single-value columns"
 
 def test_meta_0_enter : IO Unit := do
   log "meta_0_enter"
-  let hdr := header (← run "M+M0<ret>" "data/null_col.csv")
-  assert (contains hdr "║" || contains hdr "|") "M+M0<ret> sets key cols"
+  let hdr := header (← run "M0<ret>" "data/null_col.csv")
+  assert (contains hdr "║" || contains hdr "|") "M0<ret> sets key cols"
 
 def test_meta_1_enter : IO Unit := do
   log "meta_1_enter"
-  let hdr := header (← run "M+M1<ret>" "data/single_val.csv")
-  assert (contains hdr "║" || contains hdr "|") "M+M1<ret> sets key cols"
+  let hdr := header (← run "M1<ret>" "data/single_val.csv")
+  assert (contains hdr "║" || contains hdr "|") "M1<ret> sets key cols"
 
 
 -- === Stdin parsing tests ===
@@ -104,9 +104,9 @@ def test_spaced_header : IO Unit := do
 
 def test_freq_enter : IO Unit := do
   log "freq_enter"
-  let (tab, status) := footer (← run "F+<ret>" "data/multi_freq.csv")
-  assert (contains tab "multi_freq") "F+<ret> pops to parent"
-  assert (contains status "r0/3") "F+<ret> filters to 3 rows"
+  let (tab, status) := footer (← run "F<ret>" "data/multi_freq.csv")
+  assert (contains tab "multi_freq") "F<ret> pops to parent"
+  assert (contains status "r0/3") "F<ret> filters to 3 rows"
 
 -- === No stderr ===
 
@@ -167,7 +167,7 @@ def test_folder_no_args : IO Unit := do
 
 def test_folder_D : IO Unit := do
   log "folder_D_key"
-  assert (contains (← run "D+" "data/basic.csv") "[/") "D+ pushes folder view with absolute path"
+  assert (contains (← run "D" "data/basic.csv") "[/") "D pushes folder view with absolute path"
 
 -- Folder tab shows the current working directory as an absolute path
 def test_folder_tab : IO Unit := do
@@ -267,20 +267,20 @@ def test_sort_selected_not_key : IO Unit := do
 
 -- === Delete column tests ===
 
--- c\ deletes current column from query (grp_sort.csv has grp,val,name → delete grp)
+-- x deletes current column from query (grp_sort.csv has grp,val,name → delete grp)
 def test_delete_col : IO Unit := do
   log "delete_col"
-  let out ← run "c<backslash>" "data/grp_sort.csv"
+  let out ← run "x" "data/grp_sort.csv"
   let hdr := header out
-  assert (!contains hdr "grp") "c\\ removes grp column from header"
-  assert (contains hdr "val") "c\\ keeps val column"
-  assert (contains hdr "nam") "c\\ keeps name column"
+  assert (!contains hdr "grp") "x removes grp column from header"
+  assert (contains hdr "val") "x keeps val column"
+  assert (contains hdr "nam") "x keeps name column"
 
--- c~ hides, then c\ deletes all hidden + current
+-- H hides, then x deletes all hidden + current
 def test_delete_hidden_cols : IO Unit := do
   log "delete_hidden_cols"
-  -- c~ hides grp (col 0), l moves to val (col 1), c\ deletes hidden(grp) + current(val)
-  let out ← run "c~lc<backslash>" "data/grp_sort.csv"
+  -- H hides grp (col 0), l moves to val (col 1), x deletes hidden(grp) + current(val)
+  let out ← run "Hlx" "data/grp_sort.csv"
   let hdr := header out
   assert (!contains hdr "grp") "hidden col grp removed"
   assert (!contains hdr "val") "current col val removed"
@@ -290,7 +290,7 @@ def test_delete_hidden_cols : IO Unit := do
 
 def test_filter_parquet_full_db : IO Unit := do
   log "filter_parquet_full_db"
-  let (tab, status) := footer (← run "\\" "data/filtered_test.parquet")
+  let (tab, status) := footer (← run "<backslash>" "data/filtered_test.parquet")
   assert (contains tab "\\sym") "\\ filter shows \\sym in tab"
   let countStr := (status.splitOn "r0/" |>.getD 1 "").takeWhile (·.isDigit)
   let count := countStr.toString.toNat?.getD 0
@@ -459,7 +459,7 @@ def test_osquery_meta_description : IO Unit := do
   log "osquery_meta_description"
   unless (← hasOsquery) do log "  skip (no osqueryi)"; return
   -- Enter first safe table, then press M for meta view
-  let output ← run "<ret>M+" "osquery://"
+  let output ← run "<ret>M" "osquery://"
   assert (contains output "description") "Meta view on osquery table shows description column"
 
 def test_osquery_direct_table : IO Unit := do
@@ -704,10 +704,10 @@ def test_export_csv : IO Unit := do
 
 -- === Transpose tests ===
 
--- test_transpose: s1 (stk.val1) swaps rows/columns; original col names become row values
+-- test_transpose: X transposes rows/columns; original col names become row values
 def test_transpose : IO Unit := do
   log "transpose"
-  let output ← run "s1" "data/basic.csv"
+  let output ← run "X" "data/basic.csv"
   assert (contains output "column") "transpose shows 'column' header"
   -- original column names a, b appear as data in the "column" column
   let lines := dataLines output
@@ -720,7 +720,7 @@ def test_transpose : IO Unit := do
 -- test_transpose_pop: q pops back from transposed view
 def test_transpose_pop : IO Unit := do
   log "transpose_pop"
-  let output ← run "s1q" "data/basic.csv"
+  let output ← run "Xq" "data/basic.csv"
   let (_, status) := footer output
   assert (contains status "r0/5") "q pops back to original 5-row view"
 
@@ -731,7 +731,7 @@ def test_join_inner : IO Unit := do
   log "join_inner"
   -- [ sorts asc → row0=.., row1=left.csv, row2=right.csv (alphabetical)
   -- j<ret> enter left, ! key id, S swap (cursor stays row1), j<ret> enter right, ! key id, S swap, q pop, J join
-  let output ← run "[j<ret><key>s~j<ret><key>s~qJ" "data/join_test"
+  let output ← run "[j<ret><key>Sj<ret><key>SqJ" "data/join_test"
   assert (contains output "alice") "J shows alice from left table"
   assert (contains output "90") "J shows score=90 from right table"
   let (_, status) := footer output
@@ -742,7 +742,7 @@ def test_join_union : IO Unit := do
   log "join_union"
   -- [ sorts asc → row0=.., row1=left.csv. j→left, <ret>→open, S→swap (cursor stays at row1),
   -- <ret>→open left again, S→swap, q→pop folder, J→union left∪left
-  let output ← run "[j<ret>s~<ret>s~qJ" "data/join_test"
+  let output ← run "[j<ret>S<ret>SqJ" "data/join_test"
   assert (contains output "name") "Union shows name column"
   let (_, status) := footer output
   assert (contains status "r0/6") "Union of same 3-row table = 6 rows"
@@ -800,8 +800,8 @@ def test_heat_mode : IO Unit := do
     if ← hasFile sockPath then ready := true; break
     IO.sleep 20
   unless ready do log "  skip (socket not ready)"; return
-  -- Send m3 (heat both) via socket
-  let _ ← IO.Process.output { cmd := "bash", args := #["-c", s!"printf 'm3' | socat - UNIX-CONNECT:{sockPath}"] }
+  -- Send heat.3 (heat both) via socket
+  let _ ← IO.Process.output { cmd := "bash", args := #["-c", s!"printf 'heat.3' | socat - UNIX-CONNECT:{sockPath}"] }
   IO.sleep 50
   let out ← child.stdout.readToEnd
   let _ ← child.wait
@@ -826,7 +826,7 @@ def test_socket : IO Unit := do
   try
     let path ← Socket.getPath
     if path.isEmpty then do log "  skip (socket init failed)"; return
-    let _ ← IO.Process.output { cmd := "bash", args := #["-c", s!"printf 'm+' | socat - UNIX-CONNECT:{path}"] }
+    let _ ← IO.Process.output { cmd := "bash", args := #["-c", s!"printf 'meta.push' | socat - UNIX-CONNECT:{path}"] }
     -- Poll with retry — listener thread may need time to process
     let mut got := none
     for _ in List.range 10 do
@@ -834,10 +834,10 @@ def test_socket : IO Unit := do
       if got.isSome then break
       IO.sleep 10
     match got with
-    | some cmd => assert (cmd == "m+") s!"socket: expected 'm+', got '{cmd}'"
+    | some cmd => assert (cmd == "meta.push") s!"socket: expected 'meta.push', got '{cmd}'"
     | none => assert false "socket: pollCmd returned none"
-    -- Verify r-/r+/T-/T+ roundtrip through socket (used by <> cycling)
-    for (send, expect) in #[("r-", "r-"), ("r+", "r+"), ("T-", "T-"), ("T+", "T+")] do
+    -- Verify handler name roundtrip through socket
+    for (send, expect) in #[("nav.rowDec", "nav.rowDec"), ("nav.rowInc", "nav.rowInc")] do
       let _ ← IO.Process.output { cmd := "bash", args := #["-c", s!"printf '{send}' | socat - UNIX-CONNECT:{path}"] }
       let mut res : Option String := none
       for _ in List.range 10 do
@@ -868,8 +868,8 @@ def test_socket_dispatch : IO Unit := do
     if ← hasFile sockPath then ready := true; break
     IO.sleep 20
   unless ready do log "  skip (socket not ready)"; return
-  -- Send r- (row up) via socket — should move cursor from r3 to r2
-  let _ ← IO.Process.output { cmd := "bash", args := #["-c", s!"printf 'r-' | socat - UNIX-CONNECT:{sockPath}"] }
+  -- Send nav.rowDec (row up) via socket — should move cursor from r3 to r2
+  let _ ← IO.Process.output { cmd := "bash", args := #["-c", s!"printf 'nav.rowDec' | socat - UNIX-CONNECT:{sockPath}"] }
   IO.sleep 50  -- let poll pick it up
   let out ← child.stdout.readToEnd
   let _ ← child.wait
@@ -953,9 +953,9 @@ def test_diff : IO Unit := do
   log "diff"
   -- [ sorts asc → row0=.., row1=after.csv, row2=before.csv
   -- j<ret> enter after, S swap, jj<ret> enter before, S swap, q pop folder, s2 diff
-  let output ← run "[j<ret>s~jj<ret>s~qs2" "data/diff_test"
+  let output ← run "[j<ret>Sjj<ret>Sqd" "data/diff_test"
   let (tab, status) := footer output
-  assert (contains tab "diff") "s2 shows diff in tab"
+  assert (contains tab "diff") "d shows diff in tab"
   assert (contains status "r0/3") "diff has 3 rows"
   -- Δ prefix marks changed columns
   assert (contains output "Δ") "diff columns have Δ prefix"
@@ -966,10 +966,10 @@ def test_diff : IO Unit := do
 -- | Diff show same: s2 on diff view reveals hidden same-value columns
 def test_diff_show_same : IO Unit := do
   log "diff_show_same"
-  -- Same as above but press s2 again to reveal sameHide columns
-  let output ← run "[j<ret>s~jj<ret>s~qs2s2" "data/diff_test"
-  -- After second s2, cost columns should expand (no longer hidden width=1)
-  assert (contains output "cos") "s2s2 reveals same-value cost columns"
+  -- Same as above but press d again to reveal sameHide columns
+  let output ← run "[j<ret>Sjj<ret>Sqdd" "data/diff_test"
+  -- After second d, cost columns should expand (no longer hidden width=1)
+  assert (contains output "cos") "dd reveals same-value cost columns"
 
 -- === Plot tests ===
 
