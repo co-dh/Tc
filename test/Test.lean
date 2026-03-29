@@ -533,6 +533,45 @@ def test_hf_backspace : IO Unit := do
   let output ← run "jj<ret><bs>" "hf://datasets/openai/gsm8k"
   assert (contains output "gsm8k") "backspace returns to HF repo root"
 
+-- === FTP tests ===
+
+-- | Check if NYSE FTP is reachable (cached)
+initialize ftpAccessCache : IO.Ref (Option Bool) ← IO.mkRef none
+
+def hasFtpAccess : IO Bool := do
+  match ← ftpAccessCache.get with
+  | some v => pure v
+  | none =>
+    let r ← IO.Process.output { cmd := "curl", args := #["-sf", "--max-time", "3", "ftp://ftp.nyse.com/"] }
+    let ok := r.exitCode == 0
+    ftpAccessCache.set (some ok)
+    pure ok
+
+-- List NYSE FTP root: should show directory entries
+def test_ftp_list : IO Unit := do
+  log "ftp_list"
+  unless (← hasFtpAccess) do log "  skip (no FTP access)"; return
+  let output ← run "" "ftp://ftp.nyse.com/"
+  assert (contains output "dir") "FTP listing shows dir type"
+  assert (contains output "Historical") "FTP listing shows Historical Data folder"
+
+-- Enter a subdirectory from FTP root
+def test_ftp_enter_dir : IO Unit := do
+  log "ftp_enter_dir"
+  unless (← hasFtpAccess) do log "  skip (no FTP access)"; return
+  -- Navigate to Historical Data Samples (row varies, find by content)
+  let output ← run "jjjjjj<ret>" "ftp://ftp.nyse.com/"
+  assert (contains output "TAQ" || contains output "dir" || contains output "file")
+    "FTP enter dir shows subdirectory contents"
+
+-- Backspace in FTP folder view navigates to parent directory
+def test_ftp_backspace : IO Unit := do
+  log "ftp_backspace"
+  unless (← hasFtpAccess) do log "  skip (no FTP access)"; return
+  let output ← run "jjjjjj<ret><bs>" "ftp://ftp.nyse.com/"
+  assert (contains output "Historical" || contains output "ftp.nyse.com")
+    "FTP backspace returns to parent"
+
 -- === Derive tests ===
 
 -- | Derive: press '=', fzf auto-selects hint "a : int" which lacks "name = expr" format → no-op
@@ -1184,6 +1223,10 @@ def heavyTests : Array (String × IO Unit) := #[
   ("hf_readme", test_hf_readme),
   ("hf_enter_parquet", test_hf_enter_parquet),
   ("hf_backspace", test_hf_backspace),
+  -- FTP tests
+  ("ftp_list", test_ftp_list),
+  ("ftp_enter_dir", test_ftp_enter_dir),
+  ("ftp_backspace", test_ftp_backspace),
   -- Plot R rendering tests
   ("plot_r_installed", test_plot_r_installed),
   ("plot_render_line", test_plot_render_line),

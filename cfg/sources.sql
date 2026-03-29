@@ -77,6 +77,18 @@ INSERT INTO tv_sources VALUES
    'name', '',
    'osqueryi --json "SELECT * FROM {name}"', false, '', ''),
 
+  -- FTP: curl lists directories (ls -l output), perl URL-encodes names for navigation
+  ('ftp://', 3,
+   'curl -sf {path} | perl -ne ''if (/^(\S+)\s+\S+\s+\S+\s+\S+\s+(\S+)\s+(\S+\s+\S+\s+\S+)\s+(.*)/) { ($perm,$sz,$dt,$nm)=($1,$2,$3,$4); $nm =~ s/([^A-Za-z0-9._~\/-])/sprintf("%%%02X",ord($1))/ge; $type = substr($perm,0,1) eq "d" ? "dir" : "file"; print "$nm\t$sz\t$dt\t$type\n"; }''',
+   'SELECT column0 as name, TRY_CAST(column1 AS BIGINT) as size, column2 as date, column3 as type
+    FROM read_csv(''{src}'', header=false, delim=''\t'', auto_detect=false,
+    columns={''column0'':''VARCHAR'',''column1'':''VARCHAR'',''column2'':''VARCHAR'',''column3'':''VARCHAR''})
+    WHERE length(column0) > 0',
+   'curl -sfL -o {tmp}/{name} {path}',
+   true, true, '',
+   '', '', '', '',
+   '', false, '', ''),
+
   -- PostgreSQL: attach=true + duckdb_ext auto-generates ATTACH SQL
   ('pg://', 99, '', '', '', false, false, '',
    '', '', 'name', '',
