@@ -137,28 +137,26 @@ def newAt (tbl : t) (hRows : TblOps.nRows tbl = nRows) (hCols : (TblOps.colNames
   have hltr : r < nRows := Nat.lt_of_le_of_lt (Nat.min_le_right ..) (Nat.sub_lt hr Nat.one_pos)
   ⟨tbl, hRows, hCols, ⟨⟨r, hltr⟩, #[]⟩, ⟨⟨c, hltc⟩, #[]⟩, grp, #[], dispOrder grp (TblOps.colNames tbl)⟩
 
--- Execute Cmd, returns Option NavState (always some for nav commands)
-def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg : Nat) : Option (NavState nRows nCols t) :=
+-- Execute by handler name, no (obj,verb) chars
+def exec (h : String) (nav : NavState nRows nCols t) (rowPg : Nat) : Option (NavState nRows nCols t) :=
   let r d := some { nav with row := { nav.row with cur := nav.row.cur.clamp d } }
   let c d := some { nav with col := { nav.col with cur := nav.col.cur.clamp d } }
-  match cmd with
-  | .row .inc   => r 1            | .row .dec   => r (-1)
-  | .col .inc   => c 1            | .col .dec   => c (-1)
-  | .row .rbr   => r rowPg        | .row .lbr   => r (-rowPg)
-  | .row .rbc   => r (nRows - 1 - nav.row.cur.val) | .row .lbc => r (-nav.row.cur.val)
-  | .col .lbc   => c (-nav.col.cur.val) | .col .rbc => c (nCols - 1 - nav.col.cur.val)
-  | .row .ent => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
-  | .col .bang =>  -- c!: toggle group
+  match h with
+  | "nav.rowInc"  => r 1              | "nav.rowDec"  => r (-1)
+  | "nav.colInc"  => c 1              | "nav.colDec"  => c (-1)
+  | "nav.rowPgDn" => r rowPg          | "nav.rowPgUp" => r (-rowPg)
+  | "nav.rowBot"  => r (nRows - 1 - nav.row.cur.val) | "nav.rowTop" => r (-nav.row.cur.val)
+  | "nav.colFirst" => c (-nav.col.cur.val) | "nav.colLast" => c (nCols - 1 - nav.col.cur.val)
+  | "nav.rowSel"  => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
+  | "nav.colGrp"  =>
     let newGrp := nav.grp.toggle nav.curColName
     some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames }
-  | .col .ent =>  -- c~: hide/unhide column
-    some { nav with hidden := nav.hidden.toggle nav.curColName }
-  -- c-/c+: swap key column with neighbor in grp array, cursor follows
-  | .col .del | .col .dup =>
+  | "nav.colHide" => some { nav with hidden := nav.hidden.toggle nav.curColName }
+  | "nav.colShiftL" | "nav.colShiftR" =>
     let name := nav.curColName
     match nav.grp.idxOf? name with
     | some i =>
-      let fwd := cmd == .col .dup
+      let fwd := h == "nav.colShiftR"
       if fwd && i + 1 ≥ nav.grp.size then none
       else if !fwd && i == 0 then none
       else
@@ -171,11 +169,6 @@ def exec (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg : Nat) : Option (NavS
                         col := { nav.col with cur := nav.col.cur.clamp d } }
     | none => none
   | _ => none
-
--- | Pure update: wrap exec to return Effect
-def update (cmd : Cmd) (nav : NavState nRows nCols t) (rowPg : Nat)
-    : Option (NavState nRows nCols t × Effect) :=
-  (exec cmd nav rowPg).map (·, .none)
 
 end NavState
 

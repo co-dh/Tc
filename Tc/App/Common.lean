@@ -42,45 +42,42 @@ structure AppState where
 
 namespace AppState
 
--- | Commands that reset ViewState to default (clear scroll/cursor) because view content changes substantially
-def resetsVS (cmd : Cmd) : Bool :=
-  cmd matches .stk .dec | .col .lbr | .col .rbr | .col .filter | .metaV _ | .freq _ | .fld _
-    | .col .search | .row .search | .row .filter
+-- | Update stk, reset vs if ci.resetsVS
+def withStk (a : AppState) (ci : CmdConfig.CmdInfo) (s' : ViewStack AdbcTable) : AppState :=
+  { a with stk := s', vs := if ci.resetsVS then .default else a.vs }
 
--- | Update stk, reset vs if needed
-def withStk (a : AppState) (cmd : Cmd) (s' : ViewStack AdbcTable) : AppState :=
-  { a with stk := s', vs := if resetsVS cmd then .default else a.vs }
+private def liftStk (a : AppState) (ci : CmdConfig.CmdInfo) (r : Option (ViewStack AdbcTable × Effect)) : Option (AppState × Effect) :=
+  r.map fun (s', eff) => (withStk a ci s', eff)
 
--- | Lift stack update to AppState (Kleisli helper for <|> chain)
-private def liftStk (a : AppState) (cmd : Cmd) (r : Option (ViewStack AdbcTable × Effect)) : Option (AppState × Effect) :=
-  r.map fun (s', eff) => (withStk a cmd s', eff)
-
--- | Route by Cmd discriminant, fallback to view for nav/selection
-def update (a : AppState) (cmd : Cmd) : Option (AppState × Effect) :=
-  let viewUp := fun () => View.update a.stk.cur cmd 20 |>.map fun (v', e) => (withStk a cmd (a.stk.setCur v'), e)
-  match cmd with
-  | .stk .lbc      => some (a, .quit)        -- s{: quit
-  | .stk (.val 1)  => some (a, .transpose)   -- s1: transpose push
-  | .stk (.val 2)  => some (a, .diff)        -- s2: diff / show-same
-  | .stk .search   => some (a, .fzf .cmd)    -- s/: command menu (SPC)
-  | .info .lbr  => some ({ a with prevScroll := a.prevScroll - min a.prevScroll 5 }, .none)  -- i[: scroll up
-  | .info .rbr  => some ({ a with prevScroll := a.prevScroll + 5 }, .none)                   -- i]: scroll down
-  | .info .dec  => some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj - 1 } }, .none)  -- i<: prec dec
-  | .info .inc  => some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj + 1 } }, .none)  -- i>: prec inc
-  | .info .lbc  => some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := -4 } }, .none)  -- i{: 0dp
-  | .info .rbc  => some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := 13 } }, .none)  -- i}: 17dp max
-  | .info (.val n) => some ({ a with heatMode := min 3 n }, .none)  -- i0-i3: heat mode
-  | .info .ent => a.info.update cmd |>.map fun (i', e) => ({ a with info := i' }, e)  -- i~: toggle info
-  | .stk _    => liftStk a cmd (ViewStack.update a.stk cmd)
-  | .fld _    => liftStk a cmd (Folder.update a.stk cmd) <|> viewUp ()
-  | .metaV _  => liftStk a cmd (Meta.update a.stk cmd) <|> viewUp ()
-  | .freq _   => liftStk a cmd (Freq.update a.stk cmd) <|> viewUp ()
-  | .col (.val _) => liftStk a cmd (Plot.update a.stk cmd)
-  | .col .search | .row .search | .row .filter | .row .dup | .row .del =>
-    liftStk a cmd (Filter.update a.stk cmd) <|> viewUp ()
-  | _ => viewUp ()
-
-instance : Update (AppState) where update := update
+-- | Dispatch by handler name. Domain modules receive handler, not (obj,verb).
+def dispatch (a : AppState) (ci : CmdConfig.CmdInfo) : Option (AppState × Effect) :=
+  let h := ci.handler
+  let viewUp := fun () => View.update a.stk.cur h 20 |>.map fun (v', e) => (withStk a ci (a.stk.setCur v'), e)
+  -- top-level effects
+  if h == "quit" then some (a, .quit)
+  else if h == "xpose" then some (a, .transpose)
+  else if h == "diff" then some (a, .diff)
+  else if h == "menu" then some (a, .fzf .cmd)
+  -- info panel
+  else if h == "scrollUp" then some ({ a with prevScroll := a.prevScroll - min a.prevScroll 5 }, .none)
+  else if h == "scrollDn" then some ({ a with prevScroll := a.prevScroll + 5 }, .none)
+  else if h == "precDec" then some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj - 1 } }, .none)
+  else if h == "precInc" then some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj + 1 } }, .none)
+  else if h == "prec0" then some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := -4 } }, .none)
+  else if h == "precMax" then some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := 13 } }, .none)
+  else if h == "infoTog" then a.info.update h |>.map fun (i', e) => ({ a with info := i' }, e)
+  else if h.startsWith "heat." then
+    let digit := h.back.toNat - '0'.toNat
+    some ({ a with heatMode := min 3 digit.toUInt8 }, .none)
+  -- domain dispatch by prefix
+  else if h.startsWith "stk." then liftStk a ci (ViewStack.update a.stk h)
+  else if h.startsWith "folder." then liftStk a ci (Folder.update a.stk h) <|> viewUp ()
+  else if h.startsWith "meta." then liftStk a ci (Meta.update a.stk h) <|> viewUp ()
+  else if h.startsWith "freq." then liftStk a ci (Freq.update a.stk h) <|> viewUp ()
+  else if h.startsWith "plot." then liftStk a ci (Plot.update a.stk h)
+  else if h.startsWith "filter." then liftStk a ci (Filter.update a.stk h) <|> viewUp ()
+  -- nav + sort → viewUp (View.update handles sort.* specially, delegates nav.* to NavState.exec)
+  else viewUp ()
 
 end AppState
 
@@ -104,19 +101,23 @@ where
       | some cmdStr =>
         Log.write "sock" s!"poll cmd={cmdStr}"
         match (Parse.parse? cmdStr : Option Cmd) with
-        | some cmd => match (← ref.get).update cmd with
+        | some cmd =>
+          let ci ← CmdConfig.lookup cmd.obj cmd.verb
+          match (← ref.get).dispatch ci with
           | some (a', _) =>  -- Effect discarded: poll is preview-only (re-render suffices)
             let (vs', v') ← a'.stk.cur.doRender a'.vs a'.theme.styles a'.heatMode a'.sparklines
             ref.set { a' with stk := a'.stk.setCur v', vs := vs' }
             Term.present
-          | none => pure ()  -- cmd doesn't apply to current view state
+          | none => pure ()
         | none => Log.write "sock" s!"parse failed: {cmdStr}"
       | none => pure ()
     let cmd ← Fzf.cmdMode a.stk.cur.vkind poll
     let a ← ref.get
     let _ ← Socket.pollCmd  -- drain stale preview command from fzf focus
     match cmd with
-    | some c => match a.update c with
+    | some c =>
+      let ci ← CmdConfig.lookup c.obj c.verb
+      match a.dispatch ci with
       | some (a', e') => if e'.isNone then pure a' else runEffect a' e'
       | none => pure a
     | none => pure a
@@ -143,32 +144,36 @@ private partial def runStackIO (a : AppState) (f : IO (ViewStack AdbcTable)) : I
   | .ok s' => pure { a with stk := s', vs := .default, sparklines := #[] }
   | .error e => Log.error e.toString; errorPopup e.toString; pure a
 
--- | Run an ArgCmd: dispatch to runWith (with arg) or fzf run (empty arg = old test mode)
-private partial def runArgCmd (a : AppState) (ac : ArgCmd) : IO AppState := match ac with
-  | .split delim  => runStackIO a (if delim.isEmpty then Split.run a.stk else Split.runWith a.stk delim)
-  | .derive expr  => runStackIO a (if expr.isEmpty then Derive.run a.stk else Derive.runWith a.stk expr)
-  | .filter expr  => runStackIO a (if expr.isEmpty then ViewStack.rowFilter a.stk else ViewStack.filterWith a.stk expr)
-  | .search val   => runStackIO a (if val.isEmpty then ViewStack.rowSearch a.stk else ViewStack.searchWith a.stk val)
-  | .colJump name => runStackIO a (if name.isEmpty then ViewStack.colSearch a.stk else ViewStack.colJumpWith a.stk name)
-  | .export fmt   => runStackIO a (if fmt.isEmpty then do
+-- | Run an arg command: dispatch by handler name (from config table)
+private partial def runArgCmd (a : AppState) (handler : String) (arg : String) : IO AppState :=
+  match handler with
+  | "split"     => runStackIO a (if arg.isEmpty then Split.run a.stk else Split.runWith a.stk arg)
+  | "derive"    => runStackIO a (if arg.isEmpty then Derive.run a.stk else Derive.runWith a.stk arg)
+  | "filter.rowFilter" => runStackIO a (if arg.isEmpty then ViewStack.rowFilter a.stk else ViewStack.filterWith a.stk arg)
+  | "filter.rowSearch" => runStackIO a (if arg.isEmpty then ViewStack.rowSearch a.stk else ViewStack.searchWith a.stk arg)
+  | "filter.colSearch" => runStackIO a (if arg.isEmpty then ViewStack.colSearch a.stk else ViewStack.colJumpWith a.stk arg)
+  | "export"    => runStackIO a (if arg.isEmpty then do
       match ← Export.pickFmt with | some f => Export.run a.stk f | none => pure a.stk
-    else Export.runWith a.stk fmt)
-  | .sessSave nm  => runStackIO a (do Session.saveWith a.stk nm; pure a.stk)
-  | .sessLoad nm  => runStackIO a (do
-    match ← Session.loadWith nm with | some stk' => pure stk' | none => pure a.stk)
-  | .join idx     => runStackIO a (do
-    match ← Join.runWith a.stk idx with | some s' => pure s' | none => pure a.stk)
+    else Export.runWith a.stk arg)
+  | "sessSave"  => runStackIO a (do Session.saveWith a.stk arg; pure a.stk)
+  | "sessLoad"  => runStackIO a (do
+    match ← Session.loadWith arg with | some stk' => pure stk' | none => pure a.stk)
+  | "join"      => runStackIO a (do
+    match ← Join.runWith a.stk arg with | some s' => pure s' | none => pure a.stk)
+  | _ => pure a
 
--- | Dispatch a command string: parse → update → run effect
+-- | Dispatch a command string: parse → lookup handler → dispatch
 private partial def dispatchCmd (a : AppState) (cmdStr : String) : IO AppState := do
   Log.write "sock" s!"cmd={cmdStr}"
   match (Parse.parse? cmdStr : Option Cmd) with
-  | some (.arg ac) => runArgCmd a ac
-  | some cmd => match a.update cmd with
-    | some (a', e) =>
-      let a'' ← if e.isNone then pure a' else runEffect a' e
-      pure (if e.isNone then a'' else { a'' with sparklines := #[], prevScroll := 0 })
-    | none => pure a
+  | some cmd =>
+    let ci ← CmdConfig.lookup cmd.obj cmd.verb
+    if !cmd.arg.isEmpty then runArgCmd a ci.handler cmd.arg
+    else match a.dispatch ci with
+      | some (a', e) =>
+        let a'' ← if e.isNone then pure a' else runEffect a' e
+        pure (if e.isNone then a'' else { a'' with sparklines := #[], prevScroll := 0 })
+      | none => pure a
   | none => pure a
 
 -- main loop: render → input → update → effect → loop
@@ -221,48 +226,43 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   if ev.type == 0 then return ← mainLoop a test ks'
   -- Dispatch: Cmd → update → runEffect → loop
   let runCmd (cmd : Cmd) (rest : Array Char) : IO AppState := do
-    -- Verb shortcuts → ArgCmd: these bypass the Effect system and call runArgCmd directly.
-    -- Join indices match JoinOp order: 0=inner 1=left 2=right 3=union 4=diff
-    let argShortcut := match cmd with
-      | .col .split  => some (.split "")
-      | .col .derive => some (.derive "")
-      | .stk .rbc    => some (.join "0")  -- inner
-      | .stk .lbr    => some (.join "1")  -- left
-      | .stk .rbr    => some (.join "2")  -- right
-      | .stk .dup    => some (.join "3")  -- union
-      | .stk .del    => some (.join "4")  -- diff
-      | _ => none
-    if let some ac := argShortcut then return ← mainLoop (← runArgCmd a ac) test rest
-    match a.update cmd with
+    let ci ← CmdConfig.lookup cmd.obj cmd.verb
+    -- Verb→arg shortcuts: bypass Effect system, call runArgCmd directly
+    if let some (argH, dflt) := ← CmdConfig.argShortcut cmd.obj cmd.verb then
+      return ← mainLoop (← runArgCmd a argH dflt) test rest
+    match a.dispatch ci with
     | none => mainLoop a test rest
     | some (a', e) =>
       if e == .quit then pure a'
       else let a'' ← if e.isNone then pure a' else runEffect a' e
            let a'' := if e.isNone then a'' else { a'' with sparklines := #[] }
-           let a'' := if cmd matches .info .lbr | .info .rbr then a'' else { a'' with prevScroll := 0 }
+           let a'' := if ci.handler == "scrollUp" || ci.handler == "scrollDn" then a'' else { a'' with prevScroll := 0 }
            mainLoop a'' test rest
-  -- 1. Test mode: 2-char obj+verb codes (e.g. "s1"=stk.val1, "c["=col.lbr)
+  -- 1. Test mode: 2-char obj+verb codes (e.g. "s1"=stk.1, "c["=col.[)
   -- Only when the first char has no single-key mapping and no nav mapping
-  -- (avoids "M0" being parsed as metaV.val0 instead of M=push then 0=selNull).
   let ch := Char.ofNat ev.ch.toNat
   if test && ks'.size > 0 && (lookup KeyMap.char ch).isNone && !"jklh".toList.contains ch then
     let code := s!"{ch}{ks'[0]!}"
     match (Parse.parse? code : Option Cmd) with
-    | some cmd => if !(cmd matches .arg _) then return ← runCmd cmd (ks'.extract 1 ks'.size)
+    | some cmd => if cmd.arg.isEmpty then return ← runCmd cmd (ks'.extract 1 ks'.size)
     | _ => pure ()
-  -- 2. Argument commands: prefix char + payload (: = \ / s e W L J)
-  if ArgCmd.isPfx ch then do
+  -- 2. Argument commands: prefix char + payload
+  if Cmd.isArgPfx ch then do
     let (arg, rest) := if test && ks'.any (· == '\r') then
       let idx := ks'.findIdx? (· == '\r') |>.getD ks'.size
       (String.ofList (ks'.extract 0 idx).toList, ks'.extract (idx + 1) ks'.size)
     else ("", ks')
-    let a' ← match ArgCmd.ofPfx? ch arg with
-      | some ac => runArgCmd a ac
-      | none => pure a
-    mainLoop a' test rest
+    let argCmd := Cmd.fromArg ch arg
+    let argCi ← CmdConfig.lookup argCmd.obj argCmd.verb
+    mainLoop (← runArgCmd a argCi.handler argCmd.arg) test rest
   else
-  -- 3. Single-key shortcuts (data table — all entries are Cmd obj+verb)
-  match lookup KeyMap.char (evToChar ev) with
+  -- 3. Single-key shortcuts — runtime from config, fallback to compile-time KeyMap.char
+  let keyChar := evToChar ev
+  let keyCmd ← do
+    match ← CmdConfig.keyLookup keyChar with
+    | some (o, v) => pure (some { obj := o, verb := v : Cmd })
+    | none => pure (lookup KeyMap.char keyChar)
+  match keyCmd with
   | some cmd => runCmd cmd ks'
   -- 4. Special terminal keys + nav (Enter, Backspace, Shift+Arrow, hjkl, PgUp/Dn)
   | none => match evToCmd ev a.stk.cur.vkind with
@@ -337,6 +337,7 @@ def appMain (args : List String) : IO Unit := do
   let err ← try AdbcTable.init catch e => IO.eprintln s!"Backend init error: {e}"; return
   if !err.isEmpty then IO.eprintln s!"Backend init failed: {err}"; return
   try SourceConfig.attachDb catch e => Log.write "init" s!"attachDb: {e}"
+  try CmdConfig.init catch e => Log.write "init" s!"cmdConfig: {e}"
   -- session restore: -s name
   if let some sessName := cli.session then
     try

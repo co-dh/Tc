@@ -4,6 +4,7 @@
 -/
 import Tc.Nav
 import Tc.Term
+import Tc.CmdConfig
 
 open Tc
 
@@ -21,25 +22,22 @@ namespace KeyMap
   ]
 
   private def special : Array (UInt16 × Cmd) := #[
-    (Term.keyPageDown, .row .rbr), (Term.keyPageUp, .row .lbr),
-    (Term.keyHome, .row .lbc), (Term.keyEnd, .row .rbc)
+    (Term.keyPageDown, Cmd.row ']'), (Term.keyPageUp, Cmd.row '['),
+    (Term.keyHome, Cmd.row '{'), (Term.keyEnd, Cmd.row '}')
   ]
 
   private def ctrl : Array (UInt16 × Cmd) := #[
-    (Term.ctrlD.toUInt16, .row .rbr), (Term.ctrlU.toUInt16, .row .lbr)
+    (Term.ctrlD.toUInt16, Cmd.row ']'), (Term.ctrlU.toUInt16, Cmd.row '[')
   ]
 
+  -- Compile-time copy of SQL 'key' column — for native_decide theorems only.
+  -- Runtime uses CmdConfig.keyLookup. Must stay in sync with cfg/commands.sql.
   def char : Array (Char × Cmd) := #[
-    ('{', .info .lbr),              -- preview scroll up
-    ('}', .info .rbr),              -- preview scroll down
-    ('[', .col .lbr),               -- sort ascending
-    (']', .col .rbr),               -- sort descending
-    ('!', .col .bang),              -- toggle group
-    ('T', .row .ent),               -- toggle row selection
-    ('n', .row .dup),               -- search next match
-    ('N', .row .del),               -- search prev match
-    (' ', .stk .search),            -- command menu
-    ('q', .stk .dec)                -- pop view / back
+    ('{', Cmd.info '['), ('}', Cmd.info ']'),
+    ('[', Cmd.col '['),  (']', Cmd.col ']'),
+    ('!', Cmd.col '!'),  ('T', Cmd.row '~'),
+    ('n', Cmd.row '+'),  ('N', Cmd.row '-'),
+    (' ', Cmd.stk '/'),  ('q', Cmd.stk '<')
   ]
 end KeyMap
 
@@ -50,82 +48,31 @@ def evToChar (ev : Term.Event) : Char :=
 private def navCmd (c : Char) : Option Cmd :=
   KeyMap.nav.findSome? fun (ch, isRow, fwd) =>
     if c == ch then
-      let v := if fwd then Verb.inc else .dec
-      some (if isRow then .row v else .col v)
+      let v := if fwd then '>' else '<'
+      some (if isRow then Cmd.row v else Cmd.col v)
     else none
 
-def objMenu : Array (Char × String × (Verb → Cmd)) := #[
-  ('r', "", .row), ('c', "", .col), ('s', "", .stk), ('i', "", .info),
-  ('M', "", .metaV), ('F', "", .freq), ('D', "", .fld)
-]
-
-def verbsFor (obj : Char) (vk : ViewKind) : Array (Char × String × Verb) :=
-  match obj with
-  | 'r' => #[('/', "Search for value in current column", .search),
-             ('\\', "Filter rows by PRQL expression", .filter),
-             ('~', "Select/deselect current row", .ent),
-             ('+', "Jump to next search match", .dup), ('-', "Jump to previous search match", .del),
-             ('[', "Page up", .lbr), (']', "Page down", .rbr),
-             ('{', "Jump to top", .lbc), ('}', "Jump to bottom", .rbc),
-             ('<', "Move cursor up", .dec), ('>', "Move cursor down", .inc)]
-  | 'c' => #[('/', "Jump to column by name", .search),
-             ('!', "Toggle group on current column", .bang),
-             ('~', "Hide/unhide current column", .ent),
-             ('\\', "Delete column(s) from query", .filter),
-             ('[', "Sort ascending", .lbr), (']', "Sort descending", .rbr),
-             (':', "Split column by delimiter", .split), ('=', "Derive new column (name = expr)", .derive),
-             ('-', "Shift key column left", .del), ('+', "Shift key column right", .dup),
-             ('{', "Jump to first column", .lbc), ('}', "Jump to last column", .rbc),
-             ('<', "Move cursor left", .dec), ('>', "Move cursor right", .inc),
-             ('0', "Plot: area chart", .val 0), ('1', "Plot: line chart", .val 1),
-             ('2', "Plot: scatter plot", .val 2), ('3', "Plot: bar chart", .val 3),
-             ('4', "Plot: boxplot", .val 4), ('5', "Plot: step chart", .val 5),
-             ('6', "Plot: histogram", .val 6), ('7', "Plot: density plot", .val 7),
-             ('8', "Plot: violin plot", .val 8)]
-  | 's' => #[('/', "Open command menu", .search),
-             ('~', "Swap top two views", .ent),
-             ('<', "Close current view", .dec), ('>', "Duplicate current view", .inc),
-             ('{', "Quit application", .lbc),
-             ('1', "Transpose table (rows ↔ columns)", .val 1),
-             ('2', "Diff top two views", .val 2),
-             ('}', "Join: inner", .rbc), ('[', "Join: left", .lbr), (']', "Join: right", .rbr),
-             ('+', "Join: union", .dup), ('-', "Join: set difference", .del)]
-  | 'i' => #[('~', "Toggle info overlay", .ent),
-             ('<', "Decrease decimal precision", .dec), ('>', "Increase decimal precision", .inc),
-             ('{', "Set precision to 0 decimals", .lbc), ('}', "Set precision to max (17)", .rbc),
-             ('[', "Scroll cell preview up", .lbr), (']', "Scroll cell preview down", .rbr),
-             ('0', "Heatmap: off", .val 0), ('1', "Heatmap: numeric columns", .val 1),
-             ('2', "Heatmap: categorical columns", .val 2), ('3', "Heatmap: all columns", .val 3)]
-  | 'M' => #[('+', "Open column metadata view", .dup), ('~', "Set selected rows as key columns", .ent),
-             ('0', "Select columns with null values", .val 0), ('1', "Select columns with single value", .val 1)]
-  | 'F' => match vk with
-    | .freqV _ _ => #[('+', "Open frequency view", .dup), ('~', "Filter parent table by current row", .ent)]
-    | _ => #[('+', "Open frequency view", .dup)]
-  | 'D' => #[('~', "Open file or enter directory", .ent), ('{', "Go to parent directory", .lbc),
-             ('-', "Move to trash", .del),
-             ('<', "Decrease folder depth", .dec), ('>', "Increase folder depth", .inc)]
-  | _   => #[]
-
+-- | Context-sensitive Enter key mapping
 def enterCmd (vk : ViewKind) : Option Cmd :=
   match vk with
-  | .freqV _ _ => some (.freq .ent)
-  | .colMeta  => some (.metaV .ent)
-  | .fld _ _  => some (.fld .ent)
+  | .freqV _ _ => some (Cmd.freq '~')
+  | .colMeta  => some (Cmd.metaV '~')
+  | .fld _ _  => some (Cmd.fld '~')
   | .tbl      => none
 
 theorem enterCmd_tbl_none : enterCmd .tbl = none := by rfl
-theorem enterCmd_freq : ∀ cols total, enterCmd (.freqV cols total) = some (.freq .ent) := by intros; rfl
-theorem enterCmd_meta : enterCmd .colMeta = some (.metaV .ent) := by rfl
-theorem enterCmd_fld : ∀ p d, enterCmd (.fld p d) = some (.fld .ent) := by intros; rfl
+theorem enterCmd_freq : ∀ cols total, enterCmd (.freqV cols total) = some (Cmd.freq '~') := by intros; rfl
+theorem enterCmd_meta : enterCmd .colMeta = some (Cmd.metaV '~') := by rfl
+theorem enterCmd_fld : ∀ p d, enterCmd (.fld p d) = some (Cmd.fld '~') := by intros; rfl
 
 def evToCmd (ev : Term.Event) (vk : ViewKind) : Option Cmd :=
   if ev.type != Term.eventKey then none else
   if ev.key == Term.keyEnter then enterCmd vk else
-  if (ev.key == Term.keyBackspace || ev.key == Term.keyBackspace2) && vk matches .fld _ _ then some (.fld .lbc) else
+  if (ev.key == Term.keyBackspace || ev.key == Term.keyBackspace2) && vk matches .fld _ _ then some (Cmd.fld '{') else
   let c := evToChar ev
   let shift := ev.mod &&& Term.modShift != 0
-  if shift && ev.key == Term.keyArrowLeft then some (.col .del)
-  else if shift && ev.key == Term.keyArrowRight then some (.col .dup)
+  if shift && ev.key == Term.keyArrowLeft then some (Cmd.col '-')
+  else if shift && ev.key == Term.keyArrowRight then some (Cmd.col '+')
   else navCmd c <|> lookup KeyMap.special ev.key <|> lookup KeyMap.ctrl ev.key
 
 def parseKeys (s : String) : String :=

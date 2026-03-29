@@ -66,31 +66,26 @@ def rebuild (old : View T) (tbl : T) (col : Nat := old.nav.col.cur.val)
     else none
   else none
 
--- | Pure update: returns (new view, effect). IO ops return Effect to defer.
-def update (v : View T) (cmd : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
+-- | Pure update by handler name
+def update (v : View T) (h : String) (rowPg : Nat) : Option (View T × Effect) :=
   let n := v.nav; let names := TblOps.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
-  match cmd with
-  -- effect: sort (runner will execute and rebuild view)
-  | .col .lbr | .col .rbr =>
-    let asc := cmd == .col .lbr
+  match h with
+  | "sort.asc" | "sort.desc" =>
+    let asc := h == "sort.asc"
     let selIdxs := n.col.sels.filterMap names.idxOf?
     let grpIdxs := n.grp.filterMap names.idxOf?
     some (v, .query (.sort curCol selIdxs grpIdxs asc))
-  -- effect: delete columns (c\) — exclude hidden + current from query
-  | .col .filter =>
+  | "nav.colExclude" =>
     let name := names.getD curCol ""
     let cols := if n.hidden.isEmpty then #[name]
       else if n.hidden.contains name then n.hidden else n.hidden.push name
     some (v, .query (.exclude cols))
-  -- pure: navigation (detect at-bottom for fetchMore on downward scroll)
-  | _ => (NavState.exec cmd n rowPg).map fun nav' =>
+  | _ => (NavState.exec h n rowPg).map fun nav' =>
     let needsMore := nav'.row.cur.val + 1 >= v.nRows
       && TblOps.totalRows n.tbl > v.nRows
-      && (cmd matches .row .inc | .row .rbr | .row .rbc)
+      && (h == "nav.rowInc" || h == "nav.rowPgDn" || h == "nav.rowBot")
     ({ v with nav := nav' }, if needsMore then .fetchMore else .none)
-
-instance : Update (View T) where update v cmd := update v cmd defaultRowPg
 
 end View
 
@@ -124,17 +119,15 @@ def swap (s : ViewStack T) : ViewStack T :=
 def dup (s : ViewStack T) : ViewStack T := ⟨s.hd, s.hd :: s.tl⟩
 def tabNames (s : ViewStack T) : Array String := (s.hd :: s.tl).toArray.map (·.tabName)
 
--- | Pure update: returns (new stack, effect). q on empty stack → quit
-def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
-  match cmd with
-  | .stk .inc => some (s.dup, .none)
-  | .stk .dec => match s.pop with
+-- | Pure update by handler name. q on empty stack → quit
+def update (s : ViewStack T) (h : String) : Option (ViewStack T × Effect) :=
+  match h with
+  | "stk.dup" => some (s.dup, .none)
+  | "stk.pop" => match s.pop with
     | some s' => some (s', .none)
     | none => some (s, .quit)
-  | .stk .ent => some (s.swap, .none)
+  | "stk.swap" => some (s.swap, .none)
   | _ => none
-
-instance : Update (ViewStack T) where update := update
 
 end ViewStack
 

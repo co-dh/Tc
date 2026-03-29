@@ -316,18 +316,18 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   let _ ← Term.init
   pure (some s)
 
--- | Pure update: map Cmd to Effect (plot types on col object, val 0-8)
-def update (s : ViewStack T) (cmd : Cmd) : Option (ViewStack T × Effect) :=
-  match cmd with
-  | .col (.val 0) => some (s, .plot .area)
-  | .col (.val 1) => some (s, .plot .line)
-  | .col (.val 2) => some (s, .plot .scatter)
-  | .col (.val 3) => some (s, .plot .bar)
-  | .col (.val 4) => some (s, .plot .box)
-  | .col (.val 5) => some (s, .plot .step)
-  | .col (.val 6) => some (s, .plot .hist)
-  | .col (.val 7) => some (s, .plot .density)
-  | .col (.val 8) => some (s, .plot .violin)
+-- | Pure update by handler name
+def update (s : ViewStack T) (h : String) : Option (ViewStack T × Effect) :=
+  match h with
+  | "plot.area"    => some (s, .plot .area)
+  | "plot.line"    => some (s, .plot .line)
+  | "plot.scatter" => some (s, .plot .scatter)
+  | "plot.bar"     => some (s, .plot .bar)
+  | "plot.box"     => some (s, .plot .box)
+  | "plot.step"    => some (s, .plot .step)
+  | "plot.hist"    => some (s, .plot .hist)
+  | "plot.density" => some (s, .plot .density)
+  | "plot.violin"  => some (s, .plot .violin)
   | _ => none
 
 end Tc.Plot

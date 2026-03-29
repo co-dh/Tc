@@ -420,18 +420,15 @@ def setDepth (s : ViewStack AdbcTable) (delta : Int) : IO (Option (ViewStack Adb
       | none => pure (some s)
   | _ => pure none
 
--- | Pure update: returns Effect for IO operations
-def update (s : ViewStack AdbcTable) (cmd : Cmd) : Option (ViewStack AdbcTable × Effect) :=
-  match cmd with
-  | .fld .dup => some (s, .folder .push)
-  | .fld .inc => some (s, .folder (.depth 1))
-  | .fld .dec => some (s, .folder (.depth (-1)))
-  | .fld .del =>
-    if s.cur.vkind matches .fld _ _ then some (s, .folder .del) else none
-  | .fld .lbc =>
-    if s.cur.vkind matches .fld _ _ then some (s, .folder .parent) else none
-  | .fld .ent =>
-    if s.cur.vkind matches .fld _ _ then some (s, .folder .enter) else none
+-- | Pure update by handler name
+def update (s : ViewStack AdbcTable) (h : String) : Option (ViewStack AdbcTable × Effect) :=
+  match h with
+  | "folder.push"    => some (s, .folder .push)
+  | "folder.depthInc" => some (s, .folder (.depth 1))
+  | "folder.depthDec" => some (s, .folder (.depth (-1)))
+  | "folder.del"    => if s.cur.vkind matches .fld _ _ then some (s, .folder .del) else none
+  | "folder.parent" => if s.cur.vkind matches .fld _ _ then some (s, .folder .parent) else none
+  | "folder.enter"  => if s.cur.vkind matches .fld _ _ then some (s, .folder .enter) else none
   | _ => none
 
 end Tc.Folder

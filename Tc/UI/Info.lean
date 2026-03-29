@@ -13,13 +13,11 @@ structure State where
 
 namespace State
 
--- | Pure update: returns (new state, effect)
-def update (s : State) (cmd : Cmd) : Option (State × Effect) :=
-  match cmd with
-  | .info .ent => some ({ s with vis := !s.vis }, .none)
+-- | Pure update by handler name
+def update (s : State) (h : String) : Option (State × Effect) :=
+  match h with
+  | "infoTog" => some ({ s with vis := !s.vis }, .none)
   | _ => none
-
-instance : Update State where update := update
 
 end State
 

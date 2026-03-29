@@ -68,17 +68,12 @@ def fzfIdx (opts : Array String) (items : Array String) : IO (Option Nat) := do
     | some n => return some n
     | none => return none
 
--- | Build flat menu items: "{objChar}{verbChar}\t{description}"
--- Each verb is a separate selectable entry. Code before \t used for parsing.
-private def flatItems (vk : ViewKind) : Array String :=
-  objMenu.foldl (fun acc (objKey, objLabel, mk) =>
-    let verbs := verbsFor objKey vk
-    verbs.foldl (fun acc (_, verbLabel, verb) =>
-      let cmd := mk verb
-      let label := if objLabel.isEmpty then verbLabel else s!"{objLabel} {verbLabel}"
-      acc.push s!"{cmd}\t{label}"
-    ) acc
-  ) #[]
+-- | Build flat menu items from config: "{code}\t{label}"
+private def flatItems (vk : ViewKind) : IO (Array String) := do
+  let vkStr := match vk with
+    | .freqV _ _ => "freqV" | .colMeta => "colMeta" | .fld _ _ => "fld" | .tbl => "tbl"
+  let items ← CmdConfig.menuItems vkStr
+  return items.map fun (code, label) => s!"{code}\t{label}"
 
 -- | Parse flat selection: extract 2-char Cmd code before \t
 def parseFlatSel (sel : String) : Option Cmd :=
@@ -88,7 +83,7 @@ def parseFlatSel (sel : String) : Option Cmd :=
 -- | Command mode: space → flat fzf menu → return Cmd
 -- poll: callback invoked while fzf popup is open (for external socket dispatch + re-render)
 def cmdMode (vk : ViewKind) (poll : IO Unit := pure ()) : IO (Option Cmd) := do
-  let items := flatItems vk
+  let items ← flatItems vk
   if items.isEmpty then return none
   let input := "\n".intercalate items.toList
   let opts := #["--prompt=cmd "]
