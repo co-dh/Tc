@@ -77,14 +77,19 @@ INSERT INTO tv_sources VALUES
    'name', '',
    'osqueryi --json "SELECT * FROM {name}"', false, '', ''),
 
-  -- FTP: parse ls -l output, URL-encode names for navigation
-  -- Format: drwxr-xr-x 2 user group 4096 Jan 02 05:20 dirname
-  --         perms      _ _    _     size mon dd hh:mm name
+  -- FTP: parse ls -l, URL-encode names for navigation
+  -- ls -l fields: perms links user group size month day time name...
+  --               p[0]  p[1]  p[2] p[3]  p[4] p[5]  p[6] p[7] p[8:]
   ('ftp://', 3,
-   'curl -sf {path} | python3 -c ''import sys,re,urllib.parse as u
+   'curl -sf {path} | python3 -c ''import sys,urllib.parse as u
 for l in sys.stdin:
- m=re.match(r"(\S+)\s+\S+\s+\S+\s+\S+\s+(\S+)\s+(\S+\s+\S+\s+\S+)\s+(.*)",l)
- if m:print(u.quote(re.sub(" -> .*","",m[4].rstrip()),safe="")+"\t"+m[2]+"\t"+m[3]+"\t"+("dir"if m[1][0]=="d"else"file"))
+ p=l.split()
+ if len(p)<9:continue  # skip blank/header lines
+ name=" ".join(p[8:])  # multi-word filenames
+ name=name.split(" -> ")[0]  # strip symlink target
+ size,date=p[4]," ".join(p[5:8])
+ typ="dir" if p[0][0]=="d" else "file"
+ print(u.quote(name,safe="")+"\t"+size+"\t"+date+"\t"+typ)
 ''',
    'SELECT column0 as name, TRY_CAST(column1 AS BIGINT) as size, column2 as date, column3 as type
     FROM read_csv(''{src}'', header=false, delim=''\t'', auto_detect=false,
