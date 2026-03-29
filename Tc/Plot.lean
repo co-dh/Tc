@@ -192,20 +192,20 @@ private def renderFrame (pngPath : String) (kind : PlotKind)
   clearScreen
   if err?.isNone then showPng pngPath
   else IO.println (err?.getD "plot error")
+  let hi (s : String) := s!"\x1b[33m{s}\x1b[0m"  -- yellow for keys
   let ivBar := if intervals.size > 1 then
       let bar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
         if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
-      s!"  ,/.: {bar}"
+      s!"  {hi ","}/{hi "."}:{bar}"
     else ""
-  let status := s!"\x1b[1m─── {kind}: x={xName}  y={yName} ───\x1b[0m{ivBar}  q:exit"
-  -- center status line to align with plot image
+  let status := s!"\x1b[1m─── {kind}: x={xName}  y={yName} ───\x1b[0m{ivBar}  {hi "q"}:exit"
+  -- right-align status line to match plot image right edge
   let cols ← do
     let r ← IO.Process.output { cmd := "tput", args := #["cols"] }
     pure (r.stdout.trimAscii.toString.toNat?.getD 80)
-  -- approximate visible length (strip ANSI codes from count)
   let ivLabels := intervals.foldl (fun (acc : Nat) iv => acc + iv.label.length + 2) 0
   let visLen := 8 + (toString kind).length + xName.length + yName.length + ivLabels + 20
-  let pad := String.ofList (List.replicate ((cols - min visLen cols) / 2) ' ')
+  let pad := String.ofList (List.replicate (cols - min visLen cols) ' ')
   IO.println s!"\r{pad}{status}\n"
 
 -- | Run plot with interactive controls (in-place re-rendering)
