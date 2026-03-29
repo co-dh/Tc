@@ -2,7 +2,6 @@
   Filter: fzf-based column/row filtering and search
   Pure update returns Effect; Runner executes IO.
 -/
-import Tc.Error
 import Tc.Fzf
 import Tc.Render
 import Tc.View

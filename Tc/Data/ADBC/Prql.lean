@@ -3,7 +3,7 @@
   Uses common Op types from Tc/Op.lean
 -/
 import Tc.Types
-import Tc.Error
+import Tc.Util
 
 namespace Prql
 

@@ -7,9 +7,7 @@
 -/
 import Tc.View
 import Tc.Term
-import Tc.Error
 import Tc.Render
-import Tc.TmpDir
 
 namespace Tc.Plot
 

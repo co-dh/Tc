@@ -3,10 +3,9 @@
   Includes ADBC FFI declarations (DuckDB via Arrow Database Connectivity).
 -/
 import Tc.Data.ADBC.Prql
-import Tc.Error
+import Tc.Util
 import Tc.Render
 import Tc.Term
-import Tc.TmpDir
 import Tc.Types
 
 namespace Adbc

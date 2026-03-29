@@ -4,7 +4,6 @@
 -/
 import Tc.Nav
 import Tc.Term
-import Tc.Error
 
 open Tc
 

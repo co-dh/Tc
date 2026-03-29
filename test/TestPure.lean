@@ -10,7 +10,7 @@ import Tc.Types
 import Tc.Filter
 import Tc.Folder
 import Tc.Data.Text
-import Tc.Remote
+import Tc.Util
 import Tc.Session
 
 namespace PureTest2

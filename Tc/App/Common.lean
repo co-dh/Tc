@@ -2,29 +2,23 @@
 import Tc.Filter
 import Tc.Folder
 import Tc.SourceConfig
-import Tc.TmpDir
 import Tc.Meta
 import Tc.Plot
 import Tc.Transpose
 import Tc.Join
-import Tc.Fzf
 import Tc.Key
-import Tc.Render
 import Tc.Runner
 import Tc.Derive
 import Tc.Split
-import Tc.Term
 import Tc.Theme
 import Tc.UI.Info
 import Tc.UI.Preview
 import Tc.Data.Text
-import Tc.View
 import Tc.Sparkline
 import Tc.Session
 import Tc.Diff
 import Tc.StatusAgg
 import Tc.Replay
-import Tc.Socket
 
 open Tc
 

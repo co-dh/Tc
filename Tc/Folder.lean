@@ -7,7 +7,6 @@ import Tc.View
 import Tc.Term
 import Tc.SourceConfig
 import Tc.Data.ADBC.Ops
-import Tc.Remote
 
 namespace Tc.Folder
 
