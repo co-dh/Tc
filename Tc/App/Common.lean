@@ -114,16 +114,21 @@ private def viewUp (a : AppState) (ci : CmdConfig.CmdInfo) : IO Action := do
   | some (v', e) => runViewEffect a ci v' e
   | none => pure .unhandled
 
+-- | Precision adjustment table: handler name → precAdj delta or absolute value
+-- Lookup table instead of if/else chain (arth_full pattern: data not code)
+private def precTable : Array (String × Int × Bool) := #[
+  -- (handler, value, isAbsolute)
+  ("precDec", -1, false), ("precInc", 1, false), ("prec0", -4, true), ("precMax", 13, true)]
+
 -- | Shared pure dispatch: scroll, prec, info, heat, nav-only View.update.
 -- Both pureDispatch and dispatch delegate here to avoid duplicating logic.
 private def sharedPure (a : AppState) (ci : CmdConfig.CmdInfo) : Option AppState :=
   let h := ci.handler
   if h == "scrollUp" then some { a with prevScroll := a.prevScroll - min a.prevScroll 5 }
   else if h == "scrollDn" then some { a with prevScroll := a.prevScroll + 5 }
-  else if h == "precDec" then some { a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj - 1 } }
-  else if h == "precInc" then some { a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj + 1 } }
-  else if h == "prec0" then some { a with stk := a.stk.setCur { a.stk.cur with precAdj := -4 } }
-  else if h == "precMax" then some { a with stk := a.stk.setCur { a.stk.cur with precAdj := 13 } }
+  else if let some (_, v, abs) := precTable.find? (·.1 == h) then
+    let adj := if abs then v else a.stk.cur.precAdj + v
+    some { a with stk := a.stk.setCur { a.stk.cur with precAdj := adj } }
   else if h == "infoTog" then a.info.update h |>.map fun i' => { a with info := i' }
   else if h.startsWith "heat." then
     some { a with heatMode := min 3 (h.back.toNat - '0'.toNat).toUInt8 }

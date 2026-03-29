@@ -54,6 +54,11 @@ inductive Column where
 
 namespace Column
 
+-- | Apply array transform per variant (factor out 3-way match)
+@[inline] def mapArr (col : Column)
+    (fi : Array Int64 → Array Int64) (ff : Array Float → Array Float) (fs : Array String → Array String) : Column :=
+  match col with | .ints d => .ints (fi d) | .floats d => .floats (ff d) | .strs d => .strs (fs d)
+
 -- | Get cell at row index
 @[inline] def get (col : Column) (i : Nat) : Cell :=
   match col with
@@ -66,24 +71,14 @@ namespace Column
     if s.isEmpty then .null else .str s
 
 -- | Row count
-def size : Column → Nat
-  | .ints data => data.size
-  | .floats data => data.size
-  | .strs data => data.size
+def size (col : Column) : Nat :=
+  match col with | .ints d => d.size | .floats d => d.size | .strs d => d.size
 
--- | Gather rows by index array (reindex with type-appropriate defaults)
 def gather (col : Column) (idxs : Array Nat) : Column :=
-  match col with
-  | .ints data   => .ints   (idxs.map fun i => data.getD i 0)
-  | .floats data => .floats (idxs.map fun i => data.getD i 0)
-  | .strs data   => .strs   (idxs.map fun i => data.getD i "")
+  col.mapArr (fun d => idxs.map fun i => d.getD i 0) (fun d => idxs.map fun i => d.getD i 0)
+    (fun d => idxs.map fun i => d.getD i "")
 
--- | Take first n rows
-def take (col : Column) (n : Nat) : Column :=
-  match col with
-  | .ints data   => .ints   (data.extract 0 n)
-  | .floats data => .floats (data.extract 0 n)
-  | .strs data   => .strs   (data.extract 0 n)
+def take (col : Column) (n : Nat) : Column := col.mapArr (·.extract 0 n) (·.extract 0 n) (·.extract 0 n)
 
 end Column
 
