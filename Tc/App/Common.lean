@@ -375,7 +375,7 @@ def appMain (args : List String) : IO Unit := do
       let _ ← runTsv (Tc.TextParse.fromText (← IO.FS.readFile path)) path pipeMode testMode theme keys
     else
       -- try/catch: DuckDB throws on unrecognized formats (e.g. .txt.gz)
-      match ← try Folder.openFile path catch _ => pure none with
+      match ← try Folder.openFile path catch e => Log.write "open" s!"{e}"; pure none with
       | some v => let _ ← runApp v pipeMode testMode theme keys
       | none => Folder.viewFile path
   finally

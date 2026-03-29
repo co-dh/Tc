@@ -54,18 +54,23 @@ def listDir (path : String) (depth : Nat) : IO String := do
 -- | View file with bat (if available) or less. .gz files piped through zcat.
 def viewFile (path : String) : IO Unit := do
   let gz := path.endsWith ".gz"
+  -- Escape single quotes for shell: ' → '\''
+  let esc := path.replace "'" "'\\''"
   if ← Fzf.getTestMode then
     let r ← if gz
-      then IO.Process.output { cmd := "sh", args := #["-c", s!"zcat '{path}' | bat --paging=never --plain"] }
+      then IO.Process.output { cmd := "sh", args := #["-c", s!"zcat '{esc}' | bat --paging=never --plain"] }
       else IO.Process.output { cmd := "bat", args := #["--paging=never", "--plain", path] }
     if r.exitCode == 0 then IO.print r.stdout
+    else if gz then
+      let r ← IO.Process.output { cmd := "zcat", args := #[path] }
+      IO.print r.stdout
     else IO.print (← IO.FS.readFile path)
     return
   Term.shutdown
   let hasBat ← IO.Process.output { cmd := "which", args := #["bat"] }
   if gz then
     let viewer := if hasBat.exitCode == 0 then "bat --paging=always" else "less"
-    let _ ← IO.Process.spawn { cmd := "sh", args := #["-c", s!"zcat '{path}' | {viewer}"], stdin := .inherit, stdout := .inherit, stderr := .inherit } >>= (·.wait)
+    let _ ← IO.Process.spawn { cmd := "sh", args := #["-c", s!"zcat '{esc}' | {viewer}"], stdin := .inherit, stdout := .inherit, stderr := .inherit } >>= (·.wait)
   else if hasBat.exitCode == 0 then
     let _ ← IO.Process.spawn { cmd := "bat", args := #["--paging=always", path], stdin := .inherit, stdout := .inherit, stderr := .inherit } >>= (·.wait)
   else
