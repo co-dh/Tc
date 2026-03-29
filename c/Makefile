@@ -19,10 +19,13 @@ adbc_core.o: adbc_core.c nanoarrow.h
 nanoarrow.o: nanoarrow.c nanoarrow.h
 	$(CC) -std=c11 $(CFLAGS) -c $< -o $@
 
-libtermshim.a: term_shim.o heat.o sock_shim.o
+libtermshim.a: term_core.o render.o heat.o sock_shim.o
 	ar rcs $@ $^
 
-term_shim.o: term_shim.c termbox2.h heat.h
+term_core.o: term_core.c termbox2.h
+	$(CC) -std=c11 -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L $(CFLAGS) -c $< -o $@
+
+render.o: render.c term_core.h heat.h termbox2.h
 	$(CC) -std=c11 -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L $(CFLAGS) -c $< -o $@
 
 heat.o: heat.c heat.h

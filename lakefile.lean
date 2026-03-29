@@ -12,7 +12,7 @@ def mkCLib (pkg : Package) (name src : String) := do
 
 -- | C libraries
 extern_lib termbox2 pkg := mkCLib pkg "termbox2" "termbox2.h"
-extern_lib termshim pkg := mkCLib pkg "termshim" "term_shim.c"
+extern_lib termshim pkg := mkCLib pkg "termshim" "term_core.c"
 -- ADBC: adbc_core.c (generic ADBC + DuckDB driver)
 extern_lib adbcshim pkg := mkCLib pkg "adbcshim" "adbc_core.c"
 -- | include_str deps: Lake doesn't track these automatically
