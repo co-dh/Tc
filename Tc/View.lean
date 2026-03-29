@@ -66,17 +66,17 @@ def rebuild (old : View T) (tbl : T) (col : Nat := old.nav.col.cur.val)
     else none
   else none
 
--- | Pure update by handler name
-def update (v : View T) (h : String) (rowPg : Nat) : Option (View T × Effect) :=
+-- | Pure update by handler enum
+def update (v : View T) (h : Handler) (rowPg : Nat) : Option (View T × Effect) :=
   let n := v.nav; let names := TblOps.colNames n.tbl
   let curCol := colIdxAt n.grp names n.col.cur.val
   match h with
-  | "sort.asc" | "sort.desc" =>
-    let asc := h == "sort.asc"
+  | .sortAsc | .sortDesc =>
+    let asc := h == .sortAsc
     let selIdxs := n.col.sels.filterMap names.idxOf?
     let grpIdxs := n.grp.filterMap names.idxOf?
     some (v, .query (.sort curCol selIdxs grpIdxs asc))
-  | "nav.colExclude" =>
+  | .colExclude =>
     let name := names.getD curCol ""
     let cols := if n.hidden.isEmpty then #[name]
       else if n.hidden.contains name then n.hidden else n.hidden.push name
@@ -84,7 +84,7 @@ def update (v : View T) (h : String) (rowPg : Nat) : Option (View T × Effect) :
   | _ => (NavState.exec h n rowPg).map fun nav' =>
     let needsMore := nav'.row.cur.val + 1 >= v.nRows
       && TblOps.totalRows n.tbl > v.nRows
-      && (h == "nav.rowInc" || h == "nav.rowPgDn" || h == "nav.rowBot")
+      && (h == .rowInc || h == .rowPgDn || h == .rowBot)
     ({ v with nav := nav' }, if needsMore then .fetchMore else .none)
 
 end View
@@ -119,14 +119,14 @@ def swap (s : ViewStack T) : ViewStack T :=
 def dup (s : ViewStack T) : ViewStack T := ⟨s.hd, s.hd :: s.tl⟩
 def tabNames (s : ViewStack T) : Array String := (s.hd :: s.tl).toArray.map (·.tabName)
 
--- | Pure update by handler name. q on empty stack → quit
-def update (s : ViewStack T) (h : String) : Option (ViewStack T × Effect) :=
+-- | Pure update by handler enum. q on empty stack → quit
+def update (s : ViewStack T) (h : Handler) : Option (ViewStack T × Effect) :=
   match h with
-  | "stk.dup" => some (s.dup, .none)
-  | "stk.pop" => match s.pop with
+  | .stkDup  => some (s.dup, .none)
+  | .stkPop  => match s.pop with
     | some s' => some (s', .none)
     | none => some (s, .quit)
-  | "stk.swap" => some (s.swap, .none)
+  | .stkSwap => some (s.swap, .none)
   | _ => none
 
 end ViewStack

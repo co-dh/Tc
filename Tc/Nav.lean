@@ -137,26 +137,26 @@ def newAt (tbl : t) (hRows : TblOps.nRows tbl = nRows) (hCols : (TblOps.colNames
   have hltr : r < nRows := Nat.lt_of_le_of_lt (Nat.min_le_right ..) (Nat.sub_lt hr Nat.one_pos)
   ⟨tbl, hRows, hCols, ⟨⟨r, hltr⟩, #[]⟩, ⟨⟨c, hltc⟩, #[]⟩, grp, #[], dispOrder grp (TblOps.colNames tbl)⟩
 
--- Execute by handler name, no (obj,verb) chars
-def exec (h : String) (nav : NavState nRows nCols t) (rowPg : Nat) : Option (NavState nRows nCols t) :=
+-- Execute by handler enum, no (obj,verb) chars
+def exec (h : Handler) (nav : NavState nRows nCols t) (rowPg : Nat) : Option (NavState nRows nCols t) :=
   let r d := some { nav with row := { nav.row with cur := nav.row.cur.clamp d } }
   let c d := some { nav with col := { nav.col with cur := nav.col.cur.clamp d } }
   match h with
-  | "nav.rowInc"  => r 1              | "nav.rowDec"  => r (-1)
-  | "nav.colInc"  => c 1              | "nav.colDec"  => c (-1)
-  | "nav.rowPgDn" => r rowPg          | "nav.rowPgUp" => r (-rowPg)
-  | "nav.rowBot"  => r (nRows - 1 - nav.row.cur.val) | "nav.rowTop" => r (-nav.row.cur.val)
-  | "nav.colFirst" => c (-nav.col.cur.val) | "nav.colLast" => c (nCols - 1 - nav.col.cur.val)
-  | "nav.rowSel"  => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
-  | "nav.colGrp"  =>
+  | .rowInc  => r 1              | .rowDec  => r (-1)
+  | .colInc  => c 1              | .colDec  => c (-1)
+  | .rowPgDn => r rowPg          | .rowPgUp => r (-rowPg)
+  | .rowBot  => r (nRows - 1 - nav.row.cur.val) | .rowTop => r (-nav.row.cur.val)
+  | .colFirst => c (-nav.col.cur.val) | .colLast => c (nCols - 1 - nav.col.cur.val)
+  | .rowSel  => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
+  | .colGrp  =>
     let newGrp := nav.grp.toggle nav.curColName
     some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames }
-  | "nav.colHide" => some { nav with hidden := nav.hidden.toggle nav.curColName }
-  | "nav.colShiftL" | "nav.colShiftR" =>
+  | .colHide => some { nav with hidden := nav.hidden.toggle nav.curColName }
+  | .colShiftL | .colShiftR =>
     let name := nav.curColName
     match nav.grp.idxOf? name with
     | some i =>
-      let fwd := h == "nav.colShiftR"
+      let fwd := h == .colShiftR
       if fwd && i + 1 ≥ nav.grp.size then none
       else if !fwd && i == 0 then none
       else

@@ -21,7 +21,7 @@ structure Entry where
 
 -- | Lookup result for dispatch
 structure CmdInfo where
-  handler : String
+  handler : Handler
   resetsVS : Bool
 
 private def commandsSql : String := include_str "../cfg/commands.sql"
@@ -51,24 +51,25 @@ def init : IO Unit := do
     let argHandler ← Adbc.cellStr qr row 6; let argDefault ← Adbc.cellStr qr row 7
     let viewCtx ← Adbc.cellStr qr row 8
     entries := entries.push { obj, verb, label, handler, key, resetsVS, argHandler, argDefault, viewCtx }
-    info := info.insert s!"{obj}{verb}" { handler, resetsVS }
+    let h := Handler.fromString? handler |>.getD .rowInc
+    info := info.insert s!"{obj}{verb}" { handler := h, resetsVS }
     if !key.isEmpty then keys := keys.insert key.front (obj, verb)
   infoMap.set info
   entryList.set entries
   keyMap.set keys
   Log.write "init" s!"commands: {entries.size} entries"
 
--- | O(1) handler + resetsVS lookup. Defaults to "nav.rowInc"/false for unknown.
+-- | O(1) handler + resetsVS lookup. Defaults to .rowInc/false for unknown.
 def lookup (obj verb : Char) : IO CmdInfo := do
   let m ← infoMap.get
-  pure (m.getD s!"{obj}{verb}" { handler := "nav.rowInc", resetsVS := false })
+  pure (m.getD s!"{obj}{verb}" { handler := .rowInc, resetsVS := false })
 
 -- | Verb→arg shortcut: returns (targetHandler, defaultArg) if this command has one
-def argShortcut (obj verb : Char) : IO (Option (String × String)) := do
+def argShortcut (obj verb : Char) : IO (Option (Handler × String)) := do
   let es ← entryList.get
   return es.findSome? fun e =>
     if e.obj == obj && e.verb == verb && !e.argHandler.isEmpty then
-      some (e.argHandler, e.argDefault)
+      (Handler.fromString? e.argHandler).map (·, e.argDefault)
     else none
 
 -- | Key shortcut lookup: physical key char → (obj, verb). From SQL 'key' column.

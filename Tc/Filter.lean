@@ -100,14 +100,14 @@ namespace Tc.Filter
 
 variable {T : Type} [TblOps T]
 
--- | Pure update by handler name
-def update (s : ViewStack T) (h : String) : Option (ViewStack T × Effect) :=
+-- | Pure update by handler enum
+def update (s : ViewStack T) (h : Handler) : Option (ViewStack T × Effect) :=
   match h with
-  | "filter.colSearch"  => some (s, .fzf .col)
-  | "filter.rowSearch"  => some (s, .fzf .row)
-  | "filter.rowFilter"  => some (s, .fzf .filter)
-  | "filter.searchNext" => some (s, .search .next)
-  | "filter.searchPrev" => some (s, .search .prev)
+  | .colSearch  => some (s, .fzf .col)
+  | .rowSearch  => some (s, .fzf .row)
+  | .rowFilter  => some (s, .fzf .filter)
+  | .searchNext => some (s, .search .next)
+  | .searchPrev => some (s, .search .prev)
   | _ => none
 
 end Tc.Filter

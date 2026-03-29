@@ -13,10 +13,10 @@ structure State where
 
 namespace State
 
--- | Pure update by handler name
-def update (s : State) (h : String) : Option (State × Effect) :=
+-- | Pure update by handler enum
+def update (s : State) (h : Handler) : Option (State × Effect) :=
   match h with
-  | "infoTog" => some ({ s with vis := !s.vis }, .none)
+  | .infoTog => some ({ s with vis := !s.vis }, .none)
   | _ => none
 
 end State

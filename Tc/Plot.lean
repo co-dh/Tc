@@ -316,18 +316,18 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   let _ ← Term.init
   pure (some s)
 
--- | Pure update by handler name
-def update (s : ViewStack T) (h : String) : Option (ViewStack T × Effect) :=
+-- | Pure update by handler enum
+def update (s : ViewStack T) (h : Handler) : Option (ViewStack T × Effect) :=
   match h with
-  | "plot.area"    => some (s, .plot .area)
-  | "plot.line"    => some (s, .plot .line)
-  | "plot.scatter" => some (s, .plot .scatter)
-  | "plot.bar"     => some (s, .plot .bar)
-  | "plot.box"     => some (s, .plot .box)
-  | "plot.step"    => some (s, .plot .step)
-  | "plot.hist"    => some (s, .plot .hist)
-  | "plot.density" => some (s, .plot .density)
-  | "plot.violin"  => some (s, .plot .violin)
+  | .plotArea    => some (s, .plot .area)
+  | .plotLine    => some (s, .plot .line)
+  | .plotScatter => some (s, .plot .scatter)
+  | .plotBar     => some (s, .plot .bar)
+  | .plotBox     => some (s, .plot .box)
+  | .plotStep    => some (s, .plot .step)
+  | .plotHist    => some (s, .plot .hist)
+  | .plotDensity => some (s, .plot .density)
+  | .plotViolin  => some (s, .plot .violin)
   | _ => none
 
 end Tc.Plot

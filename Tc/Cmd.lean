@@ -71,6 +71,78 @@ instance : Parse Cmd where
 
 end Cmd
 
+-- | Handler enum: typed dispatch target, replaces stringly-typed handler names.
+-- Flat enum matching handler column in cfg/commands.sql.
+inductive Handler where
+  -- nav
+  | rowInc | rowDec | rowPgUp | rowPgDn | rowTop | rowBot | rowSel
+  | colInc | colDec | colFirst | colLast | colGrp | colHide | colExclude | colShiftL | colShiftR
+  -- sort
+  | sortAsc | sortDesc
+  -- filter
+  | colSearch | rowSearch | rowFilter | searchNext | searchPrev
+  -- plot
+  | plotArea | plotLine | plotScatter | plotBar | plotBox | plotStep | plotHist | plotDensity | plotViolin
+  -- stk
+  | stkDup | stkPop | stkSwap
+  -- top-level
+  | quit | xpose | diff | menu
+  -- info/prec/scroll/heat
+  | infoTog | precDec | precInc | prec0 | precMax | scrollUp | scrollDn
+  | heat0 | heat1 | heat2 | heat3
+  -- meta
+  | metaPush | metaSetKey | metaSelNull | metaSelSingle
+  -- freq
+  | freqOpen | freqFilter
+  -- folder
+  | folderPush | folderEnter | folderParent | folderDel | folderDepthDec | folderDepthInc
+  -- arg-only (used in runArgCmd)
+  | split | derive | export_ | sessSave | sessLoad | join
+  deriving Repr, BEq, Inhabited
+
+namespace Handler
+
+def fromString? : String → Option Handler
+  | "nav.rowInc"  => some .rowInc  | "nav.rowDec"  => some .rowDec
+  | "nav.rowPgUp" => some .rowPgUp | "nav.rowPgDn" => some .rowPgDn
+  | "nav.rowTop"  => some .rowTop  | "nav.rowBot"  => some .rowBot
+  | "nav.rowSel"  => some .rowSel
+  | "nav.colInc"  => some .colInc  | "nav.colDec"  => some .colDec
+  | "nav.colFirst" => some .colFirst | "nav.colLast" => some .colLast
+  | "nav.colGrp"  => some .colGrp  | "nav.colHide" => some .colHide
+  | "nav.colExclude" => some .colExclude
+  | "nav.colShiftL" => some .colShiftL | "nav.colShiftR" => some .colShiftR
+  | "sort.asc"    => some .sortAsc | "sort.desc"   => some .sortDesc
+  | "filter.colSearch"  => some .colSearch
+  | "filter.rowSearch"  => some .rowSearch  | "filter.rowFilter" => some .rowFilter
+  | "filter.searchNext" => some .searchNext | "filter.searchPrev" => some .searchPrev
+  | "plot.area"    => some .plotArea    | "plot.line"    => some .plotLine
+  | "plot.scatter" => some .plotScatter | "plot.bar"     => some .plotBar
+  | "plot.box"     => some .plotBox     | "plot.step"    => some .plotStep
+  | "plot.hist"    => some .plotHist    | "plot.density" => some .plotDensity
+  | "plot.violin"  => some .plotViolin
+  | "stk.dup"  => some .stkDup  | "stk.pop"  => some .stkPop  | "stk.swap" => some .stkSwap
+  | "quit"     => some .quit     | "xpose"    => some .xpose   | "diff"     => some .diff
+  | "menu"     => some .menu
+  | "infoTog"  => some .infoTog
+  | "precDec"  => some .precDec  | "precInc"  => some .precInc
+  | "prec0"    => some .prec0    | "precMax"  => some .precMax
+  | "scrollUp" => some .scrollUp | "scrollDn" => some .scrollDn
+  | "heat.0"   => some .heat0   | "heat.1"   => some .heat1
+  | "heat.2"   => some .heat2   | "heat.3"   => some .heat3
+  | "meta.push"      => some .metaPush  | "meta.setKey"    => some .metaSetKey
+  | "meta.selNull"   => some .metaSelNull | "meta.selSingle" => some .metaSelSingle
+  | "freq.open"   => some .freqOpen  | "freq.filter" => some .freqFilter
+  | "folder.push"     => some .folderPush     | "folder.enter"    => some .folderEnter
+  | "folder.parent"   => some .folderParent   | "folder.del"      => some .folderDel
+  | "folder.depthDec" => some .folderDepthDec | "folder.depthInc" => some .folderDepthInc
+  | "split"    => some .split    | "derive"   => some .derive
+  | "export"   => some .export_  | "sessSave" => some .sessSave
+  | "sessLoad" => some .sessLoad | "join"     => some .join
+  | _ => none
+
+end Handler
+
 -- | Effect sub-types (grouped by domain)
 inductive FzfEffect where | cmd | col | row | filter deriving Repr, BEq
 inductive QueryEffect where

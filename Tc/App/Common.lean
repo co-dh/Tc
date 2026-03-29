@@ -49,35 +49,41 @@ def withStk (a : AppState) (ci : CmdConfig.CmdInfo) (s' : ViewStack AdbcTable) :
 private def liftStk (a : AppState) (ci : CmdConfig.CmdInfo) (r : Option (ViewStack AdbcTable × Effect)) : Option (AppState × Effect) :=
   r.map fun (s', eff) => (withStk a ci s', eff)
 
--- | Dispatch by handler name. Domain modules receive handler, not (obj,verb).
+-- | Dispatch by handler enum. Domain modules receive handler, not (obj,verb).
 def dispatch (a : AppState) (ci : CmdConfig.CmdInfo) : Option (AppState × Effect) :=
   let h := ci.handler
   let viewUp := fun () => View.update a.stk.cur h 20 |>.map fun (v', e) => (withStk a ci (a.stk.setCur v'), e)
+  match h with
   -- top-level effects
-  if h == "quit" then some (a, .quit)
-  else if h == "xpose" then some (a, .transpose)
-  else if h == "diff" then some (a, .diff)
-  else if h == "menu" then some (a, .fzf .cmd)
+  | .quit  => some (a, .quit)
+  | .xpose => some (a, .transpose)
+  | .diff  => some (a, .diff)
+  | .menu  => some (a, .fzf .cmd)
   -- info panel
-  else if h == "scrollUp" then some ({ a with prevScroll := a.prevScroll - min a.prevScroll 5 }, .none)
-  else if h == "scrollDn" then some ({ a with prevScroll := a.prevScroll + 5 }, .none)
-  else if h == "precDec" then some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj - 1 } }, .none)
-  else if h == "precInc" then some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj + 1 } }, .none)
-  else if h == "prec0" then some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := -4 } }, .none)
-  else if h == "precMax" then some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := 13 } }, .none)
-  else if h == "infoTog" then a.info.update h |>.map fun (i', e) => ({ a with info := i' }, e)
-  else if h.startsWith "heat." then
-    let digit := h.back.toNat - '0'.toNat
-    some ({ a with heatMode := min 3 digit.toUInt8 }, .none)
-  -- domain dispatch by prefix
-  else if h.startsWith "stk." then liftStk a ci (ViewStack.update a.stk h)
-  else if h.startsWith "folder." then liftStk a ci (Folder.update a.stk h) <|> viewUp ()
-  else if h.startsWith "meta." then liftStk a ci (Meta.update a.stk h) <|> viewUp ()
-  else if h.startsWith "freq." then liftStk a ci (Freq.update a.stk h) <|> viewUp ()
-  else if h.startsWith "plot." then liftStk a ci (Plot.update a.stk h)
-  else if h.startsWith "filter." then liftStk a ci (Filter.update a.stk h) <|> viewUp ()
-  -- nav + sort → viewUp (View.update handles sort.* specially, delegates nav.* to NavState.exec)
-  else viewUp ()
+  | .scrollUp => some ({ a with prevScroll := a.prevScroll - min a.prevScroll 5 }, .none)
+  | .scrollDn => some ({ a with prevScroll := a.prevScroll + 5 }, .none)
+  | .precDec  => some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj - 1 } }, .none)
+  | .precInc  => some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := a.stk.cur.precAdj + 1 } }, .none)
+  | .prec0    => some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := -4 } }, .none)
+  | .precMax  => some ({ a with stk := a.stk.setCur { a.stk.cur with precAdj := 13 } }, .none)
+  | .infoTog  => some ({ a with info := { a.info with vis := !a.info.vis } }, .none)
+  | .heat0 | .heat1 | .heat2 | .heat3 =>
+    let digit := match h with | .heat0 => 0 | .heat1 => 1 | .heat2 => 2 | _ => 3
+    some ({ a with heatMode := digit }, .none)
+  -- domain dispatch
+  | .stkDup | .stkPop | .stkSwap      => liftStk a ci (ViewStack.update a.stk h)
+  | .folderPush | .folderEnter | .folderParent | .folderDel
+  | .folderDepthDec | .folderDepthInc  => liftStk a ci (Folder.update a.stk h) <|> viewUp ()
+  | .metaPush | .metaSetKey | .metaSelNull | .metaSelSingle
+                                       => liftStk a ci (Meta.update a.stk h) <|> viewUp ()
+  | .freqOpen | .freqFilter            => liftStk a ci (Freq.update a.stk h) <|> viewUp ()
+  | .plotArea | .plotLine | .plotScatter | .plotBar | .plotBox
+  | .plotStep | .plotHist | .plotDensity | .plotViolin
+                                       => liftStk a ci (Plot.update a.stk h)
+  | .colSearch | .rowSearch | .rowFilter | .searchNext | .searchPrev
+                                       => liftStk a ci (Filter.update a.stk h) <|> viewUp ()
+  -- nav + sort + everything else → viewUp
+  | _ => viewUp ()
 
 end AppState
 
@@ -144,21 +150,21 @@ private partial def runStackIO (a : AppState) (f : IO (ViewStack AdbcTable)) : I
   | .ok s' => pure { a with stk := s', vs := .default, sparklines := #[] }
   | .error e => Log.error e.toString; errorPopup e.toString; pure a
 
--- | Run an arg command: dispatch by handler name (from config table)
-private partial def runArgCmd (a : AppState) (handler : String) (arg : String) : IO AppState :=
+-- | Run an arg command: dispatch by handler enum (from config table)
+private partial def runArgCmd (a : AppState) (handler : Handler) (arg : String) : IO AppState :=
   match handler with
-  | "split"     => runStackIO a (if arg.isEmpty then Split.run a.stk else Split.runWith a.stk arg)
-  | "derive"    => runStackIO a (if arg.isEmpty then Derive.run a.stk else Derive.runWith a.stk arg)
-  | "filter.rowFilter" => runStackIO a (if arg.isEmpty then ViewStack.rowFilter a.stk else ViewStack.filterWith a.stk arg)
-  | "filter.rowSearch" => runStackIO a (if arg.isEmpty then ViewStack.rowSearch a.stk else ViewStack.searchWith a.stk arg)
-  | "filter.colSearch" => runStackIO a (if arg.isEmpty then ViewStack.colSearch a.stk else ViewStack.colJumpWith a.stk arg)
-  | "export"    => runStackIO a (if arg.isEmpty then do
+  | .split     => runStackIO a (if arg.isEmpty then Split.run a.stk else Split.runWith a.stk arg)
+  | .derive    => runStackIO a (if arg.isEmpty then Derive.run a.stk else Derive.runWith a.stk arg)
+  | .rowFilter => runStackIO a (if arg.isEmpty then ViewStack.rowFilter a.stk else ViewStack.filterWith a.stk arg)
+  | .rowSearch => runStackIO a (if arg.isEmpty then ViewStack.rowSearch a.stk else ViewStack.searchWith a.stk arg)
+  | .colSearch => runStackIO a (if arg.isEmpty then ViewStack.colSearch a.stk else ViewStack.colJumpWith a.stk arg)
+  | .export_   => runStackIO a (if arg.isEmpty then do
       match ← Export.pickFmt with | some f => Export.run a.stk f | none => pure a.stk
     else Export.runWith a.stk arg)
-  | "sessSave"  => runStackIO a (do Session.saveWith a.stk arg; pure a.stk)
-  | "sessLoad"  => runStackIO a (do
+  | .sessSave  => runStackIO a (do Session.saveWith a.stk arg; pure a.stk)
+  | .sessLoad  => runStackIO a (do
     match ← Session.loadWith arg with | some stk' => pure stk' | none => pure a.stk)
-  | "join"      => runStackIO a (do
+  | .join      => runStackIO a (do
     match ← Join.runWith a.stk arg with | some s' => pure s' | none => pure a.stk)
   | _ => pure a
 
@@ -236,7 +242,7 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
       if e == .quit then pure a'
       else let a'' ← if e.isNone then pure a' else runEffect a' e
            let a'' := if e.isNone then a'' else { a'' with sparklines := #[] }
-           let a'' := if ci.handler == "scrollUp" || ci.handler == "scrollDn" then a'' else { a'' with prevScroll := 0 }
+           let a'' := if ci.handler == .scrollUp || ci.handler == .scrollDn then a'' else { a'' with prevScroll := 0 }
            mainLoop a'' test rest
   -- 1. Test mode: 2-char obj+verb codes (e.g. "s1"=stk.1, "c["=col.[)
   -- Only when the first char has no single-key mapping and no nav mapping
