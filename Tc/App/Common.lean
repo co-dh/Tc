@@ -23,10 +23,6 @@ import Tc.Replay
 
 open Tc
 
--- | Handlers that take user input (fzf or typed arg).
--- Derived from CmdConfig.Entry.isArg field — no hardcoded list needed.
-private def isArgHandler (h : String) : IO Bool := CmdConfig.isArgHandler h
-
 -- | App state: view stack + render state + theme + info + preview scroll
 structure AppState where
   stk   : ViewStack AdbcTable
@@ -41,6 +37,14 @@ structure AppState where
 
 -- | Dispatch result: quit, unhandled, or new state
 inductive Action where | quit | unhandled | ok (a : AppState)
+
+-- | Handler function type: (state, cmdInfo, arg) → IO Action
+-- arg is empty for non-arg commands, contains user input for arg commands.
+abbrev HandlerFn := AppState → CmdConfig.CmdInfo → String → IO Action
+
+-- | Unified handler map: handler name → HandlerFn.
+-- One HashMap for all commands (pure, IO, arg). Lookup falls back to viewUp.
+initialize handlerMap : IO.Ref (Std.HashMap String HandlerFn) ← IO.mkRef {}
 
 namespace AppState
 
@@ -98,6 +102,18 @@ private def runViewEffect (a : AppState) (ci : CmdConfig.CmdInfo)
       | none => pure none
     | _, _ => pure none
 
+-- | View.update + runViewEffect fallback for nav/sort/exclude/freq handlers
+private def viewUp (a : AppState) (ci : CmdConfig.CmdInfo) : IO Action := do
+  let h := ci.handler
+  -- freq handlers: try Freq.update first, then View.update
+  if h.startsWith "freq." then
+    match Freq.update a.stk h with
+    | some (s', e) => return ← runViewEffect (a.withStk ci s') ci s'.cur e
+    | none => pure ()
+  match View.update a.stk.cur h 20 with
+  | some (v', e) => runViewEffect a ci v' e
+  | none => pure .unhandled
+
 -- | Shared pure dispatch: scroll, prec, info, heat, nav-only View.update.
 -- Both pureDispatch and dispatch delegate here to avoid duplicating logic.
 private def sharedPure (a : AppState) (ci : CmdConfig.CmdInfo) : Option AppState :=
@@ -123,106 +139,112 @@ def pureDispatch (a : AppState) (ci : CmdConfig.CmdInfo) : Option AppState :=
     ViewStack.update a.stk h |>.bind fun (s', _) => some (a.withStk ci s')
   else sharedPure a ci
 
--- | Full dispatch: handles all commands, executes IO inline with error handling.
+-- | Full dispatch: unified HashMap lookup with viewUp fallback.
 -- Returns .quit to exit, .unhandled if command not recognized, .ok for everything else.
-partial def dispatch (a : AppState) (ci : CmdConfig.CmdInfo) : IO Action := do
-  let h := ci.handler
-  -- quit
-  if h == "quit" then return .quit
-  -- stk operations (may produce .quit on empty stack pop)
-  if h.startsWith "stk." then
-    return match ViewStack.update a.stk h with
-    | some (_, .quit) => .quit
-    | some (s', _) => .ok (a.withStk ci s')
-    | none => .unhandled
-  -- pure state updates (shared with pureDispatch)
-  if let some a' := sharedPure a ci then return .ok a'
-  -- menu (fzf command picker with live polling)
-  if h == "menu" then return ← runMenu a
-  -- IO domain dispatch: transpose, diff
-  if h == "xpose" then return ← tryStk a ci (Transpose.push a.stk)
-  if h == "diff" then
-    if a.stk.cur.sameHide.isEmpty then return ← tryStk a ci (Diff.run a.stk)
-    else return .ok { a with stk := a.stk.setCur (Diff.showSame a.stk.cur), vs := .default, sparklines := #[] }
-  -- IO domain dispatch by prefix: folder, meta, plot, filter
-  if h.startsWith "folder." then
-    if let some f := Folder.dispatch a.stk h then return ← tryStk a ci f
-    -- fallthrough to viewUp below
-  else if h.startsWith "meta." then
-    if let some f := Meta.dispatch a.stk h then return ← tryStk a ci f
-  else if h.startsWith "plot." then
-    if let some kind := Plot.kindOf? h then
-      return ← tryStk a ci (Plot.run a.stk kind)
-  else if h.startsWith "filter." then
-    if let some f := Filter.dispatch a.stk h then
-      return ← tryStk a ci (some <$> f)
-  else if h.startsWith "freq." then pure ()  -- handled via Freq.update + viewUp below
-  -- View.update: nav, sort, exclude, fetchMore + freq
-  let viewUp := fun () => do
-    match View.update a.stk.cur h 20 with
-    | some (v', e) => runViewEffect a ci v' e
-    | none => pure .unhandled
-  if h.startsWith "freq." then
-    match Freq.update a.stk h with
-    | some (s', e) =>
-      -- Execute freq effect inline
-      return ← runViewEffect (a.withStk ci s') ci s'.cur e
-    | none => return ← viewUp ()
-  if h.startsWith "folder." || h.startsWith "meta." then
-    -- Fallthrough from folder/meta when domain dispatch returned none
-    return ← viewUp ()
-  viewUp ()
-where
-  -- | fzf command menu with live socket polling for preview
-  runMenu (a : AppState) : IO Action := do
-    let ref ← IO.mkRef a
-    let poll : IO Unit := do
-      match ← Socket.pollCmd with
-      | some cmdStr =>
-        Log.write "sock" s!"poll cmd={cmdStr}"
-        -- Socket sends handler names directly
-        let ci ← CmdConfig.handlerLookup cmdStr
-        match (← ref.get).pureDispatch ci with
-        | some a' =>
-          let (vs', v') ← a'.stk.cur.doRender a'.vs a'.theme.styles a'.heatMode a'.sparklines
-          ref.set { a' with stk := a'.stk.setCur v', vs := vs' }
-          Term.present
-        | none => pure ()
+partial def dispatch (a : AppState) (ci : CmdConfig.CmdInfo) (arg : String := "") : IO Action := do
+  match (← handlerMap.get).get? ci.handler with
+  | some f => f a ci arg
+  | none => viewUp a ci  -- default: View.update + runViewEffect
+
+-- | fzf command menu with live socket polling for preview
+private partial def runMenu (a : AppState) : IO Action := do
+  let ref ← IO.mkRef a
+  let poll : IO Unit := do
+    match ← Socket.pollCmd with
+    | some cmdStr =>
+      Log.write "sock" s!"poll cmd={cmdStr}"
+      let ci ← CmdConfig.handlerLookup cmdStr
+      match (← ref.get).pureDispatch ci with
+      | some a' =>
+        let (vs', v') ← a'.stk.cur.doRender a'.vs a'.theme.styles a'.heatMode a'.sparklines
+        ref.set { a' with stk := a'.stk.setCur v', vs := vs' }
+        Term.present
       | none => pure ()
-    let handler? ← Fzf.cmdMode a.stk.cur.vkind poll
-    let a' ← ref.get
-    let _ ← Socket.pollCmd  -- drain stale preview command from fzf focus
-    match handler? with
-    | some h =>
-      let ci ← CmdConfig.handlerLookup h
-      a'.dispatch ci
-    | none => pure (.ok a')
+    | none => pure ()
+  let handler? ← Fzf.cmdMode a.stk.cur.vkind poll
+  let a' ← ref.get
+  let _ ← Socket.pollCmd  -- drain stale preview command from fzf focus
+  match handler? with
+  | some h =>
+    let ci ← CmdConfig.handlerLookup h
+    a'.dispatch ci
+  | none => pure (.ok a')
+
+-- | Run a stack-level IO action with shared error handling and state reset
+private def runStackIO (a : AppState) (f : IO (ViewStack AdbcTable)) : IO Action := do
+  match ← f.toBaseIO with
+  | .ok s' => pure (.ok { a with stk := s', vs := .default, sparklines := #[] })
+  | .error e => Log.error e.toString; errorPopup e.toString; pure (.ok a)
 
 end AppState
 
--- | Run a stack-level IO action with shared error handling and state reset
-private partial def runStackIO (a : AppState) (f : IO (ViewStack AdbcTable)) : IO AppState := do
-  match ← f.toBaseIO with
-  | .ok s' => pure { a with stk := s', vs := .default, sparklines := #[] }
-  | .error e => Log.error e.toString; errorPopup e.toString; pure a
-
--- | Run an arg command: dispatch by handler name (from config table)
-private partial def runArgCmd (a : AppState) (handler : String) (arg : String) : IO AppState :=
-  match handler with
-  | "split"     => runStackIO a (if arg.isEmpty then Split.run a.stk else Split.runWith a.stk arg)
-  | "derive"    => runStackIO a (if arg.isEmpty then Derive.run a.stk else Derive.runWith a.stk arg)
-  | "filter.rowFilter" => runStackIO a (if arg.isEmpty then ViewStack.rowFilter a.stk else ViewStack.filterWith a.stk arg)
-  | "filter.rowSearch" => runStackIO a (if arg.isEmpty then ViewStack.rowSearch a.stk else ViewStack.searchWith a.stk arg)
-  | "filter.colSearch" => runStackIO a (if arg.isEmpty then ViewStack.colSearch a.stk else ViewStack.colJumpWith a.stk arg)
-  | "export"    => runStackIO a (if arg.isEmpty then do
+-- | Register all handlers into the unified handlerMap.
+-- Groups: pure state, stack ops, IO domain, prefix domain, arg commands.
+def initHandlers : IO Unit := do
+  let mut m : Std.HashMap String HandlerFn := {}
+  -- quit
+  m := m.insert "quit" fun _ _ _ => pure .quit
+  -- pure state: scroll, prec, heat, info
+  for h in #["scrollUp", "scrollDn", "precDec", "precInc", "prec0", "precMax", "infoTog",
+             "heat.0", "heat.1", "heat.2", "heat.3"] do
+    m := m.insert h fun a ci _ =>
+      match AppState.sharedPure a ci with
+      | some a' => pure (.ok a')
+      | none => pure .unhandled
+  -- stack ops (may produce .quit on empty stack pop)
+  for h in #["stk.pop", "stk.swap", "stk.dup"] do
+    m := m.insert h fun a ci _ =>
+      pure (match ViewStack.update a.stk h with
+        | some (_, .quit) => .quit
+        | some (s', _) => .ok (a.withStk ci s')
+        | none => .unhandled)
+  -- menu
+  m := m.insert "menu" fun a _ _ => AppState.runMenu a
+  -- transpose, diff
+  m := m.insert "xpose" fun a ci _ => a.tryStk ci (Transpose.push a.stk)
+  m := m.insert "diff" fun a ci _ =>
+    if a.stk.cur.sameHide.isEmpty then a.tryStk ci (Diff.run a.stk)
+    else pure (.ok { a with stk := a.stk.setCur (Diff.showSame a.stk.cur), vs := .default, sparklines := #[] })
+  -- folder handlers (domain dispatch with viewUp fallback)
+  for h in #["folder.push", "folder.enter", "folder.parent", "folder.del",
+             "folder.depthDec", "folder.depthInc"] do
+    m := m.insert h fun a ci _ => do
+      if let some f := Folder.dispatch a.stk h then return ← a.tryStk ci f
+      a.viewUp ci
+  -- meta handlers (domain dispatch with viewUp fallback)
+  for h in #["meta.push", "meta.selNull", "meta.selSingle", "meta.setKey"] do
+    m := m.insert h fun a ci _ => do
+      if let some f := Meta.dispatch a.stk h then return ← a.tryStk ci f
+      a.viewUp ci
+  -- plot handlers
+  for h in #["plot.area", "plot.line", "plot.scatter", "plot.bar", "plot.box",
+             "plot.step", "plot.hist", "plot.density", "plot.violin"] do
+    m := m.insert h fun a ci _ => do
+      if let some kind := Plot.kindOf? h then return ← a.tryStk ci (Plot.run a.stk kind)
+      pure .unhandled
+  -- filter handlers (non-arg: searchNext/searchPrev)
+  for h in #["filter.searchNext", "filter.searchPrev"] do
+    m := m.insert h fun a ci _ => do
+      if let some f := Filter.dispatch a.stk h then return ← a.tryStk ci (some <$> f)
+      a.viewUp ci
+  -- freq handlers (dispatch via viewUp which tries Freq.update first)
+  for h in #["freq.open", "freq.filter"] do
+    m := m.insert h fun a ci _ => a.viewUp ci
+  -- arg commands: handlers that use the arg parameter
+  m := m.insert "split" fun a _ arg => a.runStackIO (if arg.isEmpty then Split.run a.stk else Split.runWith a.stk arg)
+  m := m.insert "derive" fun a _ arg => a.runStackIO (if arg.isEmpty then Derive.run a.stk else Derive.runWith a.stk arg)
+  m := m.insert "filter.rowFilter" fun a _ arg => a.runStackIO (if arg.isEmpty then ViewStack.rowFilter a.stk else ViewStack.filterWith a.stk arg)
+  m := m.insert "filter.rowSearch" fun a _ arg => a.runStackIO (if arg.isEmpty then ViewStack.rowSearch a.stk else ViewStack.searchWith a.stk arg)
+  m := m.insert "filter.colSearch" fun a _ arg => a.runStackIO (if arg.isEmpty then ViewStack.colSearch a.stk else ViewStack.colJumpWith a.stk arg)
+  m := m.insert "export" fun a _ arg => a.runStackIO (if arg.isEmpty then do
       match ← Export.pickFmt with | some f => Export.run a.stk f | none => pure a.stk
     else Export.runWith a.stk arg)
-  | "sessSave"  => runStackIO a (do Session.saveWith a.stk arg; pure a.stk)
-  | "sessLoad"  => runStackIO a (do
+  m := m.insert "sessSave" fun a _ arg => a.runStackIO (do Session.saveWith a.stk arg; pure a.stk)
+  m := m.insert "sessLoad" fun a _ arg => a.runStackIO (do
     match ← Session.loadWith arg with | some stk' => pure stk' | none => pure a.stk)
-  | "join"      => runStackIO a (do
+  m := m.insert "join" fun a _ arg => a.runStackIO (do
     match ← Join.runWith a.stk arg with | some s' => pure s' | none => pure a.stk)
-  | _ => pure a
+  handlerMap.set m
 
 -- | Dispatch a handler name string from socket (handler name, optionally with arg after space)
 private partial def dispatchHandler (a : AppState) (cmdStr : String) : IO AppState := do
@@ -232,12 +254,10 @@ private partial def dispatchHandler (a : AppState) (cmdStr : String) : IO AppSta
     | [h] => (h, "")
     | h :: rest => (h, " ".intercalate rest)
     | [] => (cmdStr, "")
-  if (← isArgHandler h) && !arg.isEmpty then runArgCmd a h arg
-  else
-    let ci ← CmdConfig.handlerLookup h
-    match ← a.dispatch ci with
-    | .ok a' => pure { a' with prevScroll := 0 }
-    | _ => pure a
+  let ci ← CmdConfig.handlerLookup h
+  match ← a.dispatch ci arg with
+  | .ok a' => pure { a' with prevScroll := 0 }
+  | _ => pure a
 
 -- main loop: render → input → dispatch → loop
 partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppState := do
@@ -287,16 +307,7 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   if ev.type == 1 && ev.key == 0x16 then IO.sleep 50; return ← mainLoop a test ks'
   -- Empty event (socket wake-up with no key press) → re-render and loop
   if ev.type == 0 then return ← mainLoop a test ks'
-  -- Dispatch: handler name → dispatch → loop
-  let runHandler (h : String) (rest : Array Char) : IO AppState := do
-    let ci ← CmdConfig.handlerLookup h
-    match ← a.dispatch ci with
-    | .quit => pure a
-    | .unhandled => mainLoop a test rest
-    | .ok a'' =>
-      let a'' := if h == "scrollUp" || h == "scrollDn" then a'' else { a'' with prevScroll := 0 }
-      mainLoop a'' test rest
-  -- 1. Resolve key → handler name (config first, then compile-time KeyMap, then special keys)
+  -- Resolve key → handler name (config first, then compile-time KeyMap, then special keys)
   let keyChar := evToChar ev
   let handler? ← do
     match ← CmdConfig.keyLookup keyChar with
@@ -304,13 +315,19 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
     | none => pure (evToHandler ev a.stk.cur.vkind)
   match handler? with
   | some h =>
-    -- Arg commands: collect user input (in test mode, chars until \r)
-    if ← isArgHandler h then
-      let (arg, rest) := if test && ks'.any (· == '\r') then
+    -- Arg commands: collect user input first (in test mode, chars until \r), then dispatch
+    let (arg, rest) ← if ← CmdConfig.isArgHandler h then
+      pure (if test && ks'.any (· == '\r') then
         let idx := ks'.findIdx? (· == '\r') |>.getD ks'.size
         (String.ofList (ks'.extract 0 idx).toList, ks'.extract (idx + 1) ks'.size)
-      else ("", ks')
-      mainLoop (← runArgCmd a h arg) test rest
-    else runHandler h ks'
+      else ("", ks'))
+    else pure ("", ks')
+    let ci ← CmdConfig.handlerLookup h
+    match ← a.dispatch ci arg with
+    | .quit => pure a
+    | .unhandled => mainLoop a test rest
+    | .ok a'' =>
+      let a'' := if h == "scrollUp" || h == "scrollDn" then a'' else { a'' with prevScroll := 0 }
+      mainLoop a'' test rest
   | none => mainLoop a test ks'
 
