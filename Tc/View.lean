@@ -27,7 +27,7 @@ variable {T : Type} [TblOps T]
 
 -- | Create from NavState + path
 def new {nr nc : Nat} (nav : NavState nr nc T) (path : String) : View T :=
-  ⟨nr, nc, nav, path, .tbl, "", 0, 0, #[], none, #[]⟩
+  { nRows := nr, nCols := nc, nav, path }
 
 -- | Tab display name: custom disp or filename from path
 @[inline] def tabName (v : View T) : String :=
