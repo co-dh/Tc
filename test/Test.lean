@@ -997,6 +997,40 @@ def test_plot_export_cat : IO Unit := do
   let some cats := result | throw (IO.userError "plotExport with cat should succeed")
   assert (cats.size == 2) s!"expected 2 categories (A,B), got {cats.size}"
 
+-- | Time downsample at hour level must produce full HH:MM:SS strings, not truncated "HH".
+--   Bug: SUBSTRING(CAST(time AS VARCHAR), 1, 2) gives "09" which R's as.POSIXct
+--   parses as midnight, collapsing all hours to the same x-position ("black box").
+def test_plot_time_downsample_pad : IO Unit := do
+  log "plot_time_downsample_pad"
+  let some tbl ← Tc.AdbcTable.fromFile "data/plot/time_wide.csv"
+    | throw (IO.userError "failed to open time_wide.csv")
+  -- hour-level downsample: truncLen=2 → groups by first 2 chars of time
+  let result ← Tc.AdbcTable.plotExport tbl "t" "val" none true 1 2
+  assert result.isSome "time downsample should succeed"
+  let content ← IO.FS.readFile (← Tc.tmpPath "plot.dat")
+  let lines := content.splitOn "\n" |>.filter (!·.isEmpty)
+  assert (lines.length == 4) s!"expected 4 hour buckets (09,10,11,12), got {lines.length}"
+  -- each time value must be full HH:MM:SS (≥8 chars), not truncated "HH" (2 chars)
+  for line in lines do
+    let tv := (line.splitOn "\t").getD 0 ""
+    assert (tv.length >= 8) s!"time '{tv}' should be full HH:MM:SS, not truncated"
+
+-- | Non-time downsampling must respect truncLen (interval step), not ignore it.
+--   Bug: plotExport always used baseStep for ds_nth, ignoring the interval step.
+def test_plot_downsample_step : IO Unit := do
+  log "plot_downsample_step"
+  let some tbl ← Tc.AdbcTable.fromFile "data/plot/line.csv"
+    | throw (IO.userError "failed to open line.csv")
+  -- step=2 should give ~half the rows of step=1
+  let _ ← Tc.AdbcTable.plotExport tbl "x" "y" none false 1 1
+  let c1 ← IO.FS.readFile (← Tc.tmpPath "plot.dat")
+  let n1 := (c1.splitOn "\n" |>.filter (!·.isEmpty)).length
+  let _ ← Tc.AdbcTable.plotExport tbl "x" "y" none false 1 2
+  let c2 ← IO.FS.readFile (← Tc.tmpPath "plot.dat")
+  let n2 := (c2.splitOn "\n" |>.filter (!·.isEmpty)).length
+  -- with truncLen=2 (every 2nd row), output should have fewer rows than truncLen=1
+  assert (n2 < n1) s!"truncLen=2 ({n2} rows) should produce fewer rows than truncLen=1 ({n1} rows)"
+
 -- | Check Rscript is installed
 def hasRscript : IO Bool := hasCmd "Rscript"
 
@@ -1208,6 +1242,8 @@ def ciTests : Array (String × IO Unit) := #[
   ("plot_export_string_col", test_plot_export_string_col),
   ("plot_export_data", test_plot_export_data),
   ("plot_export_cat", test_plot_export_cat),
+  ("plot_time_downsample_pad", test_plot_time_downsample_pad),
+  ("plot_downsample_step", test_plot_downsample_step),
   -- Replay ops tests
   ("replay_sort", test_replay_sort),
   ("replay_empty", test_replay_empty),

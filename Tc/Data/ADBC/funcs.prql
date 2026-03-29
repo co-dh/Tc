@@ -42,21 +42,22 @@ let meta = func c tbl <relation> -> (
 # No `y != 0` in downsample filters: DuckDB applies the filter before select prunes
 # columns, so `!= 0` on a string column causes a cast-to-INT error.
 
-# Downsample time series: last value per truncated time bucket
-let ds_trunc = func x y len tbl <relation> -> (
+# Downsample time series: last value per truncated time bucket.
+# pad: suffix to append (e.g. ":00:00" for hour truncation) so R can parse the string.
+let ds_trunc = func x y len pad tbl <relation> -> (
   from tbl
   filter (y != null)
-  derive {_sec = s"SUBSTRING(CAST({x} AS VARCHAR), 1, {len})"}
+  derive {_sec = s"SUBSTRING(CAST({x} AS VARCHAR), 1, {len}) || {pad}"}
   group {_sec} (sort {-x} | take 1)
   sort {_sec}
   select {_sec, y}
 )
 
 # Downsample time series with category and parameterized truncation
-let ds_trunc_cat = func x y c len tbl <relation> -> (
+let ds_trunc_cat = func x y c len pad tbl <relation> -> (
   from tbl
   filter (y != null)
-  derive {_sec = s"SUBSTRING(CAST({x} AS VARCHAR), 1, {len})"}
+  derive {_sec = s"SUBSTRING(CAST({x} AS VARCHAR), 1, {len}) || {pad}"}
   group {_sec, c} (sort {-x} | take 1)
   sort {_sec}
   select {_sec, y, c}
