@@ -239,7 +239,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   if n.grp.contains yName then return ← err s "move cursor to a non-group column"
   let yType := TblOps.colType n.tbl yIdx
   if !isNumericType yType then return ← err s s!"y-axis '{yName}' must be numeric (got {yType})"
-  let nr := TblOps.nRows n.tbl
+  let nr := TblOps.totalRows n.tbl  -- use actual row count, not display limit
   let xType0 := TblOps.colType n.tbl xIdx
   let xType ← do
     if xType0 != "str" then pure xType0
