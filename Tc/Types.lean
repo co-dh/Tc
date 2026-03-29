@@ -175,7 +175,7 @@ class TblOps (α : Type) where
   filterPrompt : α → String → String
     := fun _ col => s!"PRQL filter on [{col}]:  {col} > 5 | {col} == 'val' | {col} ~= 'pattern'"
   -- export plot data to tmpdir/plot.dat via DB (returns category list, or none for fallback)
-  -- args: tbl xName yName catName? xIsTime truncLen
+  -- args: tbl xName yName catName? xIsTime step
   plotExport : α → String → String → Option String → Bool → Nat → IO (Option (Array String))
     := fun _ _ _ _ _ _ => pure none
   -- get cell value as string (for preview)
