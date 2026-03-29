@@ -29,10 +29,10 @@ def aggName : Agg → String
   | .min => "std.min" | .max => "std.max" | .stddev => "std.stddev"
   | .dist => "std.count_distinct"
 
--- | Render single operation to PRQL string
 -- | DuckDB-quote column name for use inside PRQL s-string (\" escapes)
 def dqQuote (s : String) : String := "\\\"" ++ s ++ "\\\""
 
+-- | Render single operation to PRQL string
 def Op.render : Op → String
   | .filter e => s!"filter {e}"
   | .sort cols => s!"sort \{{", ".intercalate (cols.map fun (c, asc) => renderSort c asc).toList}}"
