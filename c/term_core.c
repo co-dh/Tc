@@ -25,6 +25,12 @@ lean_obj_res lean_local_timestamp(lean_obj_arg world) {
 struct tb_cell *fake_buf = NULL;
 int fake_w = 80, fake_h = 24;
 int headless = 0;
+static int tb_inited = 0;  // true after lean_tb_init called (regardless of success/headless)
+
+// | Check if terminal has been initialized (tb_init called)
+lean_obj_res lean_tb_inited(lean_obj_arg world) {
+    return lean_io_result_mk_ok(lean_box(tb_inited ? 1 : 0));
+}
 
 // | Check if stdin is a tty (false = piped input)
 lean_obj_res lean_isatty_stdin(lean_obj_arg world) {
@@ -42,6 +48,7 @@ lean_obj_res lean_reopen_tty(lean_obj_arg world) {
 // tb_init() -> Int32
 lean_obj_res lean_tb_init(lean_obj_arg world) {
     int r = tb_init();
+    tb_inited = 1;
     if (r != 0) {
         // No terminal — headless mode (for -c tests)
         headless = 1;
@@ -123,10 +130,13 @@ lean_obj_res lean_tb_poll_event(lean_obj_arg world) {
     if (headless) {
         usleep(16000);  // headless: no terminal events, just sleep briefly
     } else {
-        // Loop: peek with timeout, break on real event or socket command
+        // Loop: peek with timeout, break on real event or socket command.
+        // IMPORTANT: rc < 0 must break immediately (with throttle) — Lean callers
+        // like waitForQ loop on this, so a missing break causes 100% CPU spin.
         for (;;) {
             int rc = tb_peek_event(&ev, 100);
-            if (rc == 0 && ev.type != 0) break;  // 0 = success
+            if (rc < 0) { usleep(16000); break; }  // not initialized or error
+            if (rc == 0 && ev.type != 0) break;     // 0 = success
             if (g_sock_cmd[0]) break;
         }
     }

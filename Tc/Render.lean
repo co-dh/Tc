@@ -98,8 +98,11 @@ partial def waitForQ : IO Unit := do
   if ev.type == Term.eventKey && ev.ch == 'q'.toNat.toUInt32 then return
   waitForQ
 
--- | Render error popup centered on screen, returns on 'q' press
+-- | Render error popup centered on screen, returns on 'q' press.
+-- Callers like SourceConfig.runList may invoke this before Term.init —
+-- waitForQ would CPU-spin since tb_peek_event returns immediately pre-init.
 def errorPopup (msg : String) : IO Unit := do
+  if !(← Term.inited) then return
   let h ← Term.height; let w ← Term.width
   let help := "press q to dismiss"
   let boxW := max msg.length help.length + 4
@@ -115,6 +118,7 @@ def errorPopup (msg : String) : IO Unit := do
 -- | Show a brief status message on the bottom line (non-blocking)
 -- No-op if terminal not initialized (height=0)
 def statusMsg (msg : String) : IO Unit := do
+  if !(← Term.inited) then return
   let h ← Term.height
   if h == 0 then return
   let w ← Term.width
