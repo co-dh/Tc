@@ -16,11 +16,13 @@ structure CmdInfo where
 -- | Command entry: metadata for key binding, menu, and dispatch
 structure Entry where
   handler : String
-  key : String := ""       -- key name: "j", "<ret>", "<C-d>", "<S-left>", etc.
+  ctx : String := ""        -- input context: r=current row, c=current column,
+                             -- g=group columns, s=selected rows, a=user arg, S=stack(2+ views)
+  key : String := ""        -- key name: "j", "<ret>", "<C-d>", "<S-left>", etc.
   label : String := ""      -- fzf menu label (empty = hidden from menu)
   resetsVS : Bool := false
   viewCtx : String := ""    -- context filter: "freqV", "colMeta", "fld", "tbl", or "" (global)
-  isArg : Bool := false     -- handler takes user input (fzf or typed arg)
+  isArg : Bool := false     -- derived from ctx containing 'a'; kept for backward compat
 
 -- | Cached: (key, viewCtx) → CmdInfo — context-aware key lookup
 initialize keyInfoMap : IO.Ref (Std.HashMap (String × String) CmdInfo) ← IO.mkRef {}
@@ -40,7 +42,7 @@ def init (cmds : Array Entry) : IO Unit := do
     let ci : CmdInfo := { handler := e.handler, resetsVS := e.resetsVS }
     if !e.key.isEmpty then keyInfo := keyInfo.insert (e.key, e.viewCtx) ci
     handlerInfo := handlerInfo.insert e.handler ci
-    if e.isArg then argSet := argSet.insert e.handler
+    if e.ctx.contains 'a' then argSet := argSet.insert e.handler
   keyInfoMap.set keyInfo
   handlerInfoMap.set handlerInfo
   argHandlerSet.set argSet
@@ -62,12 +64,12 @@ def handlerLookup (h : String) : IO CmdInfo := do
 def isArgHandler (h : String) : IO Bool := do
   pure ((← argHandlerSet.get).contains h)
 
--- | Menu items for fzf, filtered by view context. Returns (handler, key, label).
-def menuItems (viewCtx : String) : IO (Array (String × String × String)) := do
+-- | Menu items for fzf, filtered by view context. Returns (handler, ctx, key, label).
+def menuItems (viewCtx : String) : IO (Array (String × String × String × String)) := do
   let cmds ← menuCache.get
   pure (cmds.filterMap fun e =>
     if e.label.isEmpty then none
     else if !e.viewCtx.isEmpty && e.viewCtx != viewCtx then none
-    else some (e.handler, e.key, e.label))
+    else some (e.handler, e.ctx, e.key, e.label))
 
 end Tc.CmdConfig

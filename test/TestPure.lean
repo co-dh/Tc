@@ -85,19 +85,19 @@ section ViewUpdateTests
 
 -- Navigation delegates to NavState and returns Effect.none
 -- (from test_nav_down: "j moves to row 1")
-#guard (View.update testView "nav.rowInc" 1).map (·.1.nav.row.cur.val) == some 1
-#guard (View.update testView "nav.rowInc" 1).map (·.2) == some .none
+#guard (View.update testView "row.inc" 1).map (·.1.nav.row.cur.val) == some 1
+#guard (View.update testView "row.inc" 1).map (·.2) == some .none
 
 -- row.dec at 0 stays at 0 (from test_nav_up: "jk returns to row 0")
-#guard (View.update testView "nav.rowDec" 1).map (·.1.nav.row.cur.val) == some 0
+#guard (View.update testView "row.dec" 1).map (·.1.nav.row.cur.val) == some 0
 
 end ViewUpdateTests
 
 /-! ## Menu Alignment Tests -/
 
--- parseFlatSel extracts handler from aligned "handler | key | label" format
-#guard Tc.Fzf.parseFlatSel "plot.area    |   | Plot: area chart" == some "plot.area"
-#guard Tc.Fzf.parseFlatSel "sort.asc     | [ | Sort ascending" == some "sort.asc"
+-- parseFlatSel extracts handler from aligned "handler | ctx | key | label" format
+#guard Tc.Fzf.parseFlatSel "plot.area    | cg |   | Plot: area chart" == some "plot.area"
+#guard Tc.Fzf.parseFlatSel "sort.asc     | c  | [ | Sort ascending" == some "sort.asc"
 #guard Tc.Fzf.parseFlatSel "" == none
 
 /-! ## ViewStack.update Tests (derived from screen tests) -/
@@ -122,7 +122,7 @@ def twoStack : ViewStack (MockTable 5 3) := testStack.dup
 #guard (ViewStack.update twoStack "stk.pop").map (·.2) == some .none
 
 -- Unhandled commands return none
-#guard (ViewStack.update testStack "nav.rowInc").isNone
+#guard (ViewStack.update testStack "row.inc").isNone
 
 end ViewStackUpdateTests
 

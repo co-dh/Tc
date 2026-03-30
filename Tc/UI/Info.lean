@@ -16,7 +16,7 @@ namespace State
 -- | Pure update by handler name
 def update (s : State) (h : String) : Option State :=
   match h with
-  | "infoTog" => some { s with vis := !s.vis }
+  | "info.tog" => some { s with vis := !s.vis }
   | _ => none
 
 end State

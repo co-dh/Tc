@@ -68,14 +68,16 @@ def fzfIdx (opts : Array String) (items : Array String) : IO (Option Nat) := do
     | some n => return some n
     | none => return none
 
--- | Build aligned menu items: "handler | key | label" with padding
+-- | Build aligned menu items: "handler | ctx | key | label" with padding
 private def flatItems (vk : ViewKind) : IO (Array String) := do
   let items ← CmdConfig.menuItems vk.ctxStr
-  let (maxH, maxK) := items.foldl (fun (mh, mk) (h, k, _) => (max mh h.length, max mk k.length)) (0, 0)
-  return items.map fun (handler, key, label) =>
+  let (maxH, maxX, maxK) := items.foldl
+    (fun (mh, mx, mk) (h, x, k, _) => (max mh h.length, max mx x.length, max mk k.length)) (0, 0, 0)
+  return items.map fun (handler, ctx, key, label) =>
     let hp := handler ++ "".pushn ' ' (maxH - handler.length)
+    let xp := ctx ++ "".pushn ' ' (maxX - ctx.length)
     let kp := key ++ "".pushn ' ' (maxK - key.length)
-    s!"{hp} | {kp} | {label}"
+    s!"{hp} | {xp} | {kp} | {label}"
 
 -- | Parse flat selection: extract handler name before first |
 def parseFlatSel (sel : String) : Option String :=

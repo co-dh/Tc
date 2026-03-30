@@ -76,7 +76,7 @@ def update (v : View T) (h : String) (rowPg : Nat) : Option (View T × Effect) :
     let selIdxs := n.col.sels.filterMap names.idxOf?
     let grpIdxs := n.grp.filterMap names.idxOf?
     some (v, .sort curCol selIdxs grpIdxs asc)
-  | "nav.colExclude" =>
+  | "col.exclude" =>
     let name := names.getD curCol ""
     let cols := if n.hidden.isEmpty then #[name]
       else if n.hidden.contains name then n.hidden else n.hidden.push name
@@ -84,7 +84,7 @@ def update (v : View T) (h : String) (rowPg : Nat) : Option (View T × Effect) :
   | _ => (NavState.exec h n rowPg).map fun nav' =>
     let needsMore := nav'.row.cur.val + 1 >= v.nRows
       && TblOps.totalRows n.tbl > v.nRows
-      && (h == "nav.rowInc" || h == "nav.rowPgDn" || h == "nav.rowBot")
+      && (h == "row.inc" || h == "row.pgdn" || h == "row.bot")
     ({ v with nav := nav' }, if needsMore then .fetchMore else .none)
 
 end View
