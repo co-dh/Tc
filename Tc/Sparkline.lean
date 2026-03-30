@@ -21,8 +21,8 @@ def compute (t : AdbcTable) (nBars : Nat := 20) : IO (Array String) := do
   let mut parts : Array String := #[]
   let mut numIdxs : Array Nat := #[]
   for i in [:names.size] do
-    let tp := types.getD i "?"
-    if isNumericType tp then
+    let tp := types.getD i .other
+    if tp.isNumeric then
       let q := AdbcTable.quoteId (names.getD i "")
       -- LEAST clamps bucket to [0, nBars-1]; CASE handles constant columns
       let sql := s!"SELECT CASE WHEN mx = mn THEN {nBars / 2} " ++

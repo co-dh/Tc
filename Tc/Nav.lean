@@ -115,7 +115,7 @@ def curColIdx (nav : NavState nRows nCols t) : Nat := colIdxAt nav.grp nav.colNa
 def curColName (nav : NavState nRows nCols t) : String := nav.colNames.getD nav.curColIdx ""
 
 -- | Current column type
-def curColType (nav : NavState nRows nCols t) : String := TblOps.colType nav.tbl nav.curColIdx
+def curColType (nav : NavState nRows nCols t) : ColType := TblOps.colType nav.tbl nav.curColIdx
 
 -- | Column names in display order (grouped first, then rest)
 def dispColNames (nav : NavState nRows nCols t) : Array String :=

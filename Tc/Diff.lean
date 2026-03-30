@@ -7,18 +7,18 @@ import Tc.Data.ADBC.Ops
 
 namespace Tc.Diff
 
-private def isNumeric := isNumericType
+private def isNumeric := ColType.isNumeric
 
 -- | DuckDB double-quoted identifier (escapes " → "")
 private def quoted (s : String) : String := "\"" ++ s.replace "\"" "\"\"" ++ "\""
 
 -- | Find columns present in both tables with same name and type
-private def commonCols (left right : AdbcTable) : Array (String × String) :=
+private def commonCols (left right : AdbcTable) : Array (String × ColType) :=
   left.colNames.filterMap fun name => do
     let li ← left.colNames.idxOf? name
     let ri ← right.colNames.idxOf? name
-    let lt := left.colTypes.getD li "?"
-    let rt := right.colTypes.getD ri "?"
+    let lt := left.colTypes.getD li .other
+    let rt := right.colTypes.getD ri .other
     if lt == rt then pure (name, lt) else none
 
 -- | Deduplicate array preserving insertion order
@@ -26,7 +26,7 @@ private def dedup (a : Array String) : Array String :=
   a.foldl (init := #[]) fun acc k => if acc.contains k then acc else acc.push k
 
 -- | Columns in `tbl` that don't appear in `common` or `keys`
-private def onlyCols (tbl : AdbcTable) (common : Array (String × String)) (keys : Array String) :=
+private def onlyCols (tbl : AdbcTable) (common : Array (String × ColType)) (keys : Array String) :=
   tbl.colNames.filter fun n => !common.any (·.1 == n) && !keys.contains n
 
 -- | FULL OUTER JOIN top 2 stack views on shared categorical columns.

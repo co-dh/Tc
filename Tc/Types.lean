@@ -6,6 +6,27 @@
 def Array.joinWith (a : Array String) (sep : String) : String :=
   sep.intercalate a.toList
 
+-- | Column type — parsed once at FFI boundary, used everywhere else
+inductive ColType | int | float | decimal | str | date | time | timestamp | bool | other
+  deriving BEq, Repr, Inhabited
+
+namespace ColType
+
+def ofString : String → ColType
+  | "int" => .int | "float" => .float | "decimal" => .decimal | "str" => .str
+  | "date" => .date | "time" => .time | "timestamp" => .timestamp | "bool" => .bool
+  | _ => .other
+
+instance : ToString ColType where toString
+  | .int => "int" | .float => "float" | .decimal => "decimal" | .str => "str"
+  | .date => "date" | .time => "time" | .timestamp => "timestamp" | .bool => "bool"
+  | .other => "?"
+
+def isNumeric : ColType → Bool | .int | .float | .decimal => true | _ => false
+def isTime : ColType → Bool | .time | .timestamp | .date => true | _ => false
+
+end ColType
+
 -- | Toggle element in array (add if absent, remove if present)
 def Array.toggle [BEq α] (arr : Array α) (x : α) : Array α :=
   if arr.contains x then arr.filter (· != x) else arr.push x
@@ -152,7 +173,8 @@ def buildFilterPrql (col : String) (vals : Array String) (result : String) (nume
   else if !input.isEmpty then input
   else ""
 
-def isNumericType (t : String) : Bool := t == "int" || t == "float" || t == "decimal"
+-- compat shim — prefer ColType.isNumeric on typed values
+def isNumericType (t : String) : Bool := (ColType.ofString t).isNumeric
 
 /-- TblOps: unified read-only table interface.
     Provides row/column access, metadata queries, filtering, and rendering. -/
@@ -166,8 +188,8 @@ class TblOps (α : Type) where
   render    : α → RenderCtx → IO (Array Nat)
   -- extract columns [r0, r1) by index (for plot/export)
   getCols   : α → Array Nat → Nat → Nat → IO (Array Column) := fun _ _ _ _ => pure #[]
-  -- column type name (e.g. "time", "int", "float", "str")
-  colType   : α → Nat → String := fun _ _ => "?"
+  -- column type
+  colType   : α → Nat → ColType := fun _ _ => .other
   -- build filter expression from fzf result (default: PRQL syntax)
   buildFilter : α → String → Array String → String → Bool → String
     := fun _ => buildFilterPrql

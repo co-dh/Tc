@@ -18,9 +18,9 @@ def Cache.empty : Cache := ("", 0, "")
 private def compute (t : AdbcTable) (colIdx : Nat) : IO String := do
   if t.totalRows > Tc.prqlLimit then return s!"#{t.totalRows}"
   let colName := t.colNames.getD colIdx ""
-  let colType := t.colTypes.getD colIdx "?"
+  let colType := t.colTypes.getD colIdx .other
   let q := AdbcTable.quoteId colName
-  let isNum := isNumericType colType
+  let isNum := colType.isNumeric
   let sql ← do
     let some baseSql ← Prql.compile t.query.render | return ""
     let aggs := if isNum
