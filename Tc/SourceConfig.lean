@@ -188,9 +188,7 @@ private def cacheStore (path : String) (tbl : AdbcTable) : IO Unit :=
     else arr.push (path, tbl)
 
 -- | Build AdbcTable from a temp table name
-private def fromTbl (tbl : String) : IO (Option AdbcTable) := do
-  let q : Prql.Query := { base := s!"from {tbl}" }
-  AdbcTable.requery q (← AdbcTable.queryCount q)
+private def fromTbl (tbl : String) := AdbcTable.fromTmpTbl tbl
 
 -- | Extract last path component as a filename
 private def nameFromPath (path : String) : String :=

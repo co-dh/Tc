@@ -160,6 +160,11 @@ def requery (query : Prql.Query) (total : Nat := 0) : IO (Option AdbcTable) := d
   let some qr ← Prql.query s!"{query.render} | take {prqlLimit}" | return none
   some <$> ofQueryResult qr query total
 
+-- | Build AdbcTable from an existing temp table name
+def fromTmpTbl (tblName : String) : IO (Option AdbcTable) := do
+  let q : Prql.Query := { base := s!"from {tblName}" }
+  requery q (← queryCount q)
+
 -- | Sanitize path to valid SQL identifier (alphanumeric + underscore)
 private def remoteTblName (path : String) : String :=
   "tc_" ++ String.ofList (path.toList.map fun c => if c.isAlphanum then c else '_')
