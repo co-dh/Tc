@@ -7,12 +7,13 @@ import Tc.Fzf
 import Tc.View
 
 namespace Tc.ExportFmt
-def ext : ExportFmt → String | .csv => "csv" | .parquet => "parquet" | .json => "json" | .ndjson => "ndjson"
-def copyOpt : ExportFmt → String
-  | .csv => "(FORMAT CSV, HEADER true)" | .json => "(FORMAT JSON)"
-  | .parquet => "(FORMAT PARQUET)" | .ndjson => "(FORMAT JSON, ARRAY false)"
-def ofString? : String → Option ExportFmt
-  | "csv" => some .csv | "parquet" => some .parquet | "json" => some .json | "ndjson" => some .ndjson | _ => none
+-- | (extension, COPY option, ExportFmt) — single source of truth
+private def all : Array (String × String × ExportFmt) := #[
+  ("csv", "(FORMAT CSV, HEADER true)", .csv), ("parquet", "(FORMAT PARQUET)", .parquet),
+  ("json", "(FORMAT JSON)", .json), ("ndjson", "(FORMAT JSON, ARRAY false)", .ndjson)]
+def ext (f : ExportFmt) : String := all.findSome? (fun (e, _, v) => if v == f then some e else none) |>.getD "csv"
+def copyOpt (f : ExportFmt) : String := all.findSome? (fun (_, o, v) => if v == f then some o else none) |>.getD ""
+def ofString? (s : String) : Option ExportFmt := all.findSome? fun (e, _, v) => if e == s then some v else none
 end Tc.ExportFmt
 
 namespace Tc.Export
@@ -24,22 +25,17 @@ def pickFmt : IO (Option ExportFmt) := do
   | none => pure none
 
 -- | Export current view to file via DuckDB COPY
-def exportView (t : AdbcTable) (path : String) (fmt : ExportFmt) : IO Unit := do
-  let some sql ← Prql.compile t.query.render | throw (.userError "PRQL compile failed")
-  let copySql := s!"COPY ({stripSemi sql}) TO '{escSql path}' {fmt.copyOpt}"
-  Log.write "export" copySql
-  let _ ← Adbc.query copySql
-
--- | Run export effect: build path from view name, export via DuckDB COPY
 def run (s : ViewStack AdbcTable) (fmt : ExportFmt) : IO (ViewStack AdbcTable) := do
+  let some sql ← Prql.compile s.tbl.query.render | throw (.userError "PRQL compile failed")
   let name := s.cur.tabName.replace "/" "_" |>.replace " " "_"
   let stem := (name.splitOn ".").head?.filter (!·.isEmpty) |>.getD name
   let path := s!"{← Log.dir}/tv_export_{stem}.{fmt.ext}"
-  exportView s.tbl path fmt
-  statusMsg s!"exported {path}"
-  pure s
+  let copySql := s!"COPY ({stripSemi sql}) TO '{escSql path}' {fmt.copyOpt}"
+  Log.write "export" copySql
+  let _ ← Adbc.query copySql
+  statusMsg s!"exported {path}"; pure s
 
--- | Export by format string directly (no fzf). Called by socket/dispatch.
+-- | Export by format string directly (no fzf)
 def runWith (s : ViewStack AdbcTable) (fmtStr : String) : IO (ViewStack AdbcTable) := do
   let some fmt := ExportFmt.ofString? fmtStr | return s
   run s fmt

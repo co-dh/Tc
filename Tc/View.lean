@@ -45,26 +45,20 @@ def new {nr nc : Nat} (nav : NavState nr nc T) (path : String) : View T :=
 
 -- | Create View from table + path (returns none if empty)
 def fromTbl (tbl : T) (path : String)
-    (col : Nat := 0) (grp : Array String := #[]) (row : Nat := 0) : Option (View T) := do
-  let nCols := (TblOps.colNames tbl).size
-  let nRows := TblOps.nRows tbl
-  if hc : nCols > 0 then
-    if hr : nRows > 0 then some (View.new (NavState.newAt tbl rfl rfl hr hc col grp row) path)
-    else none
-  else none
+    (col : Nat := 0) (grp : Array String := #[]) (row : Nat := 0) : Option (View T) :=
+  let nCols := (TblOps.colNames tbl).size; let nRows := TblOps.nRows tbl
+  if hc : nCols > 0 then if hr : nRows > 0 then
+    some (View.new (NavState.newAt tbl rfl rfl hr hc col grp row) path)
+  else none else none
 
--- | Rebuild view with new table, preserving all attributes from old view.
--- Only nRows/nCols/nav change; everything else (vkind, disp, prec, etc.) is kept.
+-- | Rebuild view with new table, preserving all attributes.
 def rebuild (old : View T) (tbl : T) (col : Nat := old.nav.col.cur.val)
     (grp : Array String := old.nav.grp) (row : Nat := 0) : Option (View T) :=
-  let nCols := (TblOps.colNames tbl).size
-  let nRows := TblOps.nRows tbl
-  if hc : nCols > 0 then
-    if hr : nRows > 0 then
-      let nav := NavState.newAt tbl rfl rfl hr hc col grp row
-      some { old with nRows, nCols, nav := { nav with hidden := old.nav.hidden }, widths := #[] }
-    else none
-  else none
+  let nCols := (TblOps.colNames tbl).size; let nRows := TblOps.nRows tbl
+  if hc : nCols > 0 then if hr : nRows > 0 then
+    let nav := NavState.newAt tbl rfl rfl hr hc col grp row
+    some { old with nRows, nCols, nav := { nav with hidden := old.nav.hidden }, widths := #[] }
+  else none else none
 
 -- | Pure update by handler name
 def update (v : View T) (h : String) (rowPg : Nat) : Option (View T × Effect) :=

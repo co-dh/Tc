@@ -61,10 +61,7 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
     curRow := nav.row.cur.val, curCol := nav.curColIdx, moveDir,
     selColIdxs := nav.selColIdxs, rowSels := nav.row.sels,
     hiddenIdxs := nav.hiddenIdxs ++ extraHidden, styles, prec, widthAdj, heatMode, sparklines }
-  let outWidths ← TblOps.render nav.tbl ctx
-  let widths := outWidths  -- C returns base widths (no widthAdj), store as-is
-  -- status line: colName left, stats right
-  -- freqV shows total distinct groups, others show table totalRows
+  let widths ← TblOps.render nav.tbl ctx
   let total := match vkind with
     | .freqV _ t => t
     | _ => TblOps.totalRows nav.tbl
