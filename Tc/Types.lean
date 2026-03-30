@@ -243,6 +243,10 @@ inductive ViewKind where
   | fld (path : String) (depth : Nat)             -- folder browser: path + find depth
   deriving Inhabited, Repr, BEq
 
+-- | Context string for config lookup (shared by Fzf and App dispatch)
+def ViewKind.ctxStr : ViewKind → String
+  | .freqV _ _ => "freqV" | .colMeta => "colMeta" | .fld _ _ => "fld" | .tbl => "tbl"
+
 -- | Plot types and export formats
 inductive PlotKind where | line | bar | scatter | hist | box | area | density | step | violin deriving Repr, BEq
 

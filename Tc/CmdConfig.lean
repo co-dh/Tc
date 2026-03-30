@@ -62,12 +62,12 @@ def handlerLookup (h : String) : IO CmdInfo := do
 def isArgHandler (h : String) : IO Bool := do
   pure ((← argHandlerSet.get).contains h)
 
--- | Menu items for fzf, filtered by view context. Returns (handler, label).
-def menuItems (viewCtx : String) : IO (Array (String × String)) := do
+-- | Menu items for fzf, filtered by view context. Returns (handler, key, label).
+def menuItems (viewCtx : String) : IO (Array (String × String × String)) := do
   let cmds ← menuCache.get
   pure (cmds.filterMap fun e =>
     if e.label.isEmpty then none
     else if !e.viewCtx.isEmpty && e.viewCtx != viewCtx then none
-    else some (e.handler, e.label))
+    else some (e.handler, e.key, e.label))
 
 end Tc.CmdConfig
