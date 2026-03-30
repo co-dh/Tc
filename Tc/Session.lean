@@ -31,15 +31,9 @@ private def sessPath (name : String) : IO String := do
 
 /-! ## ToJson / FromJson instances -/
 
-instance : ToJson Agg where toJson
-  | .count => "count" | .sum => "sum" | .avg => "avg"
-  | .min => "min" | .max => "max" | .stddev => "stddev" | .dist => "dist"
-
+instance : ToJson Agg where toJson a := a.short
 instance : FromJson Agg where fromJson? j := do
-  match ← j.getStr? with
-  | "count" => pure .count | "sum" => pure .sum | "avg" => pure .avg
-  | "min" => pure .min | "max" => pure .max | "stddev" => pure .stddev | "dist" => pure .dist
-  | s => throw s!"unknown agg: {s}"
+  match Agg.fromStr? (← j.getStr?) with | some a => pure a | none => throw "unknown agg"
 
 instance : ToJson Op where toJson
   | .filter e => Json.mkObj [("type", "filter"), ("expr", toJson e)]
@@ -110,26 +104,26 @@ private def stackToJson (s : ViewStack AdbcTable) : String :=
 
 -- | Restore a single view from JSON, re-executing the query pipeline.
 --   Errors are caught per-view so partial restoration works.
+-- | JSON field with Inhabited default
+private def jd [FromJson α] [Inhabited α] (j : Json) (k : String) : α :=
+  (j.getObjValAs? α k).toOption.getD default
+
 private def restoreView (j : Json) : IO (Option (View AdbcTable)) := do
-  let path := (j.getObjValAs? String "path").toOption.getD ""
+  let path : String := jd j "path"
   if path.isEmpty then return none
   let vkind := (j.getObjValAs? ViewKind "vkind").toOption.getD .tbl
-  let disp := (j.getObjValAs? String "disp").toOption.getD ""
+  let disp : String := jd j "disp"
   let prec := (j.getObjValAs? Nat "prec").toOption.getD 3
-  let widthAdj := (j.getObjValAs? Int "widthAdj").toOption.getD 0
-  let row := (j.getObjValAs? Nat "row").toOption.getD 0
-  let col := (j.getObjValAs? Nat "col").toOption.getD 0
-  let grp := (j.getObjValAs? (Array String) "grp").toOption.getD #[]
-  let hidden := (j.getObjValAs? (Array String) "hidden").toOption.getD #[]
-  let colSels := (j.getObjValAs? (Array String) "colSels").toOption.getD #[]
+  let widthAdj : Int := jd j "widthAdj"
+  let row : Nat := jd j "row"; let col : Nat := jd j "col"
+  let grp : Array String := jd j "grp"; let hidden : Array String := jd j "hidden"
+  let colSels : Array String := jd j "colSels"
   let search : Option (Nat × String) := do
     let s ← (j.getObjVal? "search").toOption
-    if s.isNull then none
-    else some ((s.getObjValAs? Nat "col").toOption.getD 0,
-               (s.getObjValAs? String "val").toOption.getD "")
+    if s.isNull then none else some (jd s "col", jd s "val")
   let qObj := j.getObjValD "query"
   let base := (qObj.getObjValAs? String "base").toOption.getD s!"from `{path}`"
-  let ops := (qObj.getObjValAs? (Array Op) "ops").toOption.getD #[]
+  let ops : Array Op := jd qObj "ops"
   let query : Prql.Query := { base, ops }
   let tbl? ← try
     match vkind with
@@ -161,30 +155,17 @@ def save (stk : ViewStack AdbcTable) (name : String := autoName stk) : IO Unit :
   statusMsg s!"session saved: {name}"
 
 def load (name : String) : IO (Option (ViewStack AdbcTable)) := do
-  let path ← sessPath name
-  let content ← try IO.FS.readFile path catch _ => return none
+  let content ← try IO.FS.readFile (← sessPath name) catch _ => return none
   let .ok json := Json.parse content | return none
-  let views := (json.getObjValAs? (Array Json) "views").toOption.getD #[]
-  if views.isEmpty then return none
-  let mut restored : Array (View AdbcTable) := #[]
-  for v in views do
-    match ← restoreView v with
-    | some view => restored := restored.push view
-    | none => pure ()
-  if h : restored.size > 0 then
-    pure (some ⟨restored[0], (restored.extract 1 restored.size).toList⟩)
+  let views : Array Json := jd json "views"
+  let restored ← views.filterMapM restoreView
+  if h : restored.size > 0 then pure (some ⟨restored[0], (restored.extract 1 restored.size).toList⟩)
   else pure none
 
 def list : IO (Array String) := do
-  let dir ← sessDir
-  let mut names : Array String := #[]
-  try
-    for entry in ← System.FilePath.readDir dir do
-      let name := entry.fileName
-      if name.endsWith ".json" then
-        names := names.push ((name.take (name.length - 5)).toString)
-  catch _ => pure ()  -- dir may not exist yet
-  pure names
+  let entries ← try System.FilePath.readDir (← sessDir) catch _ => pure #[]
+  pure (entries.filterMap fun e =>
+    let n := e.fileName; if n.endsWith ".json" then some (n.take (n.length - 5)).toString else none)
 
 -- | Prompt for session name; returns none on cancel or empty input
 def pickSaveName : IO (Option String) := do
