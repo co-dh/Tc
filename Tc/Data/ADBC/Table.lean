@@ -85,6 +85,17 @@ def nextTmpName (label : String) : IO String := do
   let n ← memTblCounter.modifyGet fun n => (n, n + 1)
   pure s!"tc_{label}_{n}"
 
+-- | Track loaded DuckDB extensions (idempotent install+load)
+initialize extLoaded : IO.Ref (Array String) ← IO.mkRef #[]
+
+def loadDuckExt (ext : String) : IO Unit := do
+  if ext.isEmpty then return
+  let done ← extLoaded.get
+  if done.contains ext then return
+  Log.write "ext" s!"loading: {ext}"
+  let _ ← Adbc.query s!"INSTALL {ext}; LOAD {ext}"
+  extLoaded.modify (·.push ext)
+
 namespace AdbcTable
 
 -- | Init ADBC backend (DuckDB), install+load httpfs for hf:// support.
@@ -268,11 +279,11 @@ private def fromIngest (content label reader : String) : IO (Option AdbcTable) :
   let tbl := s!"tc_{label}_{n}"
   try
     let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS SELECT * FROM {reader}('{tmp}')"
-    try IO.FS.removeFile tmp catch _ => pure ()
+    Tc.tryRemoveFile tmp
     let q : Prql.Query := { base := s!"from {tbl}" }
     requery q (← queryCount q)
   catch e =>
-    try IO.FS.removeFile tmp catch _ => pure ()
+    Tc.tryRemoveFile tmp
     Log.write label s!"error: {e.toString}"
     return none
 
@@ -283,8 +294,7 @@ def fromJson (content : String) := fromIngest content "json" "read_json_auto"
 --   setupSql: run before reading (e.g. "INSTALL arrow; LOAD arrow")
 --   reader: DuckDB reader function (e.g. "read_arrow"). Empty = auto-detect via backtick.
 def fromFileWith (path : String) (reader duckdbExt : String) : IO (Option AdbcTable) := do
-  if !duckdbExt.isEmpty then
-    let _ ← Adbc.query s!"INSTALL {duckdbExt}; LOAD {duckdbExt}"
+  loadDuckExt duckdbExt
   if reader.isEmpty then
     fromFile path
   else

@@ -55,6 +55,10 @@ namespace AppState
 def withStk (a : AppState) (ci : CmdConfig.CmdInfo) (s' : ViewStack AdbcTable) : AppState :=
   { a with stk := s', vs := if ci.resetsVS then .default else a.vs }
 
+-- | Log error, show popup, return unchanged state
+private def errAction (a : AppState) (e : IO.Error) : IO Action := do
+  let msg := e.toString; Log.error msg; errorPopup msg; pure (.ok a)
+
 -- | Try/catch wrapper for stack-level IO (resets vs+sparklines on success)
 private def tryStk (a : AppState) (ci : CmdConfig.CmdInfo)
     (f : IO (Option (ViewStack AdbcTable))) : IO Action := do
@@ -62,7 +66,7 @@ private def tryStk (a : AppState) (ci : CmdConfig.CmdInfo)
   | .ok (some s') =>
     pure (.ok (a.withStk ci s').resetVS)
   | .ok none => pure (.ok a)
-  | .error e => Log.error e.toString; errorPopup e.toString; pure (.ok a)
+  | .error e => errAction a e
 
 -- | Execute a residual Effect from View.update/Freq.update inline
 private def runViewEffect (a : AppState) (ci : CmdConfig.CmdInfo)
@@ -78,7 +82,7 @@ private def runViewEffect (a : AppState) (ci : CmdConfig.CmdInfo)
       | some rv => pure (.ok { a' with stk := s.setCur rv }.resetVS)
       | none => pure (.ok a')
     | .ok none => pure (.ok a')
-    | .error err => Log.error err.toString; errorPopup err.toString; pure (.ok a')
+    | .error err => errAction a' err
   | .sort colIdx sels grp asc => tryStk a ci do
     let tbl' ← ModifyTable.sort s.tbl colIdx sels grp asc
     pure (v'.rebuild tbl' (col := colIdx) (row := v'.nav.row.cur.val) |>.map s.setCur)
@@ -162,7 +166,7 @@ private partial def runMenu (a : AppState) : IO Action := do
 private def runStackIO (a : AppState) (f : IO (ViewStack AdbcTable)) : IO Action := do
   match ← f.toBaseIO with
   | .ok s' => pure (.ok { a with stk := s' }.resetVS)
-  | .error e => Log.error e.toString; errorPopup e.toString; pure (.ok a)
+  | .error e => errAction a e
 
 end AppState
 

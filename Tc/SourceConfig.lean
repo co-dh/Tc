@@ -147,22 +147,11 @@ def Config.parent (cfg : Config) (path : String) : Option String :=
 -- | Track which prefixes/extensions have completed setup
 initialize setupDone : IO.Ref (Array String) ← IO.mkRef #[]
 
--- | Track which DuckDB extensions have been installed/loaded
-initialize extLoaded : IO.Ref (Array String) ← IO.mkRef #[]
-
--- | Install and load a DuckDB extension (idempotent)
-def loadExt (ext : String) : IO Unit := do
-  if ext.isEmpty then return
-  let done ← extLoaded.get
-  if done.contains ext then return
-  Log.write "src" s!"loading ext: {ext}"
-  let _ ← Adbc.query s!"INSTALL {ext}; LOAD {ext}"
-  extLoaded.modify (·.push ext)
 
 -- | Run one-time setup for a config (duckdbExt + setupCmd + setupSql), idempotent.
 --   Tries setupSql first; if it fails (e.g. DB doesn't exist), runs setupCmd to create it.
 def runSetup (cfg : Config) : IO Unit := do
-  loadExt cfg.duckdbExt
+  loadDuckExt cfg.duckdbExt
   let done ← setupDone.get
   if done.contains cfg.pfx then return
   let homeDir := (← IO.getEnv "HOME").getD "/tmp"
@@ -271,7 +260,7 @@ private def Config.runListCmd (cfg : Config) (path tbl : String) : IO (Option Ad
         IO.FS.writeFile tmpFile fbOut.stdout
         let fbSql := expand cfg.fallbackSql #[("src", tmpFile)]
         let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS {fbSql}"
-        try IO.FS.removeFile tmpFile catch _ => pure ()
+        Tc.tryRemoveFile tmpFile
         return ← fromTbl tbl
     let errMsg := out.stderr.trimAscii.toString
     Log.write "src" s!"list failed (exit {out.exitCode}): {errMsg}"
@@ -300,7 +289,7 @@ private def Config.runListCmd (cfg : Config) (path tbl : String) : IO (Option Ad
   if cfg.parent path |>.isSome then
     try let _ ← Adbc.query s!"INSERT INTO {tbl} SELECT '..' as name, 0 as size, '' as date, 'dir' as type"
     catch _ => pure ()
-  try IO.FS.removeFile tmpFile catch _ => pure ()
+  Tc.tryRemoveFile tmpFile
   fromTbl tbl
 
 -- | Run listing: cache check → setup → dispatch to sql/cmd mode → cache store.
@@ -356,7 +345,7 @@ def Config.runEnter (cfg : Config) (name : String) : IO (Option AdbcTable) := do
   let tmpFile ← Tc.tmpPath s!"src-enter-{tbl}.json"
   IO.FS.writeFile tmpFile json
   let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS SELECT * FROM read_json_auto('{tmpFile}')"
-  try IO.FS.removeFile tmpFile catch _ => pure ()
+  Tc.tryRemoveFile tmpFile
   -- Apply types from DuckDB stub view (e.g. osq.groups has typed columns)
   let typeApply : IO Unit := do
     let qr ← Adbc.queryParam "SELECT column_name, data_type FROM duckdb_columns() WHERE table_name = $1 AND data_type != 'VARCHAR'" name

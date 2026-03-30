@@ -74,7 +74,7 @@ def tryReadCsv (path : String) : IO (Option (View AdbcTable)) := do
 
 -- | ATTACH database file and list its tables as a folder view
 private def attachFile (ap : String) (fmt : Format) : IO (Option (View AdbcTable)) := do
-  if !fmt.duckdbExt.isEmpty then let _ ← Adbc.query s!"INSTALL {fmt.duckdbExt}; LOAD {fmt.duckdbExt}"
+  loadDuckExt fmt.duckdbExt
   let typClause := if fmt.attachType.isEmpty then "" else s!"TYPE {fmt.attachType}, "
   let _ ← Adbc.query s!"DETACH DATABASE IF EXISTS extdb"
   let _ ← Adbc.query s!"ATTACH '{escSql ap}' AS extdb ({typClause}READ_ONLY)"

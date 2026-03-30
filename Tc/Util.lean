@@ -59,6 +59,10 @@ initialize tmpDir : IO.Ref String ← do
 def tmpPath (name : String) : IO String :=
   return s!"{← tmpDir.get}/{name}"
 
+-- | Remove file, ignoring errors (file may not exist)
+def tryRemoveFile (path : String) : IO Unit :=
+  try IO.FS.removeFile path catch _ => pure ()
+
 def cleanupTmp : IO Unit := do
   let dir ← tmpDir.get
   let _ ← IO.Process.output { cmd := "rm", args := #["-rf", dir] }
