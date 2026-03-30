@@ -2,31 +2,20 @@
   Core types: Cell, Column, Table, PureKey
   Table stores columns by name (HashMap) for direct name-based access
 -/
-import Std.Data.HashMap
-import Lean.Elab.Command
+import Tc.StrEnum
 -- | Join array elements with separator (avoids .toList |> sep.intercalate)
 def Array.joinWith (a : Array String) (sep : String) : String :=
   sep.intercalate a.toList
 
 -- | Column type — parsed once at FFI boundary, used everywhere else
 inductive ColType | int | float | decimal | str | date | time | timestamp | bool | other
-  deriving BEq, Repr, Inhabited
+  deriving BEq, Repr, Inhabited, StrEnum
 
 namespace ColType
-
-def ofString : String → ColType
-  | "int" => .int | "float" => .float | "decimal" => .decimal | "str" => .str
-  | "date" => .date | "time" => .time | "timestamp" => .timestamp | "bool" => .bool
-  | _ => .other
-
-instance : ToString ColType where toString
-  | .int => "int" | .float => "float" | .decimal => "decimal" | .str => "str"
-  | .date => "date" | .time => "time" | .timestamp => "timestamp" | .bool => "bool"
-  | .other => "?"
-
+-- ofString with fallback (FFI boundary returns unknown types)
+def ofString (s : String) : ColType := StrEnum.ofString? s |>.getD .other
 def isNumeric : ColType → Bool | .int | .float | .decimal => true | _ => false
 def isTime : ColType → Bool | .time | .timestamp | .date => true | _ => false
-
 end ColType
 
 -- | Toggle element in array (add if absent, remove if present)
@@ -251,14 +240,11 @@ def colsToText (names : Array String) (cols : Array Column) (nr : Nat) : String 
 -- | Aggregate function
 inductive Agg where
   | count | sum | avg | min | max | stddev | dist
-  deriving Repr, Inhabited, BEq
+  deriving Repr, Inhabited, BEq, StrEnum
 
 namespace Agg
-private def all : Array (String × Agg) := #[
-  ("count", .count), ("sum", .sum), ("avg", .avg), ("min", .min),
-  ("max", .max), ("stddev", .stddev), ("dist", .dist)]
-def short (a : Agg) : String := all.findSome? (fun (s, v) => if v == a then some s else none) |>.getD "?"
-def fromStr? (s : String) : Option Agg := all.findSome? fun (k, v) => if k == s then some v else none
+def short (a : Agg) : String := toString a
+def fromStr? := @StrEnum.ofString? Agg _
 end Agg
 
 -- | Table operation (single pipeline stage)
@@ -285,12 +271,9 @@ def ViewKind.ctxStr : ViewKind → String
   | .freqV _ _ => "freqV" | .colMeta => "colMeta" | .fld _ _ => "fld" | .tbl => "tbl"
 
 -- | Plot types and export formats
-inductive PlotKind where | line | bar | scatter | hist | box | area | density | step | violin deriving Repr, BEq
+inductive PlotKind where | line | bar | scatter | hist | box | area | density | step | violin deriving Repr, BEq, StrEnum
 
-instance : ToString PlotKind where
-  toString | .line => "line" | .bar => "bar" | .scatter => "scatter" | .hist => "hist" | .box => "box"
-           | .area => "area" | .density => "density" | .step => "step" | .violin => "violin"
-inductive ExportFmt where | csv | parquet | json | ndjson deriving Repr, BEq
+inductive ExportFmt where | csv | parquet | json | ndjson deriving Repr, BEq, StrEnum
 
 -- | Residual effects from pure code that can't do IO (View.update, ViewStack.update, Freq.update).
 inductive Effect where
