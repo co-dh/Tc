@@ -182,72 +182,80 @@ private def runStackIO (a : AppState) (f : IO (ViewStack AdbcTable)) : IO Action
 
 end AppState
 
--- | Register all handlers into the unified handlerMap.
--- Groups: pure state, stack ops, IO domain, prefix domain, arg commands.
+-- | Handler combinators — build HandlerFn from domain functions
+private def pureH (f : AppState → CmdConfig.CmdInfo → Option AppState) : HandlerFn :=
+  fun a ci _ => pure (match f a ci with | some a' => .ok a' | none => .unhandled)
+-- domain dispatch with tryStk + viewUp fallback
+private def domainH (d : ViewStack AdbcTable → String → Option (IO (Option (ViewStack AdbcTable)))) : HandlerFn :=
+  fun a ci _ => do
+    if let some f := d a.stk ci.handler then return ← a.tryStk ci f
+    a.viewUp ci
+-- domain dispatch returning non-optional (Filter style)
+private def domainH' (d : ViewStack AdbcTable → String → Option (IO (ViewStack AdbcTable))) : HandlerFn :=
+  fun a ci _ => do
+    if let some f := d a.stk ci.handler then return ← a.tryStk ci (some <$> f)
+    a.viewUp ci
+-- stack op
+private def stkH : HandlerFn := fun a ci _ =>
+  pure (match ViewStack.update a.stk ci.handler with
+    | some (_, .quit) => .quit | some (s', _) => .ok (a.withStk ci s') | none => .unhandled)
+-- plot: handler name → PlotKind → run
+private def plotH : HandlerFn := fun a ci _ => do
+  if let some k := Plot.kindOf? ci.handler then return ← a.tryStk ci (Plot.run a.stk k)
+  pure .unhandled
+-- arg command: fzf version when empty, direct when arg given
+private def argH (fzf : ViewStack AdbcTable → IO (ViewStack AdbcTable))
+    (direct : ViewStack AdbcTable → String → IO (ViewStack AdbcTable)) : HandlerFn :=
+  fun a _ arg => a.runStackIO (if arg.isEmpty then fzf a.stk else direct a.stk arg)
+
+-- | All handlers as a flat table — adding a handler = adding a row
+private def handlerTable : Array (String × HandlerFn) := #[
+  ("quit",    fun _ _ _ => pure .quit),
+  ("menu",    fun a _ _ => AppState.runMenu a),
+  ("xpose",   fun a ci _ => a.tryStk ci (Transpose.push a.stk)),
+  ("diff",    fun a ci _ => if a.stk.cur.sameHide.isEmpty then a.tryStk ci (Diff.run a.stk)
+              else pure (.ok { a with stk := a.stk.setCur (Diff.showSame a.stk.cur), vs := .default, sparklines := #[] })),
+  -- pure state
+  ("scrollUp",  pureH AppState.sharedPure), ("scrollDn",  pureH AppState.sharedPure),
+  ("precDec",   pureH AppState.sharedPure), ("precInc",   pureH AppState.sharedPure),
+  ("prec0",     pureH AppState.sharedPure), ("precMax",   pureH AppState.sharedPure),
+  ("infoTog",   pureH AppState.sharedPure),
+  ("heat.0",    pureH AppState.sharedPure), ("heat.1",    pureH AppState.sharedPure),
+  ("heat.2",    pureH AppState.sharedPure), ("heat.3",    pureH AppState.sharedPure),
+  -- stack
+  ("stk.pop", stkH), ("stk.swap", stkH), ("stk.dup", stkH),
+  -- domain: folder, meta, filter (dispatch + viewUp fallback)
+  ("folder.push", domainH Folder.dispatch), ("folder.enter", domainH Folder.dispatch),
+  ("folder.parent", domainH Folder.dispatch), ("folder.del", domainH Folder.dispatch),
+  ("folder.depthDec", domainH Folder.dispatch), ("folder.depthInc", domainH Folder.dispatch),
+  ("meta.push", domainH Meta.dispatch), ("meta.selNull", domainH Meta.dispatch),
+  ("meta.selSingle", domainH Meta.dispatch), ("meta.setKey", domainH Meta.dispatch),
+  ("filter.searchNext", domainH' Filter.dispatch), ("filter.searchPrev", domainH' Filter.dispatch),
+  -- plot
+  ("plot.area", plotH), ("plot.line", plotH), ("plot.scatter", plotH), ("plot.bar", plotH),
+  ("plot.box", plotH), ("plot.step", plotH), ("plot.hist", plotH), ("plot.density", plotH),
+  ("plot.violin", plotH),
+  -- freq (viewUp handles Freq.update internally)
+  ("freq.open", fun a ci _ => a.viewUp ci), ("freq.filter", fun a ci _ => a.viewUp ci),
+  -- arg commands
+  ("split",            argH Split.run Split.runWith),
+  ("derive",           argH Derive.run Derive.runWith),
+  ("filter.rowFilter", argH ViewStack.rowFilter ViewStack.filterWith),
+  ("filter.rowSearch", argH ViewStack.rowSearch ViewStack.searchWith),
+  ("filter.colSearch", argH ViewStack.colSearch ViewStack.colJumpWith),
+  ("export",  fun a _ arg => a.runStackIO (if arg.isEmpty then do
+    match ← Export.pickFmt with | some f => Export.run a.stk f | none => pure a.stk
+    else Export.runWith a.stk arg)),
+  ("sessSave", fun a _ arg => a.runStackIO (do Session.saveWith a.stk arg; pure a.stk)),
+  ("sessLoad", fun a _ arg => a.runStackIO (do
+    match ← Session.loadWith arg with | some stk' => pure stk' | none => pure a.stk)),
+  ("join",     fun a _ arg => a.runStackIO (do
+    match ← Join.runWith a.stk arg with | some s' => pure s' | none => pure a.stk))
+]
+
 def initHandlers : IO Unit := do
   let mut m : Std.HashMap String HandlerFn := {}
-  -- quit
-  m := m.insert "quit" fun _ _ _ => pure .quit
-  -- pure state: scroll, prec, heat, info
-  for h in #["scrollUp", "scrollDn", "precDec", "precInc", "prec0", "precMax", "infoTog",
-             "heat.0", "heat.1", "heat.2", "heat.3"] do
-    m := m.insert h fun a ci _ =>
-      match AppState.sharedPure a ci with
-      | some a' => pure (.ok a')
-      | none => pure .unhandled
-  -- stack ops (may produce .quit on empty stack pop)
-  for h in #["stk.pop", "stk.swap", "stk.dup"] do
-    m := m.insert h fun a ci _ =>
-      pure (match ViewStack.update a.stk h with
-        | some (_, .quit) => .quit
-        | some (s', _) => .ok (a.withStk ci s')
-        | none => .unhandled)
-  -- menu
-  m := m.insert "menu" fun a _ _ => AppState.runMenu a
-  -- transpose, diff
-  m := m.insert "xpose" fun a ci _ => a.tryStk ci (Transpose.push a.stk)
-  m := m.insert "diff" fun a ci _ =>
-    if a.stk.cur.sameHide.isEmpty then a.tryStk ci (Diff.run a.stk)
-    else pure (.ok { a with stk := a.stk.setCur (Diff.showSame a.stk.cur), vs := .default, sparklines := #[] })
-  -- folder handlers (domain dispatch with viewUp fallback)
-  for h in #["folder.push", "folder.enter", "folder.parent", "folder.del",
-             "folder.depthDec", "folder.depthInc"] do
-    m := m.insert h fun a ci _ => do
-      if let some f := Folder.dispatch a.stk h then return ← a.tryStk ci f
-      a.viewUp ci
-  -- meta handlers (domain dispatch with viewUp fallback)
-  for h in #["meta.push", "meta.selNull", "meta.selSingle", "meta.setKey"] do
-    m := m.insert h fun a ci _ => do
-      if let some f := Meta.dispatch a.stk h then return ← a.tryStk ci f
-      a.viewUp ci
-  -- plot handlers
-  for h in #["plot.area", "plot.line", "plot.scatter", "plot.bar", "plot.box",
-             "plot.step", "plot.hist", "plot.density", "plot.violin"] do
-    m := m.insert h fun a ci _ => do
-      if let some kind := Plot.kindOf? h then return ← a.tryStk ci (Plot.run a.stk kind)
-      pure .unhandled
-  -- filter handlers (non-arg: searchNext/searchPrev)
-  for h in #["filter.searchNext", "filter.searchPrev"] do
-    m := m.insert h fun a ci _ => do
-      if let some f := Filter.dispatch a.stk h then return ← a.tryStk ci (some <$> f)
-      a.viewUp ci
-  -- freq handlers (dispatch via viewUp which tries Freq.update first)
-  for h in #["freq.open", "freq.filter"] do
-    m := m.insert h fun a ci _ => a.viewUp ci
-  -- arg commands: handlers that use the arg parameter
-  m := m.insert "split" fun a _ arg => a.runStackIO (if arg.isEmpty then Split.run a.stk else Split.runWith a.stk arg)
-  m := m.insert "derive" fun a _ arg => a.runStackIO (if arg.isEmpty then Derive.run a.stk else Derive.runWith a.stk arg)
-  m := m.insert "filter.rowFilter" fun a _ arg => a.runStackIO (if arg.isEmpty then ViewStack.rowFilter a.stk else ViewStack.filterWith a.stk arg)
-  m := m.insert "filter.rowSearch" fun a _ arg => a.runStackIO (if arg.isEmpty then ViewStack.rowSearch a.stk else ViewStack.searchWith a.stk arg)
-  m := m.insert "filter.colSearch" fun a _ arg => a.runStackIO (if arg.isEmpty then ViewStack.colSearch a.stk else ViewStack.colJumpWith a.stk arg)
-  m := m.insert "export" fun a _ arg => a.runStackIO (if arg.isEmpty then do
-      match ← Export.pickFmt with | some f => Export.run a.stk f | none => pure a.stk
-    else Export.runWith a.stk arg)
-  m := m.insert "sessSave" fun a _ arg => a.runStackIO (do Session.saveWith a.stk arg; pure a.stk)
-  m := m.insert "sessLoad" fun a _ arg => a.runStackIO (do
-    match ← Session.loadWith arg with | some stk' => pure stk' | none => pure a.stk)
-  m := m.insert "join" fun a _ arg => a.runStackIO (do
-    match ← Join.runWith a.stk arg with | some s' => pure s' | none => pure a.stk)
+  for (h, f) in handlerTable do m := m.insert h f
   handlerMap.set m
 
 -- | Convert ViewKind to context string for config lookup
