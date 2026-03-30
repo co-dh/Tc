@@ -114,34 +114,16 @@ private def viewUp (a : AppState) (ci : CmdConfig.CmdInfo) : IO Action := do
   | some (v', e) => runViewEffect a ci v' e
   | none => pure .unhandled
 
--- | (handler, value, isAbsolute) — decimal count 0-17
-private def precTable : Array (String × Nat × Bool) := #[
-  ("precDec", 1, false), ("precInc", 1, false), ("prec0", 0, true), ("precMax", 17, true)]
-
--- | Shared pure dispatch: scroll, prec, info, heat, nav-only View.update.
--- Both pureDispatch and dispatch delegate here to avoid duplicating logic.
-private def sharedPure (a : AppState) (ci : CmdConfig.CmdInfo) : Option AppState :=
-  let h := ci.handler
-  if h == "scrollUp" then some { a with prevScroll := a.prevScroll - min a.prevScroll 5 }
-  else if h == "scrollDn" then some { a with prevScroll := a.prevScroll + 5 }
-  else if let some (_, v, abs) := precTable.find? (·.1 == h) then
-    let cur := a.stk.cur.prec
-    let p := if abs then v else if h == "precDec" then cur - min cur v else min 17 (cur + v)
-    some { a with stk := a.stk.setCur { a.stk.cur with prec := p } }
-  else if h == "infoTog" then a.info.update h |>.map fun i' => { a with info := i' }
-  else if h.startsWith "heat." then
-    some { a with heatMode := min 3 (h.back.toNat - '0'.toNat).toUInt8 }
-  else
-    -- Nav-only: try View.update, keep only .none effects
-    View.update a.stk.cur h 20 |>.bind fun (v', e) =>
-      if e.isNone then some (a.withStk ci (a.stk.setCur v')) else none
-
--- | Pure-only dispatch for preview polling (fzf cmd mode). No IO effects executed.
+-- | Pure-only dispatch for preview polling (fzf cmd mode). No IO effects, no HashMap.
+-- Only called from runMenu poll loop — perf not critical.
 def pureDispatch (a : AppState) (ci : CmdConfig.CmdInfo) : Option AppState :=
   let h := ci.handler
   if h.startsWith "stk." then
     ViewStack.update a.stk h |>.bind fun (s', _) => some (a.withStk ci s')
-  else sharedPure a ci
+  else
+    -- Nav-only: try View.update, keep only .none effects
+    View.update a.stk.cur h 20 |>.bind fun (v', e) =>
+      if e.isNone then some (a.withStk ci (a.stk.setCur v')) else none
 
 -- | Full dispatch: unified HashMap lookup with viewUp fallback.
 -- Returns .quit to exit, .unhandled if command not recognized, .ok for everything else.
@@ -183,8 +165,14 @@ private def runStackIO (a : AppState) (f : IO (ViewStack AdbcTable)) : IO Action
 end AppState
 
 -- | Handler combinators — build HandlerFn from domain functions
-private def pureH (f : AppState → CmdConfig.CmdInfo → Option AppState) : HandlerFn :=
-  fun a ci _ => pure (match f a ci with | some a' => .ok a' | none => .unhandled)
+-- set prec to absolute value
+private def precSet (v : Nat) : HandlerFn := fun a _ _ =>
+  pure (.ok { a with stk := a.stk.setCur { a.stk.cur with prec := v } })
+-- adjust prec by delta, clamped to [0,17]
+private def precAdj (delta : Int) : HandlerFn := fun a _ _ =>
+  let cur := a.stk.cur.prec
+  let p := (Int.ofNat cur + delta).toNat |> min 17
+  pure (.ok { a with stk := a.stk.setCur { a.stk.cur with prec := p } })
 -- domain dispatch with tryStk + viewUp fallback
 private def domainH (d : ViewStack AdbcTable → String → Option (IO (Option (ViewStack AdbcTable)))) : HandlerFn :=
   fun a ci _ => do
@@ -215,13 +203,16 @@ private def handlerTable : Array (String × HandlerFn) := #[
   ("xpose",   fun a ci _ => a.tryStk ci (Transpose.push a.stk)),
   ("diff",    fun a ci _ => if a.stk.cur.sameHide.isEmpty then a.tryStk ci (Diff.run a.stk)
               else pure (.ok { a with stk := a.stk.setCur (Diff.showSame a.stk.cur), vs := .default, sparklines := #[] })),
-  -- pure state
-  ("scrollUp",  pureH AppState.sharedPure), ("scrollDn",  pureH AppState.sharedPure),
-  ("precDec",   pureH AppState.sharedPure), ("precInc",   pureH AppState.sharedPure),
-  ("prec0",     pureH AppState.sharedPure), ("precMax",   pureH AppState.sharedPure),
-  ("infoTog",   pureH AppState.sharedPure),
-  ("heat.0",    pureH AppState.sharedPure), ("heat.1",    pureH AppState.sharedPure),
-  ("heat.2",    pureH AppState.sharedPure), ("heat.3",    pureH AppState.sharedPure),
+  -- pure state: each entry IS the logic, no second dispatch
+  ("scrollUp",  fun a _ _ => pure (.ok { a with prevScroll := a.prevScroll - min a.prevScroll 5 })),
+  ("scrollDn",  fun a _ _ => pure (.ok { a with prevScroll := a.prevScroll + 5 })),
+  ("precDec", precAdj (-1)), ("precInc", precAdj 1), ("prec0", precSet 0), ("precMax", precSet 17),
+  ("infoTog",   fun a ci _ => pure (match a.info.update ci.handler with
+    | some i' => .ok { a with info := i' } | none => .unhandled)),
+  ("heat.0", fun a _ _ => pure (.ok { a with heatMode := 0 })),
+  ("heat.1", fun a _ _ => pure (.ok { a with heatMode := 1 })),
+  ("heat.2", fun a _ _ => pure (.ok { a with heatMode := 2 })),
+  ("heat.3", fun a _ _ => pure (.ok { a with heatMode := 3 })),
   -- stack
   ("stk.pop", stkH), ("stk.swap", stkH), ("stk.dup", stkH),
   -- domain: folder, meta, filter (dispatch + viewUp fallback)
