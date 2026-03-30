@@ -13,6 +13,7 @@ import Tc.Data.Text
 import Tc.Util
 import Tc.Session
 import Tc.Key
+import Tc.Fzf
 
 namespace PureTest2
 
@@ -91,6 +92,13 @@ section ViewUpdateTests
 #guard (View.update testView "nav.rowDec" 1).map (·.1.nav.row.cur.val) == some 0
 
 end ViewUpdateTests
+
+/-! ## Menu Alignment Tests -/
+
+-- parseFlatSel extracts handler from aligned "handler | key | label" format
+#guard Tc.Fzf.parseFlatSel "plot.area    |   | Plot: area chart" == some "plot.area"
+#guard Tc.Fzf.parseFlatSel "sort.asc     | [ | Sort ascending" == some "sort.asc"
+#guard Tc.Fzf.parseFlatSel "" == none
 
 /-! ## ViewStack.update Tests (derived from screen tests) -/
 

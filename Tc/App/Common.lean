@@ -317,9 +317,8 @@ def initHandlers : IO Unit := do
     if let some f := fn? then m := m.insert e.handler f
   handlerMap.set m
 
--- | Convert ViewKind to context string for config lookup
-def viewCtxStr : ViewKind → String
-  | .freqV _ _ => "freqV" | .colMeta => "colMeta" | .fld _ _ => "fld" | .tbl => "tbl"
+-- | Alias for ViewKind.ctxStr (used in dispatch)
+def viewCtxStr := ViewKind.ctxStr
 
 -- | Dispatch a handler name string from socket (handler name, optionally with arg after space)
 private partial def dispatchHandler (a : AppState) (cmdStr : String) : IO AppState := do

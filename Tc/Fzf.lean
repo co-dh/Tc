@@ -68,16 +68,18 @@ def fzfIdx (opts : Array String) (items : Array String) : IO (Option Nat) := do
     | some n => return some n
     | none => return none
 
--- | Build flat menu items from config: "{handler}\t{label}"
+-- | Build aligned menu items: "handler | key | label" with padding
 private def flatItems (vk : ViewKind) : IO (Array String) := do
-  let vkStr := match vk with
-    | .freqV _ _ => "freqV" | .colMeta => "colMeta" | .fld _ _ => "fld" | .tbl => "tbl"
-  let items ← CmdConfig.menuItems vkStr
-  return items.map fun (handler, label) => s!"{handler}\t{label}"
+  let items ← CmdConfig.menuItems vk.ctxStr
+  let (maxH, maxK) := items.foldl (fun (mh, mk) (h, k, _) => (max mh h.length, max mk k.length)) (0, 0)
+  return items.map fun (handler, key, label) =>
+    let hp := handler ++ "".pushn ' ' (maxH - handler.length)
+    let kp := key ++ "".pushn ' ' (maxK - key.length)
+    s!"{hp} | {kp} | {label}"
 
--- | Parse flat selection: extract handler name before \t
+-- | Parse flat selection: extract handler name before first |
 def parseFlatSel (sel : String) : Option String :=
-  let h := (sel.splitOn "\t").headD ""
+  let h := ((sel.splitOn " | ").headD "").trimRight
   if h.isEmpty then none else some h
 
 -- | Command mode: space → flat fzf menu → return handler name
