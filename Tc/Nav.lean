@@ -115,6 +115,9 @@ def curColIdx (nav : NavState nRows nCols t) : Nat := colIdxAt nav.grp nav.colNa
 -- | Current column name
 def curColName (nav : NavState nRows nCols t) : String := nav.colNames.getD nav.curColIdx ""
 
+-- | Current column type
+def curColType (nav : NavState nRows nCols t) : String := TblOps.colType nav.tbl nav.curColIdx
+
 -- | Selected column indices
 def selColIdxs (nav : NavState nRows nCols t) : Array Nat := nav.col.sels.filterMap nav.colNames.idxOf?
 

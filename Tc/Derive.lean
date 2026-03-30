@@ -52,10 +52,8 @@ def runWith (s : ViewStack AdbcTable) (input : String) : IO (ViewStack AdbcTable
 
 -- | Prompt for name = expr via fzf, then derive.
 def run (s : ViewStack AdbcTable) : IO (ViewStack AdbcTable) := do
-  let names := TblOps.colNames s.tbl
-  let curCol := s.cur.nav.curColIdx
-  let curName := names.getD curCol ""
-  let typ := TblOps.colType s.tbl curCol
+  let nav := s.cur.nav; let names := nav.colNames
+  let curName := nav.curColName; let typ := nav.curColType
   let header := s!"name = expr\n{samples curName typ}"
   let hint := colHints names s.tbl.colTypes
   let some raw ← Fzf.fzf #["--print-query", "--prompt=derive: ", s!"--header={header}"] hint | return s

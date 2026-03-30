@@ -32,10 +32,8 @@ private def splitBindings (col ep : String) (qc : String) (n : Nat) : Array (Str
 
 -- | Split column by pattern (no fzf). Called by socket/dispatch and by `run` after fzf.
 def runWith (s : ViewStack AdbcTable) (pat : String) : IO (ViewStack AdbcTable) := do
-  let names := TblOps.colNames s.tbl
-  let curCol := s.cur.nav.curColIdx
-  let curName := names.getD curCol ""
-  let typ := TblOps.colType s.tbl curCol
+  let nav := s.cur.nav
+  let curName := nav.curColName; let typ := nav.curColType
   if typ != "str" then return s  -- only split string columns
   if pat.isEmpty then return s
   let ep := escSql pat
@@ -53,9 +51,7 @@ def runWith (s : ViewStack AdbcTable) (pat : String) : IO (ViewStack AdbcTable) 
 
 -- | Prompt for pattern via fzf, then split.
 def run (s : ViewStack AdbcTable) : IO (ViewStack AdbcTable) := do
-  let names := TblOps.colNames s.tbl
-  let curCol := s.cur.nav.curColIdx
-  let curName := names.getD curCol ""
+  let curName := s.cur.nav.curColName
   let header := s!"Split '{curName}' by delimiter or regex"
   let some raw ← Fzf.fzf #["--print-query", "--prompt=split: ", s!"--header={header}"] suggestions | return s
   runWith s raw.trimAscii.toString
