@@ -68,7 +68,7 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
   let total := match vkind with
     | .freqV _ t => t
     | _ => TblOps.totalRows nav.tbl
-  let colName := nav.colNames.getD nav.curColIdx ""
+  let colName := nav.curColName
   let adj := (if prec != 3 then s!" p{prec}" else "") ++ (if widthAdj != 0 then s!" w{widthAdj}" else "")
   let right := s!"c{nav.curColIdx}/{nCols} grp={nav.grp.size} sel={nav.row.sels.size}{adj} r{nav.row.cur.val}/{total}"
   let pad := w.toNat - colName.length - right.length

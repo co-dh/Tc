@@ -27,7 +27,7 @@ private def moveColTo (s : ViewStack T) (colIdx : Nat) : ViewStack T :=
 
 -- | col search: fzf jump to column by name (IO version for backward compat)
 def colSearch (s : ViewStack T) : IO (ViewStack T) := do
-  let v := s.cur; let names := TblOps.colNames v.nav.tbl
+  let v := s.cur; let names := v.nav.colNames
   let dispNames := v.nav.grp ++ names.filter (!v.nav.grp.contains ·)
   let some idx ← Fzf.fzfIdx #["--prompt=Column: "] dispNames | return s
   return moveColTo s idx
@@ -35,9 +35,8 @@ def colSearch (s : ViewStack T) : IO (ViewStack T) := do
 -- | Shared: resolve current column, fetch sorted distinct values
 private def withDistinct (s : ViewStack T)
     (f : Nat → String → Array String → IO (ViewStack T)) : IO (ViewStack T) := do
-  let v := s.cur; let names := TblOps.colNames v.nav.tbl
-  let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
-  let curName := names.getD curCol ""
+  let v := s.cur
+  let curCol := v.nav.curColIdx; let curName := v.nav.curColName
   let vals ← TblOps.distinct v.nav.tbl curCol
   f curCol curName (vals.qsort (· < ·))
 
@@ -72,7 +71,7 @@ def rowFilter (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun _curCol
 -- | Jump to column by name directly (no fzf). Called by socket/dispatch.
 def colJumpWith (s : ViewStack T) (name : String) : IO (ViewStack T) := do
   if name.isEmpty then return s
-  let v := s.cur; let names := TblOps.colNames v.nav.tbl
+  let v := s.cur; let names := v.nav.colNames
   let dispNames := v.nav.grp ++ names.filter (!v.nav.grp.contains ·)
   match dispNames.findIdx? (· == name) with
   | some idx => pure (moveColTo s idx)
@@ -88,8 +87,8 @@ def filterWith (s : ViewStack T) (expr : String) : IO (ViewStack T) := do
 -- | Search for value directly (no fzf). Called by socket/dispatch.
 def searchWith (s : ViewStack T) (val : String) : IO (ViewStack T) := do
   if val.isEmpty then return s
-  let v := s.cur; let names := TblOps.colNames v.nav.tbl
-  let curCol := colIdxAt v.nav.grp names v.nav.col.cur.val
+  let v := s.cur
+  let curCol := v.nav.curColIdx
   let start := v.nav.row.cur.val + 1
   let some rowIdx ← TblOps.findRow s.tbl curCol val start true | return s
   return moveRowTo s rowIdx (some (curCol, val))
