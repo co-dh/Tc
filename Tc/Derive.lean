@@ -9,26 +9,26 @@ import Tc.View
 namespace Tc.Derive
 
 -- Sample PRQL expressions by column type, showing name = expr format
-private def samples (col : String) : String → String
-  | "int" | "float" | "decimal" =>
+private def samples (col : String) : ColType → String
+  | .int | .float | .decimal =>
     s!"d = {col} * 2 | d = {col} != null | d = math.round 2 {col}"
-  | "str" => -- f-string uses literal braces (PRQL syntax)
+  | .str => -- f-string uses literal braces (PRQL syntax)
     s!"d = {col} != null | d = f\"\{col}-\{other}\" | d = {col} | text.upper"
-  | "date" =>
+  | .date =>
     s!"d = {col} != null | d = {col} | date.year | d = {col} - @2024-01-01"
-  | "time" | "timestamp" =>
+  | .time | .timestamp =>
     s!"d = {col} != null | d = {col} | date.hour | d = {col} | date.minute"
-  | "bool" =>
+  | .bool =>
     s!"d = {col} != null | d = {col} == false | d = !{col}"
-  | _ =>
+  | .other =>
     s!"d = {col} != null | d = {col} > 0 | d = f\"\{col}\""
 
 -- | Build "col : type" lines with aligned ":"
-private def colHints (names : Array String) (types : Array String) : String :=
+private def colHints (names : Array String) (types : Array ColType) : String :=
   let maxLen := names.foldl (fun mx n => max mx n.length) 0
   names.mapIdx (fun i n =>
     let pad := String.ofList (List.replicate (maxLen - n.length) ' ')
-    s!"{n}{pad} : {types.getD i "?"}")
+    s!"{n}{pad} : {types.getD i .other}")
   |>.joinWith "\n"
 
 -- | Parse "name = expr" format. Returns none if no "=" found.

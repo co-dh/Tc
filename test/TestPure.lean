@@ -106,12 +106,12 @@ end ViewUpdateTests
 private def has (s needle : String) : Bool := (s.splitOn needle).length > 1
 
 -- rScript includes centered title when provided
-#guard has (Tc.Plot.rScript "d.dat" "p.png" .density "" "Close" false "" false "" "" "density of Close") "ggtitle('density of Close')"
-#guard has (Tc.Plot.rScript "d.dat" "p.png" .density "" "Close" false "" false "" "" "density of Close") "hjust = 0.5"
+#guard has (Tc.Plot.rScript "d.dat" "p.png" .density "" "Close" false "" false "" .other "density of Close") "ggtitle('density of Close')"
+#guard has (Tc.Plot.rScript "d.dat" "p.png" .density "" "Close" false "" false "" .other "density of Close") "hjust = 0.5"
 -- rScript includes centered title for multi-col plot
-#guard has (Tc.Plot.rScript "d.dat" "p.png" .line "Date" "Price" true "Ticker" false "" "" "line: Price vs Date by Ticker") "ggtitle('line: Price vs Date by Ticker')"
+#guard has (Tc.Plot.rScript "d.dat" "p.png" .line "Date" "Price" true "Ticker" false "" .other "line: Price vs Date by Ticker") "ggtitle('line: Price vs Date by Ticker')"
 -- rScript omits ggtitle when title is empty
-#guard !(has (Tc.Plot.rScript "d.dat" "p.png" .line "Date" "Price" false "" false "" "") "ggtitle")
+#guard !(has (Tc.Plot.rScript "d.dat" "p.png" .line "Date" "Price" false "" false "" .other) "ggtitle")
 
 /-! ## ViewStack.update Tests (derived from screen tests) -/
 

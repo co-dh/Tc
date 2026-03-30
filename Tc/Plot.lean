@@ -16,9 +16,6 @@ variable {T : Type} [TblOps T]
 -- | Max data points for plot (more is slow and unreadable)
 private def maxPoints : Nat := 2000
 
-private def isTimeType (typ : String) : Bool :=
-  typ == "time" || typ == "timestamp" || typ == "date"
-
 -- | Downsampling interval for interactive plot control
 structure Interval where
   label    : String  -- display label (e.g. "1s", "1m", "2x")
@@ -38,10 +35,11 @@ private def stepIntervals (baseStep : Nat) : Array Interval :=
   let s0 := if baseStep == 0 then 1 else baseStep
   #[s0, s0 * 2, s0 * 4, s0 * 8, s0 * 16].map fun s => ⟨s!"{s}x", s⟩
 
-private def getIntervals (xType : String) (baseStep : Nat) : Array Interval :=
-  if xType == "time" || xType == "timestamp" then timeIntervals
-  else if xType == "date" then dateIntervals
-  else stepIntervals baseStep
+private def getIntervals (xType : ColType) (baseStep : Nat) : Array Interval :=
+  match xType with
+  | .time | .timestamp => timeIntervals
+  | .date => dateIntervals
+  | _ => stepIntervals baseStep
 
 -- | Try running cmd with args, return true if it ran successfully
 private def tryDisplay (cmd : String) (args : Array String) : IO Bool := do
@@ -122,7 +120,7 @@ def handleKey (key : Char) : KeyAction :=
 -- | Generate R script for ggplot2 rendering
 def rScript (dataPath pngPath : String) (kind : PlotKind)
     (xName yName : String) (hasCat : Bool) (catName : String)
-    (hasFacet : Bool) (facetName : String) (xType : String)
+    (hasFacet : Bool) (facetName : String) (xType : ColType)
     (title : String := "") : String :=
   let rq (s : String) := s!"`{s}`"
   let xR := rq xName; let yR := rq yName; let catR := rq catName; let facetR := rq facetName
@@ -130,9 +128,9 @@ def rScript (dataPath pngPath : String) (kind : PlotKind)
   let convY := s!"d[['{yName}']] <- as.numeric(d[['{yName}']])\n"
   -- "time" is HH:MM:SS only — prepend dummy date for as.POSIXct
   let convX := match xType with
-    | "time"      => s!"d[['{xName}']] <- as.POSIXct(paste('1970-01-01', d[['{xName}']]))\n"
-    | "timestamp" => s!"d[['{xName}']] <- as.POSIXct(d[['{xName}']])\n"
-    | "date"      => s!"d[['{xName}']] <- as.Date(d[['{xName}']])\n"
+    | .time      => s!"d[['{xName}']] <- as.POSIXct(paste('1970-01-01', d[['{xName}']]))\n"
+    | .timestamp => s!"d[['{xName}']] <- as.POSIXct(d[['{xName}']])\n"
+    | .date      => s!"d[['{xName}']] <- as.Date(d[['{xName}']])\n"
     | _ => if !isSingleColPlot kind then
         "tryCatch(d[['" ++ xName ++ "']] <- as.numeric(d[['" ++ xName ++ "']]), warning=function(w) NULL)\n"
       else ""
@@ -154,7 +152,7 @@ def rScript (dataPath pngPath : String) (kind : PlotKind)
     | .density => "geom_density(fill = 'steelblue', alpha = 0.5)"
     | .step => "geom_step(linewidth = 0.5)"
     | .violin => "geom_violin() + geom_boxplot(width = 0.1, fill = 'white')"
-  let timeScale := if xType == "time" then " + scale_x_datetime(date_labels = '%H:%M:%S')" else ""
+  let timeScale := if xType == .time then " + scale_x_datetime(date_labels = '%H:%M:%S')" else ""
   let facet := if hasFacet then s!" + facet_wrap(vars({facetR}), scales = 'free_y')" else ""
   "library(ggplot2)\n" ++ readData ++ convY ++ convX ++
     s!"p <- ggplot(d, {aes}{colorAes}{fillAes}) + {geom}{facet} + " ++
@@ -211,7 +209,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
     let yIdx := n.curColIdx
     let yName := n.curColName
     let yType := n.curColType
-    if !isNumericType yType then return ← err s s!"{kind} needs a numeric column"
+    if !yType.isNumeric then return ← err s s!"{kind} needs a numeric column"
     Term.shutdown
     enterAltScreen
     let datPath ← Tc.tmpPath "plot.dat"
@@ -221,7 +219,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
     let vals := match cols.getD 0 default with
       | .strs vs => vs | .ints vs => vs.map toString | .floats vs => vs.map toString
     IO.FS.writeFile datPath (yName ++ "\n" ++ (vals.filter (!·.isEmpty)).joinWith "\n" ++ "\n")
-    let script := rScript datPath pngPath kind "" yName false "" false "" "" (plotTitle kind "" yName false "")
+    let script := rScript datPath pngPath kind "" yName false "" false "" .other (plotTitle kind "" yName false "")
     let err? ← renderR script
     clearScreen
     if err?.isNone then showPng pngPath
@@ -245,11 +243,11 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   let yName := n.curColName
   if n.grp.contains yName then return ← err s "move cursor to a non-group column"
   let yType := n.curColType
-  if !isNumericType yType then return ← err s s!"y-axis '{yName}' must be numeric (got {yType})"
+  if !yType.isNumeric then return ← err s s!"y-axis '{yName}' must be numeric (got {yType})"
   let nr := TblOps.totalRows n.tbl
   let xType0 := TblOps.colType n.tbl xIdx
   let xType ← do
-    if xType0 != "str" then pure xType0
+    if xType0 != .str then pure xType0
     else
       let cols ← TblOps.getCols n.tbl #[xIdx] 0 1
       let v := match cols.getD 0 default with
@@ -257,12 +255,12 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
         | _ => ""
       let cs := v.toList
       let at_ (i : Nat) := cs.getD i ' '
-      if cs.length >= 19 && at_ 4 == '-' && at_ 10 == ' ' then pure "timestamp"
-      else if cs.length >= 10 && at_ 4 == '-' && at_ 7 == '-' then pure "date"
-      else if cs.length >= 8 && at_ 2 == ':' && at_ 5 == ':' then pure "time"
+      if cs.length >= 19 && at_ 4 == '-' && at_ 10 == ' ' then pure .timestamp
+      else if cs.length >= 10 && at_ 4 == '-' && at_ 7 == '-' then pure .date
+      else if cs.length >= 8 && at_ 2 == ':' && at_ 5 == ':' then pure .time
       else pure xType0
   Log.write "plot" s!"xType={xType} (raw={xType0}) xIdx={xIdx} xName={xName}"
-  let xIsTime := isTimeType xType
+  let xIsTime := xType.isTime
   let needsDownsample := nr > maxPoints || xIsTime
   let baseStep := if nr > maxPoints then nr / maxPoints else 1
   let hasCat := n.grp.size > 1 && !hasFacet

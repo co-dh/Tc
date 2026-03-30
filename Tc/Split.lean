@@ -34,7 +34,7 @@ private def splitBindings (col ep : String) (qc : String) (n : Nat) : Array (Str
 def runWith (s : ViewStack AdbcTable) (pat : String) : IO (ViewStack AdbcTable) := do
   let nav := s.cur.nav
   let curName := nav.curColName; let typ := nav.curColType
-  if typ != "str" then return s  -- only split string columns
+  if typ != .str then return s  -- only split string columns
   if pat.isEmpty then return s
   let ep := escSql pat
   let qc := Prql.quote curName

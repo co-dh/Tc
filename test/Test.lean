@@ -1072,7 +1072,7 @@ def test_plot_r_installed : IO Unit := do
 
 -- | Run rScript and assert PNG output is non-empty
 def runPlotR (kind : PlotKind) (datPath pngPath : String)
-    (xName yName : String) (hasCat : Bool) (catName : String) (xType : String := "") : IO Unit := do
+    (xName yName : String) (hasCat : Bool) (catName : String) (xType : ColType := .other) : IO Unit := do
   let script := Tc.Plot.rScript datPath pngPath kind xName yName hasCat catName false "" xType
     (Tc.Plot.plotTitle kind xName yName hasCat catName)
   let rPath ← Tc.tmpPath "plot_test.R"
@@ -1166,7 +1166,7 @@ def test_plot_render_time : IO Unit := do
   let datPath ← Tc.tmpPath "plot_time.dat"
   IO.FS.writeFile datPath "time\tprice\n09:30:00\t100.5\n09:30:01\t101.2\n09:30:02\t100.8\n"
   let pngPath ← Tc.tmpPath "plot_test_time.png"
-  runPlotR .line datPath pngPath "time" "price" false "" (xType := "time")
+  runPlotR .line datPath pngPath "time" "price" false "" (xType := .time)
 
 -- === Replay ops tests ===
 

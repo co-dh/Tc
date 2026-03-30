@@ -17,7 +17,7 @@ instance : TblOps AdbcTable where
   distinct  := AdbcTable.distinct
   findRow   := AdbcTable.findRow
   getCols t idxs r0 r1 := idxs.mapM fun i => t.getCol i r0 r1
-  colType t col := t.colTypes.getD col "?"
+  colType t col := t.colTypes.getD col .other
   cellStr t row col := Adbc.cellStr t.qr row.toUInt64 col.toUInt64
   plotExport := AdbcTable.plotExport
   fetchMore := AdbcTable.fetchMore
@@ -59,10 +59,10 @@ def quoteId (s : String) : String :=
 -- | SQL: per-column stats via UNION ALL (for non-parquet sources).
 -- Cannot use DuckDB SUMMARIZE: its null_percentage uses approximate counting
 -- which miscounts NULLs for some column types, giving wrong null_pct values.
-private def colStatsSql (baseSql : String) (names : Array String) (types : Array String) : String :=
+private def colStatsSql (baseSql : String) (names : Array String) (types : Array ColType) : String :=
   let one (i : Nat) : String :=
     let nm := escSql (names.getD i "")
-    let tp := escSql (types.getD i "?")
+    let tp := escSql (toString (types.getD i .other))
     let q := quoteId (names.getD i "")
     s!"SELECT '{nm}' AS \"column\", '{tp}' AS coltype, " ++
     s!"CAST(COUNT({q}) AS BIGINT) AS cnt, " ++
