@@ -106,16 +106,16 @@ namespace NavState
 variable {t : Type} [TblOps t]
 
 -- | Column names from table
-def colNames (nav : NavState nRows nCols t) : Array String := TblOps.colNames nav.tbl
+@[inline] def colNames (nav : NavState nRows nCols t) : Array String := TblOps.colNames nav.tbl
 
 -- | Current column index in data order
-def curColIdx (nav : NavState nRows nCols t) : Nat := colIdxAt nav.grp nav.colNames nav.col.cur.val
+@[inline] def curColIdx (nav : NavState nRows nCols t) : Nat := colIdxAt nav.grp nav.colNames nav.col.cur.val
 
 -- | Current column name
-def curColName (nav : NavState nRows nCols t) : String := nav.colNames.getD nav.curColIdx ""
+@[inline] def curColName (nav : NavState nRows nCols t) : String := nav.colNames.getD nav.curColIdx ""
 
 -- | Current column type
-def curColType (nav : NavState nRows nCols t) : ColType := TblOps.colType nav.tbl nav.curColIdx
+@[inline] def curColType (nav : NavState nRows nCols t) : ColType := TblOps.colType nav.tbl nav.curColIdx
 
 -- | Column names in display order (grouped first, then rest)
 def dispColNames (nav : NavState nRows nCols t) : Array String :=
