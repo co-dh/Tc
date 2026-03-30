@@ -114,14 +114,9 @@ private def viewUp (a : AppState) (ci : CmdConfig.CmdInfo) : IO Action := do
   | some (v', e) => runViewEffect a ci v' e
   | none => pure .unhandled
 
--- | Must match DEFAULT_PREC / MAX_PREC in c/render.c
-private def defaultPrec : Int := 3
-private def maxPrec : Int := 17
-
--- | (handler, precAdj value, isAbsolute)
-private def precTable : Array (String × Int × Bool) := #[
-  ("precDec", -1, false), ("precInc", 1, false),
-  ("prec0", -defaultPrec, true), ("precMax", maxPrec - defaultPrec, true)]
+-- | (handler, value, isAbsolute) — decimal count 0-17
+private def precTable : Array (String × Nat × Bool) := #[
+  ("precDec", 1, false), ("precInc", 1, false), ("prec0", 0, true), ("precMax", 17, true)]
 
 -- | Shared pure dispatch: scroll, prec, info, heat, nav-only View.update.
 -- Both pureDispatch and dispatch delegate here to avoid duplicating logic.
@@ -130,8 +125,9 @@ private def sharedPure (a : AppState) (ci : CmdConfig.CmdInfo) : Option AppState
   if h == "scrollUp" then some { a with prevScroll := a.prevScroll - min a.prevScroll 5 }
   else if h == "scrollDn" then some { a with prevScroll := a.prevScroll + 5 }
   else if let some (_, v, abs) := precTable.find? (·.1 == h) then
-    let adj := if abs then v else a.stk.cur.precAdj + v
-    some { a with stk := a.stk.setCur { a.stk.cur with precAdj := adj } }
+    let cur := a.stk.cur.prec
+    let p := if abs then v else if h == "precDec" then cur - min cur v else min 17 (cur + v)
+    some { a with stk := a.stk.setCur { a.stk.cur with prec := p } }
   else if h == "infoTog" then a.info.update h |>.map fun i' => { a with info := i' }
   else if h.startsWith "heat." then
     some { a with heatMode := min 3 (h.back.toNat - '0'.toNat).toUInt8 }

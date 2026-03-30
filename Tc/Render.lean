@@ -39,14 +39,14 @@ def renderCols (cols : Array Column) (names : Array String) (fmts : Array Char)
     totalRows.toUInt64 ctx.nGrp.toUInt64 0
     0 nVisible.toUInt64 adjCur.toUInt64 ctx.curCol.toUInt64
     ctx.moveDir.toInt64 ctx.selColIdxs adjSel ctx.hiddenIdxs
-    ctx.styles ctx.precAdj.toInt64 ctx.widthAdj.toInt64
+    ctx.styles ctx.prec.toInt64 ctx.widthAdj.toInt64
     ctx.heatMode ctx.sparklines
 
 -- | Render table to terminal, returns (ViewState, widths)
 -- Calls TblOps.render with NavState fields unpacked
 def render {nRows nCols : Nat} {t : Type} [TblOps t]
     (nav : NavState nRows nCols t) (view : ViewState) (inWidths : Array Nat)
-    (styles : Array UInt32) (precAdj widthAdj : Int) (vkind : ViewKind := .tbl)
+    (styles : Array UInt32) (prec widthAdj : Int) (vkind : ViewKind := .tbl)
     (heatMode : UInt8 := 1) (sparklines : Array String := #[])
     (extraHidden : Array Nat := #[]) : IO (ViewState × Array Nat) := do
   Term.clear
@@ -60,7 +60,7 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
     r0 := rowOff, r1 := min nRows (rowOff + visRows),
     curRow := nav.row.cur.val, curCol := nav.curColIdx, moveDir,
     selColIdxs := nav.selColIdxs, rowSels := nav.row.sels,
-    hiddenIdxs := nav.hiddenIdxs ++ extraHidden, styles, precAdj, widthAdj, heatMode, sparklines }
+    hiddenIdxs := nav.hiddenIdxs ++ extraHidden, styles, prec, widthAdj, heatMode, sparklines }
   let outWidths ← TblOps.render nav.tbl ctx
   let widths := outWidths  -- C returns base widths (no widthAdj), store as-is
   -- status line: colName left, stats right
@@ -69,7 +69,7 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
     | .freqV _ t => t
     | _ => TblOps.totalRows nav.tbl
   let colName := nav.colNames.getD nav.curColIdx ""
-  let adj := (if precAdj != 0 then s!" p{precAdj}" else "") ++ (if widthAdj != 0 then s!" w{widthAdj}" else "")
+  let adj := (if prec != 3 then s!" p{prec}" else "") ++ (if widthAdj != 0 then s!" w{widthAdj}" else "")
   let right := s!"c{nav.curColIdx}/{nCols} grp={nav.grp.size} sel={nav.row.sels.size}{adj} r{nav.row.cur.val}/{total}"
   let pad := w.toNat - colName.length - right.length
   Term.print 0 (h - 1) Term.cyan Term.default (colName ++ "".pushn ' ' (max 1 pad) ++ right)
