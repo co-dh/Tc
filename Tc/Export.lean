@@ -7,12 +7,10 @@ import Tc.Fzf
 import Tc.View
 
 namespace Tc.ExportFmt
-def ext : ExportFmt → String | .csv => "csv" | .parquet => "parquet" | .json => "json" | .ndjson => "ndjson"
+def ext (f : ExportFmt) : String := toString f
 def copyOpt : ExportFmt → String
   | .csv => "(FORMAT CSV, HEADER true)" | .json => "(FORMAT JSON)"
   | .parquet => "(FORMAT PARQUET)" | .ndjson => "(FORMAT JSON, ARRAY false)"
-def ofString? : String → Option ExportFmt
-  | "csv" => some .csv | "parquet" => some .parquet | "json" => some .json | "ndjson" => some .ndjson | _ => none
 end Tc.ExportFmt
 
 namespace Tc.Export
@@ -20,7 +18,7 @@ namespace Tc.Export
 -- | Prompt user for export format via fzf
 def pickFmt : IO (Option ExportFmt) := do
   match ← Fzf.fzf #["--prompt=export: "] "csv\nparquet\njson\nndjson" with
-  | some raw => pure (raw.trimAscii.toString |> ExportFmt.ofString?)
+  | some raw => pure (raw.trimAscii.toString |> StrEnum.ofString?)
   | none => pure none
 
 -- | Export current view to file via DuckDB COPY
@@ -41,7 +39,7 @@ def run (s : ViewStack AdbcTable) (fmt : ExportFmt) : IO (ViewStack AdbcTable) :
 
 -- | Export by format string directly (no fzf). Called by socket/dispatch.
 def runWith (s : ViewStack AdbcTable) (fmtStr : String) : IO (ViewStack AdbcTable) := do
-  let some fmt := ExportFmt.ofString? fmtStr | return s
+  let some fmt := StrEnum.ofString? fmtStr | return s
   run s fmt
 
 end Tc.Export
