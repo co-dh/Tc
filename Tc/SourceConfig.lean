@@ -198,11 +198,6 @@ private def cacheStore (path : String) (tbl : AdbcTable) : IO Unit :=
     if arr.size >= 64 then arr.extract 32 arr.size |>.push (path, tbl)
     else arr.push (path, tbl)
 
--- | Allocate a fresh temp table name
-private def freshTbl : IO String := do
-  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
-  pure s!"tc_src_{n}"
-
 -- | Build AdbcTable from a temp table name
 private def fromTbl (tbl : String) : IO (Option AdbcTable) := do
   let q : Prql.Query := { base := s!"from {tbl}" }
@@ -318,7 +313,7 @@ def Config.runList (cfg : Config) (path : String) : IO (Option AdbcTable) := do
   statusMsg s!"Loading {path} ..."
   let t0 ← IO.monoMsNow
   runSetup cfg
-  let tbl ← freshTbl
+  let tbl ← nextTmpName "src"
   let result ← if cfg.listCmd.isEmpty then cfg.runListSql path tbl
     else cfg.runListCmd path tbl
   -- Cache slow listings (> 3s) so navigating back is instant
@@ -357,7 +352,7 @@ def Config.runEnter (cfg : Config) (name : String) : IO (Option AdbcTable) := do
     return none
   let json := out.stdout
   if json.trimAscii.toString.isEmpty || json.trimAscii.toString == "[]" then return none
-  let tbl ← freshTbl
+  let tbl ← nextTmpName "src"
   let tmpFile ← Tc.tmpPath s!"src-enter-{tbl}.json"
   IO.FS.writeFile tmpFile json
   let _ ← Adbc.query s!"CREATE TEMP TABLE {tbl} AS SELECT * FROM read_json_auto('{tmpFile}')"

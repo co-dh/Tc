@@ -29,6 +29,9 @@ variable {T : Type} [TblOps T]
 def new {nr nc : Nat} (nav : NavState nr nc T) (path : String) : View T :=
   { nRows := nr, nCols := nc, nav, path }
 
+-- | Current folder directory (or "." for non-folder views)
+@[inline] def curDir (v : View T) : String := match v.vkind with | .fld dir _ => dir | _ => "."
+
 -- | Tab display name: custom disp or filename from path
 @[inline] def tabName (v : View T) : String :=
   match v.vkind with

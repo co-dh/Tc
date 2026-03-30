@@ -32,8 +32,7 @@ private def allOps : Array JoinOp := #[.inner, .left, .right, .union, .diff]
 
 -- Generate unique view name and compile PRQL to SQL (deferred DDL)
 private def prepareView (tbl : AdbcTable) (suffix : String) : IO (String × String) := do
-  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
-  let name := s!"tc_j{suffix}_{n}"
+  let name ← nextTmpName s!"j{suffix}"
   let prql := tbl.query.render
   Log.write "prql" prql
   let some sql ← Prql.compile prql | throw (IO.userError "PRQL compile failed")
@@ -48,8 +47,7 @@ private def execJoin (s : ViewStack AdbcTable) (op : JoinOp) (leftGrp : Array St
   let _ ← Adbc.query s!"CREATE OR REPLACE TEMP VIEW {rName} AS {rSql}"
   let prql := prqlStr lName rName leftGrp op
   Log.write "prql" prql
-  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
-  let tblName := s!"tc_join_{n}"
+  let tblName ← nextTmpName "join"
   let some sql ← Prql.compile prql | throw (IO.userError s!"join PRQL compile failed: {prql}")
   let _ ← Adbc.query s!"CREATE OR REPLACE TEMP TABLE {tblName} AS {sql |> stripSemi}"
   let q : Prql.Query := { base := s!"from {tblName}" }

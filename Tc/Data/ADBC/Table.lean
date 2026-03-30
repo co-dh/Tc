@@ -80,6 +80,11 @@ structure AdbcTable where
 -- | Counter for unique temp table names
 initialize memTblCounter : IO.Ref Nat ← IO.mkRef 0
 
+-- | Allocate a unique temp table name: tc_{label}_{n}
+def nextTmpName (label : String) : IO String := do
+  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
+  pure s!"tc_{label}_{n}"
+
 namespace AdbcTable
 
 -- | Init ADBC backend (DuckDB), install+load httpfs for hf:// support.
@@ -306,8 +311,7 @@ def freqTable (t : AdbcTable) (colNames : Array String) : IO (Option (AdbcTable 
     let v ← Adbc.cellStr qr 0 0
     pure (v.toNat?.getD 0)
   -- freq table: uses freq PRQL function which computes Cnt, Pct, Bar in SQL
-  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
-  let tblName := s!"tc_freq_{n}"
+  let tblName ← nextTmpName "freq"
   let prql := s!"{t.query.render} | freq \{{cols}} | take 1000"
   Log.write "prql" prql
   let some sql ← Prql.compile prql | return none
@@ -369,8 +373,7 @@ def fromArrays (names : Array String) (cols : Array Column) : IO (Option AdbcTab
     rows := rows.push s!"({", ".intercalate vals.toList})"
   let valuesSql := ", ".intercalate rows.toList
   let aliasSql := ", ".intercalate colAliases.toList
-  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
-  let tblName := s!"tc_arr_{n}"
+  let tblName ← nextTmpName "arr"
   let sql := s!"CREATE OR REPLACE TEMP TABLE {tblName} AS SELECT * FROM (VALUES {valuesSql}) AS t({aliasSql})"
   Log.write "fromArrays" sql
   let _ ← Adbc.query sql
