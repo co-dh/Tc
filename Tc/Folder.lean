@@ -73,36 +73,25 @@ def curType (v : View AdbcTable) : IO (Option Char) := do
   | some ' ' => return some 'f'  -- HF/S3 space = file
   | other => return other
 
--- | Build folder view from TSV content
-private def mkViewFromTsv (tsv : String) (path : String) (depth : Nat) (disp : String)
-    : IO (Option (View AdbcTable)) := do
-  match ← AdbcTable.fromTsv tsv with
-  | some adbc =>
-    pure <| View.fromTbl (adbc) path |>.map fun v =>
-      { v with vkind := .fld path depth, disp }
-  | none => pure none
-
--- | Build folder view from an AdbcTable directly
-private def mkViewFromAdbc (adbc : AdbcTable) (path : String) (depth : Nat) (disp : String)
+-- | Build folder view from AdbcTable
+private def mkFldView (adbc : AdbcTable) (path : String) (depth : Nat) (disp : String)
     (grp : Array String := #[]) : Option (View AdbcTable) :=
-  View.fromTbl (adbc) path (grp := grp) |>.map fun v =>
+  View.fromTbl adbc path (grp := grp) |>.map fun v =>
     { v with vkind := .fld path depth, disp }
 
 -- | Create folder view — config-driven listing, local fallback
 def mkView (path : String) (depth : Nat) : IO (Option (View AdbcTable)) := do
   match ← SourceConfig.findSource path with
   | some cfg =>
-    match ← cfg.runList path with
-    | some adbc =>
-      let grp := if cfg.grp.isEmpty then #[] else #[cfg.grp]
-      pure (mkViewFromAdbc adbc path depth (Remote.dispName path) (grp := grp))
-    | none => pure none
+    let some adbc ← cfg.runList path | return none
+    let grp := if cfg.grp.isEmpty then #[] else #[cfg.grp]
+    pure (mkFldView adbc path depth (Remote.dispName path) (grp := grp))
   | none =>
-    -- Local filesystem fallback
     let rp ← IO.Process.output { cmd := "realpath", args := #[path] }
     let absPath := if rp.exitCode == 0 then rp.stdout.trimAscii.toString else path
     let disp := absPath.splitOn "/" |>.getLast? |>.getD absPath
-    mkViewFromTsv (← listDir path depth) absPath depth disp
+    let some adbc ← AdbcTable.fromTsv (← listDir path depth) | return none
+    pure (mkFldView adbc absPath depth disp)
 
 -- | Push new folder view onto stack
 def push (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
@@ -143,24 +132,34 @@ def goParent (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
     | some s' => pure (some s')
     | none => tryView s (curDir ++ "/..") (curDepth s) false
 
+-- | Try to open a file as data, fall back to viewer
+private def openFile (s : ViewStack AdbcTable) (curDir p : String) (cfg : Option SourceConfig.Config)
+    : IO (Option (ViewStack AdbcTable)) := do
+  let fullPath := joinPath curDir p
+  if FileFormat.isDataFile p then
+    let openPath ← match cfg with | some c => c.resolve fullPath | none => pure fullPath
+    match ← FileFormat.openFile openPath with
+    | some v => return some (s.push v)
+    | none => if cfg.isNone then FileFormat.viewFile fullPath
+  else
+    let viewPath ← match cfg with | some c => c.runDownload fullPath | none => pure fullPath
+    if p.endsWith ".gz" then
+      if let some v ← FileFormat.tryReadCsv viewPath then return some (s.push v)
+    FileFormat.viewFile viewPath
+  pure (some s)
+
 -- | Enter directory or view file based on current row
 def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
   let cfg ← SourceConfig.findSource curDir
-  -- Attach-based database files: enter opens a table
-  if let some fmt := FileFormat.find? curDir then
-    if fmt.attach then
-      let some tableName ← curPath s.cur | return some s
-      let some (adbc, keys) ← AdbcTable.fromDuckDBTable tableName | return some s
-      let some v := View.fromTbl (adbc) s!"{curDir}:{tableName}" (grp := keys) | return some s
-      return some (s.push v)
-  -- Config-driven attach (e.g. pg://)
-  if let some c := cfg then
-    if c.attach then
-      let some tableName ← curPath s.cur | return some s
-      let some (adbc, keys) ← AdbcTable.fromDuckDBTable tableName | return some s
-      let some v := View.fromTbl (adbc) s!"{curDir}:{tableName}" (grp := keys) | return some s
-      return some (s.push v)
+  -- Attach-based: FileFormat or config-driven (e.g. pg://)
+  let isAttach := (FileFormat.find? curDir |>.map (·.attach)).getD false
+    || (cfg.map (·.attach)).getD false
+  if isAttach then
+    let some tableName ← curPath s.cur | return some s
+    let some (adbc, keys) ← AdbcTable.fromDuckDBTable tableName | return some s
+    let some v := View.fromTbl adbc s!"{curDir}:{tableName}" (grp := keys) | return some s
+    return some (s.push v)
   match ← curType s.cur, ← curPath s.cur with
   | some 'd', some p =>
     if p == ".." || p.endsWith "/.." then goParent s
@@ -180,28 +179,13 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
           | none => return some s
         if !c.enterUrl.isEmpty then
           return ← tryView s (SourceConfig.expand c.enterUrl #[("name", p)]) (curDepth s) true
-      let fullPath := joinPath curDir p
-      if FileFormat.isDataFile p then
-        let openPath ← match cfg with | some c => c.resolve fullPath | none => pure fullPath
-        match ← FileFormat.openFile openPath with
-        | some v => pure (some (s.push v))
-        | none => if cfg.isNone then FileFormat.viewFile fullPath; pure (some s) else pure (some s)
-      else
-        let viewPath ← match cfg with | some c => c.runDownload fullPath | none => pure fullPath
-        -- Smart: try read_csv for unrecognized .gz before falling back to viewer
-        if p.endsWith ".gz" then
-          if let some v ← FileFormat.tryReadCsv viewPath then return some (s.push v)
-        FileFormat.viewFile viewPath; pure (some s)
+      openFile s curDir p cfg
   | some 's', some p =>
     if cfg.isSome then pure (some s) else
     let fullPath := joinPath curDir p
     let stat ← IO.Process.output { cmd := "test", args := #["-d", fullPath] }
     if stat.exitCode == 0 then tryView s fullPath (curDepth s) true
-    else if FileFormat.isDataFile fullPath then
-      match ← FileFormat.openFile fullPath with
-      | some v => pure (some (s.push v))
-      | none => FileFormat.viewFile fullPath; pure (some s)
-    else FileFormat.viewFile fullPath; pure (some s)
+    else openFile s curDir p none
   | _, _ => pure none
 
 -- | Get trash command (trash-put or gio trash)
@@ -279,41 +263,30 @@ def trashFiles (paths : Array String) : IO Bool := do
     if r.exitCode != 0 then ok := false
   pure ok
 
--- | Delete selected files and refresh view (no-op for remote)
+-- | Refresh folder view at path/depth, preserving cursor row
+private def refreshView (s : ViewStack AdbcTable) (path : String) (depth : Nat)
+    : IO (Option (ViewStack AdbcTable)) := do
+  match ← mkView path depth with
+  | some v =>
+    let row := min s.cur.nav.row.cur.val (if v.nRows > 0 then v.nRows - 1 else 0)
+    pure (View.fromTbl v.nav.tbl path (row := row) |>.map fun x =>
+      s.setCur { x with vkind := .fld path depth, disp := s.cur.disp })
+  | none => pure (some s)
+
 def del (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
-  if !(s.cur.vkind matches .fld _ _) then return none
-  let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => ""
-  if (← SourceConfig.findSource curDir).isSome then return some s
+  let .fld path depth := s.cur.vkind | return none
+  if (← SourceConfig.findSource path).isSome then return some s
   let paths ← selPaths s.cur
   if paths.isEmpty then return none
   if !(← confirmDel paths) then return some s
   let _ ← trashFiles paths
-  match s.cur.vkind with
-  | .fld path depth =>
-    match ← mkView path depth with
-    | some v =>
-      let row := min s.cur.nav.row.cur.val (if v.nRows > 0 then v.nRows - 1 else 0)
-      let v' := View.fromTbl v.nav.tbl path (row := row) |>.map fun x =>
-        { x with vkind := .fld path depth, disp := s.cur.disp }
-      pure (v'.map s.setCur)
-    | none => pure (some s)
-  | _ => pure (some s)
+  refreshView s path depth
 
--- | Adjust find depth (+1 or -1, min 1). No-op for remote.
 def setDepth (s : ViewStack AdbcTable) (delta : Int) : IO (Option (ViewStack AdbcTable)) := do
-  match s.cur.vkind with
-  | .fld path depth =>
-    if (← SourceConfig.findSource path).isSome then return some s
-    let newDepth := max 1 ((depth : Int) + delta).toNat
-    if newDepth == depth then pure (some s)
-    else match ← mkView path newDepth with
-      | some v =>
-        let row := min s.cur.nav.row.cur.val (v.nRows - 1)
-        let v' := View.fromTbl v.nav.tbl path (row := row) |>.map fun x =>
-          { x with vkind := .fld path newDepth, disp := s.cur.disp }
-        pure (v'.map s.setCur)
-      | none => pure (some s)
-  | _ => pure none
+  let .fld path depth := s.cur.vkind | return none
+  if (← SourceConfig.findSource path).isSome then return some s
+  let newDepth := max 1 ((depth : Int) + delta).toNat
+  if newDepth == depth then pure (some s) else refreshView s path newDepth
 
 -- | Dispatch folder handler to IO action. Returns none if handler not recognized.
 def dispatch (s : ViewStack AdbcTable) (h : String) : Option (IO (Option (ViewStack AdbcTable))) :=
