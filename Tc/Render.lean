@@ -80,7 +80,7 @@ def renderTabLine (tabs : Array String) (curIdx : Nat) (replay : String := "") :
   let h ← Term.height
   let w ← Term.width
   let line := tabs.mapIdx (fun i t => if i == curIdx then s!"[{t}]" else t)
-    |>.toList |>.reverse |> " │ ".intercalate
+    |>.reverse |>.joinWith " │ "
   Term.print 0 (h - 2) Term.white Term.blue line
   -- replay ops right-aligned (dim text on blue bg)
   let gap := w.toNat - line.length

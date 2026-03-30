@@ -171,7 +171,7 @@ def list : IO (Array String) := do
 -- | Prompt for session name; returns none on cancel or empty input
 def pickSaveName : IO (Option String) := do
   let existing ← list
-  let input := existing.toList |> "\n".intercalate
+  let input := existing.joinWith "\n"
   match ← Fzf.fzf #["--prompt=session name: ", "--print-query"] input with
   | none => pure none
   | some s =>
@@ -182,7 +182,7 @@ def pickSaveName : IO (Option String) := do
 def pickLoadName : IO (Option String) := do
   let existing ← list
   if existing.isEmpty then statusMsg "no saved sessions"; return none
-  Fzf.fzf #["--prompt=load session: "] (existing.toList |> "\n".intercalate)
+  Fzf.fzf #["--prompt=load session: "] (existing.joinWith "\n")
     |>.map (·.map (·.trimAscii.toString))
 
 -- | Save session with explicit name (no fzf). Called by socket/dispatch.

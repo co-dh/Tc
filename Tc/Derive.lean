@@ -29,7 +29,7 @@ private def colHints (names : Array String) (types : Array String) : String :=
   names.mapIdx (fun i n =>
     let pad := String.ofList (List.replicate (maxLen - n.length) ' ')
     s!"{n}{pad} : {types.getD i "?"}")
-  |>.toList |> "\n".intercalate
+  |>.joinWith "\n"
 
 -- | Parse "name = expr" format. Returns none if no "=" found.
 private def parseDerive (input : String) : Option (String × String) :=

@@ -70,7 +70,7 @@ private def colStatsSql (baseSql : String) (names : Array String) (types : Array
     s!"CAST(ROUND((1.0 - COUNT({q})::FLOAT / NULLIF(COUNT(*),0)) * 100) AS BIGINT) AS null_pct, " ++
     s!"CAST(MIN({q}) AS VARCHAR) AS mn, CAST(MAX({q}) AS VARCHAR) AS mx FROM __src"
   "WITH __src AS (" ++ baseSql ++ ") " ++
-    (Array.range names.size |>.map one |>.toList |> " UNION ALL ".intercalate)
+    (Array.range names.size |>.map one |>.joinWith " UNION ALL ")
 
 -- | Query meta: parquet uses file metadata (instant), others use SQL aggregation.
 def queryMeta (t : AdbcTable) : IO (Option AdbcTable) := do
@@ -98,7 +98,7 @@ def queryMetaIndices (tblName : String) (flt : String) : IO (Array Nat) := do
 -- | Query column names from meta table at given row indices
 def queryMetaColNames (tblName : String) (rows : Array Nat) : IO (Array String) := do
   if rows.isEmpty then return #[]
-  let idxs := rows.map (s!"{·}") |>.toList |> ", ".intercalate
+  let idxs := rows.map (s!"{·}") |>.joinWith ", "
   let some qr ← Prql.query ("from " ++ tblName ++ " | rowidx | filter (idx | in [" ++ idxs ++ "]) | select {column, idx}") | return #[]
   let nr ← Adbc.nrows qr
   (Array.range nr.toNat).mapM fun r => Adbc.cellStr qr r.toUInt64 0

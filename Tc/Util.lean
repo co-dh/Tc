@@ -3,6 +3,7 @@
   Contents: Log (error/debug logging), TmpDir (per-process temp dir),
   Socket (unix socket IPC), Remote (URI path ops).
 -/
+import Tc.Types
 
 -- ============================================================================
 -- Log: centralized error/debug logging
@@ -41,7 +42,7 @@ def error (msg : String) : IO Unit := write "error" msg
 def run (tag cmd : String) (args : Array String) : IO IO.Process.Output := do
   let r ← IO.Process.output { cmd, args }
   if r.exitCode != 0 then
-    write tag s!"{cmd} {" ".intercalate args.toList} → exit {r.exitCode}: {r.stderr.trimAscii.toString}"
+    write tag s!"{cmd} {args.joinWith " "} → exit {r.exitCode}: {r.stderr.trimAscii.toString}"
   pure r
 
 end Log

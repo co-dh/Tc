@@ -2,6 +2,10 @@
   Core types: Cell, Column, Table, PureKey
   Table stores columns by name (HashMap) for direct name-based access
 -/
+-- | Join array elements with separator (avoids .toList |> sep.intercalate)
+def Array.joinWith (a : Array String) (sep : String) : String :=
+  sep.intercalate a.toList
+
 -- | Toggle element in array (add if absent, remove if present)
 def Array.toggle [BEq α] (arr : Array α) (x : α) : Array α :=
   if arr.contains x then arr.filter (· != x) else arr.push x
@@ -144,7 +148,7 @@ def buildFilterPrql (col : String) (vals : Array String) (result : String) (nume
                   then #[input] ++ fromHints else fromHints
   let q := fun v => if numeric then v else s!"'{v}'"
   if selected.size == 1 then s!"{col} == {q (selected.getD 0 "")}"
-  else if selected.size > 1 then "(" ++ " || ".intercalate (selected.map fun v => s!"{col} == {q v}").toList ++ ")"
+  else if selected.size > 1 then "(" ++ (selected.map fun v => s!"{col} == {q v}").joinWith " || " ++ ")"
   else if !input.isEmpty then input
   else ""
 
@@ -214,11 +218,11 @@ def keepCols (nCols : Nat) (hideIdxs : Array Nat) (names : Array String) : Array
 
 -- | Convert columns to tab-separated text (shared by Table toText impls)
 def colsToText (names : Array String) (cols : Array Column) (nr : Nat) : String := Id.run do
-  let mut lines : Array String := #["\t".intercalate names.toList]
+  let mut lines : Array String := #[names.joinWith "\t"]
   for r in [:nr] do
     let row := cols.map fun col => (col.get r).toRaw
-    lines := lines.push ("\t".intercalate row.toList)
-  "\n".intercalate lines.toList
+    lines := lines.push (row.joinWith "\t")
+  lines.joinWith "\n"
 
 -- | Aggregate function
 inductive Agg where

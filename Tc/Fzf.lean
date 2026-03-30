@@ -62,7 +62,7 @@ def fzfIdx (opts : Array String) (items : Array String) : IO (Option Nat) := do
   if ← getTestMode then pure (if items.isEmpty then none else some 0)
   else
     let numbered := items.mapIdx fun i s => s!"{i}\t{s}"
-    let out ← fzfCore (#["--with-nth=2.."] ++ opts) ("\n".intercalate numbered.toList)
+    let out ← fzfCore (#["--with-nth=2.."] ++ opts) (numbered.joinWith "\n")
     if out.isEmpty then return none
     match out.splitOn "\t" |>.head? |>.bind String.toNat? with
     | some n => return some n
@@ -89,7 +89,7 @@ def parseFlatSel (sel : String) : Option String :=
 def cmdMode (vk : ViewKind) (poll : IO Unit := pure ()) : IO (Option String) := do
   let items ← flatItems vk
   if items.isEmpty then return none
-  let input := "\n".intercalate items.toList
+  let input := items.joinWith "\n"
   let opts := #["--prompt=cmd "]
   let out ← fzfCore opts input poll
   if out.isEmpty then return none

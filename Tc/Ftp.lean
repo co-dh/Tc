@@ -2,6 +2,8 @@
   FTP: parse curl's ls -l output into folder-view TSV.
   Names stored raw (readable); URL-encoding applied at curl command time.
 -/
+import Tc.Types
+
 namespace Tc.Ftp
 
 -- | URL-encode a string: encode all bytes not in [A-Za-z0-9._~/-]
@@ -40,6 +42,6 @@ def parseLs (raw : String) : String := Id.run do
     let date := " ".intercalate (parts.drop 5 |>.take 3)
     let typ := if (parts.getD 0 "").startsWith "d" then "dir" else "file"
     rows := rows.push s!"{name}\t{size}\t{date}\t{typ}"
-  return "\n".intercalate rows.toList
+  return rows.joinWith "\n"
 
 end Tc.Ftp

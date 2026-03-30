@@ -320,7 +320,7 @@ namespace AdbcTable
 -- | Create freq table entirely in SQL (no round-trip to Lean)
 def freqTable (t : AdbcTable) (colNames : Array String) : IO (Option (AdbcTable × Nat)) := do
   if colNames.isEmpty then return none
-  let cols := colNames.map Prql.quote |>.toList |> ", ".intercalate
+  let cols := colNames.map Prql.quote |>.joinWith ", "
   -- total distinct groups
   let totalGroups ← do
     let some qr ← Prql.query s!"{t.query.render} | cntdist \{{cols}}" | pure 0
@@ -386,9 +386,9 @@ def fromArrays (names : Array String) (cols : Array Column) : IO (Option AdbcTab
         | .floats data => s!"{data.getD r 0}"
         | .strs data   => s!"'{escSql (data.getD r "")}'"
       vals := vals.push v
-    rows := rows.push s!"({vals.toList |> ", ".intercalate})"
-  let valuesSql := rows.toList |> ", ".intercalate
-  let aliasSql := colAliases.toList |> ", ".intercalate
+    rows := rows.push s!"({vals.joinWith ", "})"
+  let valuesSql := rows.joinWith ", "
+  let aliasSql := colAliases.joinWith ", "
   let tblName ← nextTmpName "arr"
   let sql := s!"CREATE OR REPLACE TEMP TABLE {tblName} AS SELECT * FROM (VALUES {valuesSql}) AS t({aliasSql})"
   Log.write "fromArrays" sql
