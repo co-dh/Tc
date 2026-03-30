@@ -12,7 +12,7 @@ inductive JoinOp | inner | left | right | union | diff
 
 -- PRQL join condition: ==col1 && ==col2
 private def joinCond (cols : Array String) : String :=
-  cols.map (s!"=={Prql.quote ·}") |>.toList |> " && ".intercalate
+  cols.map (s!"=={Prql.quote ·}") |>.joinWith " && "
 
 private def opLabel : JoinOp → String
   | .inner => "join inner" | .left => "join left" | .right => "join right"
@@ -54,7 +54,7 @@ private def execJoin (s : ViewStack AdbcTable) (op : JoinOp) (leftGrp : Array St
   let some s' := s.pop | return none
   let disp := match op with
     | .union => "union" | .diff => "diff"
-    | _ => s!"⋈ ({leftGrp.toList |> ", ".intercalate})"
+    | _ => s!"⋈ ({leftGrp.joinWith ", "})"
   return (View.fromTbl adbc s'.cur.path |>.map fun v => s'.setCur { v with disp })
 
 -- | Resolve available ops from stack state

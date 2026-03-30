@@ -3,6 +3,7 @@
   DuckDB handles type detection via read_csv_auto.
 -/
 import Std.Data.HashMap
+import Tc.Types
 
 namespace Tc.TextParse
 
@@ -73,18 +74,18 @@ def fromText (content : String) : Except String String :=
     -- use fixed-width only if it gives >= mode columns (handles mixed spacing)
     if starts.size >= modeNc && starts.size > 1 then
       let names := splitByStarts hdr starts
-      let header := "\t".intercalate names.toList
+      let header := names.joinWith "\t"
       let rows := rest.map fun line =>
-        "\t".intercalate (splitByStarts line starts).toList
+        (splitByStarts line starts).joinWith "\t"
       .ok (header ++ "\n" ++ "\n".intercalate rows)
     else
       -- else use mode of word counts (handles "total 836" outliers)
       let nc := modeNc
       if nc == 0 then .error "no columns" else
       let names := splitN hdr nc
-      let header := "\t".intercalate names.toList
+      let header := names.joinWith "\t"
       let rows := rest.map fun line =>
-        "\t".intercalate (splitN line nc).toList
+        (splitN line nc).joinWith "\t"
       .ok (header ++ "\n" ++ "\n".intercalate rows)
 
 -- | Load from stdin (reads all input, returns TSV)

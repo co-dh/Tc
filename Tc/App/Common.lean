@@ -95,7 +95,7 @@ private def runViewEffect (a : AppState) (ci : CmdConfig.CmdInfo)
   | .freq colNames => tryStk a ci do
     let some (adbc, totalGroups) ← AdbcTable.freqTable s.tbl colNames | return none
     match View.fromTbl adbc s.cur.path 0 colNames with
-    | some fv => pure (some (s.push { fv with vkind := .freqV colNames totalGroups, disp := s!"freq {colNames.toList |> ",".intercalate}" }))
+    | some fv => pure (some (s.push { fv with vkind := .freqV colNames totalGroups, disp := s!"freq {colNames.joinWith ","}" }))
     | none => pure none
   | .freqFilter cols row => tryStk a ci do
     match s.cur.vkind, s.pop with

@@ -40,7 +40,7 @@ def compute (t : AdbcTable) (nBars : Nat := 20) : IO (Array String) := do
   let some baseSql ← Prql.compile prql
     | Log.error "sparkline: PRQL compile failed"; return empty
   let unionSql := "WITH __src AS (" ++ (baseSql.trimAsciiEnd).toString ++ ") " ++
-    (parts.toList |> " UNION ALL ".intercalate)
+    (parts.joinWith " UNION ALL ")
   let qr ← try Adbc.query unionSql
     catch e => Log.error s!"sparkline: {e}"; return empty
   let nr ← Adbc.nrows qr

@@ -197,8 +197,8 @@ private def renderFrame (pngPath : String)
   else IO.println (err?.getD "plot error")
   if intervals.size > 1 then
     let hi (s : String) := s!"\x1b[33m{s}\x1b[0m"
-    let bar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
-      if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
+    let bar := (intervals.mapIdx fun i iv =>
+      if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ").joinWith " "
     IO.println s!"{hi ","}/{hi "."}:{bar}"
 
 -- | Run plot with interactive controls (in-place re-rendering)
@@ -220,7 +220,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
     let cols ← TblOps.getCols n.tbl #[yIdx] 0 nr
     let vals := match cols.getD 0 default with
       | .strs vs => vs | .ints vs => vs.map toString | .floats vs => vs.map toString
-    IO.FS.writeFile datPath (yName ++ "\n" ++ "\n".intercalate (vals.filter (!·.isEmpty)).toList ++ "\n")
+    IO.FS.writeFile datPath (yName ++ "\n" ++ (vals.filter (!·.isEmpty)).joinWith "\n" ++ "\n")
     let script := rScript datPath pngPath kind "" yName false "" false "" "" (plotTitle kind "" yName false "")
     let err? ← renderR script
     clearScreen

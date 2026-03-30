@@ -59,8 +59,8 @@ def run (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let leftOnlySel := onlyCols left common allKeys |> sideSel "L"
   let rightOnlySel := onlyCols right common allKeys |> sideSel "R"
   let joinCond := allKeys.map (fun k => s!"L.{q k} IS NOT DISTINCT FROM R.{q k}")
-    |>.toList |> " AND ".intercalate
-  let selCols := (keySel ++ valSel ++ leftOnlySel ++ rightOnlySel).toList |> ", ".intercalate
+    |>.joinWith " AND "
+  let selCols := (keySel ++ valSel ++ leftOnlySel ++ rightOnlySel).joinWith ", "
   let tblName := s!"tc_diff_{seq}"
   let sql := s!"CREATE OR REPLACE TEMP TABLE {tblName} AS SELECT {selCols} FROM {lName} L FULL OUTER JOIN {rName} R ON {joinCond}"
   Log.write "diff-sql" sql

@@ -16,8 +16,8 @@ private def maxRows : Nat := 200
 private def transposeSql (baseSql : String) (colNames : Array String) (nRows : Nat) : String :=
   let n := min nRows maxRows
   let qid := AdbcTable.quoteId
-  let castCols := colNames.map (fun c => s!"CAST({qid c} AS VARCHAR) AS {qid c}") |>.toList |> ", ".intercalate
-  let unpivotCols := colNames.map qid |>.toList |> ", ".intercalate
+  let castCols := colNames.map (fun c => s!"CAST({qid c} AS VARCHAR) AS {qid c}") |>.joinWith ", "
+  let unpivotCols := colNames.map qid |>.joinWith ", "
   let pivotCols := List.range n |>.map (fun i =>
     s!"MAX(CASE WHEN _rn = {i} THEN _val END) AS \"row_{i}\"") |> ", ".intercalate
   -- _ord preserves original column order (UNPIVOT emits names in declaration order,
@@ -28,7 +28,7 @@ private def transposeSql (baseSql : String) (colNames : Array String) (nRows : N
   s!"SELECT \"column\", {pivotCols} FROM __unp GROUP BY \"column\" " ++
   -- Preserve original column order via CASE mapping column name → position
   let ordCases := Array.range colNames.size |>.map (fun i =>
-    s!"WHEN \"column\" = '{escSql (colNames.getD i "")}' THEN {i}") |>.toList |> " ".intercalate
+    s!"WHEN \"column\" = '{escSql (colNames.getD i "")}' THEN {i}") |>.joinWith " "
   s!"ORDER BY CASE {ordCases} END"
 
 -- | Push transposed view onto stack
