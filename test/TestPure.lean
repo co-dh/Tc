@@ -77,20 +77,20 @@ end KeyMapTests
 section ViewUpdateTests
 
 -- [ (sort.asc) returns sort effect with asc=true (from test_sort_asc)
-#guard (View.update testView "sort.asc" 1).map (·.2) ==
+#guard (View.update testView .sortAsc 1).map (·.2) ==
   some (.sort 0 #[] #[] true)
 
 -- ] (sort.desc) returns sort effect with asc=false (from test_sort_desc)
-#guard (View.update testView "sort.desc" 1).map (·.2) ==
+#guard (View.update testView .sortDesc 1).map (·.2) ==
   some (.sort 0 #[] #[] false)
 
 -- Navigation delegates to NavState and returns Effect.none
 -- (from test_nav_down: "j moves to row 1")
-#guard (View.update testView "row.inc" 1).map (·.1.nav.row.cur.val) == some 1
-#guard (View.update testView "row.inc" 1).map (·.2) == some .none
+#guard (View.update testView .rowInc 1).map (·.1.nav.row.cur.val) == some 1
+#guard (View.update testView .rowInc 1).map (·.2) == some .none
 
 -- row.dec at 0 stays at 0 (from test_nav_up: "jk returns to row 0")
-#guard (View.update testView "row.dec" 1).map (·.1.nav.row.cur.val) == some 0
+#guard (View.update testView .rowDec 1).map (·.1.nav.row.cur.val) == some 0
 
 end ViewUpdateTests
 
@@ -119,23 +119,23 @@ section ViewStackUpdateTests
 
 -- S swaps (from test_stack_swap: "S swaps/dups view")
 -- On single-element stack, swap is identity
-#guard (ViewStack.update testStack "stk.swap").map (·.1.hd.path) == some "data/test.csv"
-#guard (ViewStack.update testStack "stk.swap").map (·.2) == some .none
+#guard (ViewStack.update testStack .stkSwap).map (·.1.hd.path) == some "data/test.csv"
+#guard (ViewStack.update testStack .stkSwap).map (·.2) == some .none
 
 -- stk.dup dups: pushes copy
-#guard (ViewStack.update testStack "stk.dup").map (·.1.tl.length) == some 1
-#guard (ViewStack.update testStack "stk.dup").map (·.2) == some .none
+#guard (ViewStack.update testStack .stkDup).map (·.1.tl.length) == some 1
+#guard (ViewStack.update testStack .stkDup).map (·.2) == some .none
 
 -- q (stk.pop) on empty stack → quit (from test_q_quit: "q on empty stack exits cleanly")
-#guard (ViewStack.update testStack "stk.pop").map (·.2) == some .quit
+#guard (ViewStack.update testStack .stkPop).map (·.2) == some .quit
 
 -- q (stk.pop) with parent → pops (from test_meta_quit, test_freq_quit)
 def twoStack : ViewStack (MockTable 5 3) := testStack.dup
-#guard (ViewStack.update twoStack "stk.pop").map (·.1.tl.length) == some 0
-#guard (ViewStack.update twoStack "stk.pop").map (·.2) == some .none
+#guard (ViewStack.update twoStack .stkPop).map (·.1.tl.length) == some 0
+#guard (ViewStack.update twoStack .stkPop).map (·.2) == some .none
 
 -- Unhandled commands return none
-#guard (ViewStack.update testStack "row.inc").isNone
+#guard (ViewStack.update testStack .rowInc).isNone
 
 end ViewStackUpdateTests
 

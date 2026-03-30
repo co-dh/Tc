@@ -45,12 +45,12 @@ def setKey (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   | none => return some s
 
 -- | Dispatch meta handler to IO action. Returns none if handler not recognized.
-def dispatch (s : ViewStack AdbcTable) (h : String) : Option (IO (Option (ViewStack AdbcTable))) :=
+def dispatch (s : ViewStack AdbcTable) (h : Cmd) : Option (IO (Option (ViewStack AdbcTable))) :=
   match h with
-  | "meta.push"      => some (push s)
-  | "meta.selNull"   => some (some <$> selNull s)
-  | "meta.selSingle" => some (some <$> selSingle s)
-  | "meta.setKey"    => if s.cur.vkind matches .colMeta then some (setKey s) else none
+  | .metaPush      => some (push s)
+  | .metaSelNull   => some (some <$> selNull s)
+  | .metaSelSingle => some (some <$> selSingle s)
+  | .metaSetKey    => if s.cur.vkind matches .colMeta then some (setKey s) else none
   | _ => none
 
 end Tc.Meta

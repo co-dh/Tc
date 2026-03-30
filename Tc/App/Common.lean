@@ -42,9 +42,9 @@ inductive Action where | quit | unhandled | ok (a : AppState)
 -- arg is empty for non-arg commands, contains user input for arg commands.
 abbrev HandlerFn := AppState → CmdConfig.CmdInfo → String → IO Action
 
--- | Unified handler map: handler name → HandlerFn.
+-- | Unified handler map: Cmd → HandlerFn.
 -- One HashMap for all commands (pure, IO, arg). Lookup falls back to viewUp.
-initialize handlerMap : IO.Ref (Std.HashMap String HandlerFn) ← IO.mkRef {}
+initialize handlerMap : IO.Ref (Std.HashMap Cmd HandlerFn) ← IO.mkRef {}
 
 namespace AppState
 
@@ -110,31 +110,29 @@ private def runViewEffect (a : AppState) (ci : CmdConfig.CmdInfo)
 
 -- | View.update + runViewEffect fallback for nav/sort/exclude/freq handlers
 private def viewUp (a : AppState) (ci : CmdConfig.CmdInfo) : IO Action := do
-  let h := ci.handler
   -- freq handlers: try Freq.update first, then View.update
-  if h.startsWith "freq." then
-    match Freq.update a.stk h with
+  if ci.cmd matches .freqOpen | .freqFilter then
+    match Freq.update a.stk ci.cmd with
     | some (s', e) => return ← runViewEffect (a.withStk ci s') ci s'.cur e
     | none => pure ()
-  match View.update a.stk.cur h 20 with
+  match View.update a.stk.cur ci.cmd 20 with
   | some (v', e) => runViewEffect a ci v' e
   | none => pure .unhandled
 
 -- | Pure-only dispatch for preview polling (fzf cmd mode). No IO effects, no HashMap.
 -- Only called from runMenu poll loop — perf not critical.
 def pureDispatch (a : AppState) (ci : CmdConfig.CmdInfo) : Option AppState :=
-  let h := ci.handler
-  if h.startsWith "stk." then
-    ViewStack.update a.stk h |>.bind fun (s', _) => some (a.withStk ci s')
+  if ci.cmd matches .stkDup | .stkPop | .stkSwap then
+    ViewStack.update a.stk ci.cmd |>.bind fun (s', _) => some (a.withStk ci s')
   else
     -- Nav-only: try View.update, keep only .none effects
-    View.update a.stk.cur h 20 |>.bind fun (v', e) =>
+    View.update a.stk.cur ci.cmd 20 |>.bind fun (v', e) =>
       if e.isNone then some (a.withStk ci (a.stk.setCur v')) else none
 
 -- | Full dispatch: unified HashMap lookup with viewUp fallback.
 -- Returns .quit to exit, .unhandled if command not recognized, .ok for everything else.
 partial def dispatch (a : AppState) (ci : CmdConfig.CmdInfo) (arg : String := "") : IO Action := do
-  match (← handlerMap.get).get? ci.handler with
+  match (← handlerMap.get).get? ci.cmd with
   | some f => f a ci arg
   | none => viewUp a ci  -- default: View.update + runViewEffect
 
@@ -145,7 +143,7 @@ private partial def runMenu (a : AppState) : IO Action := do
     match ← Socket.pollCmd with
     | some cmdStr =>
       Log.write "sock" s!"poll cmd={cmdStr}"
-      let ci ← CmdConfig.handlerLookup cmdStr
+      let some ci ← CmdConfig.handlerLookup cmdStr | pure ()
       match (← ref.get).pureDispatch ci with
       | some a' =>
         let (vs', v') ← a'.stk.cur.doRender a'.vs a'.theme.styles a'.heatMode a'.sparklines
@@ -158,8 +156,9 @@ private partial def runMenu (a : AppState) : IO Action := do
   let _ ← Socket.pollCmd  -- drain stale preview command from fzf focus
   match handler? with
   | some h =>
-    let ci ← CmdConfig.handlerLookup h
-    a'.dispatch ci
+    match ← CmdConfig.handlerLookup h with
+    | some ci => a'.dispatch ci
+    | none => pure (.ok a')
   | none => pure (.ok a')
 
 -- | Run a stack-level IO action with shared error handling and state reset
@@ -180,22 +179,22 @@ private def precAdj (delta : Int) : HandlerFn := fun a _ _ =>
   let p := (Int.ofNat cur + delta).toNat |> min 17
   pure (.ok { a with stk := a.stk.setCur { a.stk.cur with prec := p } })
 -- domain dispatch with tryStk + viewUp fallback
-private def domainH (d : ViewStack AdbcTable → String → Option (IO (Option (ViewStack AdbcTable)))) : HandlerFn :=
+private def domainH (d : ViewStack AdbcTable → Cmd → Option (IO (Option (ViewStack AdbcTable)))) : HandlerFn :=
   fun a ci _ => do
-    if let some f := d a.stk ci.handler then return ← a.tryStk ci f
+    if let some f := d a.stk ci.cmd then return ← a.tryStk ci f
     a.viewUp ci
 -- domain dispatch returning non-optional (Filter style)
-private def domainH' (d : ViewStack AdbcTable → String → Option (IO (ViewStack AdbcTable))) : HandlerFn :=
+private def domainH' (d : ViewStack AdbcTable → Cmd → Option (IO (ViewStack AdbcTable))) : HandlerFn :=
   fun a ci _ => do
-    if let some f := d a.stk ci.handler then return ← a.tryStk ci (some <$> f)
+    if let some f := d a.stk ci.cmd then return ← a.tryStk ci (some <$> f)
     a.viewUp ci
 -- stack op
 private def stkH : HandlerFn := fun a ci _ =>
-  pure (match ViewStack.update a.stk ci.handler with
+  pure (match ViewStack.update a.stk ci.cmd with
     | some (_, .quit) => .quit | some (s', _) => .ok (a.withStk ci s') | none => .unhandled)
--- plot: handler name → PlotKind → run
+-- plot: Cmd → PlotKind → run
 private def plotH : HandlerFn := fun a ci _ => do
-  if let some k := Plot.kindOf? ci.handler then return ← a.tryStk ci (Plot.run a.stk k)
+  if let some k := ci.cmd.plotKind? then return ← a.tryStk ci (Plot.run a.stk k)
   pure .unhandled
 -- arg command: fzf version when empty, direct when arg given
 private def argH (fzf : ViewStack AdbcTable → IO (ViewStack AdbcTable))
@@ -216,111 +215,111 @@ private def cmd (e : E) (f : HandlerFn) : E × Option HandlerFn := (e, some f)
 
 private def commands : Array (E × Option HandlerFn) := #[
   -- row navigation                        -- ctx: r=row c=col g=groups s=sels a=arg S=stack
-  nav { handler := "row.inc",      ctx := "r",  key := "j" },
-  nav { handler := "row.dec",      ctx := "r",  key := "k" },
-  nav { handler := "row.pgdn",    ctx := "r",  key := "<pgdn>" },
-  nav { handler := "row.pgup",    ctx := "r",  key := "<pgup>" },
-  nav { handler := "row.pgdn",    ctx := "r",  key := "<C-d>" },
-  nav { handler := "row.pgup",    ctx := "r",  key := "<C-u>" },
-  nav { handler := "row.top",     ctx := "r",  key := "<home>" },
-  nav { handler := "row.bot",     ctx := "r",  key := "<end>" },
-  nav { handler := "row.sel",     ctx := "r",  key := "T", label := "Select/deselect current row" },
+  nav { cmd := .rowInc,      ctx := "r",  key := "j" },
+  nav { cmd := .rowDec,      ctx := "r",  key := "k" },
+  nav { cmd := .rowPgdn,    ctx := "r",  key := "<pgdn>" },
+  nav { cmd := .rowPgup,    ctx := "r",  key := "<pgup>" },
+  nav { cmd := .rowPgdn,    ctx := "r",  key := "<C-d>" },
+  nav { cmd := .rowPgup,    ctx := "r",  key := "<C-u>" },
+  nav { cmd := .rowTop,     ctx := "r",  key := "<home>" },
+  nav { cmd := .rowBot,     ctx := "r",  key := "<end>" },
+  nav { cmd := .rowSel,     ctx := "r",  key := "T", label := "Select/deselect current row" },
   -- row search/filter
-  cmd { handler := "row.search",    ctx := "ca", key := "/", label := "Search for value in current column", resetsVS := true }
+  cmd { cmd := .rowSearch,    ctx := "ca", key := "/", label := "Search for value in current column", resetsVS := true }
     (argH ViewStack.rowSearch ViewStack.searchWith),
-  cmd { handler := "row.filter",    ctx := "a",  key := "\\", label := "Filter rows by PRQL expression", resetsVS := true }
+  cmd { cmd := .rowFilter,    ctx := "a",  key := "\\", label := "Filter rows by PRQL expression", resetsVS := true }
     (argH ViewStack.rowFilter ViewStack.filterWith),
-  cmd { handler := "row.searchNext",ctx := "rc", key := "n", label := "Jump to next search match" } (domainH' Filter.dispatch),
-  cmd { handler := "row.searchPrev",ctx := "rc", key := "N", label := "Jump to previous search match" } (domainH' Filter.dispatch),
+  cmd { cmd := .rowSearchNext, ctx := "rc", key := "n", label := "Jump to next search match" } (domainH' Filter.dispatch),
+  cmd { cmd := .rowSearchPrev, ctx := "rc", key := "N", label := "Jump to previous search match" } (domainH' Filter.dispatch),
   -- col navigation
-  nav { handler := "col.inc",     ctx := "c",  key := "l" },
-  nav { handler := "col.dec",     ctx := "c",  key := "h" },
-  nav { handler := "col.first",   ctx := "c" },
-  nav { handler := "col.last",    ctx := "c" },
-  nav { handler := "col.grp",     ctx := "c",  key := "!", label := "Toggle group on current column" },
-  nav { handler := "col.hide",    ctx := "c",  key := "H", label := "Hide/unhide current column" },
-  nav { handler := "col.exclude", ctx := "c",  key := "x", label := "Delete column(s) from query", resetsVS := true },
-  nav { handler := "col.shiftL",  ctx := "c",  key := "<S-left>", label := "Shift key column left" },
-  nav { handler := "col.shiftR",  ctx := "c",  key := "<S-right>", label := "Shift key column right" },
+  nav { cmd := .colInc,     ctx := "c",  key := "l" },
+  nav { cmd := .colDec,     ctx := "c",  key := "h" },
+  nav { cmd := .colFirst,   ctx := "c" },
+  nav { cmd := .colLast,    ctx := "c" },
+  nav { cmd := .colGrp,     ctx := "c",  key := "!", label := "Toggle group on current column" },
+  nav { cmd := .colHide,    ctx := "c",  key := "H", label := "Hide/unhide current column" },
+  nav { cmd := .colExclude, ctx := "c",  key := "x", label := "Delete column(s) from query", resetsVS := true },
+  nav { cmd := .colShiftL,  ctx := "c",  key := "<S-left>", label := "Shift key column left" },
+  nav { cmd := .colShiftR,  ctx := "c",  key := "<S-right>", label := "Shift key column right" },
   -- col sort
-  nav { handler := "sort.asc",    ctx := "c",  key := "[", label := "Sort ascending", resetsVS := true },
-  nav { handler := "sort.desc",   ctx := "c",  key := "]", label := "Sort descending", resetsVS := true },
+  nav { cmd := .sortAsc,    ctx := "c",  key := "[", label := "Sort ascending", resetsVS := true },
+  nav { cmd := .sortDesc,   ctx := "c",  key := "]", label := "Sort descending", resetsVS := true },
   -- col arg commands
-  cmd { handler := "col.split",   ctx := "ca", key := ":", label := "Split column by delimiter" } (argH Split.run Split.runWith),
-  cmd { handler := "col.derive",  ctx := "a",  key := "=", label := "Derive new column (name = expr)" } (argH Derive.run Derive.runWith),
-  cmd { handler := "col.search",  ctx := "a",  key := "g", label := "Jump to column by name", resetsVS := true }
+  cmd { cmd := .colSplit,   ctx := "ca", key := ":", label := "Split column by delimiter" } (argH Split.run Split.runWith),
+  cmd { cmd := .colDerive,  ctx := "a",  key := "=", label := "Derive new column (name = expr)" } (argH Derive.run Derive.runWith),
+  cmd { cmd := .colSearch,  ctx := "a",  key := "g", label := "Jump to column by name", resetsVS := true }
     (argH ViewStack.colSearch ViewStack.colJumpWith),
   -- col plot
-  cmd { handler := "plot.area",    ctx := "cg", label := "Area (g=x numeric, c=y numeric)" } plotH,
-  cmd { handler := "plot.line",    ctx := "cg", label := "Line (g=x numeric, c=y numeric)" } plotH,
-  cmd { handler := "plot.scatter", ctx := "cg", label := "Scatter (g=x numeric, c=y numeric)" } plotH,
-  cmd { handler := "plot.bar",     ctx := "cg", label := "Bar (g=x categorical, c=y numeric)" } plotH,
-  cmd { handler := "plot.box",     ctx := "cg", label := "Boxplot (g=x categorical, c=y numeric)" } plotH,
-  cmd { handler := "plot.step",    ctx := "cg", label := "Step (g=x numeric, c=y numeric)" } plotH,
-  cmd { handler := "plot.hist",    ctx := "c",  label := "Histogram (c=numeric column)" } plotH,
-  cmd { handler := "plot.density", ctx := "c",  label := "Density (c=numeric column)" } plotH,
-  cmd { handler := "plot.violin",  ctx := "cg", label := "Violin (g=x categorical, c=y numeric)" } plotH,
+  cmd { cmd := .plotArea,    ctx := "cg", label := "Area (g=x numeric, c=y numeric)" } plotH,
+  cmd { cmd := .plotLine,    ctx := "cg", label := "Line (g=x numeric, c=y numeric)" } plotH,
+  cmd { cmd := .plotScatter, ctx := "cg", label := "Scatter (g=x numeric, c=y numeric)" } plotH,
+  cmd { cmd := .plotBar,     ctx := "cg", label := "Bar (g=x categorical, c=y numeric)" } plotH,
+  cmd { cmd := .plotBox,     ctx := "cg", label := "Boxplot (g=x categorical, c=y numeric)" } plotH,
+  cmd { cmd := .plotStep,    ctx := "cg", label := "Step (g=x numeric, c=y numeric)" } plotH,
+  cmd { cmd := .plotHist,    ctx := "c",  label := "Histogram (c=numeric column)" } plotH,
+  cmd { cmd := .plotDensity, ctx := "c",  label := "Density (c=numeric column)" } plotH,
+  cmd { cmd := .plotViolin,  ctx := "cg", label := "Violin (g=x categorical, c=y numeric)" } plotH,
   -- stk: view stack operations
-  cmd { handler := "tbl.menu",   key := " ", label := "Open command menu" } (fun a _ _ => AppState.runMenu a),
-  cmd { handler := "stk.swap",   ctx := "S",  key := "S", label := "Swap top two views" } stkH,
-  cmd { handler := "stk.pop",    key := "q", label := "Close current view", resetsVS := true } stkH,
-  cmd { handler := "stk.dup",    label := "Duplicate current view" } stkH,
-  cmd { handler := "tbl.quit" } (fun _ _ _ => pure .quit),
-  cmd { handler := "tbl.xpose",  key := "X", label := "Transpose table (rows <-> columns)" }
+  cmd { cmd := .tblMenu,   key := " ", label := "Open command menu" } (fun a _ _ => AppState.runMenu a),
+  cmd { cmd := .stkSwap,   ctx := "S",  key := "S", label := "Swap top two views" } stkH,
+  cmd { cmd := .stkPop,    key := "q", label := "Close current view", resetsVS := true } stkH,
+  cmd { cmd := .stkDup,    label := "Duplicate current view" } stkH,
+  cmd { cmd := .tblQuit } (fun _ _ _ => pure .quit),
+  cmd { cmd := .tblXpose,  key := "X", label := "Transpose table (rows <-> columns)" }
     (fun a ci _ => a.tryStk ci (Transpose.push a.stk)),
-  cmd { handler := "tbl.diff",   ctx := "S",  key := "d", label := "Diff top two views" }
+  cmd { cmd := .tblDiff,   ctx := "S",  key := "d", label := "Diff top two views" }
     (fun a ci _ => if a.stk.cur.sameHide.isEmpty then a.tryStk ci (Diff.run a.stk)
     else pure (.ok { a with stk := a.stk.setCur (Diff.showSame a.stk.cur) }.resetVS)),
   -- info: precision, heatmap, scroll
-  cmd { handler := "info.tog",   key := "I", label := "Toggle info overlay" }
-    (fun a ci _ => pure (match a.info.update ci.handler with | some i' => .ok { a with info := i' } | none => .unhandled)),
-  cmd { handler := "prec.dec",   label := "Decrease decimal precision" } (precAdj (-1)),
-  cmd { handler := "prec.inc",   label := "Increase decimal precision" } (precAdj 1),
-  cmd { handler := "prec.zero",  label := "Set precision to 0 decimals" } (precSet 0),
-  cmd { handler := "prec.max",   label := "Set precision to max (17)" } (precSet 17),
-  cmd { handler := "cell.up",    key := "{", label := "Scroll cell preview up" }
+  cmd { cmd := .infoTog,   key := "I", label := "Toggle info overlay" }
+    (fun a ci _ => pure (match a.info.update ci.cmd with | some i' => .ok { a with info := i' } | none => .unhandled)),
+  cmd { cmd := .precDec,   label := "Decrease decimal precision" } (precAdj (-1)),
+  cmd { cmd := .precInc,   label := "Increase decimal precision" } (precAdj 1),
+  cmd { cmd := .precZero,  label := "Set precision to 0 decimals" } (precSet 0),
+  cmd { cmd := .precMax,   label := "Set precision to max (17)" } (precSet 17),
+  cmd { cmd := .cellUp,    key := "{", label := "Scroll cell preview up" }
     (fun a _ _ => pure (.ok { a with prevScroll := a.prevScroll - min a.prevScroll 5 })),
-  cmd { handler := "cell.dn",    key := "}", label := "Scroll cell preview down" }
+  cmd { cmd := .cellDn,    key := "}", label := "Scroll cell preview down" }
     (fun a _ _ => pure (.ok { a with prevScroll := a.prevScroll + 5 })),
-  cmd { handler := "heat.0",     label := "Heatmap: off" } (fun a _ _ => pure (.ok { a with heatMode := 0 })),
-  cmd { handler := "heat.1",     label := "Heatmap: numeric columns" } (fun a _ _ => pure (.ok { a with heatMode := 1 })),
-  cmd { handler := "heat.2",     label := "Heatmap: categorical columns" } (fun a _ _ => pure (.ok { a with heatMode := 2 })),
-  cmd { handler := "heat.3",     label := "Heatmap: all columns" } (fun a _ _ => pure (.ok { a with heatMode := 3 })),
+  cmd { cmd := .heat0,     label := "Heatmap: off" } (fun a _ _ => pure (.ok { a with heatMode := 0 })),
+  cmd { cmd := .heat1,     label := "Heatmap: numeric columns" } (fun a _ _ => pure (.ok { a with heatMode := 1 })),
+  cmd { cmd := .heat2,     label := "Heatmap: categorical columns" } (fun a _ _ => pure (.ok { a with heatMode := 2 })),
+  cmd { cmd := .heat3,     label := "Heatmap: all columns" } (fun a _ _ => pure (.ok { a with heatMode := 3 })),
   -- metaV: column metadata view
-  cmd { handler := "meta.push",      key := "M", label := "Open column metadata view", resetsVS := true } (domainH Meta.dispatch),
-  cmd { handler := "meta.setKey",    ctx := "s",  key := "<ret>", label := "Set selected rows as key columns", resetsVS := true, viewCtx := "colMeta" } (domainH Meta.dispatch),
-  cmd { handler := "meta.selNull",   key := "0", label := "Select columns with null values", resetsVS := true } (domainH Meta.dispatch),
-  cmd { handler := "meta.selSingle", key := "1", label := "Select columns with single value", resetsVS := true } (domainH Meta.dispatch),
+  cmd { cmd := .metaPush,      key := "M", label := "Open column metadata view", resetsVS := true } (domainH Meta.dispatch),
+  cmd { cmd := .metaSetKey,    ctx := "s",  key := "<ret>", label := "Set selected rows as key columns", resetsVS := true, viewCtx := "colMeta" } (domainH Meta.dispatch),
+  cmd { cmd := .metaSelNull,   key := "0", label := "Select columns with null values", resetsVS := true } (domainH Meta.dispatch),
+  cmd { cmd := .metaSelSingle, key := "1", label := "Select columns with single value", resetsVS := true } (domainH Meta.dispatch),
   -- freq: frequency table
-  cmd { handler := "freq.open",   ctx := "cg", key := "F", label := "Open frequency view", resetsVS := true } vuH,
-  cmd { handler := "freq.filter", ctx := "r",  key := "<ret>", label := "Filter parent table by current row", resetsVS := true, viewCtx := "freqV" } vuH,
+  cmd { cmd := .freqOpen,   ctx := "cg", key := "F", label := "Open frequency view", resetsVS := true } vuH,
+  cmd { cmd := .freqFilter, ctx := "r",  key := "<ret>", label := "Filter parent table by current row", resetsVS := true, viewCtx := "freqV" } vuH,
   -- fld: folder/file browser
-  cmd { handler := "folder.push",     ctx := "r", key := "D", label := "Browse folder", resetsVS := true } (domainH Folder.dispatch),
-  cmd { handler := "folder.enter",    ctx := "r", key := "<ret>", label := "Open file or enter directory", resetsVS := true, viewCtx := "fld" } (domainH Folder.dispatch),
-  cmd { handler := "folder.parent",   key := "<bs>", label := "Go to parent directory", resetsVS := true, viewCtx := "fld" } (domainH Folder.dispatch),
-  cmd { handler := "folder.del",      ctx := "r", label := "Move to trash", resetsVS := true } (domainH Folder.dispatch),
-  cmd { handler := "folder.depthDec", label := "Decrease folder depth", resetsVS := true } (domainH Folder.dispatch),
-  cmd { handler := "folder.depthInc", label := "Increase folder depth", resetsVS := true } (domainH Folder.dispatch),
+  cmd { cmd := .folderPush,     ctx := "r", key := "D", label := "Browse folder", resetsVS := true } (domainH Folder.dispatch),
+  cmd { cmd := .folderEnter,    ctx := "r", key := "<ret>", label := "Open file or enter directory", resetsVS := true, viewCtx := "fld" } (domainH Folder.dispatch),
+  cmd { cmd := .folderParent,   key := "<bs>", label := "Go to parent directory", resetsVS := true, viewCtx := "fld" } (domainH Folder.dispatch),
+  cmd { cmd := .folderDel,      ctx := "r", label := "Move to trash", resetsVS := true } (domainH Folder.dispatch),
+  cmd { cmd := .folderDepthDec, label := "Decrease folder depth", resetsVS := true } (domainH Folder.dispatch),
+  cmd { cmd := .folderDepthInc, label := "Increase folder depth", resetsVS := true } (domainH Folder.dispatch),
   -- arg-only commands
-  cmd { handler := "tbl.export", ctx := "a",  key := "e", label := "Export table (csv/parquet/json/ndjson)" }
+  cmd { cmd := .tblExport, ctx := "a",  key := "e", label := "Export table (csv/parquet/json/ndjson)" }
     (fun a _ arg => a.runStackIO (if arg.isEmpty then do
       match ← Export.pickFmt with | some f => Export.run a.stk f | none => pure a.stk
       else Export.runWith a.stk arg)),
-  cmd { handler := "sess.save",  ctx := "a",  key := "W", label := "Save session" }
+  cmd { cmd := .sessSave,  ctx := "a",  key := "W", label := "Save session" }
     (fun a _ arg => a.runStackIO (do Session.saveWith a.stk arg; pure a.stk)),
-  cmd { handler := "sess.load",  ctx := "a",  label := "Load session" }
+  cmd { cmd := .sessLoad,  ctx := "a",  label := "Load session" }
     (fun a _ arg => a.runStackIO (do
       match ← Session.loadWith arg with | some stk' => pure stk' | none => pure a.stk)),
-  cmd { handler := "tbl.join",   ctx := "Sa", key := "J", label := "Join tables" }
+  cmd { cmd := .tblJoin,   ctx := "Sa", key := "J", label := "Join tables" }
     (fun a _ arg => a.runStackIO (do
       match ← Join.runWith a.stk arg with | some s' => pure s' | none => pure a.stk))
 ]
 
 def initHandlers : IO Unit := do
   commands.map (·.1) |> CmdConfig.init
-  let mut m : Std.HashMap String HandlerFn := {}
+  let mut m : Std.HashMap Cmd HandlerFn := {}
   for (e, fn?) in commands do
-    if let some f := fn? then m := m.insert e.handler f
+    if let some f := fn? then m := m.insert e.cmd f
   handlerMap.set m
 
 -- | Alias for ViewKind.ctxStr (used in dispatch)
@@ -334,7 +333,7 @@ private partial def dispatchHandler (a : AppState) (cmdStr : String) : IO AppSta
     | [h] => (h, "")
     | h :: rest => (h, rest |> " ".intercalate)
     | [] => (cmdStr, "")
-  let ci ← CmdConfig.handlerLookup h
+  let some ci ← CmdConfig.handlerLookup h | pure a
   match ← a.dispatch ci arg with
   | .ok a' => pure { a' with prevScroll := 0 }
   | _ => pure a
@@ -387,28 +386,23 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   if ev.type == 1 && ev.key == 0x16 then IO.sleep 50; return ← mainLoop a test ks'
   -- Empty event (socket wake-up with no key press) → re-render and loop
   if ev.type == 0 then return ← mainLoop a test ks'
-  -- Resolve key → handler name via config (context-aware)
+  -- Resolve key → command via config (context-aware)
   let key := evToKey ev
   let vkStr := viewCtxStr a.stk.cur.vkind
-  let handler? ← do
-    match ← CmdConfig.keyLookup key vkStr with
-    | some ci => pure (some ci.handler)
-    | none => pure none
-  match handler? with
-  | some h =>
+  match ← CmdConfig.keyLookup key vkStr with
+  | some ci =>
     -- Arg commands: collect user input first (in test mode, chars until \r), then dispatch
-    let (arg, rest) ← if ← CmdConfig.isArgHandler h then
+    let (arg, rest) ← if ← CmdConfig.isArgCmd ci.cmd then
       pure (if test && ks'.any (· == '\r') then
         let idx := ks'.findIdx? (· == '\r') |>.getD ks'.size
         (String.ofList (ks'.extract 0 idx).toList, ks'.extract (idx + 1) ks'.size)
       else ("", ks'))
     else pure ("", ks')
-    let ci ← CmdConfig.handlerLookup h
     match ← a.dispatch ci arg with
     | .quit => pure a
     | .unhandled => mainLoop a test rest
     | .ok a'' =>
-      let a'' := if h == "cell.up" || h == "cell.dn" then a'' else { a'' with prevScroll := 0 }
+      let a'' := if ci.cmd matches .cellUp | .cellDn then a'' else { a'' with prevScroll := 0 }
       mainLoop a'' test rest
   | none => mainLoop a test ks'
 

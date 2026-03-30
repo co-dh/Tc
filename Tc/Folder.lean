@@ -287,15 +287,15 @@ def setDepth (s : ViewStack AdbcTable) (delta : Int) : IO (Option (ViewStack Adb
   if newDepth == depth then pure (some s) else refreshView s path newDepth
 
 -- | Dispatch folder handler to IO action. Returns none if handler not recognized.
-def dispatch (s : ViewStack AdbcTable) (h : String) : Option (IO (Option (ViewStack AdbcTable))) :=
+def dispatch (s : ViewStack AdbcTable) (h : Cmd) : Option (IO (Option (ViewStack AdbcTable))) :=
   let opt f := some (f s)
   match h with
-  | "folder.push"    => opt push
-  | "folder.depthInc" => some (setDepth s 1)
-  | "folder.depthDec" => some (setDepth s (-1))
-  | "folder.del"    => if s.cur.vkind matches .fld _ _ then opt del else none
-  | "folder.parent" => if s.cur.vkind matches .fld _ _ then opt goParent else none
-  | "folder.enter"  => if s.cur.vkind matches .fld _ _ then opt enter else none
+  | .folderPush     => opt push
+  | .folderDepthInc => some (setDepth s 1)
+  | .folderDepthDec => some (setDepth s (-1))
+  | .folderDel      => if s.cur.vkind matches .fld _ _ then opt del else none
+  | .folderParent   => if s.cur.vkind matches .fld _ _ then opt goParent else none
+  | .folderEnter    => if s.cur.vkind matches .fld _ _ then opt enter else none
   | _ => none
 
 end Tc.Folder

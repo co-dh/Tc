@@ -2,6 +2,8 @@
   Core types: Cell, Column, Table, PureKey
   Table stores columns by name (HashMap) for direct name-based access
 -/
+import Std.Data.HashMap
+import Lean.Elab.Command
 -- | Join array elements with separator (avoids .toList |> sep.intercalate)
 def Array.joinWith (a : Array String) (sep : String) : String :=
   sep.intercalate a.toList
@@ -302,5 +304,118 @@ inductive Effect where
 namespace Effect
 def isNone : Effect → Bool | .none => true | _ => false
 end Effect
+
+end Tc
+
+-- | Macro: generates inductive + toStr + ToString + all + strMap + ofString?
+-- Adding a command = one line. Each entry listed exactly once.
+open Lean Elab Command Parser in
+elab "cmd_enum " name:ident " where" entries:((ppLine "| " ident " => " str))* : command => do
+  let pairs := entries.map fun e =>
+    let n := e.raw[1].getId.toString (escape := false)
+    let s := e.raw[3].isStrLit?.getD ""
+    (n, s)
+  let elabStr (s : String) : CommandElabM Unit := do
+    match runParserCategory (← getEnv) `command s with
+    | .ok stx => elabCommand stx
+    | .error e => throwError e
+  let nm := name.getId.toString (escape := false)
+  -- inductive
+  let ctors := pairs.map (fun (n, _) => s!"  | {n}") |>.toList |> "\n".intercalate
+  elabStr s!"inductive {nm} where\n{ctors}\n  deriving BEq, Hashable, Repr, Inhabited"
+  elabStr s!"namespace {nm}"
+  -- toStr
+  let arms := pairs.map (fun (n, s) => s!"  | .{n} => \"{s}\"") |>.toList |> "\n".intercalate
+  elabStr s!"def toStr : {nm} → String\n{arms}"
+  elabStr s!"instance : ToString {nm} where toString := toStr"
+  -- all
+  let items := pairs.map (fun (n, _) => s!".{n}") |>.toList |> ", ".intercalate
+  elabStr s!"def all : Array {nm} := #[{items}]"
+  -- strMap + ofString?
+  elabStr s!"private def strMap : Std.HashMap String {nm} := all.foldl (init := \{}) fun m c => m.insert c.toStr c"
+  elabStr s!"def ofString? (s : String) : Option {nm} := strMap.get? s"
+  elabStr s!"end {nm}"
+
+namespace Tc
+
+cmd_enum Cmd where
+  | rowInc       => "row.inc"
+  | rowDec       => "row.dec"
+  | rowPgdn      => "row.pgdn"
+  | rowPgup      => "row.pgup"
+  | rowTop       => "row.top"
+  | rowBot       => "row.bot"
+  | rowSel       => "row.sel"
+  | rowSearch    => "row.search"
+  | rowFilter    => "row.filter"
+  | rowSearchNext => "row.searchNext"
+  | rowSearchPrev => "row.searchPrev"
+  | colInc       => "col.inc"
+  | colDec       => "col.dec"
+  | colFirst     => "col.first"
+  | colLast      => "col.last"
+  | colGrp       => "col.grp"
+  | colHide      => "col.hide"
+  | colExclude   => "col.exclude"
+  | colShiftL    => "col.shiftL"
+  | colShiftR    => "col.shiftR"
+  | sortAsc      => "sort.asc"
+  | sortDesc     => "sort.desc"
+  | colSplit     => "col.split"
+  | colDerive    => "col.derive"
+  | colSearch    => "col.search"
+  | plotArea     => "plot.area"
+  | plotLine     => "plot.line"
+  | plotScatter  => "plot.scatter"
+  | plotBar      => "plot.bar"
+  | plotBox      => "plot.box"
+  | plotStep     => "plot.step"
+  | plotHist     => "plot.hist"
+  | plotDensity  => "plot.density"
+  | plotViolin   => "plot.violin"
+  | tblMenu      => "tbl.menu"
+  | stkSwap      => "stk.swap"
+  | stkPop       => "stk.pop"
+  | stkDup       => "stk.dup"
+  | tblQuit      => "tbl.quit"
+  | tblXpose     => "tbl.xpose"
+  | tblDiff      => "tbl.diff"
+  | infoTog      => "info.tog"
+  | precDec      => "prec.dec"
+  | precInc      => "prec.inc"
+  | precZero     => "prec.zero"
+  | precMax      => "prec.max"
+  | cellUp       => "cell.up"
+  | cellDn       => "cell.dn"
+  | heat0        => "heat.0"
+  | heat1        => "heat.1"
+  | heat2        => "heat.2"
+  | heat3        => "heat.3"
+  | metaPush     => "meta.push"
+  | metaSetKey   => "meta.setKey"
+  | metaSelNull  => "meta.selNull"
+  | metaSelSingle => "meta.selSingle"
+  | freqOpen     => "freq.open"
+  | freqFilter   => "freq.filter"
+  | folderPush   => "folder.push"
+  | folderEnter  => "folder.enter"
+  | folderParent => "folder.parent"
+  | folderDel    => "folder.del"
+  | folderDepthDec => "folder.depthDec"
+  | folderDepthInc => "folder.depthInc"
+  | tblExport    => "tbl.export"
+  | sessSave     => "sess.save"
+  | sessLoad     => "sess.load"
+  | tblJoin      => "tbl.join"
+
+namespace Cmd
+
+def plotKind? : Cmd → Option PlotKind
+  | .plotArea => some .area | .plotLine => some .line | .plotScatter => some .scatter
+  | .plotBar => some .bar | .plotBox => some .box | .plotStep => some .step
+  | .plotHist => some .hist | .plotDensity => some .density | .plotViolin => some .violin
+  | _ => none
+
+end Cmd
 
 end Tc
