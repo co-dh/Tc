@@ -42,7 +42,7 @@ def new {nr nc : Nat} (nav : NavState nr nc T) (path : String) : View T :=
 @[inline] def doRender (v : View T) (vs : ViewState) (styles : Array UInt32)
     (heatMode : UInt8 := 1) (sparklines : Array String := #[]) : IO (ViewState × View T) := do
   let names := TblOps.colNames v.nav.tbl
-  let extraHidden := v.sameHide.filterMap names.idxOf?
+  let extraHidden := v.sameHide |>.filterMap names.idxOf?
   let (vs', widths) ← render v.nav vs v.widths styles (Int.ofNat v.prec) v.widthAdj v.vkind heatMode sparklines extraHidden
   pure (vs', { v with widths })
 
@@ -76,15 +76,15 @@ def update (v : View T) (h : String) (rowPg : Nat) : Option (View T × Effect) :
   match h with
   | "sort.asc" | "sort.desc" =>
     let asc := h == "sort.asc"
-    let selIdxs := n.col.sels.filterMap names.idxOf?
-    let grpIdxs := n.grp.filterMap names.idxOf?
+    let selIdxs := n.col.sels |>.filterMap names.idxOf?
+    let grpIdxs := n.grp |>.filterMap names.idxOf?
     some (v, .sort curCol selIdxs grpIdxs asc)
   | "col.exclude" =>
     let name := n.curColName
     let cols := if n.hidden.isEmpty then #[name]
       else if n.hidden.contains name then n.hidden else n.hidden.push name
     some (v, .exclude cols)
-  | _ => (NavState.exec h n rowPg).map fun nav' =>
+  | _ => NavState.exec h n rowPg |>.map fun nav' =>
     let needsMore := nav'.row.cur.val + 1 >= v.nRows
       && TblOps.totalRows n.tbl > v.nRows
       && (h == "row.inc" || h == "row.pgdn" || h == "row.bot")
@@ -120,7 +120,7 @@ def swap (s : ViewStack T) : ViewStack T :=
   | [] => s
 
 def dup (s : ViewStack T) : ViewStack T := ⟨s.hd, s.hd :: s.tl⟩
-def tabNames (s : ViewStack T) : Array String := (s.hd :: s.tl).toArray.map (·.tabName)
+def tabNames (s : ViewStack T) : Array String := (s.hd :: s.tl) |>.toArray |>.map (·.tabName)
 
 -- | Pure update by handler name. q on empty stack → quit
 def update (s : ViewStack T) (h : String) : Option (ViewStack T × Effect) :=

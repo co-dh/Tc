@@ -22,7 +22,7 @@ def parseArgs (args : List String) : CliArgs :=
   let noSign := args.any (· == "+n")
   let args := args.filter (· != "+n")
   let (session, args) := extractFlag "-s" args
-  let toK s := (parseKeys s).toList.toArray
+  let toK s := parseKeys s |>.toList.toArray
   match args with
   | "-c" :: k :: _ => { path := none, keys := toK k, test := true, noSign, session }
   | p :: "-c" :: k :: _ => { path := some p, keys := toK k, test := true, noSign, session }

@@ -48,7 +48,7 @@ def s3Extra : IO String := do
 def pathParts (pfx path : String) : Array String :=
   let rest := (path.drop pfx.length).toString
   let rest := if rest.endsWith "/" then (rest.take (rest.length - 1)).toString else rest
-  if rest.isEmpty then #[] else (rest.splitOn "/").toArray
+  if rest.isEmpty then #[] else rest.splitOn "/" |>.toArray
 
 -- | Expand template placeholders: {path}, {name}, {tmp}, {extra}, {1}, {2}, {2+}, etc.
 -- For empty values, also removes a preceding "/" to avoid trailing slashes
@@ -63,11 +63,10 @@ def mkVars (cfg : Config) (path tmp name extra : String) : Array (String × Stri
   let parts := pathParts cfg.pfx path
   let dsn := (path.drop cfg.pfx.length).toString  -- path with prefix stripped, no splitting
   let baseVars := #[("path", path), ("tmp", tmp), ("name", name), ("extra", extra), ("dsn", dsn)]
-  let numbered := (List.range 9).map fun i =>
-    (s!"{i + 1}", parts.getD i "")
-  let plus := (List.range 9).map fun i =>
-    (s!"{i + 1}+", "/".intercalate (parts.toList.drop i))
-  baseVars ++ numbered.toArray ++ plus.toArray
+  let numbered := (List.range 9).map (fun i => (s!"{i + 1}", parts.getD i "")) |>.toArray
+  let plus := (List.range 9).map (fun i =>
+    (s!"{i + 1}+", parts.toList.drop i |> "/".intercalate)) |>.toArray
+  baseVars ++ numbered ++ plus
 
 -- | Reject shell metacharacters in user-supplied values before template expansion.
 -- Blocklist approach: reject only dangerous chars, allow everything else (unicode, #, etc.)
@@ -128,21 +127,21 @@ def sources : Array Config := #[
 
 -- | Find config for a path by prefix match (longest prefix wins)
 def findSource (path : String) : IO (Option Config) :=
-  pure (sources.foldl (fun best cfg =>
+  sources.foldl (fun best cfg =>
     if !cfg.pfx.isEmpty && path.startsWith cfg.pfx then
       match best with
       | some b => if cfg.pfx.length > b.pfx.length then some cfg else best
       | none => some cfg
-    else best) none)
+    else best) none
+  |> pure
 
 
 /-! ## Generic Operations -/
 
 -- | Parent path navigation using Remote.parent with config's minParts
 def Config.parent (cfg : Config) (path : String) : Option String :=
-  match Remote.parent path cfg.minParts with
-  | some p => some p
-  | none => if cfg.parentFallback.isEmpty then none else some cfg.parentFallback
+  Remote.parent path cfg.minParts
+  |>.orElse fun _ => if cfg.parentFallback.isEmpty then none else some cfg.parentFallback
 
 -- | Track which prefixes/extensions have completed setup
 initialize setupDone : IO.Ref (Array String) ← IO.mkRef #[]
@@ -192,7 +191,7 @@ private def fromTbl (tbl : String) := AdbcTable.fromTmpTbl tbl
 
 -- | Extract last path component as a filename
 private def nameFromPath (path : String) : String :=
-  path.splitOn "/" |>.filter (·.length > 0) |>.getLast? |>.getD "file"
+  path.splitOn "/" |>.filter (· != "") |>.getLast? |>.getD "file"
 
 -- | Build template vars for a config + path (shared by runList/runDownload).
 -- Returns (vars, tmpDir) so callers don't need to search the array.
@@ -233,7 +232,7 @@ private def Config.runListSql (cfg : Config) (path tbl : String) : IO (Option Ad
   else do
     let (vars, _) ← cfg.cmdVars path
     pure (expand cfg.listSql vars)
-  let stmts := sql.splitOn ";\n" |>.map (·.trimAscii.toString) |>.filter (·.length > 0)
+  let stmts := sql.splitOn ";\n" |>.map (·.trimAscii.toString) |>.filter (· != "")
   for stmt in stmts.dropLast do
     let _ ← Adbc.query stmt
   let selectSql := stmts.getLast?.getD sql
@@ -330,15 +329,15 @@ def Config.runEnter (cfg : Config) (name : String) : IO (Option AdbcTable) := do
   if cfg.script.isEmpty then return none
   validateShellSafe name "name"
   runSetup cfg
-  let vars := mkVars cfg (cfg.pfx ++ name) "" name ""
-  let cmd := expand cfg.script vars
+  let cmd := mkVars cfg (cfg.pfx ++ name) "" name "" |> expand cfg.script
   Log.write "src" s!"enter: {cmd}"
   let out ← IO.Process.output { cmd := "sh", args := #["-c", cmd] }
   if out.exitCode != 0 then
     Log.write "src" s!"enter failed: {out.stderr.trimAscii.toString}"
     return none
   let json := out.stdout
-  if json.trimAscii.toString.isEmpty || json.trimAscii.toString == "[]" then return none
+  let trimmed := json.trimAscii.toString
+  if trimmed.isEmpty || trimmed == "[]" then return none
   let tbl ← nextTmpName "src"
   let tmpFile ← Tc.tmpPath s!"src-enter-{tbl}.json"
   IO.FS.writeFile tmpFile json

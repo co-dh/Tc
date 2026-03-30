@@ -15,15 +15,13 @@ namespace Tc.Folder
 private def stripBase (base path : String) : String :=
   if path.startsWith base then
     let rest := path.drop base.length
-    if rest.toString.startsWith "/" then (rest.drop 1).toString else rest.toString
-  else if path.startsWith "./" then (path.drop 2).toString
+    if rest.toString.startsWith "/" then rest.drop 1 |>.toString else rest.toString
+  else if path.startsWith "./" then path.drop 2 |>.toString
   else path
 
 -- | Format date: "2024-01-05+12:34:56.123" → "2024-01-05 12:34:56"
 private def fmtDate (s : String) : String :=
-  let s := s.replace "+" " "
-  let parts := s.splitOn "."
-  ((parts.head?.getD "").take 19).toString
+  s.replace "+" " " |>.splitOn "." |>.head?.getD "" |>.take 19 |>.toString
 
 -- | Format type: f→file, d→dir, l→symlink
 private def fmtType (s : String) : String :=
@@ -58,7 +56,7 @@ private def pathColIdx (names : Array String) : Option Nat :=
 -- | Get single cell value as string from current row
 private def cellStr (v : View AdbcTable) (colIdx : Nat) : IO String := do
   let cols ← TblOps.getCols v.nav.tbl #[colIdx] v.nav.row.cur.val (v.nav.row.cur.val + 1)
-  return (cols.getD 0 default |>.get 0).toRaw
+  return cols.getD 0 default |>.get 0 |>.toRaw
 
 -- | Get path column value from current row
 def curPath (v : View AdbcTable) : IO (Option String) := do
@@ -155,8 +153,8 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let curDir := s.cur.curDir
   let cfg ← SourceConfig.findSource curDir
   -- Attach-based: FileFormat or config-driven (e.g. pg://)
-  let isAttach := (FileFormat.find? curDir |>.map (·.attach)).getD false
-    || (cfg.map (·.attach)).getD false
+  let isAttach := (FileFormat.find? curDir |>.map (·.attach) |>.getD false)
+    || (cfg |>.map (·.attach) |>.getD false)
   if isAttach then
     let some tableName ← curPath s.cur | return some s
     let some (adbc, keys) ← AdbcTable.fromDuckDBTable tableName | return some s
@@ -206,7 +204,7 @@ def selPaths (v : View AdbcTable) : IO (Array String) := do
     let cols ← TblOps.getCols v.nav.tbl #[pathCol] 0 v.nRows
     let c := cols.getD 0 default
     let rows := if v.nav.row.sels.isEmpty then #[v.nav.row.cur.val] else v.nav.row.sels
-    return rows.map fun r => joinPath curDir (c.get r).toRaw
+    return rows.map fun r => c.get r |>.toRaw |> joinPath curDir
   | _ => return #[]
 
 -- | Draw centered dialog box
@@ -223,7 +221,7 @@ def drawDialog (title : String) (lines : Array String) (footer : String) : IO Un
   Term.print x0.toUInt32 (y0 + 1).toUInt32 fg bg ("│" ++ "".pushn ' ' tpad ++ title ++ "".pushn ' ' (boxW - 2 - tpad - title.length) ++ "│")
   Term.print x0.toUInt32 (y0 + 2).toUInt32 fg bg ("│" ++ "".pushn ' ' (boxW - 2) ++ "│")
   for i in [:lines.size] do
-    let ln := ((lines.getD i "").take (boxW - 4)).toString
+    let ln := lines.getD i "" |>.take (boxW - 4) |>.toString
     Term.print x0.toUInt32 (y0 + 3 + i).toUInt32 fg bg ("│ " ++ ln ++ "".pushn ' ' (boxW - 3 - ln.length) ++ "│")
   let fpad := (boxW - 2 - footer.length) / 2
   Term.print x0.toUInt32 (y0 + 3 + lines.size).toUInt32 fg bg ("│" ++ "".pushn ' ' fpad ++ footer ++ "".pushn ' ' (boxW - 2 - fpad - footer.length) ++ "│")
@@ -246,8 +244,7 @@ def confirmDel (paths : Array String) : IO Bool := do
   let lines := if paths.size > 6
     then shown.push s!"... +{paths.size - 6} more"
     else shown
-  let cmd ← trashCmd
-  let cmdInfo := match cmd with
+  let cmdInfo ← trashCmd |>.map fun
     | some ("trash-put", _) => "via trash-put (undo: trash-restore)"
     | some ("gio", _) => "via gio trash (undo: gio trash --restore)"
     | _ => "no trash command found"

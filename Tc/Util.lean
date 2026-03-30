@@ -142,14 +142,13 @@ private def stripSlash (p : String) : String :=
 
 -- | Get parent URI: drop last path component. Returns none at root (≤ minParts components).
 def parent (path : String) (minParts : Nat) : Option String :=
-  let parts := (stripSlash path).splitOn "/"
+  let parts := stripSlash path |>.splitOn "/"
   if parts.length ≤ minParts then none
-  else some ("/".intercalate (parts.dropLast) ++ "/")
+  else some (parts.dropLast |> "/".intercalate |> (· ++ "/"))
 
 -- | Display name: last non-empty path component (preserves protocol-only paths)
 def dispName (path : String) : String :=
-  let p := stripSlash path
-  let parts := p.splitOn "/" |>.filter (·.length > 0)
+  let parts := stripSlash path |>.splitOn "/" |>.filter (·.length > 0)
   if parts.length ≤ 1 then path else parts.getLast?.getD path
 
 end Tc.Remote

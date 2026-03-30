@@ -21,7 +21,7 @@ private def sessDir : IO String := do
 
 -- | Sanitize session name: keep only alphanumeric, dash, underscore, dot
 def sanitize (name : String) : String :=
-  String.ofList (name.toList.filter fun c => c.isAlphanum || c == '-' || c == '_' || c == '.')
+  name.toList.filter (fun c => c.isAlphanum || c == '-' || c == '_' || c == '.') |> String.ofList
 
 -- | Session file path (name is sanitized to prevent path traversal)
 private def sessPath (name : String) : IO String := do
@@ -42,7 +42,7 @@ instance : ToJson Op where toJson
   | .exclude cols => Json.mkObj [("type", "exclude"), ("cols", toJson cols)]
   | .derive bs => Json.mkObj [("type", "derive"), ("bindings", toJson bs)]
   | .group keys aggs =>
-    let as := aggs.map fun (fn, name, col) => Json.arr #[toJson fn, toJson name, toJson col]
+    let as := aggs.map (fun (fn, name, col) => Json.arr #[toJson fn, toJson name, toJson col])
     Json.mkObj [("type", "group"), ("keys", toJson keys), ("aggs", toJson as)]
   | .take n => Json.mkObj [("type", "take"), ("n", toJson n)]
 
@@ -97,8 +97,8 @@ private def viewToJson (v : View AdbcTable) : Json :=
   ]
 
 private def stackToJson (s : ViewStack AdbcTable) : String :=
-  let views := (s.hd :: s.tl).map viewToJson
-  Json.compress <| Json.mkObj [("version", (1 : Nat)), ("views", toJson views)]
+  let views := (s.hd :: s.tl).map viewToJson |> toJson
+  Json.mkObj [("version", (1 : Nat)), ("views", views)] |> Json.compress
 
 /-! ## Deserialization: JSON → View state -/
 
@@ -127,12 +127,12 @@ private def restoreView (j : Json) : IO (Option (View AdbcTable)) := do
   let query : Prql.Query := { base, ops }
   let tbl? ← try
     match vkind with
-    | .fld p depth => (·.map (·.nav.tbl)) <$> Folder.mkView p depth
+    | .fld p depth => Folder.mkView p depth |>.map (·.map (·.nav.tbl))
     | _ => do let total ← AdbcTable.queryCount query; AdbcTable.requery query total
   catch e => Log.write "session" s!"skip view: {path} ({e})"; pure none
   let some tbl := tbl? | return none
   let nRows := TblOps.nRows tbl
-  let nCols := (TblOps.colNames tbl).size
+  let nCols := TblOps.colNames tbl |>.size
   if nRows == 0 || nCols == 0 then return none
   match View.fromTbl tbl path (min col (nCols - 1)) grp (min row (nRows - 1)) with
   | some view => pure (some { view with
@@ -145,7 +145,7 @@ private def restoreView (j : Json) : IO (Option (View AdbcTable)) := do
 -- | Derive session name from view stack (like export uses tabName)
 def autoName (stk : ViewStack AdbcTable) : String :=
   let name := stk.cur.tabName.replace "/" "_" |>.replace " " "_"
-  let stem := (name.splitOn ".").head?.filter (!·.isEmpty) |>.getD name
+  let stem := name.splitOn "." |>.head? |>.filter (!·.isEmpty) |>.getD name
   sanitize stem
 
 def save (stk : ViewStack AdbcTable) (name : String := autoName stk) : IO Unit := do
@@ -159,18 +159,19 @@ def load (name : String) : IO (Option (ViewStack AdbcTable)) := do
   let .ok json := Json.parse content | return none
   let views : Array Json := jd json "views"
   let restored ← views.filterMapM restoreView
-  if h : restored.size > 0 then pure (some ⟨restored[0], (restored.extract 1 restored.size).toList⟩)
+  if h : restored.size > 0 then pure (some ⟨restored[0], restored.extract 1 restored.size |>.toList⟩)
   else pure none
 
 def list : IO (Array String) := do
   let entries ← try System.FilePath.readDir (← sessDir) catch _ => pure #[]
-  pure (entries.filterMap fun e =>
-    let n := e.fileName; if n.endsWith ".json" then some (n.take (n.length - 5)).toString else none)
+  entries.filterMap (fun e =>
+    let n := e.fileName; if n.endsWith ".json" then n.take (n.length - 5) |>.toString |> some else none)
+    |> pure
 
 -- | Prompt for session name; returns none on cancel or empty input
 def pickSaveName : IO (Option String) := do
   let existing ← list
-  let input := "\n".intercalate existing.toList
+  let input := existing.toList |> "\n".intercalate
   match ← Fzf.fzf #["--prompt=session name: ", "--print-query"] input with
   | none => pure none
   | some s =>
@@ -181,7 +182,7 @@ def pickSaveName : IO (Option String) := do
 def pickLoadName : IO (Option String) := do
   let existing ← list
   if existing.isEmpty then statusMsg "no saved sessions"; return none
-  Fzf.fzf #["--prompt=load session: "] ("\n".intercalate existing.toList)
+  Fzf.fzf #["--prompt=load session: "] (existing.toList |> "\n".intercalate)
     |>.map (·.map (·.trimAscii.toString))
 
 -- | Save session with explicit name (no fzf). Called by socket/dispatch.

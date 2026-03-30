@@ -61,8 +61,8 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
     curRow := nav.row.cur.val, curCol := nav.curColIdx, moveDir,
     selColIdxs := nav.selColIdxs, rowSels := nav.row.sels,
     hiddenIdxs := nav.hiddenIdxs ++ extraHidden, styles, prec, widthAdj, heatMode, sparklines }
-  let outWidths ← TblOps.render nav.tbl ctx
-  let widths := outWidths  -- C returns base widths (no widthAdj), store as-is
+  -- C returns base widths (no widthAdj), store as-is
+  let widths ← TblOps.render nav.tbl ctx
   -- status line: colName left, stats right
   -- freqV shows total distinct groups, others show table totalRows
   let total := match vkind with
@@ -79,8 +79,8 @@ def render {nRows nCols : Nat} {t : Type} [TblOps t]
 def renderTabLine (tabs : Array String) (curIdx : Nat) (replay : String := "") : IO Unit := do
   let h ← Term.height
   let w ← Term.width
-  let marked := tabs.mapIdx fun i t => if i == curIdx then s!"[{t}]" else t
-  let line := marked.toList.reverse |> String.intercalate " │ "
+  let line := tabs.mapIdx (fun i t => if i == curIdx then s!"[{t}]" else t)
+    |>.toList |>.reverse |> " │ ".intercalate
   Term.print 0 (h - 2) Term.white Term.blue line
   -- replay ops right-aligned (dim text on blue bg)
   let gap := w.toNat - line.length

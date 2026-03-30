@@ -14,18 +14,20 @@ private def quoted (s : String) : String := "\"" ++ s.replace "\"" "\"\"" ++ "\"
 
 -- | Find columns present in both tables with same name and type
 private def commonCols (left right : AdbcTable) : Array (String × String) :=
-  left.colNames.filterMap fun name =>
-    let li := left.colNames.idxOf? name
-    let ri := right.colNames.idxOf? name
-    match li, ri with
-    | some li', some ri' =>
-      let lt := left.colTypes.getD li' "?"; let rt := right.colTypes.getD ri' "?"
-      if lt == rt then some (name, lt) else none
-    | _, _ => none
+  left.colNames.filterMap fun name => do
+    let li ← left.colNames.idxOf? name
+    let ri ← right.colNames.idxOf? name
+    let lt := left.colTypes.getD li "?"
+    let rt := right.colTypes.getD ri "?"
+    if lt == rt then pure (name, lt) else none
 
 -- | Deduplicate array preserving insertion order
 private def dedup (a : Array String) : Array String :=
   a.foldl (init := #[]) fun acc k => if acc.contains k then acc else acc.push k
+
+-- | Columns in `tbl` that don't appear in `common` or `keys`
+private def onlyCols (tbl : AdbcTable) (common : Array (String × String)) (keys : Array String) :=
+  tbl.colNames.filter fun n => !common.any (·.1 == n) && !keys.contains n
 
 -- | FULL OUTER JOIN top 2 stack views on shared categorical columns.
 -- Auto-keys non-numeric common columns, suffixes value columns with _left/_right,
@@ -37,11 +39,13 @@ def run (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   if common.isEmpty then statusMsg "diff: no common columns"; return none
   -- Auto-key: categorical (non-numeric) common columns become join keys
   let existingGrp := parent.nav.grp ++ s.cur.nav.grp
-  let autoKeys := common.filterMap fun (name, typ) =>
-    if !isNumeric typ && !existingGrp.contains name then some name else none
-  let allKeys := dedup (existingGrp ++ autoKeys)
+  let autoKeys := common
+    |>.filter (fun (_, typ) => !isNumeric typ)
+    |>.map (·.1)
+    |>.filter (fun n => !existingGrp.contains n)
+  let allKeys := existingGrp ++ autoKeys |> dedup
   if allKeys.isEmpty then statusMsg "diff: no key columns (need categorical columns with same name+type)"; return none
-  let valCols := common.filterMap fun (n, _) => if allKeys.contains n then none else some n
+  let valCols := common.map (·.1) |>.filter (fun n => !allKeys.contains n)
   -- Build FULL OUTER JOIN SQL with suffixed columns
   let seq ← memTblCounter.modifyGet fun n => (n, n + 1)
   let (lName, lSql) ← prepareView left s!"dl{seq}"
@@ -52,11 +56,13 @@ def run (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let keySel := allKeys.map fun k => s!"COALESCE(L.{q k}, R.{q k}) AS {q k}"
   let valSel := valCols.map fun v => s!"L.{q v} AS {q (v ++ "_left")}, R.{q v} AS {q (v ++ "_right")}"
   let sideSel side cols := cols.map fun n => s!"{side}.{q n} AS {q (n ++ s!"_{side}")}"
-  let leftOnlySel := sideSel "L" (left.colNames.filter fun n => !common.any (·.1 == n) && !allKeys.contains n)
-  let rightOnlySel := sideSel "R" (right.colNames.filter fun n => !common.any (·.1 == n) && !allKeys.contains n)
-  let joinCond := " AND ".intercalate (allKeys.map fun k => s!"L.{q k} IS NOT DISTINCT FROM R.{q k}").toList
+  let leftOnlySel := onlyCols left common allKeys |> sideSel "L"
+  let rightOnlySel := onlyCols right common allKeys |> sideSel "R"
+  let joinCond := allKeys.map (fun k => s!"L.{q k} IS NOT DISTINCT FROM R.{q k}")
+    |>.toList |> " AND ".intercalate
+  let selCols := (keySel ++ valSel ++ leftOnlySel ++ rightOnlySel).toList |> ", ".intercalate
   let tblName := s!"tc_diff_{seq}"
-  let sql := s!"CREATE OR REPLACE TEMP TABLE {tblName} AS SELECT {", ".intercalate (keySel ++ valSel ++ leftOnlySel ++ rightOnlySel).toList} FROM {lName} L FULL OUTER JOIN {rName} R ON {joinCond}"
+  let sql := s!"CREATE OR REPLACE TEMP TABLE {tblName} AS SELECT {selCols} FROM {lName} L FULL OUTER JOIN {rName} R ON {joinCond}"
   Log.write "diff-sql" sql
   let _ ← Adbc.query sql
   let query : Prql.Query := { base := s!"from {tblName}" }
@@ -71,7 +77,8 @@ def run (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
       let _ ← Adbc.query s!"ALTER TABLE {tblName} RENAME COLUMN {q old} TO {q renamed}"
   let some adbc ← AdbcTable.requery query total | return none
   let some s' := s.pop | return none
-  pure (View.fromTbl adbc s'.cur.path (grp := allKeys) |>.map fun v => s'.setCur { v with disp := "diff", sameHide })
+  pure (View.fromTbl adbc s'.cur.path (grp := allKeys)
+    |>.map fun v => s'.setCur { v with disp := "diff", sameHide })
 where
   -- | Compile PRQL query to SQL for creating temp views
   prepareView (tbl : AdbcTable) (sfx : String) : IO (String × String) := do

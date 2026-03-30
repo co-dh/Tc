@@ -16,10 +16,10 @@ private def maxRows : Nat := 200
 private def transposeSql (baseSql : String) (colNames : Array String) (nRows : Nat) : String :=
   let n := min nRows maxRows
   let qid := AdbcTable.quoteId
-  let castCols := ", ".intercalate (colNames.map fun c => s!"CAST({qid c} AS VARCHAR) AS {qid c}").toList
-  let unpivotCols := ", ".intercalate (colNames.map qid).toList
-  let pivotCols := ", ".intercalate ((List.range n).map fun i =>
-    s!"MAX(CASE WHEN _rn = {i} THEN _val END) AS \"row_{i}\"")
+  let castCols := colNames.map (fun c => s!"CAST({qid c} AS VARCHAR) AS {qid c}") |>.toList |> ", ".intercalate
+  let unpivotCols := colNames.map qid |>.toList |> ", ".intercalate
+  let pivotCols := List.range n |>.map (fun i =>
+    s!"MAX(CASE WHEN _rn = {i} THEN _val END) AS \"row_{i}\"") |> ", ".intercalate
   -- _ord preserves original column order (UNPIVOT emits names in declaration order,
   -- but GROUP BY would lose that without an explicit ordering column)
   s!"WITH __src AS (SELECT * FROM ({baseSql}) LIMIT {n}), " ++
@@ -27,8 +27,8 @@ private def transposeSql (baseSql : String) (colNames : Array String) (nRows : N
   s!"__unp AS (UNPIVOT __num ON {unpivotCols} INTO NAME \"column\" VALUE _val) " ++
   s!"SELECT \"column\", {pivotCols} FROM __unp GROUP BY \"column\" " ++
   -- Preserve original column order via CASE mapping column name → position
-  let ordCases := " ".intercalate ((Array.range colNames.size).map fun i =>
-    s!"WHEN \"column\" = '{escSql (colNames.getD i "")}' THEN {i}").toList
+  let ordCases := Array.range colNames.size |>.map (fun i =>
+    s!"WHEN \"column\" = '{escSql (colNames.getD i "")}' THEN {i}") |>.toList |> " ".intercalate
   s!"ORDER BY CASE {ordCases} END"
 
 -- | Push transposed view onto stack
@@ -40,8 +40,6 @@ def push (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let tblName ← nextTmpName "xpose"
   let _ ← Adbc.query s!"CREATE OR REPLACE TEMP TABLE {tblName} AS ({sql})"
   let some adbc ← AdbcTable.fromTmpTbl tblName | return none
-  match View.fromTbl adbc s.cur.path with
-  | some v => return some (s.push { v with disp := "xpose" })
-  | none => return none
+  return (View.fromTbl adbc s.cur.path |>.map fun v => s.push { v with disp := "xpose" })
 
 end Tc.Transpose

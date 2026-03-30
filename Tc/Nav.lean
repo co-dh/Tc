@@ -48,11 +48,10 @@ def Array.idxOf? [BEq α] (a : Array α) (x : α) : Option Nat :=
 def dispOrder (group : Array String) (names : Array String) : Array Nat :=
   let n := names.size
   let isGrp := fun i => group.contains (names.getD i "")
-  let grpIdxs := (Array.range n).filter isGrp
   -- Sort group indices by position in grp array (respects grp add/reorder order)
-  let grpSorted := grpIdxs.qsort fun a b =>
+  let grpSorted := Array.range n |>.filter isGrp |>.qsort fun a b =>
     (group.idxOf? (names.getD a "")).getD 0 < (group.idxOf? (names.getD b "")).getD 0
-  grpSorted ++ (Array.range n).filter (!isGrp ·)
+  grpSorted ++ (Array.range n |>.filter (!isGrp ·))
 
 -- Helper: list filter partition
 private theorem list_filter_partition (p : α → Bool) (l : List α) :
@@ -120,13 +119,13 @@ def curColType (nav : NavState nRows nCols t) : String := TblOps.colType nav.tbl
 
 -- | Column names in display order (grouped first, then rest)
 def dispColNames (nav : NavState nRows nCols t) : Array String :=
-  nav.grp ++ nav.colNames.filter (!nav.grp.contains ·)
+  nav.grp ++ (nav.colNames |>.filter (!nav.grp.contains ·))
 
 -- | Selected column indices
-def selColIdxs (nav : NavState nRows nCols t) : Array Nat := nav.col.sels.filterMap nav.colNames.idxOf?
+def selColIdxs (nav : NavState nRows nCols t) : Array Nat := nav.col.sels |>.filterMap nav.colNames.idxOf?
 
 -- | Hidden column indices (for C render)
-def hiddenIdxs (nav : NavState nRows nCols t) : Array Nat := nav.hidden.filterMap nav.colNames.idxOf?
+def hiddenIdxs (nav : NavState nRows nCols t) : Array Nat := nav.hidden |>.filterMap nav.colNames.idxOf?
 
 -- Constructor for external use
 def new (tbl : t) (hRows : TblOps.nRows tbl = nRows) (hCols : (TblOps.colNames tbl).size = nCols)

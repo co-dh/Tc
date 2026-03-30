@@ -202,8 +202,9 @@ def ModifyTable.hide [ModifyTable α] (tbl : α) (cursor : Nat) (sels : Array Na
 
 -- Sort table by selected columns + cursor column, excluding group (key) columns
 def ModifyTable.sort [ModifyTable α] (tbl : α) (cursor : Nat) (selIdxs : Array Nat) (grpIdxs : Array Nat) (asc : Bool) : IO α :=
-  let cols := (selIdxs ++ #[cursor]).filter (!grpIdxs.contains ·)
-  let cols := cols.foldl (init := #[]) fun acc c => if acc.contains c then acc else acc.push c
+  let cols := (selIdxs ++ #[cursor])
+    |>.filter (!grpIdxs.contains ·)
+    |>.foldl (init := #[]) fun acc c => if acc.contains c then acc else acc.push c
   if cols.isEmpty then pure tbl else sortBy cols asc tbl
 
 
