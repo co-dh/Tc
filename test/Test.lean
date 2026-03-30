@@ -1074,6 +1074,7 @@ def test_plot_r_installed : IO Unit := do
 def runPlotR (kind : PlotKind) (datPath pngPath : String)
     (xName yName : String) (hasCat : Bool) (catName : String) (xType : String := "") : IO Unit := do
   let script := Tc.Plot.rScript datPath pngPath kind xName yName hasCat catName false "" xType
+    (Tc.Plot.plotTitle kind xName yName hasCat catName)
   let rPath ← Tc.tmpPath "plot_test.R"
   IO.FS.writeFile rPath script
   let r ← IO.Process.output { cmd := "Rscript", args := #[rPath] }

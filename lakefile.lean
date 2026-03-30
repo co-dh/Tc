@@ -3,18 +3,18 @@ open Lake DSL
 
 package tc
 
--- | Build lib{name}.a from c/{src}, via make
-def mkCLib (pkg : Package) (name src : String) := do
-  let srcF := pkg.dir / "c" / src
-  let dst := pkg.dir / "c" / s!"lib{name}.a"
-  buildFileAfterDep dst (←inputTextFile srcF) fun _ =>
-    proc { cmd := "make", args := #["-C", (pkg.dir / "c").toString, s!"lib{name}.a"] }
+-- | Build lib{name}.a via make, tracking ALL c/*.c and c/*.h as deps.
+def mkCLib (pkg : Package) (name : String) := do
+  let cDir := pkg.dir / "c"
+  let dst := cDir / s!"lib{name}.a"
+  let isCH (p : System.FilePath) := p.extension == some "c" || p.extension == some "h"
+  buildFileAfterDep dst (← inputDir cDir true isCH) fun _ =>
+    proc { cmd := "make", args := #["-C", cDir.toString, s!"lib{name}.a"] }
 
 -- | C libraries
-extern_lib termbox2 pkg := mkCLib pkg "termbox2" "termbox2.h"
-extern_lib termshim pkg := mkCLib pkg "termshim" "term_core.c"
--- ADBC: adbc_core.c (generic ADBC + DuckDB driver)
-extern_lib adbcshim pkg := mkCLib pkg "adbcshim" "adbc_core.c"
+extern_lib termbox2 pkg := mkCLib pkg "termbox2"
+extern_lib termshim pkg := mkCLib pkg "termshim"
+extern_lib adbcshim pkg := mkCLib pkg "adbcshim"
 -- | include_str deps: Lake doesn't track these automatically
 input_file funcsPrql where path := "Tc" / "Data" / "ADBC" / "funcs.prql"; text := true
 lean_lib Tc where

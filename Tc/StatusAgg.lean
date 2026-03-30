@@ -20,7 +20,7 @@ private def compute (t : AdbcTable) (colIdx : Nat) : IO String := do
   let colName := t.colNames.getD colIdx ""
   let colType := t.colTypes.getD colIdx "?"
   let q := AdbcTable.quoteId colName
-  let isNum := colType == "int" || colType == "float" || colType == "decimal"
+  let isNum := isNumericType colType
   let sql ← do
     let some baseSql ← Prql.compile t.query.render | return ""
     let aggs := if isNum
