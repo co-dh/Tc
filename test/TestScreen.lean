@@ -87,10 +87,11 @@ def test_freq_quit : IO Unit := do
 -- Pure: key_I (I → info.ent)
 -- Pure: Info.State.update (toggle vis on/off, returns Effect.none)
 
+-- Info overlay hidden by default; I toggles it on
 def test_info : IO Unit := do
   log "info"
-  let output ← run "" "data/basic.csv"
-  assert (contains output "derive" || contains output "export") "Info overlay shown by default"
+  let output ← run "I" "data/basic.csv"
+  assert (contains output "derive" || contains output "export") "Info overlay shown after I toggle"
 
 -- === Cursor tracking ===
 -- Pure: nav_grp_col (l! groups c1, cursor tracks)

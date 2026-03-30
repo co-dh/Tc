@@ -496,7 +496,7 @@ def test_osquery_sort_enter : IO Unit := do
 
 def test_last_col_no_stretch : IO Unit := do
   log "last_col_no_stretch"
-  -- I hides info overlay so header helper picks up table header, not overlay text
+  -- Info overlay is hidden by default, so header helper picks up table header cleanly
   let output ← run "" "data/basic.csv"
   let hdr := header output
   -- basic.csv has 2 narrow columns (a, b); header should be short, not padded to 80

@@ -9,7 +9,7 @@ namespace Tc.UI.Info
 
 -- | Info state
 structure State where
-  vis : Bool := true
+  vis : Bool := false
 
 namespace State
 
