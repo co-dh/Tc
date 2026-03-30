@@ -39,9 +39,7 @@ def push (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let sql := transposeSql (stripSemi baseSql) t.colNames t.nRows
   let tblName ← nextTmpName "xpose"
   let _ ← Adbc.query s!"CREATE OR REPLACE TEMP TABLE {tblName} AS ({sql})"
-  let q : Prql.Query := { base := s!"from {tblName}" }
-  let total ← AdbcTable.queryCount q
-  let some adbc ← AdbcTable.requery q total | return none
+  let some adbc ← AdbcTable.fromTmpTbl tblName | return none
   match View.fromTbl adbc s.cur.path with
   | some v => return some (s.push { v with disp := "xpose" })
   | none => return none

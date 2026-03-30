@@ -18,15 +18,10 @@ def push (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let some adbc ← AdbcTable.queryMeta s.tbl | return none
   -- Enrich meta with DuckDB column comments (e.g. osquery views with COMMENT ON COLUMN)
   let metaBase := (adbc.query.base.drop 5).trimAscii.toString
-  if ← AdbcTable.enrichComments metaBase s.cur.path then
-    match ← AdbcTable.requery adbc.query with
-    | some adbc' => match View.fromTbl adbc' s.cur.path with
-      | some v => return some (s.push { v with vkind := .colMeta, disp := "meta" })
-      | none => return none
-    | none => return none
-  match View.fromTbl adbc s.cur.path with
-  | some v => return some (s.push { v with vkind := .colMeta, disp := "meta" })
-  | none => return none
+  let adbc ← if ← AdbcTable.enrichComments metaBase s.cur.path then
+    pure ((← AdbcTable.requery adbc.query).getD adbc) else pure adbc
+  return View.fromTbl adbc s.cur.path |>.map fun v =>
+    s.push { v with vkind := .colMeta, disp := "meta" }
 
 -- | Select meta rows matching PRQL filter
 private def selBy (s : ViewStack AdbcTable) (flt : String) : IO (ViewStack AdbcTable) := do

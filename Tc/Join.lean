@@ -50,9 +50,7 @@ private def execJoin (s : ViewStack AdbcTable) (op : JoinOp) (leftGrp : Array St
   let tblName ← nextTmpName "join"
   let some sql ← Prql.compile prql | throw (IO.userError s!"join PRQL compile failed: {prql}")
   let _ ← Adbc.query s!"CREATE OR REPLACE TEMP TABLE {tblName} AS {sql |> stripSemi}"
-  let q : Prql.Query := { base := s!"from {tblName}" }
-  let total ← AdbcTable.queryCount q
-  let some adbc ← AdbcTable.requery q total | return none
+  let some adbc ← AdbcTable.fromTmpTbl tblName | return none
   let some s' := s.pop | return none
   let disp := match op with
     | .union => "union" | .diff => "diff"
