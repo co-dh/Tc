@@ -116,10 +116,10 @@ opaque printPadC : UInt32 → UInt32 → UInt32 → UInt32 → UInt32 → @& Str
 
 -- | Unified table render (C reads Column directly, computes widths if needed)
 -- allCols, names, fmts, inWidths, colIdxs, nTotalRows, nKeys, colOff, r0, r1, curRow, curCol
--- moveDir, selCols, selRows, styles, precAdj, widthAdj
+-- moveDir, selCols, selRows, styles, prec, widthAdj
 -- fmts: format chars for type indicators (empty = use Column tag)
 -- moveDir: -1 = moved left, 0 = none, 1 = moved right (for tooltip direction)
--- precAdj: precision adjustment for float display, widthAdj: column width offset
+-- prec: float decimal count (0-17), widthAdj: column width offset
 -- Returns computed widths (Array Nat)
 @[extern "lean_render_table"]
 opaque renderTable : @& Array Column → @& Array String → @& Array Char → @& Array Nat

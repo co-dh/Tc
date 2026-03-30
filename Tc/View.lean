@@ -15,7 +15,7 @@ structure View (T : Type) [TblOps T] where
   path : String              -- source file/command (for tab display)
   vkind : ViewKind := .tbl
   disp : String := ""        -- custom display name (overrides filename)
-  precAdj : Int := 0         -- precision adjustment (-=fewer, +=more decimals)
+  prec : Nat := 3            -- float decimal count (0-17)
   widthAdj : Int := 0        -- width adjustment offset (-=narrower, +=wider)
   widths : Array Nat := #[]  -- cached column widths (per-view for type safety)
   search : Option (Nat × String) := none  -- last search: (colIdx, value)
@@ -40,7 +40,7 @@ def new {nr nc : Nat} (nav : NavState nr nc T) (path : String) : View T :=
     (heatMode : UInt8 := 1) (sparklines : Array String := #[]) : IO (ViewState × View T) := do
   let names := TblOps.colNames v.nav.tbl
   let extraHidden := v.sameHide.filterMap names.idxOf?
-  let (vs', widths) ← render v.nav vs v.widths styles v.precAdj v.widthAdj v.vkind heatMode sparklines extraHidden
+  let (vs', widths) ← render v.nav vs v.widths styles (Int.ofNat v.prec) v.widthAdj v.vkind heatMode sparklines extraHidden
   pure (vs', { v with widths })
 
 -- | Create View from table + path (returns none if empty)

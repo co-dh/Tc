@@ -95,7 +95,7 @@ private def viewToJson (v : View AdbcTable) : Json :=
     | none => .null
   Json.mkObj [
     ("path", toJson v.path), ("vkind", toJson v.vkind),
-    ("disp", toJson v.disp), ("precAdj", toJson v.precAdj), ("widthAdj", toJson v.widthAdj),
+    ("disp", toJson v.disp), ("prec", toJson v.prec), ("widthAdj", toJson v.widthAdj),
     ("row", toJson v.nav.row.cur.val), ("col", toJson v.nav.col.cur.val),
     ("grp", toJson v.nav.grp), ("hidden", toJson v.nav.hidden),
     ("colSels", toJson v.nav.col.sels), ("search", search),
@@ -115,7 +115,7 @@ private def restoreView (j : Json) : IO (Option (View AdbcTable)) := do
   if path.isEmpty then return none
   let vkind := (j.getObjValAs? ViewKind "vkind").toOption.getD .tbl
   let disp := (j.getObjValAs? String "disp").toOption.getD ""
-  let precAdj := (j.getObjValAs? Int "precAdj").toOption.getD 0
+  let prec := (j.getObjValAs? Nat "prec").toOption.getD 3
   let widthAdj := (j.getObjValAs? Int "widthAdj").toOption.getD 0
   let row := (j.getObjValAs? Nat "row").toOption.getD 0
   let col := (j.getObjValAs? Nat "col").toOption.getD 0
@@ -142,7 +142,7 @@ private def restoreView (j : Json) : IO (Option (View AdbcTable)) := do
   if nRows == 0 || nCols == 0 then return none
   match View.fromTbl tbl path (min col (nCols - 1)) grp (min row (nRows - 1)) with
   | some view => pure (some { view with
-      vkind, disp, precAdj, widthAdj, search
+      vkind, disp, prec, widthAdj, search
       nav := { view.nav with hidden, col := { view.nav.col with sels := colSels } } })
   | none => pure none
 

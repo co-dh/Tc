@@ -912,7 +912,7 @@ def test_session_load : IO Unit := do
   let absPath ← do
     let r ← IO.Process.output { cmd := "realpath", args := #["data/basic.csv"] }
     pure r.stdout.trimAscii.toString
-  let json := s!"\{\"version\":1,\"views\":[\{\"path\":\"{absPath}\",\"vkind\":\{\"kind\":\"tbl\"},\"disp\":\"\",\"precAdj\":0,\"widthAdj\":0,\"row\":0,\"col\":0,\"grp\":[],\"hidden\":[],\"colSels\":[],\"search\":null,\"query\":\{\"base\":\"from `{absPath}`\",\"ops\":[\{\"type\":\"sort\",\"cols\":[[\"a\",true]]}]}}]}"
+  let json := s!"\{\"version\":1,\"views\":[\{\"path\":\"{absPath}\",\"vkind\":\{\"kind\":\"tbl\"},\"disp\":\"\",\"prec\":3,\"widthAdj\":0,\"row\":0,\"col\":0,\"grp\":[],\"hidden\":[],\"colSels\":[],\"search\":null,\"query\":\{\"base\":\"from `{absPath}`\",\"ops\":[\{\"type\":\"sort\",\"cols\":[[\"a\",true]]}]}}]}"
   IO.FS.writeFile s!"{dir}/test_session.json" json
   -- Load the session via -s flag
   let out ← IO.Process.output { cmd := bin, args := #["-s", "test_session", "-c", "I"] }
