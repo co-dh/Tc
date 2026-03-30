@@ -47,7 +47,7 @@ FEATURES = {
     "freq": F(NYSE, [
         ("Move cursor to Exchange column",                 "l",       "l",   2.0),
         ("",                                               None,      " .....",       3.0),
-        ("",                                               None,      "\x15^F+", 3.0),
+        ("",                                               None,      "\x15^freq.open", 3.0),
         ("",                                                None,      "\r",           1.5),
         ("Frequency count of each Exchange value\nSelect a value and press Enter", "j Enter", "j", 5.0),
         ("",                                                None,      "\r",            1.0),
@@ -57,12 +57,12 @@ FEATURES = {
     # heatmap: use ^code to match fzf item by obj/verb prefix
     "heatmap": F(NYSE, [
         ("",                                              None,  " .....",          3.0),
-        ("",                                              None,  "\x15^i1",         3.0),
+        ("",                                              None,  "\x15^heat.1",         3.0),
         ("",                                              None,  "\r",              1.0),
         ("Color numeric columns by value",                None,  None,              5.0),
         ("",                                              None,  None,              0.5),
         ("",                                              None,  " .....",          3.0),
-        ("",                                              None,  "\x15^i2",         3.0),
+        ("",                                              None,  "\x15^heat.2",         3.0),
         ("",                                              None,  "\r",              1.0),
         ("Color categorical columns by group",            None,  None,              5.0),
     ], expects=["Bid_Pri"]),
@@ -72,7 +72,7 @@ FEATURES = {
         ("Move cursor to a numeric column",                    "lll",   "lll",  2.0),
         ("Open command menu with Space",                       None,    None,   2.0),
         ("",                                                   None,    " .....",       3.0),  # fzf char loss padding
-        ("",                                                   None,    "\x15^c6", 3.0),
+        ("",                                                   None,    "\x15^plot.hist", 3.0),
         ("Render a histogram with ggplot2\nPress q to close",  None,    "\r",           5.0),
         ("",                                                   None,    "q",            1.0),
     ], expects=["histogram"]),
@@ -80,19 +80,19 @@ FEATURES = {
     "fzf": F(NYSE, [
         ("Press Space to open the command menu", None,       None,         2.0),
         ("",                                     None,       " .....",     3.0),  # fzf char loss padding
-        ("",                                     None,       "\x15^c[",  3.5),
+        ("",                                     None,       "\x15^sort.asc",  3.5),
         ("",                                     None,       "\r",        3.5),
     ], expects=["Sort ascending"]),
 
     "meta": F(NYSE, [
         ("",                                                     None,    " .....",        3.0),
-        ("",                                                     None,    "\x15^M+",  3.0),
+        ("",                                                     None,    "\x15^meta.push",  3.0),
         ("Column metadata: names, types, nulls, unique counts",  None,    "\r",            3.5),
         ("",                                                     None,    " .....",        3.0),
-        ("",                                                     None,    "\x15^M0",      3.0),
+        ("",                                                     None,    "\x15^meta.selN",      3.0),
         ("",                                                     None,    "\r",            2.0),
         ("",                                                     None,    " .....",        3.0),
-        ("",                                                     None,    "\x15^M1",    3.0),
+        ("",                                                     None,    "\x15^meta.selS",    3.0),
         ("",                                                     None,    "\r",            2.0),
         ("Enter hides the selected columns from the table",      "Enter", "\r",            3.5),
     ], expects=["meta", "coltype", "null"]),
@@ -143,7 +143,7 @@ FEATURES = {
         ("",                                                   None,         "!s~",     0.3),  # swap folder to top
         ("",                                                   None,         "q",       0.3),  # pop folder
         ("",                                                           None, " .....",     3.0),
-        ("",                                                           None, "\x15^s2",   3.0),
+        ("",                                                           None, "\x15^tbl.diff",   3.0),
         ("Diff compares the two tables\nChanged columns get a Δ prefix", None, "\r",       5.0),
     ], expects=["diff", "first.csv", "second.csv"]),
 
