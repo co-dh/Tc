@@ -4,7 +4,7 @@
 -/
 import Tc.StrEnum
 -- | Join array elements with separator (avoids .toList |> sep.intercalate)
-def Array.joinWith (a : Array String) (sep : String) : String :=
+@[inline] def Array.joinWith (a : Array String) (sep : String) : String :=
   sep.intercalate a.toList
 
 -- | Column type — parsed once at FFI boundary, used everywhere else
@@ -19,7 +19,7 @@ def isTime : ColType → Bool | .time | .timestamp | .date => true | _ => false
 end ColType
 
 -- | Toggle element in array (add if absent, remove if present)
-def Array.toggle [BEq α] (arr : Array α) (x : α) : Array α :=
+@[inline] def Array.toggle [BEq α] (arr : Array α) (x : α) : Array α :=
   if arr.contains x then arr.filter (· != x) else arr.push x
 
 -- | Toggle same element twice: if x not in arr, returns arr
@@ -86,7 +86,7 @@ namespace Column
     if s.isEmpty then .null else .str s
 
 -- | Row count
-def size (col : Column) : Nat :=
+@[inline] def size (col : Column) : Nat :=
   match col with | .ints d => d.size | .floats d => d.size | .strs d => d.size
 
 def gather (col : Column) (idxs : Array Nat) : Column :=
