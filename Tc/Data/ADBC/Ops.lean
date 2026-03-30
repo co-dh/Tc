@@ -69,8 +69,8 @@ private def colStatsSql (baseSql : String) (names : Array String) (types : Array
     s!"CAST(COUNT(DISTINCT {q}) AS BIGINT) AS dist, " ++
     s!"CAST(ROUND((1.0 - COUNT({q})::FLOAT / NULLIF(COUNT(*),0)) * 100) AS BIGINT) AS null_pct, " ++
     s!"CAST(MIN({q}) AS VARCHAR) AS mn, CAST(MAX({q}) AS VARCHAR) AS mx FROM __src"
-  let parts := (Array.range names.size).map one
-  "WITH __src AS (" ++ baseSql ++ ") " ++ " UNION ALL ".intercalate parts.toList
+  "WITH __src AS (" ++ baseSql ++ ") " ++
+    (Array.range names.size |>.map one |>.toList |> " UNION ALL ".intercalate)
 
 -- | Query meta: parquet uses file metadata (instant), others use SQL aggregation.
 def queryMeta (t : AdbcTable) : IO (Option AdbcTable) := do
@@ -98,7 +98,7 @@ def queryMetaIndices (tblName : String) (flt : String) : IO (Array Nat) := do
 -- | Query column names from meta table at given row indices
 def queryMetaColNames (tblName : String) (rows : Array Nat) : IO (Array String) := do
   if rows.isEmpty then return #[]
-  let idxs := ", ".intercalate (rows.map (s!"{·}") |>.toList)
+  let idxs := rows.map (s!"{·}") |>.toList |> ", ".intercalate
   let some qr ← Prql.query ("from " ++ tblName ++ " | rowidx | filter (idx | in [" ++ idxs ++ "]) | select {column, idx}") | return #[]
   let nr ← Adbc.nrows qr
   (Array.range nr.toNat).mapM fun r => Adbc.cellStr qr r.toUInt64 0

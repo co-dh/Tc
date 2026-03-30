@@ -14,7 +14,7 @@ def filterExprIO (tbl : AdbcTable) (cols : Array String) (row : Nat) : IO String
   let fetchedCols ← TblOps.getCols tbl idxs row (row + 1)
   let vals := fetchedCols.map fun col => (col.get 0).toPrql
   let exprs := cols.zip vals |>.map fun (c, v) => s!"{c} == {v}"
-  pure (" && ".intercalate exprs.toList)
+  pure (exprs.toList |> " && ".intercalate)
 
 -- | Pure update by handler name. Returns residual Effect for dispatch to execute.
 def update (s : ViewStack AdbcTable) (h : String) : Option (ViewStack AdbcTable × Effect) :=

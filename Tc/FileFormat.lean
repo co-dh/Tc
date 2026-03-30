@@ -69,7 +69,7 @@ def viewFile (path : String) : IO Unit := do
 
 -- | Try to ingest as CSV via DuckDB read_csv (handles .gz). None = not valid CSV.
 def tryReadCsv (path : String) : IO (Option (View AdbcTable)) := do
-  try pure ((← AdbcTable.fromFileWith (← absPath path) "read_csv" "").bind (View.fromTbl · path))
+  try pure ((← AdbcTable.fromFileWith (← absPath path) "read_csv" "") |>.bind (View.fromTbl · path))
   catch e => Log.write "tryReadCsv" s!"{path}: {e}"; pure none
 
 -- | ATTACH database file and list its tables as a folder view
@@ -91,7 +91,7 @@ def openFile (path : String) : IO (Option (View AdbcTable)) := do
   match find? path with
   | some fmt =>
     if fmt.attach then attachFile ap fmt
-    else pure ((← AdbcTable.fromFileWith ap fmt.reader fmt.duckdbExt).bind (View.fromTbl · path))
-  | none => pure ((← AdbcTable.fromFile ap).bind (View.fromTbl · path))
+    else pure ((← AdbcTable.fromFileWith ap fmt.reader fmt.duckdbExt) |>.bind (View.fromTbl · path))
+  | none => pure ((← AdbcTable.fromFile ap) |>.bind (View.fromTbl · path))
 
 end Tc.FileFormat

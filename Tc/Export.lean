@@ -20,7 +20,7 @@ namespace Tc.Export
 -- | Prompt user for export format via fzf
 def pickFmt : IO (Option ExportFmt) := do
   match ← Fzf.fzf #["--prompt=export: "] "csv\nparquet\njson\nndjson" with
-  | some raw => pure (ExportFmt.ofString? raw.trimAscii.toString)
+  | some raw => pure (raw.trimAscii.toString |> ExportFmt.ofString?)
   | none => pure none
 
 -- | Export current view to file via DuckDB COPY
@@ -33,7 +33,7 @@ def exportView (t : AdbcTable) (path : String) (fmt : ExportFmt) : IO Unit := do
 -- | Run export effect: build path from view name, export via DuckDB COPY
 def run (s : ViewStack AdbcTable) (fmt : ExportFmt) : IO (ViewStack AdbcTable) := do
   let name := s.cur.tabName.replace "/" "_" |>.replace " " "_"
-  let stem := (name.splitOn ".").head?.filter (!·.isEmpty) |>.getD name
+  let stem := name.splitOn "." |>.head? |>.filter (!·.isEmpty) |>.getD name
   let path := s!"{← Log.dir}/tv_export_{stem}.{fmt.ext}"
   exportView s.tbl path fmt
   statusMsg s!"exported {path}"

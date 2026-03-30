@@ -35,19 +35,19 @@ def dqQuote (s : String) : String := "\\\"" ++ s ++ "\\\""
 -- | Render single operation to PRQL string
 def Op.render : Op → String
   | .filter e => s!"filter {e}"
-  | .sort cols => s!"sort \{{", ".intercalate (cols.map fun (c, asc) => renderSort c asc).toList}}"
-  | .sel cols => s!"select \{{", ".intercalate (cols.map quote).toList}}"
-  | .exclude cols => "select s\"* EXCLUDE (" ++ ", ".intercalate (cols.map dqQuote).toList ++ ")\""
-  | .derive bs => s!"derive \{{", ".intercalate (bs.map fun (n, e) => s!"{quote n} = {e}").toList}}"
+  | .sort cols => s!"sort \{{cols.map (fun (c, asc) => renderSort c asc) |>.toList |> ", ".intercalate}}"
+  | .sel cols => s!"select \{{cols.map quote |>.toList |> ", ".intercalate}}"
+  | .exclude cols => "select s\"* EXCLUDE (" ++ (cols.map dqQuote |>.toList |> ", ".intercalate) ++ ")\""
+  | .derive bs => s!"derive \{{bs.map (fun (n, e) => s!"{quote n} = {e}") |>.toList |> ", ".intercalate}}"
   | .group keys aggs =>
     let as := aggs.map fun (fn, name, col) => s!"{name} = {aggName fn} {quote col}"
-    s!"group \{{", ".intercalate (keys.map quote).toList}} (aggregate \{{", ".intercalate as.toList}})"
+    s!"group \{{keys.map quote |>.toList |> ", ".intercalate}} (aggregate \{{as.toList |> ", ".intercalate}})"
   | .take n => s!"take {n}"
 
 -- | Render just the ops portion (no base/from clause)
 def Query.renderOps (q : Query) : String :=
   if q.ops.isEmpty then ""
-  else " | ".intercalate (q.ops.map Op.render).toList
+  else q.ops.map Op.render |>.toList |> " | ".intercalate
 
 -- | Render full query to PRQL string
 def Query.render (q : Query) : String :=

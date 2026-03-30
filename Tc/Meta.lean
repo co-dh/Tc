@@ -11,13 +11,13 @@ namespace Tc.Meta
 -- | Extract meta table name from the current view's AdbcTable query base.
 --   e.g. "from tc_meta_3" → "tc_meta_3"
 private def metaTblName (s : ViewStack AdbcTable) : String :=
-  ((s.tbl.query.base.drop 5).trimAscii).toString  -- drop "from "
+  s.tbl.query.base.drop 5 |>.trimAscii |>.toString  -- drop "from "
 
 -- | Push column metadata view onto stack
 def push (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let some adbc ← AdbcTable.queryMeta s.tbl | return none
   -- Enrich meta with DuckDB column comments (e.g. osquery views with COMMENT ON COLUMN)
-  let metaBase := (adbc.query.base.drop 5).trimAscii.toString
+  let metaBase := adbc.query.base.drop 5 |>.trimAscii |>.toString
   let adbc ← if ← AdbcTable.enrichComments metaBase s.cur.path then
     pure ((← AdbcTable.requery adbc.query).getD adbc) else pure adbc
   return View.fromTbl adbc s.cur.path |>.map fun v =>
@@ -27,8 +27,7 @@ def push (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
 private def selBy (s : ViewStack AdbcTable) (flt : String) : IO (ViewStack AdbcTable) := do
   if s.cur.vkind != .colMeta then return s
   let rows ← AdbcTable.queryMetaIndices (metaTblName s) flt
-  let nav' := { s.cur.nav with row := { s.cur.nav.row with sels := rows } }
-  return s.setCur { s.cur with nav := nav' }
+  return s.setCur { s.cur with nav := { s.cur.nav with row := { s.cur.nav.row with sels := rows } } }
 
 def selNull (s : ViewStack AdbcTable)   := selBy s "null_pct == 100"
 def selSingle (s : ViewStack AdbcTable) := selBy s "dist == 1"
@@ -40,10 +39,9 @@ def setKey (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let colNames ← AdbcTable.queryMetaColNames (metaTblName s) s.cur.nav.row.sels
   match s.pop with
   | some s' =>
-    let col' := { s'.cur.nav.col with sels := colNames }
     let di := dispOrder colNames (TblOps.colNames s'.tbl)
-    let nav' := { s'.cur.nav with grp := colNames, col := col', dispIdxs := di }
-    return some (s'.setCur { s'.cur with nav := nav' })
+    return some (s'.setCur { s'.cur with nav :=
+      { s'.cur.nav with grp := colNames, col := { s'.cur.nav.col with sels := colNames }, dispIdxs := di } })
   | none => return some s
 
 -- | Dispatch meta handler to IO action. Returns none if handler not recognized.

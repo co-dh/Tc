@@ -26,17 +26,17 @@ private def samples (col : String) : String → String
 -- | Build "col : type" lines with aligned ":"
 private def colHints (names : Array String) (types : Array String) : String :=
   let maxLen := names.foldl (fun mx n => max mx n.length) 0
-  let lines := names.mapIdx fun i n =>
+  names.mapIdx (fun i n =>
     let pad := String.ofList (List.replicate (maxLen - n.length) ' ')
-    s!"{n}{pad} : {types.getD i "?"}"
-  "\n".intercalate lines.toList
+    s!"{n}{pad} : {types.getD i "?"}")
+  |>.toList |> "\n".intercalate
 
 -- | Parse "name = expr" format. Returns none if no "=" found.
 private def parseDerive (input : String) : Option (String × String) :=
   match input.splitOn " = " with
   | name :: rest =>
     let n := name.trimAscii.toString
-    let e := (" = ".intercalate rest).trimAscii.toString  -- rejoin in case expr contains " = "
+    let e := " = ".intercalate rest |>.trimAscii |>.toString  -- rejoin in case expr contains " = "
     if n.isEmpty || e.isEmpty then none else some (n, e)
   | _ => none
 
@@ -46,7 +46,7 @@ def runWith (s : ViewStack AdbcTable) (input : String) : IO (ViewStack AdbcTable
   let q := s.tbl.query.pipe (.derive #[(name, expr)])
   Log.write "derive" q.render
   let some tbl' ← AdbcTable.requery q s.tbl.totalRows | return s
-  let nCols := (TblOps.colNames tbl').size
+  let nCols := TblOps.colNames tbl' |>.size
   let some v := s.cur.rebuild tbl' (col := nCols - 1) | return s
   return s.push { v with disp := s!"={name}" }
 

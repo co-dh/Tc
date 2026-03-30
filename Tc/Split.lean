@@ -44,7 +44,7 @@ def runWith (s : ViewStack AdbcTable) (pat : String) : IO (ViewStack AdbcTable) 
   let q := s.tbl.query.pipe (.derive bindings)
   Log.write "split" q.render
   let some tbl' ← AdbcTable.requery q s.tbl.totalRows | return s
-  let nCols := (TblOps.colNames tbl').size
+  let nCols := TblOps.colNames tbl' |>.size
   let firstSplitCol := nCols - n
   let some v := s.cur.rebuild tbl' (col := firstSplitCol) | return s
   return s.push { v with disp := s!":{curName}" }

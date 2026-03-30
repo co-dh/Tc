@@ -40,7 +40,7 @@ def compute (t : AdbcTable) (nBars : Nat := 20) : IO (Array String) := do
   let some baseSql ← Prql.compile prql
     | Log.error "sparkline: PRQL compile failed"; return empty
   let unionSql := "WITH __src AS (" ++ (baseSql.trimAsciiEnd).toString ++ ") " ++
-    " UNION ALL ".intercalate parts.toList
+    (parts.toList |> " UNION ALL ".intercalate)
   let qr ← try Adbc.query unionSql
     catch e => Log.error s!"sparkline: {e}"; return empty
   let nr ← Adbc.nrows qr
@@ -62,10 +62,10 @@ def compute (t : AdbcTable) (nBars : Nat := 20) : IO (Array String) := do
     for (b, c) in buckets do
       if b < nBars then counts := counts.set! b c
     let maxCnt := counts.foldl max 0
-    let spark := if maxCnt == 0 then String.ofList (List.replicate nBars ' ')
-      else String.ofList (counts.map fun c =>
+    let spark := if maxCnt == 0 then List.replicate nBars ' ' |> String.ofList
+      else counts.map (fun c =>
         let level := (c * 8 + maxCnt - 1) / maxCnt  -- ceil: 0→0, >0→1..8
-        blocks.getD level ' ').toList
+        blocks.getD level ' ') |>.toList |> String.ofList
     result := result.set! (numIdxs.getD j 0) spark
   pure result
 

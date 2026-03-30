@@ -95,7 +95,7 @@ private def runViewEffect (a : AppState) (ci : CmdConfig.CmdInfo)
   | .freq colNames => tryStk a ci do
     let some (adbc, totalGroups) ← AdbcTable.freqTable s.tbl colNames | return none
     match View.fromTbl adbc s.cur.path 0 colNames with
-    | some fv => pure (some (s.push { fv with vkind := .freqV colNames totalGroups, disp := s!"freq {",".intercalate colNames.toList}" }))
+    | some fv => pure (some (s.push { fv with vkind := .freqV colNames totalGroups, disp := s!"freq {colNames.toList |> ",".intercalate}" }))
     | none => pure none
   | .freqFilter cols row => tryStk a ci do
     match s.cur.vkind, s.pop with
@@ -317,7 +317,7 @@ private def commands : Array (E × Option HandlerFn) := #[
 ]
 
 def initHandlers : IO Unit := do
-  CmdConfig.init (commands.map (·.1))
+  commands.map (·.1) |> CmdConfig.init
   let mut m : Std.HashMap String HandlerFn := {}
   for (e, fn?) in commands do
     if let some f := fn? then m := m.insert e.handler f
@@ -332,7 +332,7 @@ private partial def dispatchHandler (a : AppState) (cmdStr : String) : IO AppSta
   -- Handler names may include arg after space: "row.filter Bid > 100"
   let (h, arg) := match cmdStr.splitOn " " with
     | [h] => (h, "")
-    | h :: rest => (h, " ".intercalate rest)
+    | h :: rest => (h, rest |> " ".intercalate)
     | [] => (cmdStr, "")
   let ci ← CmdConfig.handlerLookup h
   match ← a.dispatch ci arg with

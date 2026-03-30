@@ -73,8 +73,7 @@ def defaultDark : Array UInt32 := #[
 def isDark : IO Bool := do
   match (← IO.getEnv "COLORFGBG") with
   | some s =>
-    let parts := s.splitOn ";"
-    match parts.getLast?.bind (·.toNat?) with
+    match s.splitOn ";" |>.getLast?.bind (·.toNat?) with
     | some bg => pure (bg < 7)  -- 0-6 = dark colors
     | none => pure true  -- default dark
   | none => pure true  -- default dark
@@ -92,11 +91,11 @@ def themeIdx (theme variant : String) : Nat :=
 -- | Load theme CSV, filter by theme/variant, return styles array
 def load (path : String) (theme variant : String) : IO (Array UInt32) := do
   let content ← IO.FS.readFile path
-  let lines := content.splitOn "\n" |>.filter (·.length > 0)
-  let rows := lines.drop 1 |>.map (·.splitOn ",")  -- skip header
-  -- filter matching theme/variant
-  let matching := rows.filter fun r =>
-    r.getD 0 "" == theme && r.getD 1 "" == variant
+  let matching := content.splitOn "\n"
+    |>.filter (·.length > 0)
+    |>.drop 1  -- skip header
+    |>.map (·.splitOn ",")
+    |>.filter fun r => r.getD 0 "" == theme && r.getD 1 "" == variant
   -- build styles array (9 styles × 2 = 18 values: fg0,bg0,fg1,bg1,...)
   let mut styles := defaultDark  -- start with default
   for row in matching do

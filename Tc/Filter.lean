@@ -36,11 +36,11 @@ private def withDistinct (s : ViewStack T)
   let v := s.cur
   let curCol := v.nav.curColIdx; let curName := v.nav.curColName
   let vals ← TblOps.distinct v.nav.tbl curCol
-  f curCol curName (vals.qsort (· < ·))
+  vals.qsort (· < ·) |> f curCol curName
 
 -- | row search (/): find value in current column, jump to matching row (IO)
 def rowSearch (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun curCol curName vals => do
-  let some result ← Fzf.fzf #[s!"--prompt=/{curName}: "] ("\n".intercalate vals.toList) | return s
+  let some result ← Fzf.fzf #[s!"--prompt=/{curName}: "] (vals.toList |> "\n".intercalate) | return s
   let start := s.cur.nav.row.cur.val + 1
   let some rowIdx ← TblOps.findRow s.tbl curCol result start true | return s
   return moveRowTo s rowIdx (some (curCol, result))
@@ -58,9 +58,8 @@ def searchDir (s : ViewStack T) (fwd : Bool) : IO (ViewStack T) := do
 def rowFilter (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun _curCol curName vals => do
   let typ := TblOps.colType s.tbl _curCol
   let header := TblOps.filterPrompt s.tbl curName typ
-  let some result ← Fzf.fzf #["--print-query", s!"--header={header}", "--prompt=filter > "] ("\n".intercalate vals.toList) | return s
-  let numeric := isNumericType typ
-  let expr := TblOps.buildFilter s.tbl curName vals result numeric
+  let some result ← Fzf.fzf #["--print-query", s!"--header={header}", "--prompt=filter > "] (vals.toList |> "\n".intercalate) | return s
+  let expr := TblOps.buildFilter s.tbl curName vals result (isNumericType typ)
   if expr.isEmpty then return s
   let some tbl' ← TblOps.filter s.tbl expr | return s
   let some v' := s.cur.rebuild tbl' (row := 0) | return s

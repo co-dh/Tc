@@ -12,7 +12,7 @@ inductive JoinOp | inner | left | right | union | diff
 
 -- PRQL join condition: ==col1 && ==col2
 private def joinCond (cols : Array String) : String :=
-  " && ".intercalate (cols.map (s!"=={Prql.quote ·}")).toList
+  cols.map (s!"=={Prql.quote ·}") |>.toList |> " && ".intercalate
 
 private def opLabel : JoinOp → String
   | .inner => "join inner" | .left => "join left" | .right => "join right"
@@ -54,10 +54,8 @@ private def execJoin (s : ViewStack AdbcTable) (op : JoinOp) (leftGrp : Array St
   let some s' := s.pop | return none
   let disp := match op with
     | .union => "union" | .diff => "diff"
-    | _ => s!"⋈ ({", ".intercalate leftGrp.toList})"
-  match View.fromTbl adbc s'.cur.path with
-  | some v => return some (s'.setCur { v with disp })
-  | none => return none
+    | _ => s!"⋈ ({leftGrp.toList |> ", ".intercalate})"
+  return (View.fromTbl adbc s'.cur.path |>.map fun v => s'.setCur { v with disp })
 
 -- | Resolve available ops from stack state
 private def resolveOps (s : ViewStack AdbcTable) : Option (Array JoinOp × Array String) := do
@@ -74,13 +72,13 @@ def run (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let (rName, _) ← prepareView s.tbl "r"
   let items := ops.map fun op => s!"{opLabel op}  |  {prqlStr lName rName leftGrp op}"
   let some idx ← Fzf.fzfIdx #["--prompt=join> "] items | return none
-  execJoin s (ops.getD idx .inner) leftGrp
+  ops.getD idx .inner |> (execJoin s · leftGrp)
 
 -- | Join by operation index directly (no fzf). Called by socket/dispatch.
 def runWith (s : ViewStack AdbcTable) (idxStr : String) : IO (Option (ViewStack AdbcTable)) := do
   let some (ops, leftGrp) := resolveOps s | return none
   let idx := idxStr.toNat?.getD 0
   if idx >= ops.size then return none
-  execJoin s (ops.getD idx .inner) leftGrp
+  ops.getD idx .inner |> (execJoin s · leftGrp)
 
 end Tc.Join
