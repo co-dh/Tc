@@ -16,14 +16,14 @@ def filterExprIO (tbl : AdbcTable) (cols : Array String) (row : Nat) : IO String
   let exprs := cols.zip vals |>.map fun (c, v) => s!"{c} == {v}"
   pure (exprs.joinWith " && ")
 
--- | Pure update by handler name. Returns residual Effect for dispatch to execute.
-def update (s : ViewStack AdbcTable) (h : String) : Option (ViewStack AdbcTable × Effect) :=
+-- | Pure update by Cmd. Returns residual Effect for dispatch to execute.
+def update (s : ViewStack AdbcTable) (h : Cmd) : Option (ViewStack AdbcTable × Effect) :=
   let n := s.cur.nav
   let curName := n.curColName
   let colNames := if n.grp.contains curName then n.grp else n.grp.push curName
   match h with
-  | "freq.open" => some (s, .freq colNames)
-  | "freq.filter" => match s.cur.vkind with
+  | .freqOpen => some (s, .freq colNames)
+  | .freqFilter => match s.cur.vkind with
     | .freqV cols _ => some (s, .freqFilter cols s.cur.nav.row.cur.val)
     | _ => none
   | _ => none

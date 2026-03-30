@@ -299,13 +299,4 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   exitPlotMode
   pure (some s)
 
--- | Map handler name to plot kind
-def kindOf? (h : String) : Option PlotKind :=
-  match h with
-  | "plot.area"    => some .area    | "plot.line"    => some .line
-  | "plot.scatter" => some .scatter | "plot.bar"     => some .bar
-  | "plot.box"     => some .box     | "plot.step"    => some .step
-  | "plot.hist"    => some .hist    | "plot.density" => some .density
-  | "plot.violin"  => some .violin  | _ => none
-
 end Tc.Plot

@@ -93,13 +93,13 @@ end Tc.ViewStack
 namespace Tc.Filter
 
 -- | Dispatch filter handler to IO action. Returns none if handler not recognized.
-def dispatch (s : ViewStack AdbcTable) (h : String) : Option (IO (ViewStack AdbcTable)) :=
+def dispatch (s : ViewStack AdbcTable) (h : Cmd) : Option (IO (ViewStack AdbcTable)) :=
   match h with
-  | "col.search"  => some (s.colSearch)
-  | "row.search"  => some (s.rowSearch)
-  | "row.filter"  => some (s.rowFilter)
-  | "row.searchNext" => some (s.searchDir true)
-  | "row.searchPrev" => some (s.searchDir false)
+  | .colSearch     => some (s.colSearch)
+  | .rowSearch     => some (s.rowSearch)
+  | .rowFilter     => some (s.rowFilter)
+  | .rowSearchNext => some (s.searchDir true)
+  | .rowSearchPrev => some (s.searchDir false)
   | _ => none
 
 end Tc.Filter
