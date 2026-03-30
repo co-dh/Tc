@@ -13,6 +13,7 @@ import Tc.Data.Text
 import Tc.Util
 import Tc.Session
 import Tc.CmdConfig
+import Tc.Key
 
 namespace PureTest2
 
@@ -42,81 +43,94 @@ def testView : View (MockTable 5 3) :=
 def testStack : ViewStack (MockTable 5 3) := ⟨testView, []⟩
 
 /-! ## Key Mapping Tests (derived from screen tests)
-    Screen tests use keystroke injection and check screen output.
-    Here we test the pure key→handler pipeline directly. -/
+    All key→handler mapping now goes through CmdConfig.commands. -/
 
 section KeyMapTests
 
--- Navigation keys via evToHandler (hjkl, arrows — not in KeyMap.char)
-theorem key_j : evToHandler (charToEvent 'j') .tbl = some "nav.rowInc" := by native_decide
-theorem key_k : evToHandler (charToEvent 'k') .tbl = some "nav.rowDec" := by native_decide
-theorem key_l : evToHandler (charToEvent 'l') .tbl = some "nav.colInc" := by native_decide
-theorem key_h : evToHandler (charToEvent 'h') .tbl = some "nav.colDec" := by native_decide
+-- | Find handler by key string, with optional view context.
+-- Prefers context-specific match, falls back to global (empty viewCtx).
+private def findKey (k : String) (ctx : String := "") : Option String :=
+  let specific := CmdConfig.commands.findSome? fun e =>
+    if e.key == k && e.viewCtx == ctx && !ctx.isEmpty then some e.handler else none
+  match specific with
+  | some h => some h
+  | none => CmdConfig.commands.findSome? fun e =>
+    if e.key == k && e.viewCtx.isEmpty then some e.handler else none
 
--- Single-key shortcuts via CmdConfig.commands (inline config, no SQL)
-private def findKey (c : Char) : Option String :=
-  CmdConfig.commands.findSome? fun e => if e.key == some c then some e.handler else none
+-- Navigation keys (hjkl)
+theorem key_j : findKey "j" = some "nav.rowInc" := by native_decide
+theorem key_k : findKey "k" = some "nav.rowDec" := by native_decide
+theorem key_l : findKey "l" = some "nav.colInc" := by native_decide
+theorem key_h : findKey "h" = some "nav.colDec" := by native_decide
 
-theorem key_bang  : findKey '!' = some "nav.colGrp"         := by native_decide
-theorem key_T     : findKey 'T' = some "nav.rowSel"         := by native_decide
-theorem key_lbr   : findKey '[' = some "sort.asc"           := by native_decide
-theorem key_rbr   : findKey ']' = some "sort.desc"          := by native_decide
-theorem key_q     : findKey 'q' = some "stk.pop"            := by native_decide
-theorem key_space : findKey ' ' = some "menu"               := by native_decide
-theorem key_n     : findKey 'n' = some "filter.searchNext"  := by native_decide
-theorem key_N     : findKey 'N' = some "filter.searchPrev"  := by native_decide
-theorem key_lbrace: findKey '{' = some "scrollUp"            := by native_decide
-theorem key_rbrace: findKey '}' = some "scrollDn"            := by native_decide
-theorem key_S     : findKey 'S' = some "stk.swap"           := by native_decide
-theorem key_X     : findKey 'X' = some "xpose"              := by native_decide
-theorem key_d     : findKey 'd' = some "diff"               := by native_decide
-theorem key_I     : findKey 'I' = some "infoTog"            := by native_decide
-theorem key_M     : findKey 'M' = some "meta.push"          := by native_decide
-theorem key_F     : findKey 'F' = some "freq.open"          := by native_decide
-theorem key_D     : findKey 'D' = some "folder.push"        := by native_decide
-theorem key_H     : findKey 'H' = some "nav.colHide"        := by native_decide
+-- Single-key shortcuts
+theorem key_bang  : findKey "!" = some "nav.colGrp"         := by native_decide
+theorem key_T     : findKey "T" = some "nav.rowSel"         := by native_decide
+theorem key_lbr   : findKey "[" = some "sort.asc"           := by native_decide
+theorem key_rbr   : findKey "]" = some "sort.desc"          := by native_decide
+theorem key_q     : findKey "q" = some "stk.pop"            := by native_decide
+theorem key_space : findKey " " = some "menu"               := by native_decide
+theorem key_n     : findKey "n" = some "filter.searchNext"  := by native_decide
+theorem key_N     : findKey "N" = some "filter.searchPrev"  := by native_decide
+theorem key_lbrace: findKey "{" = some "scrollUp"            := by native_decide
+theorem key_rbrace: findKey "}" = some "scrollDn"            := by native_decide
+theorem key_S     : findKey "S" = some "stk.swap"           := by native_decide
+theorem key_X     : findKey "X" = some "xpose"              := by native_decide
+theorem key_d     : findKey "d" = some "diff"               := by native_decide
+theorem key_I     : findKey "I" = some "infoTog"            := by native_decide
+theorem key_M     : findKey "M" = some "meta.push"          := by native_decide
+theorem key_F     : findKey "F" = some "freq.open"          := by native_decide
+theorem key_D     : findKey "D" = some "folder.push"        := by native_decide
+theorem key_H     : findKey "H" = some "nav.colHide"        := by native_decide
 
--- Ctrl keys via evToHandler (from test_page_down/up)
-theorem key_ctrlD : evToHandler (charToEvent '\x04') .tbl = some "nav.rowPgDn" := by native_decide
-theorem key_ctrlU : evToHandler (charToEvent '\x15') .tbl = some "nav.rowPgUp" := by native_decide
+-- Ctrl keys
+theorem key_ctrlD : findKey "<C-d>" = some "nav.rowPgDn" := by native_decide
+theorem key_ctrlU : findKey "<C-u>" = some "nav.rowPgUp" := by native_decide
 
--- Context-sensitive Enter via evToHandler (from test_freq_enter, test_meta_0_enter, test_folder_enter)
-theorem enter_freq : evToHandler (charToEvent '\r') (.freqV #["a"] 10) = some "freq.filter" := by native_decide
-theorem enter_meta : evToHandler (charToEvent '\r') .colMeta = some "meta.setKey"           := by native_decide
-theorem enter_fld  : evToHandler (charToEvent '\r') (.fld "/tmp" 1) = some "folder.enter"   := by native_decide
-theorem enter_tbl  : evToHandler (charToEvent '\r') .tbl = none                             := by native_decide
+-- Page/Home/End
+theorem key_pgdn : findKey "<pgdn>" = some "nav.rowPgDn" := by native_decide
+theorem key_pgup : findKey "<pgup>" = some "nav.rowPgUp" := by native_decide
+theorem key_home : findKey "<home>" = some "nav.rowTop"   := by native_decide
+theorem key_end  : findKey "<end>"  = some "nav.rowBot"   := by native_decide
 
--- Backspace in folder view → parent (from test_folder_backspace)
-theorem bs_fld : evToHandler (charToEvent '\x7f') (.fld "/tmp" 1) = some "folder.parent"   := by native_decide
--- Backspace outside folder view → no action
-theorem bs_tbl : evToHandler (charToEvent '\x7f') .tbl = none                               := by native_decide
+-- Shift+Arrow
+theorem key_shift_left  : findKey "<S-left>"  = some "nav.colShiftL" := by native_decide
+theorem key_shift_right : findKey "<S-right>" = some "nav.colShiftR" := by native_decide
 
--- Unmodified arrow keys → single-step nav, not page (bug: termbox2 tagged \x1b[A-D as shift)
-theorem key_arrow_down : evToHandler ⟨Term.eventKey, 0, Term.keyArrowDown, 0, 0, 0⟩ .tbl
-    = some "nav.rowInc" := by native_decide
-theorem key_arrow_up : evToHandler ⟨Term.eventKey, 0, Term.keyArrowUp, 0, 0, 0⟩ .tbl
-    = some "nav.rowDec" := by native_decide
-theorem key_arrow_right : evToHandler ⟨Term.eventKey, 0, Term.keyArrowRight, 0, 0, 0⟩ .tbl
-    = some "nav.colInc" := by native_decide
-theorem key_arrow_left : evToHandler ⟨Term.eventKey, 0, Term.keyArrowLeft, 0, 0, 0⟩ .tbl
-    = some "nav.colDec" := by native_decide
+-- Context-sensitive Enter: viewCtx-specific entries
+theorem enter_freq : findKey "<ret>" "freqV"   = some "freq.filter"   := by native_decide
+theorem enter_meta : findKey "<ret>" "colMeta"  = some "meta.setKey"   := by native_decide
+theorem enter_fld  : findKey "<ret>" "fld"      = some "folder.enter"  := by native_decide
+-- Enter with no matching context → no global <ret> entry → none
+theorem enter_tbl  : findKey "<ret>" "tbl"      = none                 := by native_decide
 
--- Synthetic arrow chars (\x1c-\x1f) via charToEvent → single-step nav
-theorem key_synth_down : evToHandler (charToEvent '\x1c') .tbl = some "nav.rowInc" := by native_decide
-theorem key_synth_up : evToHandler (charToEvent '\x1d') .tbl = some "nav.rowDec" := by native_decide
-theorem key_synth_right : evToHandler (charToEvent '\x1e') .tbl = some "nav.colInc" := by native_decide
-theorem key_synth_left : evToHandler (charToEvent '\x1f') .tbl = some "nav.colDec" := by native_decide
+-- Backspace in folder view → parent
+theorem bs_fld : findKey "<bs>" "fld" = some "folder.parent" := by native_decide
+-- Backspace outside folder → no global <bs> entry → none
+theorem bs_tbl : findKey "<bs>" "tbl" = none                 := by native_decide
 
--- Shift+Arrow keys (from test_key_shift: reorder key columns)
--- Synthetic shift+arrow events: mod=4 (modShift), key=arrow code
-theorem key_shift_left : evToHandler ⟨Term.eventKey, Term.modShift, Term.keyArrowLeft, 0, 0, 0⟩ .tbl
-    = some "nav.colShiftL" := by native_decide
-theorem key_shift_right : evToHandler ⟨Term.eventKey, Term.modShift, Term.keyArrowRight, 0, 0, 0⟩ .tbl
-    = some "nav.colShiftR" := by native_decide
-
--- Test synthetic shift+arrow via charToEvent (\x11=S-left, \x12=S-right)
-theorem key_synth_shift_left : evToHandler (charToEvent '\x11') .tbl = some "nav.colShiftL" := by native_decide
-theorem key_synth_shift_right : evToHandler (charToEvent '\x12') .tbl = some "nav.colShiftR" := by native_decide
+-- evToKey: terminal event → readable key string
+theorem evToKey_j     : evToKey (charToEvent 'j') = "j"          := by native_decide
+theorem evToKey_ret   : evToKey (charToEvent '\r') = "<ret>"      := by native_decide
+theorem evToKey_bs    : evToKey (charToEvent '\x7f') = "<bs>"     := by native_decide
+theorem evToKey_ctrlD : evToKey (charToEvent '\x04') = "<C-d>"    := by native_decide
+theorem evToKey_ctrlU : evToKey (charToEvent '\x15') = "<C-u>"    := by native_decide
+-- Arrow keys via charToEvent (synthetic codes) → normalized hjkl
+theorem evToKey_down  : evToKey (charToEvent '\x1c') = "j"        := by native_decide
+theorem evToKey_up    : evToKey (charToEvent '\x1d') = "k"        := by native_decide
+theorem evToKey_right : evToKey (charToEvent '\x1e') = "l"        := by native_decide
+theorem evToKey_left  : evToKey (charToEvent '\x1f') = "h"        := by native_decide
+-- Shift+Arrow via charToEvent
+theorem evToKey_sleft  : evToKey (charToEvent '\x11') = "<S-left>"  := by native_decide
+theorem evToKey_sright : evToKey (charToEvent '\x12') = "<S-right>" := by native_decide
+-- Direct terminal arrow events
+theorem evToKey_arrow_down  : evToKey ⟨Term.eventKey, 0, Term.keyArrowDown, 0, 0, 0⟩ = "j"  := by native_decide
+theorem evToKey_arrow_up    : evToKey ⟨Term.eventKey, 0, Term.keyArrowUp, 0, 0, 0⟩ = "k"    := by native_decide
+theorem evToKey_arrow_right : evToKey ⟨Term.eventKey, 0, Term.keyArrowRight, 0, 0, 0⟩ = "l" := by native_decide
+theorem evToKey_arrow_left  : evToKey ⟨Term.eventKey, 0, Term.keyArrowLeft, 0, 0, 0⟩ = "h"  := by native_decide
+-- Direct shift+arrow events
+theorem evToKey_shift_left  : evToKey ⟨Term.eventKey, Term.modShift, Term.keyArrowLeft, 0, 0, 0⟩ = "<S-left>"  := by native_decide
+theorem evToKey_shift_right : evToKey ⟨Term.eventKey, Term.modShift, Term.keyArrowRight, 0, 0, 0⟩ = "<S-right>" := by native_decide
 
 end KeyMapTests
 

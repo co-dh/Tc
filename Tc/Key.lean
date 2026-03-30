@@ -1,7 +1,6 @@
 /-
-  Key mapping: Term.Event → handler name via lookup tables
-  Arrows normalized to hjkl, then unified processing.
-  No Cmd struct — maps directly to handler name strings.
+  Key normalization: Term.Event → readable key string.
+  No handler names here — all key→handler mapping lives in CmdConfig.
 -/
 import Tc.Nav
 import Tc.Term
@@ -9,56 +8,40 @@ import Tc.CmdConfig
 
 open Tc
 
-def lookup [BEq α] (tbl : Array (α × β)) (k : α) : Option β :=
-  tbl.findSome? fun (k', v) => if k == k' then some v else none
-
 namespace KeyMap
+  -- Arrow keys normalized to hjkl for unified nav
   private def arrow : Array (UInt16 × Char) := #[
     (Term.keyArrowDown, 'j'), (Term.keyArrowUp, 'k'),
     (Term.keyArrowRight, 'l'), (Term.keyArrowLeft, 'h')
   ]
-
-  private def nav : Array (Char × String) := #[
-    ('j', "nav.rowInc"), ('k', "nav.rowDec"),
-    ('l', "nav.colInc"), ('h', "nav.colDec")
-  ]
-
-  private def special : Array (UInt16 × String) := #[
-    (Term.keyPageDown, "nav.rowPgDn"), (Term.keyPageUp, "nav.rowPgUp"),
-    (Term.keyHome, "nav.rowTop"), (Term.keyEnd, "nav.rowBot")
-  ]
-
-  private def ctrl : Array (UInt16 × String) := #[
-    (Term.ctrlD.toUInt16, "nav.rowPgDn"), (Term.ctrlU.toUInt16, "nav.rowPgUp")
-  ]
-
 end KeyMap
 
-def evToChar (ev : Term.Event) : Char :=
-  if ev.key == Term.keyEnter then '\r'
-  else (lookup KeyMap.arrow ev.key).getD (Char.ofNat ev.ch.toNat)
-
-private def navHandler (c : Char) : Option String :=
-  KeyMap.nav.findSome? fun (ch, h) => if c == ch then some h else none
-
--- | Context-sensitive Enter key handler
-def enterHandler (vk : ViewKind) : Option String :=
-  match vk with
-  | .freqV _ _ => some "freq.filter"
-  | .colMeta  => some "meta.setKey"
-  | .fld _ _  => some "folder.enter"
-  | .tbl      => none
-
--- | Map event → handler name (for special/context-sensitive keys)
-def evToHandler (ev : Term.Event) (vk : ViewKind) : Option String :=
-  if ev.type != Term.eventKey then none else
-  if ev.key == Term.keyEnter then enterHandler vk else
-  if (ev.key == Term.keyBackspace || ev.key == Term.keyBackspace2) && vk matches .fld _ _ then some "folder.parent" else
-  let c := evToChar ev
+-- | Normalize terminal event to readable key string.
+-- Regular chars → "j", "!", " "; special keys → "<ret>", "<pgdn>", "<C-d>", "<S-left>" etc.
+def evToKey (ev : Term.Event) : String :=
+  if ev.type != Term.eventKey then "" else
   let shift := ev.mod &&& Term.modShift != 0
-  if shift && ev.key == Term.keyArrowLeft then some "nav.colShiftL"
-  else if shift && ev.key == Term.keyArrowRight then some "nav.colShiftR"
-  else navHandler c <|> lookup KeyMap.special ev.key <|> lookup KeyMap.ctrl ev.key
+  -- Shift+Arrow: "<S-left>", "<S-right>"
+  if shift && ev.key == Term.keyArrowLeft then "<S-left>"
+  else if shift && ev.key == Term.keyArrowRight then "<S-right>"
+  -- Special keys by key code
+  else if ev.key == Term.keyEnter then "<ret>"
+  else if ev.key == Term.keyBackspace || ev.key == Term.keyBackspace2 then "<bs>"
+  else if ev.key == Term.keyPageDown then "<pgdn>"
+  else if ev.key == Term.keyPageUp then "<pgup>"
+  else if ev.key == Term.keyHome then "<home>"
+  else if ev.key == Term.keyEnd then "<end>"
+  -- Arrow keys → hjkl
+  else match KeyMap.arrow.findSome? fun (k, c) => if ev.key == k then some c else none with
+  | some c => c.toString
+  -- Ctrl keys: ch or key field holds the control code (mod=2 for ctrl from charToEvent)
+  | none =>
+    let code := if ev.ch > 0 then ev.ch else ev.key.toUInt32
+    if code == Term.ctrlD then "<C-d>"
+    else if code == Term.ctrlU then "<C-u>"
+    -- Regular printable chars
+    else if ev.ch > 0 then (Char.ofNat ev.ch.toNat).toString
+    else ""
 
 def parseKeys (s : String) : String :=
   s.replace "<ret>" "\r"

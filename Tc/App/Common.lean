@@ -246,6 +246,10 @@ def initHandlers : IO Unit := do
     match ← Join.runWith a.stk arg with | some s' => pure s' | none => pure a.stk)
   handlerMap.set m
 
+-- | Convert ViewKind to context string for config lookup
+def viewCtxStr : ViewKind → String
+  | .freqV _ _ => "freqV" | .colMeta => "colMeta" | .fld _ _ => "fld" | .tbl => "tbl"
+
 -- | Dispatch a handler name string from socket (handler name, optionally with arg after space)
 private partial def dispatchHandler (a : AppState) (cmdStr : String) : IO AppState := do
   Log.write "sock" s!"cmd={cmdStr}"
@@ -307,12 +311,13 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   if ev.type == 1 && ev.key == 0x16 then IO.sleep 50; return ← mainLoop a test ks'
   -- Empty event (socket wake-up with no key press) → re-render and loop
   if ev.type == 0 then return ← mainLoop a test ks'
-  -- Resolve key → handler name (config first, then compile-time KeyMap, then special keys)
-  let keyChar := evToChar ev
+  -- Resolve key → handler name via config (context-aware)
+  let key := evToKey ev
+  let vkStr := viewCtxStr a.stk.cur.vkind
   let handler? ← do
-    match ← CmdConfig.keyLookup keyChar with
+    match ← CmdConfig.keyLookup key vkStr with
     | some ci => pure (some ci.handler)
-    | none => pure (evToHandler ev a.stk.cur.vkind)
+    | none => pure none
   match handler? with
   | some h =>
     -- Arg commands: collect user input first (in test mode, chars until \r), then dispatch
