@@ -219,9 +219,11 @@ inductive Agg where
   deriving Repr, Inhabited, BEq
 
 namespace Agg
-def short : Agg → String
-  | .count => "count" | .sum => "sum" | .avg => "avg"
-  | .min => "min" | .max => "max" | .stddev => "stddev" | .dist => "dist"
+private def all : Array (String × Agg) := #[
+  ("count", .count), ("sum", .sum), ("avg", .avg), ("min", .min),
+  ("max", .max), ("stddev", .stddev), ("dist", .dist)]
+def short (a : Agg) : String := all.findSome? (fun (s, v) => if v == a then some s else none) |>.getD "?"
+def fromStr? (s : String) : Option Agg := all.findSome? fun (k, v) => if k == s then some v else none
 end Agg
 
 -- | Table operation (single pipeline stage)
