@@ -2,7 +2,7 @@
   View: wraps NavState + metadata for table type T
   Generic over T to support different build variants (Core, DuckDB, Full).
 -/
-import Tc.Cmd
+import Tc.Types
 import Tc.Render
 
 namespace Tc

@@ -359,33 +359,26 @@ Optional (feature-specific):
 ## Socket Command Channel
 
 tv starts a Unix domain socket at `$TV_SOCK` (e.g. `/tmp/tv-12345.sock`).
-External tools can send commands to control tv — the same commands work in `-c` mode:
+External tools send handler names to control tv:
 
 ```bash
-echo "m+" | socat - UNIX-CONNECT:$TV_SOCK   # heatmap: more color
-echo "T+" | socat - UNIX-CONNECT:$TV_SOCK   # theme: next
-echo "C+" | socat - UNIX-CONNECT:$TV_SOCK   # sort ascending
-echo ":-" | socat - UNIX-CONNECT:$TV_SOCK   # split column by "-"
-echo "=d = x * 2" | socat - UNIX-CONNECT:$TV_SOCK  # derive column
-echo "\Price > 100" | socat - UNIX-CONNECT:$TV_SOCK # filter rows
-echo "/NYSE" | socat - UNIX-CONNECT:$TV_SOCK        # search for value
+echo "heat.3" | socat - UNIX-CONNECT:$TV_SOCK          # heatmap: all columns
+echo "sort.asc" | socat - UNIX-CONNECT:$TV_SOCK        # sort ascending
+echo "nav.rowDec" | socat - UNIX-CONNECT:$TV_SOCK      # move cursor up
+echo "split -" | socat - UNIX-CONNECT:$TV_SOCK          # split column by "-"
+echo "derive d = x * 2" | socat - UNIX-CONNECT:$TV_SOCK # derive column
+echo "filter.rowFilter Price > 100" | socat - UNIX-CONNECT:$TV_SOCK # filter
+echo "filter.rowSearch NYSE" | socat - UNIX-CONNECT:$TV_SOCK        # search
 ```
 
 | Format | Example | Meaning |
 |--------|---------|---------|
-| `{obj}{verb}` | `m+`, `T-`, `C~` | Navigation/toggle (obj=`m`heat/`T`theme/`C`colSel, verb=`+`inc/`-`dec/`~`toggle) |
-| `:delim` | `:-` | Split column by delimiter |
-| `=name = expr` | `=d = x * 2` | Derive computed column |
-| `\expr` | `\Price > 100` | Filter rows by PRQL expression |
-| `/value` | `/NYSE` | Search for value in current column |
-| `sname` | `sExchange` | Jump to column by name |
-| `efmt` | `ecsv` | Export (csv/parquet/json/ndjson) |
-| `Wname` | `Wmysess` | Save session |
-| `Lname` | `Lmysess` | Load session |
-| `Jidx` | `J0` | Join (0=inner, 1=left, 2=right, 3=union, 4=diff) |
-
-In `-c` mode, argument commands use `<ret>` as terminator:
-`tv data.csv -c ":-<ret>lll"` (split by `-`, move right 3).
+| `handler` | `sort.asc`, `heat.3` | Run handler directly |
+| `handler arg` | `split -` | Handler with argument |
+| `filter.rowFilter expr` | `filter.rowFilter Price > 100` | Filter rows by PRQL expression |
+| `filter.rowSearch value` | `filter.rowSearch NYSE` | Search for value in current column |
+| `export fmt` | `export csv` | Export (csv/parquet/json/ndjson) |
+| `join idx` | `join 0` | Join (0=inner, 1=left, 2=right, 3=union, 4=diff) |
 
 The socket is per-process and cleaned up on exit.
 

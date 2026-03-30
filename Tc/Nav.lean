@@ -6,7 +6,6 @@
   - NavAxis: cursor (Fin) + selections (Array)
 -/
 import Tc.Types
-import Tc.Cmd
 
 namespace Tc
 -- Clamp value to [lo, hi)

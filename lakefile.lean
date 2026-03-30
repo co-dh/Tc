@@ -19,7 +19,7 @@ extern_lib adbcshim pkg := mkCLib pkg "adbcshim" "adbc_core.c"
 input_file funcsPrql where path := "Tc" / "Data" / "ADBC" / "funcs.prql"; text := true
 lean_lib Tc where
   needs := #[funcsPrql]
-  roots := #[`Tc.Cmd, `Tc.Nav, `Tc.Render, `Tc.Key, `Tc.App.Common, `Tc.App.Main,
+  roots := #[`Tc.Nav, `Tc.Render, `Tc.Key, `Tc.App.Common, `Tc.App.Main,
              `Tc.Term, `Tc.Types, `Tc.Util, `Tc.View,
              `Tc.Meta, `Tc.Fzf, `Tc.Filter, `Tc.FileFormat, `Tc.Folder,
              `Tc.Theme, `Tc.Plot, `Tc.Export, `Tc.Transpose, `Tc.Join, `Tc.Diff, `Tc.Derive, `Tc.Split, `Tc.Sparkline, `Tc.Session, `Tc.StatusAgg, `Tc.Replay, `Tc.UI.Info, `Tc.UI.Preview, `Tc.Runner, `Tc.Ftp, `Tc.SourceConfig,

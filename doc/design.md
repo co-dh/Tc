@@ -24,57 +24,29 @@
 │  AppState (App/Common.lean)                             │
 │    stk : ViewStack, vs : ViewState                      │
 │    theme : Theme.State, info : UI.Info.State            │
-│    update chains: theme → info → stk → fld → meta → ...│
+│    dispatch : CmdInfo → IO Action                       │
 └───────────────────────────┬─────────────────────────────┘
-                            │ returns Effect
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│  Effect (Cmd.lean)                                      │
-│    none | quit | fzf _ | query _ | folder _ | ...      │
-└───────────────────────────┬─────────────────────────────┘
-                            │ interpreted by
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│  Runner (Runner.lean)                                   │
-│    runStackEffect : ViewStack AdbcTable → Effect        │
-│                   → IO (ViewStack AdbcTable)            │
-└───────────────────────────┬─────────────────────────────┘
-                            │
+                            │ key → handler → dispatch
                             ▼
 ┌─────────────────────────────────────────────────────────┐
 │  appMain (App/Common.lean)                              │
-│    lookup KeyMap.char ∪ evToCmd → update → runEffect    │
+│    CmdConfig.keyLookup ∪ evToHandler → dispatch         │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ## Pure/IO Separation
 
-The architecture separates pure state logic from IO effects:
+Most dispatch is IO (calls domain modules directly). A few pure functions
+return residual `Effect` values for cases where pure code needs IO:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                   Pure State Machine                     │
-│  update : AppState → Cmd → Option (AppState × Effect)   │
-│  - Nav.update (cursor, selection, group)                │
-│  - Theme.init (load on startup)                         │
-│  - Info.update (toggle visibility)                      │
-│  - View.update (prec/width, returns query effects)      │
-│  - Filter.update (returns fzf effects)                  │
-│  - Meta.update (returns query effects)                  │
-│  - Folder.update (returns folder effects)               │
-│  - Plot.update (returns plotLine/plotBar effects)       │
-└─────────────────────────────────────────────────────────┘
-                            │ Effect
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                   IO Effect Runner                       │
-│  runEffect : AppState → Effect → IO AppState            │
-│  runStackEffect : ViewStack → Effect → IO ViewStack     │
-│  - fzf spawning (Fzf.lean)                              │
-│  - database queries (QueryTable)                        │
-│  - filesystem operations (Folder.lean)                  │
-│  - plot rendering (Plot.lean)                           │
-│  - terminal rendering (Term.lean)                       │
+│  Pure: View.update, ViewStack.update, Freq.update       │
+│    Return (State × Effect) — caller executes Effect     │
+│                                                         │
+│  IO: dispatch calls domain modules directly             │
+│    Folder.dispatch, Meta.dispatch, Filter.dispatch,     │
+│    Plot.run, Transpose.push, Diff.run, etc.             │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -88,7 +60,6 @@ The architecture separates pure state logic from IO effects:
 |             | plotExport, fetchMore                | Plot export + pagination   |
 |             | fromFile, fromUrl                    | Load from path/URL         |
 | ModifyTable | excludeCols, sortBy                   | Table mutations            |
-| Update      | update                               | Pure: Cmd → (State, Effect)|
 
 ## Backend
 
@@ -104,116 +75,65 @@ The architecture separates pure state logic from IO effects:
 
 ## Remote Browsing
 
+All remote sources are config-driven via `SourceConfig.sources` (inline Lean array).
+Adding a source = add an entry to the array with prefix, list/download commands, and SQL transforms.
+
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Remote.lean (shared URI path operations)               │
-│    join, parent, dispName                               │
+│  SourceConfig.lean (config-driven source routing)       │
+│    sources : Array Config — inline config               │
+│    findSource : longest prefix match                    │
+│    runList, runDownload, runEnter, runSetup             │
 ├──────────────┬──────────────────┬───────────────────────┤
-│  S3.lean     │  HF.lean         │  Osquery.lean          │
-│  s3:// via   │  hf:// via HF    │  osquery:// via        │
-│  aws CLI     │  Hub API         │  osqueryi --json       │
-│  +n = public │  curl + jq       │  python3 metadata      │
-│  buckets     │  disk cache      │  row count cache       │
+│  s3://       │  hf://           │  osquery://            │
+│  aws CLI     │  HF Hub API      │  osqueryi --json       │
+│  +n = public │  curl            │  python3 metadata      │
+│  buckets     │  disk cache      │  stub views            │
+├──────────────┼──────────────────┼───────────────────────┤
+│  ftp://      │  rest://         │  pg://                 │
+│  curl ls -l  │  curl JSON       │  ATTACH POSTGRES       │
 └──────────────┴──────────────────┴───────────────────────┘
 ```
 
-## Key → Cmd Mapping
+## Key → Handler Mapping
 
-Three sources, checked in order by `evToCmd` + main loop:
+Two sources, checked in order by mainLoop:
 
-1. **`evToCmd`**: terminal special keys (Enter, Backspace, Shift+Arrow, arrows, PageUp/Down, Home/End, Ctrl-D/U)
-2. **`KeyMap.char`**: single-key shortcuts (the single source of truth for all one-key mappings)
-3. **`objMenu`+`verbsFor`**: space → fzf object picker → verb picker
+1. **`CmdConfig.keyLookup`**: physical key → handler name (from inline `commands` array, cached as HashMap)
+2. **`evToHandler`**: terminal special keys (Enter, Backspace, Shift+Arrow, arrows, PgUp/Dn, Ctrl-D/U, hjkl nav)
 
-Key = single-key shortcut. Name = implemented via space menu / `-c` code only.
+Socket commands send handler names directly (e.g. `"sort.asc"`, `"heat.3"`).
 
-```
-Verb │ r:row      │ c:col      │ s:stk    │ i:info   │ M:metaV  │ F:freq   │ D:fld    │ desc
-─────┼────────────┼────────────┼──────────┼──────────┼──────────┼──────────┼──────────┼──────────────────────────────
-  !  │            │ ! group    │          │          │          │          │          │
-  ~  │ T togRow   │ hide       │ swap     │ togInfo  │ ⏎* setKey│ ⏎* filt  │ ⏎* enter │ M~:set key cols from selected  F~:filter parent table by current row
-  <  │ k up       │ h left     │ q pop    │ precDec  │          │          │ depth--  │
-  >  │ j down     │ l right    │ dup      │ precInc  │          │          │ depth++  │ s>:clone current view
-  [  │ ^U pgUp    │ [ sortAsc  │ joinLeft │ { scrUp  │          │          │          │ i[:scroll cell preview up
-  ]  │ ^D pgDn    │ ] sortDesc │ joinRigh │ } scrDn  │          │          │          │ i]:scroll cell preview down
-  {  │ Home top   │ first      │ quit     │ 0dp      │          │          │ ⌫ parent │
-  }  │ End bot    │ last       │ inner    │ 17dp max │          │          │          │
-  -  │ N prevMat  │ S-← shift  │ setDiff  │          │          │          │ trash    │
-  +  │ n nextMat  │ S-→ shift  │ union    │          │ open     │ open     │          │ M+:column metadata  F+:value frequency counts
-  /  │ / search   │ search     │ SPC menu │          │          │          │          │ c/:jump to col by name
-  \  │ \ filter   │ delete     │          │          │          │          │          │ r\:PRQL filter expr  c\:delete column(s) from query
-  :  │            │ : split    │          │          │          │          │          │
-  =  │            │ = derive   │          │          │          │          │          │ c=:name = expr
-  0  │            │ area       │          │ heat off │ selNull  │          │          │ M0:select null cols
-  1  │            │ line       │ xpose    │ heat num │ selSing  │          │          │ M1:select single-val cols  s1:rows↔cols
-  2  │            │ scat       │ diff     │ heat cat │          │          │          │ s2:compare top 2 views
-  3  │            │ bar        │          │ heat all │          │          │          │
-  4  │            │ box        │          │          │          │          │          │
-  5  │            │ step       │          │          │          │          │          │
-  6  │            │ hist       │          │          │          │          │          │
-  7  │            │ dens       │          │          │          │          │          │
-  8  │            │ violin     │          │          │          │          │          │
+## Residual Effect (Cmd.lean)
 
-* ⏎ context-sensitive: freq→filter, meta→enter, fld→enter, tbl→none
-```
-
-## Effect DSL (Cmd.lean)
-
-Effect describes IO operations without executing them. Sub-effects are grouped by domain:
+Minimal — only for pure code that can't do IO:
 
 ```lean
-inductive FzfEffect where | cmd | col | row | filter
-inductive QueryEffect where
-  | colMeta | freq (colNames : Array String)
-  | freqFilter (cols : Array String) (row : Nat)
-  | filter (expr : String)
+inductive Effect where
+  | none | quit | fetchMore
   | sort (colIdx : Nat) (sels : Array Nat) (grp : Array Nat) (asc : Bool)
   | exclude (cols : Array String)
-inductive FolderEffect where | push | enter | del | parent | depth (delta : Int)
-inductive SearchEffect where | next | prev
-inductive PlotKind where | line | bar | scatter | hist | box | area | density | step | violin
-inductive MetaEffect where | selNull | selSingle | setKey
-inductive ClipEffect where | cell | row | col
-inductive ExportFmt where | csv | parquet | json | ndjson
-
-inductive Effect where
-  | none | quit
-  | fzf : FzfEffect → Effect
-  | query : QueryEffect → Effect
-  | folder : FolderEffect → Effect
-  | search : SearchEffect → Effect
-  | plot : PlotKind → Effect
-  | colMeta : MetaEffect → Effect
-  | fetchMore
-  | export : ExportFmt → Effect
-  | sessionSave | sessionLoad | join
-  | transpose | diff
+  | freq (colNames : Array String)
+  | freqFilter (cols : Array String) (row : Nat)
 ```
 
-**Functor pattern**: `update` maps `Cmd → Effect`:
-
-```lean
-class Update (α : Type) where
-  update : α → Cmd → Option (α × Effect)
-```
+Most effects were eliminated by having `dispatch` call IO directly.
 
 ## Plot (Plot.lean)
 
-Interactive plot with interval control. After display, `+`/`-` cycles intervals:
+Interactive plot with interval control:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Plot.run                                               │
 │  1. Determine x/y columns from group + cursor           │
 │  2. Detect x-axis type (time/timestamp/date/str/num)    │
-│  3. Infer date/time from string values if needed        │
-│  4. Term.shutdown                                       │
-│  5. Loop:                                               │
-│     export data (DB-side or Lean fallback)              │
-│     Rscript (ggplot2) → PNG → viu                       │
+│  3. Term.shutdown                                       │
+│  4. Loop:                                               │
+│     export data → Rscript (ggplot2) → PNG → viu         │
 │     show interval selector: [1d] 1M 1Y                  │
 │     read key: +/- → change interval, else → exit        │
-│  6. Term.init                                           │
+│  5. Term.init                                           │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -221,22 +141,13 @@ Interactive plot with interval control. After display, `+`/`-` cycles intervals:
 - Time-like x-axis: `ds_trunc` (SUBSTRING truncation to interval length)
 - Non-time x-axis: hand-written SQL with `ROW_NUMBER() OVER ()` sampling
 
-**Interval types:**
-
-| Column type | Intervals | Method |
-|-------------|-----------|--------|
-| time (HH:MM:SS) | 1s, 1m, 1h | SUBSTRING len 8/5/2 |
-| timestamp | 1s, 1m, 1h, 1d | SUBSTRING len 19/16/13/10 |
-| date (YYYY-MM-DD) | 1d, 1M, 1Y | SUBSTRING len 10/7/4 |
-| numeric/string | 1x, 2x, 4x, ... | every-Nth-row sampling |
-
 ## Structures
 
 | Struct       | Purpose                                      |
 |--------------|----------------------------------------------|
-| Verb         | Action type: 15 named + val 0-9              |
-| Cmd          | Object + Verb command pattern (7 objects)    |
-| Effect       | IO operation descriptor (30+ variants)       |
+| CmdInfo      | Handler name + resetsVS (key/handler lookup) |
+| Entry        | Command config entry (handler, key, label)   |
+| Effect       | Residual IO descriptor (7 variants)          |
 | NavState     | Table + row/col cursors + selections + group |
 | NavAxis      | Generic axis: cur (Fin n) + sels (Array)     |
 | View         | Existential wrapper hiding table type        |
@@ -244,9 +155,7 @@ Interactive plot with interval control. After display, `+`/`-` cycles intervals:
 | ViewStack    | Non-empty stack of Views (cur + parents)     |
 | ViewState    | Scroll offsets for rendering                 |
 | AppState     | Top-level: stk + vs + theme + info           |
-| Theme.State  | Theme styles + index                         |
-| Info.State   | Info overlay visibility                      |
-| Interval     | Plot downsample: label, truncLen, timefmt    |
+| Action       | Dispatch result: quit, unhandled, ok state   |
 
 ## Testing (Test.lean)
 
@@ -286,7 +195,8 @@ This prevents CPU burn on large tables (e.g., 300M row parquet).
 LAYER 1: FOUNDATION
 ┌─────────────────────────────────────────────────────────────────┐
 │ Types (Cell,Column,TblOps,ModifyTable,Agg,Op)                  │
-│ Cmd (Verb,Cmd,Effect,Update)   Error   Term   TmpDir           │
+│ Cmd (Effect,PlotKind,ExportFmt)   Util (Log,Socket,TmpDir,Remote) │
+│ Term                                                            │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 LAYER 2: DATA
@@ -299,23 +209,25 @@ LAYER 3: VIEW
 ┌─────────────────────────────────────────────────────────────────┐
 │ Nav (clamp,adjOff) ──→ Render ──→ Key                          │
 │                    └──→ View (View + ViewStack)                │
+│ CmdConfig (inline commands array, key/handler HashMaps)        │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 LAYER 4: FEATURES
 ┌─────────────────────────────────────────────────────────────────┐
 │ Meta  Filter  Folder  Theme  Fzf  Plot  UI/Info                │
-│ Remote  S3  HF  Osquery                                        │
+│ SourceConfig (inline sources array)                             │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 LAYER 5: STATE & DISPATCH
 ┌─────────────────────────────────────────────────────────────────┐
-│ App/Common (AppState, update) ──→ Runner (runStackEffect)      │
+│ App/Common (AppState, dispatch → IO Action)                    │
+│ Runner (Freq logic only)                                       │
 └─────────────────────────────────────────────────────────────────┘
 
 TESTS
 ┌─────────────────────────────────────────────────────────────────┐
 │ test/Test.lean (headless -c integration tests)                 │
-│ test/TestPure.lean (pure #guard tests)                         │
+│ test/TestPure.lean (pure theorems + #guard tests)              │
 │ test/TestScreen.lean (screen buffer tests)                     │
 └─────────────────────────────────────────────────────────────────┘
 ```

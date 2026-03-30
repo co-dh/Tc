@@ -1,7 +1,7 @@
 /-
   Info overlay: context-specific key hints per view kind.
 -/
-import Tc.Cmd
+import Tc.Types
 import Tc.Term
 import Tc.View
 
