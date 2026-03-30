@@ -27,9 +27,7 @@ private def moveColTo (s : ViewStack T) (colIdx : Nat) : ViewStack T :=
 
 -- | col search: fzf jump to column by name (IO version for backward compat)
 def colSearch (s : ViewStack T) : IO (ViewStack T) := do
-  let v := s.cur; let names := v.nav.colNames
-  let dispNames := v.nav.grp ++ names.filter (!v.nav.grp.contains ·)
-  let some idx ← Fzf.fzfIdx #["--prompt=Column: "] dispNames | return s
+  let some idx ← Fzf.fzfIdx #["--prompt=Column: "] s.cur.nav.dispColNames | return s
   return moveColTo s idx
 
 -- | Shared: resolve current column, fetch sorted distinct values
@@ -71,9 +69,7 @@ def rowFilter (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun _curCol
 -- | Jump to column by name directly (no fzf). Called by socket/dispatch.
 def colJumpWith (s : ViewStack T) (name : String) : IO (ViewStack T) := do
   if name.isEmpty then return s
-  let v := s.cur; let names := v.nav.colNames
-  let dispNames := v.nav.grp ++ names.filter (!v.nav.grp.contains ·)
-  match dispNames.findIdx? (· == name) with
+  match s.cur.nav.dispColNames.findIdx? (· == name) with
   | some idx => pure (moveColTo s idx)
   | none => pure s
 

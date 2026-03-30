@@ -118,6 +118,10 @@ def curColName (nav : NavState nRows nCols t) : String := nav.colNames.getD nav.
 -- | Current column type
 def curColType (nav : NavState nRows nCols t) : String := TblOps.colType nav.tbl nav.curColIdx
 
+-- | Column names in display order (grouped first, then rest)
+def dispColNames (nav : NavState nRows nCols t) : Array String :=
+  nav.grp ++ nav.colNames.filter (!nav.grp.contains ·)
+
 -- | Selected column indices
 def selColIdxs (nav : NavState nRows nCols t) : Array Nat := nav.col.sels.filterMap nav.colNames.idxOf?
 

@@ -51,25 +51,27 @@ def listDir (path : String) (depth : Nat) : IO String := do
     else line
   pure (hdr ++ "\n" ++ parentEntry ++ (if body.isEmpty then "" else "\n" ++ "\n".intercalate body))
 
+-- | Find path column index (tries "path", "name", "id" in order)
+private def pathColIdx (names : Array String) : Option Nat :=
+  names.idxOf? "path" <|> names.idxOf? "name" <|> names.idxOf? "id"
+
+-- | Get single cell value as string from current row
+private def cellStr (v : View AdbcTable) (colIdx : Nat) : IO String := do
+  let cols ← TblOps.getCols v.nav.tbl #[colIdx] v.nav.row.cur.val (v.nav.row.cur.val + 1)
+  return (cols.getD 0 default |>.get 0).toRaw
+
 -- | Get path column value from current row
 def curPath (v : View AdbcTable) : IO (Option String) := do
   if !(v.vkind matches .fld _ _) then return none
-  let names := TblOps.colNames v.nav.tbl
-  let some pathCol := names.idxOf? "path" <|> names.idxOf? "name" <|> names.idxOf? "id" | return none
-  let cols ← TblOps.getCols v.nav.tbl #[pathCol] v.nav.row.cur.val (v.nav.row.cur.val + 1)
-  let c := cols.getD 0 default
-  return some (c.get 0).toRaw
+  let some col := pathColIdx v.nav.colNames | return none
+  return some (← cellStr v col)
 
 -- | Get type column value from current row
 -- Normalizes: 'f'/"file" → 'f', 'd'/"dir" → 'd', ' ' (HF/S3 file) → 'f'
 def curType (v : View AdbcTable) : IO (Option Char) := do
   if !(v.vkind matches .fld _ _) then return none
-  let names := TblOps.colNames v.nav.tbl
-  let some typeCol := names.idxOf? "type" | return some 'f'
-  let cols ← TblOps.getCols v.nav.tbl #[typeCol] v.nav.row.cur.val (v.nav.row.cur.val + 1)
-  let c := cols.getD 0 default
-  let t := (c.get 0).toRaw
-  match t.toList.head? with
+  let some typeCol := v.nav.colNames.idxOf? "type" | return some 'f'
+  match (← cellStr v typeCol).toList.head? with
   | some ' ' => return some 'f'  -- HF/S3 space = file
   | other => return other
 
@@ -123,14 +125,14 @@ private def curDepth (s : ViewStack AdbcTable) : Nat :=
 
 -- | Go to parent directory (backspace key) — works for all folder backends
 def goParent (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
-  let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
-  match ← SourceConfig.findSource curDir with
-  | some c => match c.parent curDir with
+  let dir := s.cur.curDir
+  match ← SourceConfig.findSource dir with
+  | some c => match c.parent dir with
     | some par => tryView s par 1 false
     | none => pure (some s)
   | none => match s.pop with
     | some s' => pure (some s')
-    | none => tryView s (curDir ++ "/..") (curDepth s) false
+    | none => tryView s (dir ++ "/..") (curDepth s) false
 
 -- | Try to open a file as data, fall back to viewer
 private def openFile (s : ViewStack AdbcTable) (curDir p : String) (cfg : Option SourceConfig.Config)
@@ -150,7 +152,7 @@ private def openFile (s : ViewStack AdbcTable) (curDir p : String) (cfg : Option
 
 -- | Enter directory or view file based on current row
 def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
-  let curDir := match s.cur.vkind with | .fld dir _ => dir | _ => "."
+  let curDir := s.cur.curDir
   let cfg ← SourceConfig.findSource curDir
   -- Attach-based: FileFormat or config-driven (e.g. pg://)
   let isAttach := (FileFormat.find? curDir |>.map (·.attach)).getD false
@@ -200,8 +202,7 @@ def trashCmd : IO (Option (String × Array String)) := do
 def selPaths (v : View AdbcTable) : IO (Array String) := do
   match v.vkind with
   | .fld curDir _ =>
-    let names := TblOps.colNames v.nav.tbl
-    let some pathCol := names.idxOf? "path" <|> names.idxOf? "name" | return #[]
+    let some pathCol := pathColIdx v.nav.colNames | return #[]
     let cols ← TblOps.getCols v.nav.tbl #[pathCol] 0 v.nRows
     let c := cols.getD 0 default
     let rows := if v.nav.row.sels.isEmpty then #[v.nav.row.cur.val] else v.nav.row.sels
