@@ -84,8 +84,7 @@ def queryMeta (t : AdbcTable) : IO (Option AdbcTable) := do
     | none => do
       let some baseSql ← Prql.compile t.query.base | return none
       pure (colStatsSql (baseSql.trimAsciiEnd).toString names types)
-  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
-  let tblName := s!"tc_meta_{n}"
+  let tblName ← nextTmpName "meta"
   let _ ← Adbc.query s!"CREATE OR REPLACE TEMP TABLE {tblName} AS ({metaSql})"
   let qr ← Adbc.query s!"SELECT * FROM {tblName}"
   some <$> ofQueryResult qr { base := s!"from {tblName}" }

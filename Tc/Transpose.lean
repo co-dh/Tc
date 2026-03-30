@@ -37,8 +37,7 @@ def push (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   if t.colNames.isEmpty || t.nRows == 0 then return none
   let some baseSql ← Prql.compile t.query.render | return none
   let sql := transposeSql (stripSemi baseSql) t.colNames t.nRows
-  let n ← memTblCounter.modifyGet fun n => (n, n + 1)
-  let tblName := s!"tc_xpose_{n}"
+  let tblName ← nextTmpName "xpose"
   let _ ← Adbc.query s!"CREATE OR REPLACE TEMP TABLE {tblName} AS ({sql})"
   let q : Prql.Query := { base := s!"from {tblName}" }
   let total ← AdbcTable.queryCount q

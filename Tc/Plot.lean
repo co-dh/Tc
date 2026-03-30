@@ -30,10 +30,6 @@ private def timeIntervals : Array Interval := #[
   ⟨"1s", 1⟩, ⟨"1m", 60⟩, ⟨"5m", 300⟩, ⟨"30m", 1800⟩
 ]
 
-private def tsIntervals : Array Interval := #[
-  ⟨"1s", 1⟩, ⟨"1m", 60⟩, ⟨"5m", 300⟩, ⟨"30m", 1800⟩
-]
-
 private def dateIntervals : Array Interval := #[
   ⟨"1d", 86400⟩, ⟨"1M", 2592000⟩, ⟨"1Y", 31536000⟩
 ]
@@ -43,8 +39,7 @@ private def stepIntervals (baseStep : Nat) : Array Interval :=
   #[s0, s0 * 2, s0 * 4, s0 * 8, s0 * 16].map fun s => ⟨s!"{s}x", s⟩
 
 private def getIntervals (xType : String) (baseStep : Nat) : Array Interval :=
-  if xType == "time" then timeIntervals
-  else if xType == "timestamp" then tsIntervals
+  if xType == "time" || xType == "timestamp" then timeIntervals
   else if xType == "date" then dateIntervals
   else stepIntervals baseStep
 
@@ -69,6 +64,12 @@ private def clearScreen : IO Unit := IO.print "\x1b[2J\x1b[H"
 -- | Enter/leave alternate screen buffer so plot output doesn't bleed into other panes
 private def enterAltScreen : IO Unit := IO.print "\x1b[?1049h\x1b[2J\x1b[H"
 private def leaveAltScreen : IO Unit := IO.print "\x1b[?1049l"
+
+-- | Restore terminal after plot mode: sane + leave alt screen + re-init TUI
+private def exitPlotMode : IO Unit := do
+  let _ ← Log.run "stty" "stty" #["-F", "/dev/tty", "sane"]
+  IO.print "\x1b[?1049l"
+  let _ ← Term.init
 
 -- | Set terminal to raw mode (single keypress without Enter)
 private def setRaw : IO Unit := do
@@ -230,9 +231,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
     while !done do
       let key ← readKeyRaw
       if handleKey key == .quit then done := true
-    setSane
-    leaveAltScreen
-    let _ ← Term.init
+    exitPlotMode
     return some s
   -- all other plots need at least 1 group column
   if n.grp.isEmpty then return ← err s "group a column first (!)"
@@ -299,10 +298,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
       let newIdx := if d > 0 then min (idx + 1) maxIdx else if idx > 0 then idx - 1 else 0
       needRender := newIdx != idx; idx := newIdx
     | .noop => needRender := false
-  -- exit plot mode: restore terminal, leave alternate screen, re-init TUI
-  setSane
-  leaveAltScreen
-  let _ ← Term.init
+  exitPlotMode
   pure (some s)
 
 -- | Map handler name to plot kind

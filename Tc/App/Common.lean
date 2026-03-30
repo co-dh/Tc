@@ -48,6 +48,9 @@ initialize handlerMap : IO.Ref (Std.HashMap String HandlerFn) ← IO.mkRef {}
 
 namespace AppState
 
+-- | Reset view state caches (after data changes)
+@[inline] def resetVS (a : AppState) : AppState := { a with vs := .default, sparklines := #[] }
+
 -- | Update stk, reset vs if ci.resetsVS
 def withStk (a : AppState) (ci : CmdConfig.CmdInfo) (s' : ViewStack AdbcTable) : AppState :=
   { a with stk := s', vs := if ci.resetsVS then .default else a.vs }
@@ -57,8 +60,7 @@ private def tryStk (a : AppState) (ci : CmdConfig.CmdInfo)
     (f : IO (Option (ViewStack AdbcTable))) : IO Action := do
   match ← f.toBaseIO with
   | .ok (some s') =>
-    let r := a.withStk ci s'
-    pure (.ok { r with vs := .default, sparklines := #[] })
+    pure (.ok (a.withStk ci s').resetVS)
   | .ok none => pure (.ok a)
   | .error e => Log.error e.toString; errorPopup e.toString; pure (.ok a)
 
@@ -73,7 +75,7 @@ private def runViewEffect (a : AppState) (ci : CmdConfig.CmdInfo)
   | .fetchMore =>
     match ← (TblOps.fetchMore s.tbl).toBaseIO with
     | .ok (some tbl') => match v'.rebuild tbl' (row := v'.nav.row.cur.val) with
-      | some rv => pure (.ok { a' with stk := s.setCur rv, vs := .default, sparklines := #[] })
+      | some rv => pure (.ok { a' with stk := s.setCur rv }.resetVS)
       | none => pure (.ok a')
     | .ok none => pure (.ok a')
     | .error err => Log.error err.toString; errorPopup err.toString; pure (.ok a')
@@ -159,7 +161,7 @@ private partial def runMenu (a : AppState) : IO Action := do
 -- | Run a stack-level IO action with shared error handling and state reset
 private def runStackIO (a : AppState) (f : IO (ViewStack AdbcTable)) : IO Action := do
   match ← f.toBaseIO with
-  | .ok s' => pure (.ok { a with stk := s', vs := .default, sparklines := #[] })
+  | .ok s' => pure (.ok { a with stk := s' }.resetVS)
   | .error e => Log.error e.toString; errorPopup e.toString; pure (.ok a)
 
 end AppState
@@ -264,7 +266,7 @@ private def commands : Array (E × Option HandlerFn) := #[
     (fun a ci _ => a.tryStk ci (Transpose.push a.stk)),
   cmd { handler := "tbl.diff",   ctx := "S",  key := "d", label := "Diff top two views" }
     (fun a ci _ => if a.stk.cur.sameHide.isEmpty then a.tryStk ci (Diff.run a.stk)
-    else pure (.ok { a with stk := a.stk.setCur (Diff.showSame a.stk.cur), vs := .default, sparklines := #[] })),
+    else pure (.ok { a with stk := a.stk.setCur (Diff.showSame a.stk.cur) }.resetVS)),
   -- info: precision, heatmap, scroll
   cmd { handler := "info.tog",   key := "I", label := "Toggle info overlay" }
     (fun a ci _ => pure (match a.info.update ci.handler with | some i' => .ok { a with info := i' } | none => .unhandled)),
