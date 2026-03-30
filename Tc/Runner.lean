@@ -18,9 +18,8 @@ def filterExprIO (tbl : AdbcTable) (cols : Array String) (row : Nat) : IO String
 
 -- | Pure update by handler name. Returns residual Effect for dispatch to execute.
 def update (s : ViewStack AdbcTable) (h : String) : Option (ViewStack AdbcTable × Effect) :=
-  let n := s.cur.nav; let names := TblOps.colNames n.tbl
-  let curCol := colIdxAt n.grp names n.col.cur.val
-  let curName := names.getD curCol ""
+  let n := s.cur.nav
+  let curName := n.curColName
   let colNames := if n.grp.contains curName then n.grp else n.grp.push curName
   match h with
   | "freq.open" => some (s, .freq colNames)

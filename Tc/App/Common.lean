@@ -343,7 +343,7 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
   let a := { a with stk := a.stk.setCur v', vs := vs' }
   renderTabLine a.stk.tabNames 0 (Replay.opsStr a.stk.cur)
   -- Show column description on status line from DuckDB column comments (cached)
-  let colName := a.stk.cur.nav.colNames.getD a.stk.cur.nav.curColIdx ""
+  let colName := a.stk.cur.nav.curColName
   let (cachedPath, cachedCol, _) := a.statusCache
   let a ← if cachedPath == a.stk.cur.path && cachedCol == colName then pure a
     else do

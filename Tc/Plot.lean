@@ -204,12 +204,12 @@ private def renderFrame (pngPath : String)
 def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   Log.write "plot" s!"run entered, kind={repr kind}"
   let n := s.cur.nav
-  let names := TblOps.colNames n.tbl
+  let names := n.colNames
   -- single-column plots (histogram/density): no group col needed, just cursor col
   if isSingleColPlot kind then
-    let yIdx := colIdxAt n.grp names n.col.cur.val
-    let yName := names.getD yIdx ""
-    let yType := TblOps.colType n.tbl yIdx
+    let yIdx := n.curColIdx
+    let yName := n.curColName
+    let yType := n.curColType
     if !isNumericType yType then return ← err s s!"{kind} needs a numeric column"
     Term.shutdown
     enterAltScreen
@@ -243,10 +243,9 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   let catName := if hasFacet then n.grp.getD 2 "" else n.grp.getD 1 ""
   let exportCatName? := if n.grp.size > 2 then some facetName
     else if n.grp.size > 1 then some catName else none
-  let yIdx := colIdxAt n.grp names n.col.cur.val
-  let yName := names.getD yIdx ""
+  let yName := n.curColName
   if n.grp.contains yName then return ← err s "move cursor to a non-group column"
-  let yType := TblOps.colType n.tbl yIdx
+  let yType := n.curColType
   if !isNumericType yType then return ← err s s!"y-axis '{yName}' must be numeric (got {yType})"
   let nr := TblOps.totalRows n.tbl
   let xType0 := TblOps.colType n.tbl xIdx

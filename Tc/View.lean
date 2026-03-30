@@ -68,8 +68,8 @@ def rebuild (old : View T) (tbl : T) (col : Nat := old.nav.col.cur.val)
 
 -- | Pure update by handler name
 def update (v : View T) (h : String) (rowPg : Nat) : Option (View T × Effect) :=
-  let n := v.nav; let names := TblOps.colNames n.tbl
-  let curCol := colIdxAt n.grp names n.col.cur.val
+  let n := v.nav; let names := n.colNames
+  let curCol := n.curColIdx
   match h with
   | "sort.asc" | "sort.desc" =>
     let asc := h == "sort.asc"
@@ -77,7 +77,7 @@ def update (v : View T) (h : String) (rowPg : Nat) : Option (View T × Effect) :
     let grpIdxs := n.grp.filterMap names.idxOf?
     some (v, .sort curCol selIdxs grpIdxs asc)
   | "col.exclude" =>
-    let name := names.getD curCol ""
+    let name := n.curColName
     let cols := if n.hidden.isEmpty then #[name]
       else if n.hidden.contains name then n.hidden else n.hidden.push name
     some (v, .exclude cols)
