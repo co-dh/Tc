@@ -7,8 +7,7 @@ import Tc.Data.ADBC.Ops
 
 namespace Tc.Diff
 
--- | Check if column type is numeric (for auto-key: non-numeric columns become join keys)
-private def isNumeric (t : String) : Bool := t == "int" || t == "float" || t == "decimal"
+private def isNumeric := isNumericType
 
 -- | DuckDB double-quoted identifier (escapes " → "")
 private def quoted (s : String) : String := "\"" ++ s.replace "\"" "\"\"" ++ "\""

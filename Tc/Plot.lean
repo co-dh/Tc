@@ -87,8 +87,10 @@ private def readKeyRaw : IO Char := do
 private def err (s : ViewStack T) (msg : String) : IO (Option (ViewStack T)) := do
   Log.write "plot" msg; errorPopup msg; pure (some s)
 
-private def isNumericType (typ : String) : Bool :=
-  typ == "int" || typ == "float" || typ == "decimal"
+-- | Plot title: "density of Close" or "line: Price vs Date by Ticker"
+def plotTitle (kind : PlotKind) (xName yName : String) (hasCat : Bool) (catName : String) : String :=
+  if xName.isEmpty then s!"{kind} of {yName}"
+  else s!"{kind}: {yName} vs {xName}" ++ if hasCat then s!" by {catName}" else ""
 
 -- | Single-column plots: no group needed, just cursor on a numeric column
 private def isSingleColPlot (kind : PlotKind) : Bool :=
@@ -119,7 +121,8 @@ def handleKey (key : Char) : KeyAction :=
 -- | Generate R script for ggplot2 rendering
 def rScript (dataPath pngPath : String) (kind : PlotKind)
     (xName yName : String) (hasCat : Bool) (catName : String)
-    (hasFacet : Bool) (facetName : String) (xType : String) : String :=
+    (hasFacet : Bool) (facetName : String) (xType : String)
+    (title : String := "") : String :=
   let rq (s : String) := s!"`{s}`"
   let xR := rq xName; let yR := rq yName; let catR := rq catName; let facetR := rq facetName
   let readData := s!"d <- read.delim('{dataPath}', header=TRUE, sep='\\t', colClasses='character', check.names=FALSE)\n"
@@ -155,7 +158,8 @@ def rScript (dataPath pngPath : String) (kind : PlotKind)
   "library(ggplot2)\n" ++ readData ++ convY ++ convX ++
     s!"p <- ggplot(d, {aes}{colorAes}{fillAes}) + {geom}{facet} + " ++
     let fillScale := if addsFill kind && !hasCat then "scale_fill_viridis_c()" else "scale_fill_viridis_d()"
-    s!"labs(x = '{xName}', y = '{yName}') + theme_classic() + scale_color_viridis_d() + {fillScale}{timeScale}\n" ++
+    let titleR := if title.isEmpty then "" else s!" + ggtitle('{title}') + theme(plot.title = element_text(hjust = 0.5))"
+    s!"labs(x = '{xName}', y = '{yName}') + theme_minimal() + scale_color_viridis_d() + {fillScale}{timeScale}{titleR}\n" ++
     s!"ggsave('{pngPath}', p, width = 12, height = 7, dpi = 100)\n"
 
 -- | Run Rscript to render plot; returns error message on failure
@@ -183,28 +187,18 @@ private def exportWithHeaders (t : T) (xName yName : String) (catName? : Option 
   IO.FS.writeFile datPath (header ++ "\n" ++ content)
   return some cats
 
--- | Render plot image and status bar in-place (clear → image → status)
-private def renderFrame (pngPath : String) (kind : PlotKind)
-    (xName yName : String) (intervals : Array Interval) (idx : Nat)
+-- | Render plot image and interval bar (clear → image → interval selector if needed)
+private def renderFrame (pngPath : String)
+    (intervals : Array Interval) (idx : Nat)
     (err? : Option String) : IO Unit := do
   clearScreen
   if err?.isNone then showPng pngPath
   else IO.println (err?.getD "plot error")
-  let hi (s : String) := s!"\x1b[33m{s}\x1b[0m"  -- yellow for keys
-  let ivBar := if intervals.size > 1 then
-      let bar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
-        if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
-      s!"  {hi ","}/{hi "."}:{bar}"
-    else ""
-  let status := s!"\x1b[1m─── {kind}: x={xName}  y={yName} ───\x1b[0m{ivBar}  {hi "q"}:exit"
-  -- right-align status line to match plot image right edge
-  let cols ← do
-    let r ← IO.Process.output { cmd := "tput", args := #["cols"] }
-    pure (r.stdout.trimAscii.toString.toNat?.getD 80)
-  let ivLabels := intervals.foldl (fun (acc : Nat) iv => acc + iv.label.length + 2) 0
-  let visLen := 8 + (toString kind).length + xName.length + yName.length + ivLabels + 20
-  let pad := String.ofList (List.replicate (cols - min visLen cols) ' ')
-  IO.println s!"\r{pad}{status}\n"
+  if intervals.size > 1 then
+    let hi (s : String) := s!"\x1b[33m{s}\x1b[0m"
+    let bar := String.intercalate " " (intervals.toList.mapIdx fun i iv =>
+      if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ")
+    IO.println s!"{hi ","}/{hi "."}:{bar}"
 
 -- | Run plot with interactive controls (in-place re-rendering)
 def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
@@ -226,13 +220,11 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
     let vals := match cols.getD 0 default with
       | .strs vs => vs | .ints vs => vs.map toString | .floats vs => vs.map toString
     IO.FS.writeFile datPath (yName ++ "\n" ++ "\n".intercalate (vals.filter (!·.isEmpty)).toList ++ "\n")
-    let script := rScript datPath pngPath kind "" yName false "" false "" ""
+    let script := rScript datPath pngPath kind "" yName false "" false "" "" (plotTitle kind "" yName false "")
     let err? ← renderR script
     clearScreen
     if err?.isNone then showPng pngPath
     else IO.println (err?.getD "plot error")
-    IO.println s!"\x1b[1m─── {kind}: {yName} ───\x1b[0m"
-    IO.print "q:exit "
     setRaw
     let mut done := false
     while !done do
@@ -284,7 +276,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
   setRaw
   let datPath ← Tc.tmpPath "plot.dat"
   let pngPath ← Tc.tmpPath "plot.png"
-  let script := rScript datPath pngPath kind xName yName hasCat catName hasFacet facetName xType
+  let script := rScript datPath pngPath kind xName yName hasCat catName hasFacet facetName xType (plotTitle kind xName yName hasCat catName)
   let mut idx : Nat := 0
   let mut continue_ := true
   let mut needRender := true
@@ -300,7 +292,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
       let err? ← match exportResult with
         | some msg => pure (some msg)
         | none => renderR script
-      renderFrame pngPath kind xName yName intervals idx err?
+      renderFrame pngPath intervals idx err?
     let key ← readKeyRaw
     match handleKey key with
     | .quit => continue_ := false

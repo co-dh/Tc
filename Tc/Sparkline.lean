@@ -22,7 +22,7 @@ def compute (t : AdbcTable) (nBars : Nat := 20) : IO (Array String) := do
   let mut numIdxs : Array Nat := #[]
   for i in [:names.size] do
     let tp := types.getD i "?"
-    if tp == "int" || tp == "float" || tp == "decimal" then
+    if isNumericType tp then
       let q := AdbcTable.quoteId (names.getD i "")
       -- LEAST clamps bucket to [0, nBars-1]; CASE handles constant columns
       let sql := s!"SELECT CASE WHEN mx = mn THEN {nBars / 2} " ++

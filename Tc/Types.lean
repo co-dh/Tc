@@ -148,6 +148,8 @@ def buildFilterPrql (col : String) (vals : Array String) (result : String) (nume
   else if !input.isEmpty then input
   else ""
 
+def isNumericType (t : String) : Bool := t == "int" || t == "float" || t == "decimal"
+
 /-- TblOps: unified read-only table interface.
     Provides row/column access, metadata queries, filtering, and rendering. -/
 class TblOps (α : Type) where
@@ -166,8 +168,12 @@ class TblOps (α : Type) where
   buildFilter : α → String → Array String → String → Bool → String
     := fun _ => buildFilterPrql
   -- filter header hint (shown above fzf input, default: PRQL examples)
-  filterPrompt : α → String → String
-    := fun _ col => s!"PRQL filter on [{col}]:  {col} > 5 | {col} == 'val' | {col} ~= 'pattern'"
+  filterPrompt : α → String → String → String
+    := fun _ col typ =>
+      let eg := if isNumericType typ
+        then s!"e.g. {col} > 5,  {col} >= 10 && {col} < 100"
+        else s!"e.g. {col} == 'USD',  {col} ~= 'pattern'"
+      s!"PRQL filter on {col} ({typ}):  {eg}"
   -- export plot data to tmpdir/plot.dat via DB (returns category list, or none for fallback)
   -- args: tbl xName yName catName? xIsTime step truncLen
   plotExport : α → String → String → Option String → Bool → Nat → Nat → IO (Option (Array String))

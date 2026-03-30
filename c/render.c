@@ -21,6 +21,7 @@
 #define STYLE_HEADER     7
 #define STYLE_GROUP      8   // group/key column background
 #define NUM_STYLES       9
+#define SEP_FG           240  // 256-color medium gray for column separators
 
 // COL_INTS, COL_FLOATS, COL_STRS defined in heat.h
 
@@ -373,8 +374,9 @@ lean_obj_res lean_render_table(
         // separator after each column
         int sX = xs[c] + ws[c];
         if (sX < screenW) {
-            uint32_t sc = (c + 1 == visKeys) ? 0x2551 : 0x2502;  // ║ after keys, │ otherwise
-            uint32_t sf = (c + 1 == visKeys) ? stFg[STYLE_GROUP] : stFg[STYLE_DEFAULT];
+            int isKey = (c + 1 == visKeys);
+            uint32_t sc = isKey ? 0x2551 : 0x2502;  // ║ after keys, │ otherwise
+            uint32_t sf = isKey ? stFg[STYLE_GROUP] : SEP_FG;  // 240 = medium gray
             tb_set_cell(sX, 0, sc, sf, stBg[STYLE_DEFAULT]);
             tb_set_cell(sX, yFoot, sc, sf, stBg[STYLE_DEFAULT]);
         }
@@ -393,8 +395,10 @@ lean_obj_res lean_render_table(
             // separator
             int sX = xs[c] + ws[c];
             if (sX < screenW) {
-                uint32_t sc = (c + 1 == visKeys) ? 0x2551 : 0x2502;
-                tb_set_cell(sX, 1, sc, stFg[STYLE_DEFAULT], stBg[STYLE_DEFAULT]);
+                int isKey = (c + 1 == visKeys);
+                uint32_t sc = isKey ? 0x2551 : 0x2502;
+                uint32_t sf = isKey ? stFg[STYLE_GROUP] : SEP_FG;
+                tb_set_cell(sX, 1, sc, sf, stBg[STYLE_DEFAULT]);
             }
         }
     }
@@ -439,8 +443,10 @@ lean_obj_res lean_render_table(
             {
                 int sX = xs[c] + ws[c];
                 if (sX < screenW) {
-                    uint32_t sc = (c + 1 == visKeys) ? 0x2551 : 0x2502;  // ║ after keys, │ otherwise
-                    tb_set_cell(sX, y, sc, stFg[STYLE_DEFAULT], stBg[STYLE_DEFAULT]);
+                    int isKey = (c + 1 == visKeys);
+                    uint32_t sc = isKey ? 0x2551 : 0x2502;  // ║ after keys, │ otherwise
+                    uint32_t sf = isKey ? stFg[STYLE_GROUP] : SEP_FG;
+                    tb_set_cell(sX, y, sc, sf, stBg[STYLE_DEFAULT]);
                 }
             }
         }

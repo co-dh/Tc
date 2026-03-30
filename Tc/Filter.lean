@@ -59,10 +59,10 @@ def searchDir (s : ViewStack T) (fwd : Bool) : IO (ViewStack T) := do
 -- | row filter (\): filter rows by expression, push filtered view (IO)
 -- Uses TblOps.buildFilter for backend-specific syntax (PRQL vs q)
 def rowFilter (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun _curCol curName vals => do
-  let header := TblOps.filterPrompt s.tbl curName
-  let some result ← Fzf.fzf #["--print-query", s!"--header={header}", "--prompt=filter > "] ("\n".intercalate vals.toList) | return s
   let typ := TblOps.colType s.tbl _curCol
-  let numeric := typ == "int" || typ == "float" || typ == "decimal"
+  let header := TblOps.filterPrompt s.tbl curName typ
+  let some result ← Fzf.fzf #["--print-query", s!"--header={header}", "--prompt=filter > "] ("\n".intercalate vals.toList) | return s
+  let numeric := isNumericType typ
   let expr := TblOps.buildFilter s.tbl curName vals result numeric
   if expr.isEmpty then return s
   let some tbl' ← TblOps.filter s.tbl expr | return s

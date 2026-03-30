@@ -14,6 +14,7 @@ import Tc.Util
 import Tc.Session
 import Tc.Key
 import Tc.Fzf
+import Tc.Plot
 
 namespace PureTest2
 
@@ -99,6 +100,18 @@ end ViewUpdateTests
 #guard Tc.Fzf.parseFlatSel "plot.area    | cg |   | Plot: area chart" == some "plot.area"
 #guard Tc.Fzf.parseFlatSel "sort.asc     | c  | [ | Sort ascending" == some "sort.asc"
 #guard Tc.Fzf.parseFlatSel "" == none
+
+/-! ## Plot rScript Tests -/
+
+private def has (s needle : String) : Bool := (s.splitOn needle).length > 1
+
+-- rScript includes centered title when provided
+#guard has (Tc.Plot.rScript "d.dat" "p.png" .density "" "Close" false "" false "" "" "density of Close") "ggtitle('density of Close')"
+#guard has (Tc.Plot.rScript "d.dat" "p.png" .density "" "Close" false "" false "" "" "density of Close") "hjust = 0.5"
+-- rScript includes centered title for multi-col plot
+#guard has (Tc.Plot.rScript "d.dat" "p.png" .line "Date" "Price" true "Ticker" false "" "" "line: Price vs Date by Ticker") "ggtitle('line: Price vs Date by Ticker')"
+-- rScript omits ggtitle when title is empty
+#guard !(has (Tc.Plot.rScript "d.dat" "p.png" .line "Date" "Price" false "" false "" "") "ggtitle")
 
 /-! ## ViewStack.update Tests (derived from screen tests) -/
 
