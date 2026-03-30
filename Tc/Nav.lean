@@ -141,21 +141,21 @@ def exec (h : String) (nav : NavState nRows nCols t) (rowPg : Nat) : Option (Nav
   let r d := some { nav with row := { nav.row with cur := nav.row.cur.clamp d } }
   let c d := some { nav with col := { nav.col with cur := nav.col.cur.clamp d } }
   match h with
-  | "nav.rowInc"  => r 1              | "nav.rowDec"  => r (-1)
-  | "nav.colInc"  => c 1              | "nav.colDec"  => c (-1)
-  | "nav.rowPgDn" => r rowPg          | "nav.rowPgUp" => r (-rowPg)
-  | "nav.rowBot"  => r (nRows - 1 - nav.row.cur.val) | "nav.rowTop" => r (-nav.row.cur.val)
-  | "nav.colFirst" => c (-nav.col.cur.val) | "nav.colLast" => c (nCols - 1 - nav.col.cur.val)
-  | "nav.rowSel"  => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
-  | "nav.colGrp"  =>
+  | "row.inc"  => r 1              | "row.dec"  => r (-1)
+  | "col.inc"  => c 1              | "col.dec"  => c (-1)
+  | "row.pgdn" => r rowPg          | "row.pgup" => r (-rowPg)
+  | "row.bot"  => r (nRows - 1 - nav.row.cur.val) | "row.top" => r (-nav.row.cur.val)
+  | "col.first" => c (-nav.col.cur.val) | "col.last" => c (nCols - 1 - nav.col.cur.val)
+  | "row.sel"  => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
+  | "col.grp"  =>
     let newGrp := nav.grp.toggle nav.curColName
     some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames }
-  | "nav.colHide" => some { nav with hidden := nav.hidden.toggle nav.curColName }
-  | "nav.colShiftL" | "nav.colShiftR" =>
+  | "col.hide" => some { nav with hidden := nav.hidden.toggle nav.curColName }
+  | "col.shiftL" | "col.shiftR" =>
     let name := nav.curColName
     match nav.grp.idxOf? name with
     | some i =>
-      let fwd := h == "nav.colShiftR"
+      let fwd := h == "col.shiftR"
       if fwd && i + 1 ≥ nav.grp.size then none
       else if !fwd && i == 0 then none
       else

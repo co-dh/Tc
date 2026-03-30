@@ -209,103 +209,103 @@ private def nav (e : E) : E × Option HandlerFn := (e, none)
 private def cmd (e : E) (f : HandlerFn) : E × Option HandlerFn := (e, some f)
 
 private def commands : Array (E × Option HandlerFn) := #[
-  -- row navigation
-  nav { handler := "nav.rowInc",      key := "j" },
-  nav { handler := "nav.rowDec",      key := "k" },
-  nav { handler := "nav.rowPgDn",     key := "<pgdn>" },
-  nav { handler := "nav.rowPgUp",     key := "<pgup>" },
-  nav { handler := "nav.rowPgDn",     key := "<C-d>" },
-  nav { handler := "nav.rowPgUp",     key := "<C-u>" },
-  nav { handler := "nav.rowTop",      key := "<home>" },
-  nav { handler := "nav.rowBot",      key := "<end>" },
-  nav { handler := "nav.rowSel",      key := "T", label := "Select/deselect current row" },
+  -- row navigation                        -- ctx: r=row c=col g=groups s=sels a=arg S=stack
+  nav { handler := "row.inc",      ctx := "r",  key := "j" },
+  nav { handler := "row.dec",      ctx := "r",  key := "k" },
+  nav { handler := "row.pgdn",    ctx := "r",  key := "<pgdn>" },
+  nav { handler := "row.pgup",    ctx := "r",  key := "<pgup>" },
+  nav { handler := "row.pgdn",    ctx := "r",  key := "<C-d>" },
+  nav { handler := "row.pgup",    ctx := "r",  key := "<C-u>" },
+  nav { handler := "row.top",     ctx := "r",  key := "<home>" },
+  nav { handler := "row.bot",     ctx := "r",  key := "<end>" },
+  nav { handler := "row.sel",     ctx := "r",  key := "T", label := "Select/deselect current row" },
   -- row search/filter
-  cmd { handler := "filter.rowSearch", key := "/", label := "Search for value in current column", resetsVS := true, isArg := true }
+  cmd { handler := "row.search",    ctx := "ca", key := "/", label := "Search for value in current column", resetsVS := true }
     (argH ViewStack.rowSearch ViewStack.searchWith),
-  cmd { handler := "filter.rowFilter", key := "\\", label := "Filter rows by PRQL expression", resetsVS := true, isArg := true }
+  cmd { handler := "row.filter",    ctx := "a",  key := "\\", label := "Filter rows by PRQL expression", resetsVS := true }
     (argH ViewStack.rowFilter ViewStack.filterWith),
-  cmd { handler := "filter.searchNext",key := "n", label := "Jump to next search match" } (domainH' Filter.dispatch),
-  cmd { handler := "filter.searchPrev",key := "N", label := "Jump to previous search match" } (domainH' Filter.dispatch),
+  cmd { handler := "row.searchNext",ctx := "rc", key := "n", label := "Jump to next search match" } (domainH' Filter.dispatch),
+  cmd { handler := "row.searchPrev",ctx := "rc", key := "N", label := "Jump to previous search match" } (domainH' Filter.dispatch),
   -- col navigation
-  nav { handler := "nav.colInc",      key := "l" },
-  nav { handler := "nav.colDec",      key := "h" },
-  nav { handler := "nav.colFirst" },
-  nav { handler := "nav.colLast" },
-  nav { handler := "nav.colGrp",      key := "!", label := "Toggle group on current column" },
-  nav { handler := "nav.colHide",     key := "H", label := "Hide/unhide current column" },
-  nav { handler := "nav.colExclude",  key := "x", label := "Delete column(s) from query", resetsVS := true },
-  nav { handler := "nav.colShiftL",   key := "<S-left>", label := "Shift key column left" },
-  nav { handler := "nav.colShiftR",   key := "<S-right>", label := "Shift key column right" },
+  nav { handler := "col.inc",     ctx := "c",  key := "l" },
+  nav { handler := "col.dec",     ctx := "c",  key := "h" },
+  nav { handler := "col.first",   ctx := "c" },
+  nav { handler := "col.last",    ctx := "c" },
+  nav { handler := "col.grp",     ctx := "c",  key := "!", label := "Toggle group on current column" },
+  nav { handler := "col.hide",    ctx := "c",  key := "H", label := "Hide/unhide current column" },
+  nav { handler := "col.exclude", ctx := "c",  key := "x", label := "Delete column(s) from query", resetsVS := true },
+  nav { handler := "col.shiftL",  ctx := "c",  key := "<S-left>", label := "Shift key column left" },
+  nav { handler := "col.shiftR",  ctx := "c",  key := "<S-right>", label := "Shift key column right" },
   -- col sort
-  nav { handler := "sort.asc",        key := "[", label := "Sort ascending", resetsVS := true },
-  nav { handler := "sort.desc",       key := "]", label := "Sort descending", resetsVS := true },
+  nav { handler := "sort.asc",    ctx := "c",  key := "[", label := "Sort ascending", resetsVS := true },
+  nav { handler := "sort.desc",   ctx := "c",  key := "]", label := "Sort descending", resetsVS := true },
   -- col arg commands
-  cmd { handler := "split",           key := ":", label := "Split column by delimiter", isArg := true } (argH Split.run Split.runWith),
-  cmd { handler := "derive",          key := "=", label := "Derive new column (name = expr)", isArg := true } (argH Derive.run Derive.runWith),
-  cmd { handler := "filter.colSearch", key := "g", label := "Jump to column by name", resetsVS := true, isArg := true }
+  cmd { handler := "col.split",   ctx := "ca", key := ":", label := "Split column by delimiter" } (argH Split.run Split.runWith),
+  cmd { handler := "col.derive",  ctx := "a",  key := "=", label := "Derive new column (name = expr)" } (argH Derive.run Derive.runWith),
+  cmd { handler := "col.search",  ctx := "a",  key := "g", label := "Jump to column by name", resetsVS := true }
     (argH ViewStack.colSearch ViewStack.colJumpWith),
   -- col plot
-  cmd { handler := "plot.area",       label := "Plot: area chart" } plotH,
-  cmd { handler := "plot.line",       label := "Plot: line chart" } plotH,
-  cmd { handler := "plot.scatter",    label := "Plot: scatter plot" } plotH,
-  cmd { handler := "plot.bar",        label := "Plot: bar chart" } plotH,
-  cmd { handler := "plot.box",        label := "Plot: boxplot" } plotH,
-  cmd { handler := "plot.step",       label := "Plot: step chart" } plotH,
-  cmd { handler := "plot.hist",       label := "Plot: histogram" } plotH,
-  cmd { handler := "plot.density",    label := "Plot: density plot" } plotH,
-  cmd { handler := "plot.violin",     label := "Plot: violin plot" } plotH,
+  cmd { handler := "plot.area",    ctx := "cg", label := "Area (g=x numeric, c=y numeric)" } plotH,
+  cmd { handler := "plot.line",    ctx := "cg", label := "Line (g=x numeric, c=y numeric)" } plotH,
+  cmd { handler := "plot.scatter", ctx := "cg", label := "Scatter (g=x numeric, c=y numeric)" } plotH,
+  cmd { handler := "plot.bar",     ctx := "cg", label := "Bar (g=x categorical, c=y numeric)" } plotH,
+  cmd { handler := "plot.box",     ctx := "cg", label := "Boxplot (g=x categorical, c=y numeric)" } plotH,
+  cmd { handler := "plot.step",    ctx := "cg", label := "Step (g=x numeric, c=y numeric)" } plotH,
+  cmd { handler := "plot.hist",    ctx := "c",  label := "Histogram (c=numeric column)" } plotH,
+  cmd { handler := "plot.density", ctx := "c",  label := "Density (c=numeric column)" } plotH,
+  cmd { handler := "plot.violin",  ctx := "cg", label := "Violin (g=x categorical, c=y numeric)" } plotH,
   -- stk: view stack operations
-  cmd { handler := "menu",            key := " ", label := "Open command menu" } (fun a _ _ => AppState.runMenu a),
-  cmd { handler := "stk.swap",        key := "S", label := "Swap top two views" } stkH,
-  cmd { handler := "stk.pop",         key := "q", label := "Close current view", resetsVS := true } stkH,
-  cmd { handler := "stk.dup",         label := "Duplicate current view" } stkH,
-  cmd { handler := "quit" } (fun _ _ _ => pure .quit),
-  cmd { handler := "xpose",           key := "X", label := "Transpose table (rows <-> columns)" }
+  cmd { handler := "tbl.menu",   key := " ", label := "Open command menu" } (fun a _ _ => AppState.runMenu a),
+  cmd { handler := "stk.swap",   ctx := "S",  key := "S", label := "Swap top two views" } stkH,
+  cmd { handler := "stk.pop",    key := "q", label := "Close current view", resetsVS := true } stkH,
+  cmd { handler := "stk.dup",    label := "Duplicate current view" } stkH,
+  cmd { handler := "tbl.quit" } (fun _ _ _ => pure .quit),
+  cmd { handler := "tbl.xpose",  key := "X", label := "Transpose table (rows <-> columns)" }
     (fun a ci _ => a.tryStk ci (Transpose.push a.stk)),
-  cmd { handler := "diff",            key := "d", label := "Diff top two views" }
+  cmd { handler := "tbl.diff",   ctx := "S",  key := "d", label := "Diff top two views" }
     (fun a ci _ => if a.stk.cur.sameHide.isEmpty then a.tryStk ci (Diff.run a.stk)
     else pure (.ok { a with stk := a.stk.setCur (Diff.showSame a.stk.cur), vs := .default, sparklines := #[] })),
   -- info: precision, heatmap, scroll
-  cmd { handler := "infoTog",         key := "I", label := "Toggle info overlay" }
+  cmd { handler := "info.tog",   key := "I", label := "Toggle info overlay" }
     (fun a ci _ => pure (match a.info.update ci.handler with | some i' => .ok { a with info := i' } | none => .unhandled)),
-  cmd { handler := "precDec",         label := "Decrease decimal precision" } (precAdj (-1)),
-  cmd { handler := "precInc",         label := "Increase decimal precision" } (precAdj 1),
-  cmd { handler := "prec0",           label := "Set precision to 0 decimals" } (precSet 0),
-  cmd { handler := "precMax",         label := "Set precision to max (17)" } (precSet 17),
-  cmd { handler := "scrollUp",        key := "{", label := "Scroll cell preview up" }
+  cmd { handler := "prec.dec",   label := "Decrease decimal precision" } (precAdj (-1)),
+  cmd { handler := "prec.inc",   label := "Increase decimal precision" } (precAdj 1),
+  cmd { handler := "prec.zero",  label := "Set precision to 0 decimals" } (precSet 0),
+  cmd { handler := "prec.max",   label := "Set precision to max (17)" } (precSet 17),
+  cmd { handler := "cell.up",    key := "{", label := "Scroll cell preview up" }
     (fun a _ _ => pure (.ok { a with prevScroll := a.prevScroll - min a.prevScroll 5 })),
-  cmd { handler := "scrollDn",        key := "}", label := "Scroll cell preview down" }
+  cmd { handler := "cell.dn",    key := "}", label := "Scroll cell preview down" }
     (fun a _ _ => pure (.ok { a with prevScroll := a.prevScroll + 5 })),
-  cmd { handler := "heat.0",          label := "Heatmap: off" } (fun a _ _ => pure (.ok { a with heatMode := 0 })),
-  cmd { handler := "heat.1",          label := "Heatmap: numeric columns" } (fun a _ _ => pure (.ok { a with heatMode := 1 })),
-  cmd { handler := "heat.2",          label := "Heatmap: categorical columns" } (fun a _ _ => pure (.ok { a with heatMode := 2 })),
-  cmd { handler := "heat.3",          label := "Heatmap: all columns" } (fun a _ _ => pure (.ok { a with heatMode := 3 })),
+  cmd { handler := "heat.0",     label := "Heatmap: off" } (fun a _ _ => pure (.ok { a with heatMode := 0 })),
+  cmd { handler := "heat.1",     label := "Heatmap: numeric columns" } (fun a _ _ => pure (.ok { a with heatMode := 1 })),
+  cmd { handler := "heat.2",     label := "Heatmap: categorical columns" } (fun a _ _ => pure (.ok { a with heatMode := 2 })),
+  cmd { handler := "heat.3",     label := "Heatmap: all columns" } (fun a _ _ => pure (.ok { a with heatMode := 3 })),
   -- metaV: column metadata view
-  cmd { handler := "meta.push",       key := "M", label := "Open column metadata view", resetsVS := true } (domainH Meta.dispatch),
-  cmd { handler := "meta.setKey",     key := "<ret>", label := "Set selected rows as key columns", resetsVS := true, viewCtx := "colMeta" } (domainH Meta.dispatch),
-  cmd { handler := "meta.selNull",    key := "0", label := "Select columns with null values", resetsVS := true } (domainH Meta.dispatch),
-  cmd { handler := "meta.selSingle",  key := "1", label := "Select columns with single value", resetsVS := true } (domainH Meta.dispatch),
+  cmd { handler := "meta.push",      key := "M", label := "Open column metadata view", resetsVS := true } (domainH Meta.dispatch),
+  cmd { handler := "meta.setKey",    ctx := "s",  key := "<ret>", label := "Set selected rows as key columns", resetsVS := true, viewCtx := "colMeta" } (domainH Meta.dispatch),
+  cmd { handler := "meta.selNull",   key := "0", label := "Select columns with null values", resetsVS := true } (domainH Meta.dispatch),
+  cmd { handler := "meta.selSingle", key := "1", label := "Select columns with single value", resetsVS := true } (domainH Meta.dispatch),
   -- freq: frequency table
-  cmd { handler := "freq.open",       key := "F", label := "Open frequency view", resetsVS := true } vuH,
-  cmd { handler := "freq.filter",     key := "<ret>", label := "Filter parent table by current row", resetsVS := true, viewCtx := "freqV" } vuH,
+  cmd { handler := "freq.open",   ctx := "cg", key := "F", label := "Open frequency view", resetsVS := true } vuH,
+  cmd { handler := "freq.filter", ctx := "r",  key := "<ret>", label := "Filter parent table by current row", resetsVS := true, viewCtx := "freqV" } vuH,
   -- fld: folder/file browser
-  cmd { handler := "folder.push",     key := "D", label := "Browse folder", resetsVS := true } (domainH Folder.dispatch),
-  cmd { handler := "folder.enter",    key := "<ret>", label := "Open file or enter directory", resetsVS := true, viewCtx := "fld" } (domainH Folder.dispatch),
+  cmd { handler := "folder.push",     ctx := "r", key := "D", label := "Browse folder", resetsVS := true } (domainH Folder.dispatch),
+  cmd { handler := "folder.enter",    ctx := "r", key := "<ret>", label := "Open file or enter directory", resetsVS := true, viewCtx := "fld" } (domainH Folder.dispatch),
   cmd { handler := "folder.parent",   key := "<bs>", label := "Go to parent directory", resetsVS := true, viewCtx := "fld" } (domainH Folder.dispatch),
-  cmd { handler := "folder.del",      label := "Move to trash", resetsVS := true } (domainH Folder.dispatch),
+  cmd { handler := "folder.del",      ctx := "r", label := "Move to trash", resetsVS := true } (domainH Folder.dispatch),
   cmd { handler := "folder.depthDec", label := "Decrease folder depth", resetsVS := true } (domainH Folder.dispatch),
   cmd { handler := "folder.depthInc", label := "Increase folder depth", resetsVS := true } (domainH Folder.dispatch),
   -- arg-only commands
-  cmd { handler := "export",          key := "e", label := "Export table (csv/parquet/json/ndjson)", isArg := true }
+  cmd { handler := "tbl.export", ctx := "a",  key := "e", label := "Export table (csv/parquet/json/ndjson)" }
     (fun a _ arg => a.runStackIO (if arg.isEmpty then do
       match ← Export.pickFmt with | some f => Export.run a.stk f | none => pure a.stk
       else Export.runWith a.stk arg)),
-  cmd { handler := "sessSave",        key := "W", label := "Save session", isArg := true }
+  cmd { handler := "sess.save",  ctx := "a",  key := "W", label := "Save session" }
     (fun a _ arg => a.runStackIO (do Session.saveWith a.stk arg; pure a.stk)),
-  cmd { handler := "sessLoad",        label := "Load session", isArg := true }
+  cmd { handler := "sess.load",  ctx := "a",  label := "Load session" }
     (fun a _ arg => a.runStackIO (do
       match ← Session.loadWith arg with | some stk' => pure stk' | none => pure a.stk)),
-  cmd { handler := "join",            key := "J", label := "Join tables", isArg := true }
+  cmd { handler := "tbl.join",   ctx := "Sa", key := "J", label := "Join tables" }
     (fun a _ arg => a.runStackIO (do
       match ← Join.runWith a.stk arg with | some s' => pure s' | none => pure a.stk))
 ]
@@ -323,7 +323,7 @@ def viewCtxStr := ViewKind.ctxStr
 -- | Dispatch a handler name string from socket (handler name, optionally with arg after space)
 private partial def dispatchHandler (a : AppState) (cmdStr : String) : IO AppState := do
   Log.write "sock" s!"cmd={cmdStr}"
-  -- Handler names may include arg after space: "filter.rowFilter Bid > 100"
+  -- Handler names may include arg after space: "row.filter Bid > 100"
   let (h, arg) := match cmdStr.splitOn " " with
     | [h] => (h, "")
     | h :: rest => (h, " ".intercalate rest)
@@ -402,7 +402,7 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
     | .quit => pure a
     | .unhandled => mainLoop a test rest
     | .ok a'' =>
-      let a'' := if h == "scrollUp" || h == "scrollDn" then a'' else { a'' with prevScroll := 0 }
+      let a'' := if h == "cell.up" || h == "cell.dn" then a'' else { a'' with prevScroll := 0 }
       mainLoop a'' test rest
   | none => mainLoop a test ks'
 

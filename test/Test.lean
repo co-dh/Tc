@@ -845,7 +845,7 @@ def test_socket : IO Unit := do
     | some cmd => assert (cmd == "meta.push") s!"socket: expected 'meta.push', got '{cmd}'"
     | none => assert false "socket: pollCmd returned none"
     -- Verify handler name roundtrip through socket
-    for (send, expect) in #[("nav.rowDec", "nav.rowDec"), ("nav.rowInc", "nav.rowInc")] do
+    for (send, expect) in #[("row.dec", "row.dec"), ("row.inc", "row.inc")] do
       let _ ← IO.Process.output { cmd := "bash", args := #["-c", s!"printf '{send}' | socat - UNIX-CONNECT:{path}"] }
       let mut res : Option String := none
       for _ in List.range 10 do
