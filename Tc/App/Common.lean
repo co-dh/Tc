@@ -196,57 +196,125 @@ private def argH (fzf : ViewStack AdbcTable → IO (ViewStack AdbcTable))
     (direct : ViewStack AdbcTable → String → IO (ViewStack AdbcTable)) : HandlerFn :=
   fun a _ arg => a.runStackIO (if arg.isEmpty then fzf a.stk else direct a.stk arg)
 
--- | All handlers as a flat table — adding a handler = adding a row
-private def handlerTable : Array (String × HandlerFn) := #[
-  ("quit",    fun _ _ _ => pure .quit),
-  ("menu",    fun a _ _ => AppState.runMenu a),
-  ("xpose",   fun a ci _ => a.tryStk ci (Transpose.push a.stk)),
-  ("diff",    fun a ci _ => if a.stk.cur.sameHide.isEmpty then a.tryStk ci (Diff.run a.stk)
-              else pure (.ok { a with stk := a.stk.setCur (Diff.showSame a.stk.cur), vs := .default, sparklines := #[] })),
-  -- pure state: each entry IS the logic, no second dispatch
-  ("scrollUp",  fun a _ _ => pure (.ok { a with prevScroll := a.prevScroll - min a.prevScroll 5 })),
-  ("scrollDn",  fun a _ _ => pure (.ok { a with prevScroll := a.prevScroll + 5 })),
-  ("precDec", precAdj (-1)), ("precInc", precAdj 1), ("prec0", precSet 0), ("precMax", precSet 17),
-  ("infoTog",   fun a ci _ => pure (match a.info.update ci.handler with
-    | some i' => .ok { a with info := i' } | none => .unhandled)),
-  ("heat.0", fun a _ _ => pure (.ok { a with heatMode := 0 })),
-  ("heat.1", fun a _ _ => pure (.ok { a with heatMode := 1 })),
-  ("heat.2", fun a _ _ => pure (.ok { a with heatMode := 2 })),
-  ("heat.3", fun a _ _ => pure (.ok { a with heatMode := 3 })),
-  -- stack
-  ("stk.pop", stkH), ("stk.swap", stkH), ("stk.dup", stkH),
-  -- domain: folder, meta, filter (dispatch + viewUp fallback)
-  ("folder.push", domainH Folder.dispatch), ("folder.enter", domainH Folder.dispatch),
-  ("folder.parent", domainH Folder.dispatch), ("folder.del", domainH Folder.dispatch),
-  ("folder.depthDec", domainH Folder.dispatch), ("folder.depthInc", domainH Folder.dispatch),
-  ("meta.push", domainH Meta.dispatch), ("meta.selNull", domainH Meta.dispatch),
-  ("meta.selSingle", domainH Meta.dispatch), ("meta.setKey", domainH Meta.dispatch),
-  ("filter.searchNext", domainH' Filter.dispatch), ("filter.searchPrev", domainH' Filter.dispatch),
-  -- plot
-  ("plot.area", plotH), ("plot.line", plotH), ("plot.scatter", plotH), ("plot.bar", plotH),
-  ("plot.box", plotH), ("plot.step", plotH), ("plot.hist", plotH), ("plot.density", plotH),
-  ("plot.violin", plotH),
-  -- freq (viewUp handles Freq.update internally)
-  ("freq.open", fun a ci _ => a.viewUp ci), ("freq.filter", fun a ci _ => a.viewUp ci),
-  -- arg commands
-  ("split",            argH Split.run Split.runWith),
-  ("derive",           argH Derive.run Derive.runWith),
-  ("filter.rowFilter", argH ViewStack.rowFilter ViewStack.filterWith),
-  ("filter.rowSearch", argH ViewStack.rowSearch ViewStack.searchWith),
-  ("filter.colSearch", argH ViewStack.colSearch ViewStack.colJumpWith),
-  ("export",  fun a _ arg => a.runStackIO (if arg.isEmpty then do
-    match ← Export.pickFmt with | some f => Export.run a.stk f | none => pure a.stk
-    else Export.runWith a.stk arg)),
-  ("sessSave", fun a _ arg => a.runStackIO (do Session.saveWith a.stk arg; pure a.stk)),
-  ("sessLoad", fun a _ arg => a.runStackIO (do
-    match ← Session.loadWith arg with | some stk' => pure stk' | none => pure a.stk)),
-  ("join",     fun a _ arg => a.runStackIO (do
-    match ← Join.runWith a.stk arg with | some s' => pure s' | none => pure a.stk))
+-- | Abbrev for Entry construction
+private abbrev E := CmdConfig.Entry
+-- | viewUp as HandlerFn (for freq/nav fallthrough)
+private def vuH : HandlerFn := fun a ci _ => a.viewUp ci
+
+-- | Single source of truth: command metadata + handler function.
+-- none fn = nav/sort handler (falls through to viewUp in dispatch).
+-- nav/sort handlers: no explicit fn, falls through to viewUp
+private def nav (e : E) : E × Option HandlerFn := (e, none)
+-- handlers with explicit fn
+private def cmd (e : E) (f : HandlerFn) : E × Option HandlerFn := (e, some f)
+
+private def commands : Array (E × Option HandlerFn) := #[
+  -- row navigation
+  nav { handler := "nav.rowInc",      key := "j" },
+  nav { handler := "nav.rowDec",      key := "k" },
+  nav { handler := "nav.rowPgDn",     key := "<pgdn>" },
+  nav { handler := "nav.rowPgUp",     key := "<pgup>" },
+  nav { handler := "nav.rowPgDn",     key := "<C-d>" },
+  nav { handler := "nav.rowPgUp",     key := "<C-u>" },
+  nav { handler := "nav.rowTop",      key := "<home>" },
+  nav { handler := "nav.rowBot",      key := "<end>" },
+  nav { handler := "nav.rowSel",      key := "T", label := "Select/deselect current row" },
+  -- row search/filter
+  cmd { handler := "filter.rowSearch", key := "/", label := "Search for value in current column", resetsVS := true, isArg := true }
+    (argH ViewStack.rowSearch ViewStack.searchWith),
+  cmd { handler := "filter.rowFilter", key := "\\", label := "Filter rows by PRQL expression", resetsVS := true, isArg := true }
+    (argH ViewStack.rowFilter ViewStack.filterWith),
+  cmd { handler := "filter.searchNext",key := "n", label := "Jump to next search match" } (domainH' Filter.dispatch),
+  cmd { handler := "filter.searchPrev",key := "N", label := "Jump to previous search match" } (domainH' Filter.dispatch),
+  -- col navigation
+  nav { handler := "nav.colInc",      key := "l" },
+  nav { handler := "nav.colDec",      key := "h" },
+  nav { handler := "nav.colFirst" },
+  nav { handler := "nav.colLast" },
+  nav { handler := "nav.colGrp",      key := "!", label := "Toggle group on current column" },
+  nav { handler := "nav.colHide",     key := "H", label := "Hide/unhide current column" },
+  nav { handler := "nav.colExclude",  key := "x", label := "Delete column(s) from query", resetsVS := true },
+  nav { handler := "nav.colShiftL",   key := "<S-left>", label := "Shift key column left" },
+  nav { handler := "nav.colShiftR",   key := "<S-right>", label := "Shift key column right" },
+  -- col sort
+  nav { handler := "sort.asc",        key := "[", label := "Sort ascending", resetsVS := true },
+  nav { handler := "sort.desc",       key := "]", label := "Sort descending", resetsVS := true },
+  -- col arg commands
+  cmd { handler := "split",           key := ":", label := "Split column by delimiter", isArg := true } (argH Split.run Split.runWith),
+  cmd { handler := "derive",          key := "=", label := "Derive new column (name = expr)", isArg := true } (argH Derive.run Derive.runWith),
+  cmd { handler := "filter.colSearch", key := "g", label := "Jump to column by name", resetsVS := true, isArg := true }
+    (argH ViewStack.colSearch ViewStack.colJumpWith),
+  -- col plot
+  cmd { handler := "plot.area",       label := "Plot: area chart" } plotH,
+  cmd { handler := "plot.line",       label := "Plot: line chart" } plotH,
+  cmd { handler := "plot.scatter",    label := "Plot: scatter plot" } plotH,
+  cmd { handler := "plot.bar",        label := "Plot: bar chart" } plotH,
+  cmd { handler := "plot.box",        label := "Plot: boxplot" } plotH,
+  cmd { handler := "plot.step",       label := "Plot: step chart" } plotH,
+  cmd { handler := "plot.hist",       label := "Plot: histogram" } plotH,
+  cmd { handler := "plot.density",    label := "Plot: density plot" } plotH,
+  cmd { handler := "plot.violin",     label := "Plot: violin plot" } plotH,
+  -- stk: view stack operations
+  cmd { handler := "menu",            key := " ", label := "Open command menu" } (fun a _ _ => AppState.runMenu a),
+  cmd { handler := "stk.swap",        key := "S", label := "Swap top two views" } stkH,
+  cmd { handler := "stk.pop",         key := "q", label := "Close current view", resetsVS := true } stkH,
+  cmd { handler := "stk.dup",         label := "Duplicate current view" } stkH,
+  cmd { handler := "quit" } (fun _ _ _ => pure .quit),
+  cmd { handler := "xpose",           key := "X", label := "Transpose table (rows <-> columns)" }
+    (fun a ci _ => a.tryStk ci (Transpose.push a.stk)),
+  cmd { handler := "diff",            key := "d", label := "Diff top two views" }
+    (fun a ci _ => if a.stk.cur.sameHide.isEmpty then a.tryStk ci (Diff.run a.stk)
+    else pure (.ok { a with stk := a.stk.setCur (Diff.showSame a.stk.cur), vs := .default, sparklines := #[] })),
+  -- info: precision, heatmap, scroll
+  cmd { handler := "infoTog",         key := "I", label := "Toggle info overlay" }
+    (fun a ci _ => pure (match a.info.update ci.handler with | some i' => .ok { a with info := i' } | none => .unhandled)),
+  cmd { handler := "precDec",         label := "Decrease decimal precision" } (precAdj (-1)),
+  cmd { handler := "precInc",         label := "Increase decimal precision" } (precAdj 1),
+  cmd { handler := "prec0",           label := "Set precision to 0 decimals" } (precSet 0),
+  cmd { handler := "precMax",         label := "Set precision to max (17)" } (precSet 17),
+  cmd { handler := "scrollUp",        key := "{", label := "Scroll cell preview up" }
+    (fun a _ _ => pure (.ok { a with prevScroll := a.prevScroll - min a.prevScroll 5 })),
+  cmd { handler := "scrollDn",        key := "}", label := "Scroll cell preview down" }
+    (fun a _ _ => pure (.ok { a with prevScroll := a.prevScroll + 5 })),
+  cmd { handler := "heat.0",          label := "Heatmap: off" } (fun a _ _ => pure (.ok { a with heatMode := 0 })),
+  cmd { handler := "heat.1",          label := "Heatmap: numeric columns" } (fun a _ _ => pure (.ok { a with heatMode := 1 })),
+  cmd { handler := "heat.2",          label := "Heatmap: categorical columns" } (fun a _ _ => pure (.ok { a with heatMode := 2 })),
+  cmd { handler := "heat.3",          label := "Heatmap: all columns" } (fun a _ _ => pure (.ok { a with heatMode := 3 })),
+  -- metaV: column metadata view
+  cmd { handler := "meta.push",       key := "M", label := "Open column metadata view", resetsVS := true } (domainH Meta.dispatch),
+  cmd { handler := "meta.setKey",     key := "<ret>", label := "Set selected rows as key columns", resetsVS := true, viewCtx := "colMeta" } (domainH Meta.dispatch),
+  cmd { handler := "meta.selNull",    key := "0", label := "Select columns with null values", resetsVS := true } (domainH Meta.dispatch),
+  cmd { handler := "meta.selSingle",  key := "1", label := "Select columns with single value", resetsVS := true } (domainH Meta.dispatch),
+  -- freq: frequency table
+  cmd { handler := "freq.open",       key := "F", label := "Open frequency view", resetsVS := true } vuH,
+  cmd { handler := "freq.filter",     key := "<ret>", label := "Filter parent table by current row", resetsVS := true, viewCtx := "freqV" } vuH,
+  -- fld: folder/file browser
+  cmd { handler := "folder.push",     key := "D", label := "Browse folder", resetsVS := true } (domainH Folder.dispatch),
+  cmd { handler := "folder.enter",    key := "<ret>", label := "Open file or enter directory", resetsVS := true, viewCtx := "fld" } (domainH Folder.dispatch),
+  cmd { handler := "folder.parent",   key := "<bs>", label := "Go to parent directory", resetsVS := true, viewCtx := "fld" } (domainH Folder.dispatch),
+  cmd { handler := "folder.del",      label := "Move to trash", resetsVS := true } (domainH Folder.dispatch),
+  cmd { handler := "folder.depthDec", label := "Decrease folder depth", resetsVS := true } (domainH Folder.dispatch),
+  cmd { handler := "folder.depthInc", label := "Increase folder depth", resetsVS := true } (domainH Folder.dispatch),
+  -- arg-only commands
+  cmd { handler := "export",          key := "e", label := "Export table (csv/parquet/json/ndjson)", isArg := true }
+    (fun a _ arg => a.runStackIO (if arg.isEmpty then do
+      match ← Export.pickFmt with | some f => Export.run a.stk f | none => pure a.stk
+      else Export.runWith a.stk arg)),
+  cmd { handler := "sessSave",        key := "W", label := "Save session", isArg := true }
+    (fun a _ arg => a.runStackIO (do Session.saveWith a.stk arg; pure a.stk)),
+  cmd { handler := "sessLoad",        label := "Load session", isArg := true }
+    (fun a _ arg => a.runStackIO (do
+      match ← Session.loadWith arg with | some stk' => pure stk' | none => pure a.stk)),
+  cmd { handler := "join",            key := "J", label := "Join tables", isArg := true }
+    (fun a _ arg => a.runStackIO (do
+      match ← Join.runWith a.stk arg with | some s' => pure s' | none => pure a.stk))
 ]
 
 def initHandlers : IO Unit := do
+  CmdConfig.init (commands.map (·.1))
   let mut m : Std.HashMap String HandlerFn := {}
-  for (h, f) in handlerTable do m := m.insert h f
+  for (e, fn?) in commands do
+    if let some f := fn? then m := m.insert e.handler f
   handlerMap.set m
 
 -- | Convert ViewKind to context string for config lookup

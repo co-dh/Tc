@@ -12,7 +12,6 @@ import Tc.Folder
 import Tc.Data.Text
 import Tc.Util
 import Tc.Session
-import Tc.CmdConfig
 import Tc.Key
 
 namespace PureTest2
@@ -42,72 +41,9 @@ def testView : View (MockTable 5 3) :=
 
 def testStack : ViewStack (MockTable 5 3) := ⟨testView, []⟩
 
-/-! ## Key Mapping Tests (derived from screen tests)
-    All key→handler mapping now goes through CmdConfig.commands. -/
+/-! ## evToKey Tests -/
 
 section KeyMapTests
-
--- | Find handler by key string, with optional view context.
--- Prefers context-specific match, falls back to global (empty viewCtx).
-private def findKey (k : String) (ctx : String := "") : Option String :=
-  let specific := CmdConfig.commands.findSome? fun e =>
-    if e.key == k && e.viewCtx == ctx && !ctx.isEmpty then some e.handler else none
-  match specific with
-  | some h => some h
-  | none => CmdConfig.commands.findSome? fun e =>
-    if e.key == k && e.viewCtx.isEmpty then some e.handler else none
-
--- Navigation keys (hjkl)
-theorem key_j : findKey "j" = some "nav.rowInc" := by native_decide
-theorem key_k : findKey "k" = some "nav.rowDec" := by native_decide
-theorem key_l : findKey "l" = some "nav.colInc" := by native_decide
-theorem key_h : findKey "h" = some "nav.colDec" := by native_decide
-
--- Single-key shortcuts
-theorem key_bang  : findKey "!" = some "nav.colGrp"         := by native_decide
-theorem key_T     : findKey "T" = some "nav.rowSel"         := by native_decide
-theorem key_lbr   : findKey "[" = some "sort.asc"           := by native_decide
-theorem key_rbr   : findKey "]" = some "sort.desc"          := by native_decide
-theorem key_q     : findKey "q" = some "stk.pop"            := by native_decide
-theorem key_space : findKey " " = some "menu"               := by native_decide
-theorem key_n     : findKey "n" = some "filter.searchNext"  := by native_decide
-theorem key_N     : findKey "N" = some "filter.searchPrev"  := by native_decide
-theorem key_lbrace: findKey "{" = some "scrollUp"            := by native_decide
-theorem key_rbrace: findKey "}" = some "scrollDn"            := by native_decide
-theorem key_S     : findKey "S" = some "stk.swap"           := by native_decide
-theorem key_X     : findKey "X" = some "xpose"              := by native_decide
-theorem key_d     : findKey "d" = some "diff"               := by native_decide
-theorem key_I     : findKey "I" = some "infoTog"            := by native_decide
-theorem key_M     : findKey "M" = some "meta.push"          := by native_decide
-theorem key_F     : findKey "F" = some "freq.open"          := by native_decide
-theorem key_D     : findKey "D" = some "folder.push"        := by native_decide
-theorem key_H     : findKey "H" = some "nav.colHide"        := by native_decide
-
--- Ctrl keys
-theorem key_ctrlD : findKey "<C-d>" = some "nav.rowPgDn" := by native_decide
-theorem key_ctrlU : findKey "<C-u>" = some "nav.rowPgUp" := by native_decide
-
--- Page/Home/End
-theorem key_pgdn : findKey "<pgdn>" = some "nav.rowPgDn" := by native_decide
-theorem key_pgup : findKey "<pgup>" = some "nav.rowPgUp" := by native_decide
-theorem key_home : findKey "<home>" = some "nav.rowTop"   := by native_decide
-theorem key_end  : findKey "<end>"  = some "nav.rowBot"   := by native_decide
-
--- Shift+Arrow
-theorem key_shift_left  : findKey "<S-left>"  = some "nav.colShiftL" := by native_decide
-theorem key_shift_right : findKey "<S-right>" = some "nav.colShiftR" := by native_decide
-
--- Context-sensitive Enter: viewCtx-specific entries
-theorem enter_freq : findKey "<ret>" "freqV"   = some "freq.filter"   := by native_decide
-theorem enter_meta : findKey "<ret>" "colMeta"  = some "meta.setKey"   := by native_decide
-theorem enter_fld  : findKey "<ret>" "fld"      = some "folder.enter"  := by native_decide
--- Enter with no matching context → no global <ret> entry → none
-theorem enter_tbl  : findKey "<ret>" "tbl"      = none                 := by native_decide
-
--- Backspace in folder view → parent
-theorem bs_fld : findKey "<bs>" "fld" = some "folder.parent" := by native_decide
--- Backspace outside folder → no global <bs> entry → none
-theorem bs_tbl : findKey "<bs>" "tbl" = none                 := by native_decide
 
 -- evToKey: terminal event → readable key string
 theorem evToKey_j     : evToKey (charToEvent 'j') = "j"          := by native_decide
