@@ -142,8 +142,7 @@ def run (cur : State) (applyAndRender : Array UInt32 → IO Unit) : IO (Option S
     | none => pure ()
   let opts := #[
     "--prompt=theme: ", "--with-nth=2..",
-    s!"--bind=focus:execute-silent({script} \{1})",
-    s!"--query={themeName curIdx}"]
+    s!"--bind=focus:execute-silent({script} \{1})"]
   let out ← Fzf.fzfCore opts (items.joinWith "\n") poll
   if out.isEmpty then return none
   match out.splitOn "\t" |>.head? |>.bind String.toNat? with
