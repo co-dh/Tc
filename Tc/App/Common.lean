@@ -318,13 +318,18 @@ private def commands : Array (E × Option HandlerFn) := #[
     (fun a _ _ => do
       let ref ← IO.mkRef a
       let render (styles : Array UInt32) : IO Unit := do
+        Theme.stylesRef.set styles
         let a' ← ref.get
         let (vs', v') ← a'.stk.cur.doRender a'.vs styles a'.heatMode a'.sparklines
         ref.set { a' with stk := a'.stk.setCur v', vs := vs' }
+        renderTabLine a'.stk.tabNames 0 (Replay.opsStr a'.stk.cur)
+        if a'.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat a'.stk.cur.vkind
         Term.present
       match ← Theme.run a.theme render with
       | some t => pure (.ok { (← ref.get) with theme := t }.resetVS)
-      | none   => pure (.ok { (← ref.get) with theme := a.theme }.resetVS)),
+      | none   => do
+        Theme.stylesRef.set a.theme.styles
+        pure (.ok { (← ref.get) with theme := a.theme }.resetVS)),
   cmd { cmd := .themePreview } (fun a _ _ => pure (.ok a))
 ]
 
