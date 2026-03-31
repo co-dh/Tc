@@ -390,6 +390,8 @@ cmd_enum Cmd where
   | sessSave     => "sess.save"
   | sessLoad     => "sess.load"
   | tblJoin      => "tbl.join"
+  | themeOpen    => "theme.open"
+  | themePreview => "theme.preview"
 
 namespace Cmd
 

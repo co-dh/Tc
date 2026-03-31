@@ -58,9 +58,25 @@ def mint      : UInt32 := 158   -- soft mint green
 def peach     : UInt32 := 223   -- soft peach
 def lavender  : UInt32 := 183   -- soft purple
 def gray234   : UInt32 := 234   -- very dark gray
+def gray236   : UInt32 := 236
 def gray238   : UInt32 := 238   -- medium-dark gray
 def gray240   : UInt32 := 240   -- medium gray
+def gray250   : UInt32 := 250
 def gray252   : UInt32 := 252   -- very light gray
+-- Theme-specific colors (256-color palette)
+def frost     : UInt32 := 110   -- nord ice blue
+def aurora    : UInt32 := 108   -- nord green
+def polar     : UInt32 := 236   -- nord dark
+def snow      : UInt32 := 253   -- nord light
+def pink      : UInt32 := 212   -- dracula pink
+def purple    : UInt32 := 141   -- dracula purple
+def orange    : UInt32 := 208   -- gruvbox orange
+def olive     : UInt32 := 142   -- gruvbox yellow-green
+def sand      : UInt32 := 223   -- gruvbox light yellow
+def cream     : UInt32 := 229   -- gruvbox cream
+def brown     : UInt32 := 130   -- gruvbox dark brown
+def coral     : UInt32 := 204   -- monokai pink-red
+def violet    : UInt32 := 141   -- monokai purple
 
 -- | Attributes (OR with color)
 def underline : UInt32 := 0x02000000
