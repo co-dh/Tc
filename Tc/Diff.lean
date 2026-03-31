@@ -29,6 +29,63 @@ private def dedup (a : Array String) : Array String :=
 private def onlyCols (tbl : AdbcTable) (common : Array (String × ColType)) (keys : Array String) :=
   tbl.colNames.filter fun n => !common.any (·.1 == n) && !keys.contains n
 
+-- | Compile PRQL query to SQL for creating temp views
+private def prepareView (tbl : AdbcTable) (sfx : String) : IO (String × String) := do
+  let name ← nextTmpName sfx
+  let some sql ← Prql.compile tbl.query.render | throw (IO.userError "PRQL compile failed")
+  pure (name, stripSemi sql)
+
+-- | Compute join keys: existing group cols + auto-detected categorical common cols.
+-- Returns (allKeys, valCols) or none if no keys found.
+private def resolveKeys (parentGrp curGrp : Array String) (common : Array (String × ColType))
+    : Option (Array String × Array String) :=
+  let existingGrp := parentGrp ++ curGrp
+  let autoKeys := common
+    |>.filter (fun (_, typ) => !isNumeric typ)
+    |>.map (·.1)
+    |>.filter (fun n => !existingGrp.contains n)
+  let allKeys := existingGrp ++ autoKeys |> dedup
+  if allKeys.isEmpty then none
+  else some (allKeys, common.map (·.1) |>.filter (fun n => !allKeys.contains n))
+
+-- | Build FULL OUTER JOIN SQL, execute it, return temp table name.
+private def buildJoinTbl (left right : AdbcTable) (allKeys valCols : Array String)
+    (common : Array (String × ColType)) : IO String := do
+  let (lName, lSql) ← prepareView left "dl"
+  let (rName, rSql) ← prepareView right "dr"
+  let _ ← Adbc.query s!"CREATE OR REPLACE TEMP VIEW {lName} AS {lSql}"
+  let _ ← Adbc.query s!"CREATE OR REPLACE TEMP VIEW {rName} AS {rSql}"
+  let q := quoted
+  let keySel := allKeys.map fun k => s!"COALESCE(L.{q k}, R.{q k}) AS {q k}"
+  let valSel := valCols.map fun v =>
+    s!"L.{q v} AS {q (v ++ "_left")}, R.{q v} AS {q (v ++ "_right")}"
+  let sideSel side cols := cols.map fun n =>
+    s!"{side}.{q n} AS {q (n ++ s!"_{side}")}"
+  let leftOnlySel := onlyCols left common allKeys |> sideSel "L"
+  let rightOnlySel := onlyCols right common allKeys |> sideSel "R"
+  let joinCond := allKeys.map (fun k =>
+    s!"L.{q k} IS NOT DISTINCT FROM R.{q k}") |>.joinWith " AND "
+  let selCols := (keySel ++ valSel ++ leftOnlySel ++ rightOnlySel).joinWith ", "
+  let tblName ← nextTmpName "diff"
+  let sql := s!"CREATE OR REPLACE TEMP TABLE {tblName} AS SELECT {selCols} \
+    FROM {lName} L FULL OUTER JOIN {rName} R ON {joinCond}"
+  Log.write "diff-sql" sql
+  let _ ← Adbc.query sql
+  pure tblName
+
+-- | Detect same-value column pairs → sameHide; rename differing pairs with Δ prefix.
+private def renameDiffCols (tblName : String) (valCols : Array String) : IO (Array String) := do
+  let q := quoted
+  let mut sameHide : Array String := #[]
+  for v in valCols do
+    let (leftCol, rightCol) := (v ++ "_left", v ++ "_right")
+    let cnt ← Adbc.cellInt (← Adbc.query s!"SELECT COUNT(*) FROM {tblName} \
+      WHERE NOT ({q leftCol} IS NOT DISTINCT FROM {q rightCol})") 0 0
+    if cnt == 0 then sameHide := sameHide ++ #[leftCol, rightCol]
+    else for (old, renamed) in #[(leftCol, "Δ" ++ v ++ "_L"), (rightCol, "Δ" ++ v ++ "_R")] do
+      let _ ← Adbc.query s!"ALTER TABLE {tblName} RENAME COLUMN {q old} TO {q renamed}"
+  pure sameHide
+
 -- | FULL OUTER JOIN top 2 stack views on shared categorical columns.
 -- Auto-keys non-numeric common columns, suffixes value columns with _left/_right,
 -- hides columns with identical values, Δ-prefixes columns that differ.
@@ -37,53 +94,16 @@ def run (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let (left, right) := (parent.nav.tbl, s.tbl)
   let common := commonCols left right
   if common.isEmpty then statusMsg "diff: no common columns"; return none
-  -- Auto-key: categorical (non-numeric) common columns become join keys
-  let existingGrp := parent.nav.grp ++ s.cur.nav.grp
-  let autoKeys := common
-    |>.filter (fun (_, typ) => !isNumeric typ)
-    |>.map (·.1)
-    |>.filter (fun n => !existingGrp.contains n)
-  let allKeys := existingGrp ++ autoKeys |> dedup
-  if allKeys.isEmpty then statusMsg "diff: no key columns (need categorical columns with same name+type)"; return none
-  let valCols := common.map (·.1) |>.filter (fun n => !allKeys.contains n)
-  -- Build FULL OUTER JOIN SQL with suffixed columns
-  let seq ← memTblCounter.modifyGet fun n => (n, n + 1)
-  let (lName, lSql) ← prepareView left s!"dl{seq}"
-  let (rName, rSql) ← prepareView right s!"dr{seq}"
-  let _ ← Adbc.query s!"CREATE OR REPLACE TEMP VIEW {lName} AS {lSql}"
-  let _ ← Adbc.query s!"CREATE OR REPLACE TEMP VIEW {rName} AS {rSql}"
-  let q := quoted
-  let keySel := allKeys.map fun k => s!"COALESCE(L.{q k}, R.{q k}) AS {q k}"
-  let valSel := valCols.map fun v => s!"L.{q v} AS {q (v ++ "_left")}, R.{q v} AS {q (v ++ "_right")}"
-  let sideSel side cols := cols.map fun n => s!"{side}.{q n} AS {q (n ++ s!"_{side}")}"
-  let leftOnlySel := onlyCols left common allKeys |> sideSel "L"
-  let rightOnlySel := onlyCols right common allKeys |> sideSel "R"
-  let joinCond := allKeys.map (fun k => s!"L.{q k} IS NOT DISTINCT FROM R.{q k}")
-    |>.joinWith " AND "
-  let selCols := (keySel ++ valSel ++ leftOnlySel ++ rightOnlySel).joinWith ", "
-  let tblName := s!"tc_diff_{seq}"
-  let sql := s!"CREATE OR REPLACE TEMP TABLE {tblName} AS SELECT {selCols} FROM {lName} L FULL OUTER JOIN {rName} R ON {joinCond}"
-  Log.write "diff-sql" sql
-  let _ ← Adbc.query sql
+  let some (allKeys, valCols) := resolveKeys parent.nav.grp s.cur.nav.grp common
+    | do statusMsg "diff: no key columns (need categorical columns with same name+type)"; return none
+  let tblName ← buildJoinTbl left right allKeys valCols common
+  let sameHide ← renameDiffCols tblName valCols
   let query : Prql.Query := { base := s!"from {tblName}" }
   let total ← AdbcTable.queryCount query
-  -- Detect same-value columns, rename diffs with Δ prefix
-  let mut sameHide : Array String := #[]
-  for v in valCols do
-    let (leftCol, rightCol) := (v ++ "_left", v ++ "_right")
-    let cnt ← Adbc.cellInt (← Adbc.query s!"SELECT COUNT(*) FROM {tblName} WHERE NOT ({q leftCol} IS NOT DISTINCT FROM {q rightCol})") 0 0
-    if cnt == 0 then sameHide := sameHide ++ #[leftCol, rightCol]
-    else for (old, renamed) in #[(leftCol, "Δ" ++ v ++ "_L"), (rightCol, "Δ" ++ v ++ "_R")] do
-      let _ ← Adbc.query s!"ALTER TABLE {tblName} RENAME COLUMN {q old} TO {q renamed}"
   let some adbc ← AdbcTable.requery query total | return none
   let some s' := s.pop | return none
   pure (View.fromTbl adbc s'.cur.path (grp := allKeys)
     |>.map fun v => s'.setCur { v with disp := "diff", sameHide })
-where
-  -- | Compile PRQL query to SQL for creating temp views
-  prepareView (tbl : AdbcTable) (sfx : String) : IO (String × String) := do
-    let some sql ← Prql.compile tbl.query.render | throw (IO.userError "PRQL compile failed")
-    pure (s!"tc_{sfx}", stripSemi sql)
 
 -- | Clear sameHide to reveal identical-value columns (toggle)
 def showSame (v : View AdbcTable) : View AdbcTable := { v with sameHide := #[] }
