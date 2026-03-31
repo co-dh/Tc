@@ -27,9 +27,12 @@ private def colorMap : Std.HashMap String UInt32 :=
     ("gray234", Term.gray234), ("gray236", Term.gray236), ("gray238", Term.gray238),
     ("gray240", Term.gray240), ("gray250", Term.gray250), ("gray252", Term.gray252),
     ("frost", Term.frost), ("aurora", Term.aurora), ("polar", Term.polar), ("snow", Term.snow),
-    ("pink", Term.pink), ("purple", Term.purple),
+    ("steel", Term.steel), ("ice", Term.ice), ("mist", Term.mist),
+    ("pink", Term.pink), ("purple", Term.purple), ("dusk", Term.dusk),
+    ("lilac", Term.lilac), ("blush", Term.blush),
     ("orange", Term.orange), ("olive", Term.olive), ("sand", Term.sand),
-    ("cream", Term.cream), ("brown", Term.brown), ("coral", Term.coral), ("violet", Term.violet)]
+    ("cream", Term.cream), ("brown", Term.brown), ("cornsilk", Term.cornsilk),
+    ("coral", Term.coral), ("violet", Term.violet), ("rosegold", Term.rosegold)]
 
 @[inline] def parseColor (s : String) : UInt32 := colorMap.getD s Term.default
 
