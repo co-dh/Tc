@@ -34,7 +34,7 @@ def evToKey (ev : Term.Event) : String :=
   -- Arrow keys → hjkl
   else match KeyMap.arrow.findSome? fun (k, c) => if ev.key == k then some c else none with
   | some c => c.toString
-  -- Ctrl keys: ch or key field holds the control code (mod=2 for ctrl from charToEvent)
+  -- Ctrl keys: ch or key field holds the control code (mod=2 for ctrl)
   | none =>
     let code := if ev.ch > 0 then ev.ch else ev.key.toUInt32
     if code == Term.ctrlD then "<C-d>"
@@ -43,37 +43,31 @@ def evToKey (ev : Term.Event) : String :=
     else if ev.ch > 0 then (Char.ofNat ev.ch.toNat).toString
     else ""
 
-def parseKeys (s : String) : String :=
-  s.replace "<ret>" "\r"
-   |>.replace "<esc>" "\x1b"
-   |>.replace "<C-d>" "\x04"
-   |>.replace "<C-u>" "\x15"
-   |>.replace "<S-left>" "\x11"
-   |>.replace "<S-right>" "\x12"
-   |>.replace "<down>" "\x1c"
-   |>.replace "<up>" "\x1d"
-   |>.replace "<right>" "\x1e"
-   |>.replace "<left>" "\x1f"
-   |>.replace "<bs>" "\x7f"
-   |>.replace "<backslash>" "\\"
-   |>.replace "<key>" "!"
-   |>.replace "<wait>" "\x16"
+-- | Tokenize a `-c` key string into descriptive key tokens.
+-- "jj<ret><C-d>" → #["j", "j", "<ret>", "<C-d>"]
+-- Aliases: arrow keys → hjkl
+def tokenizeKeys (s : String) : Array String := Id.run do
+  let chars := s.toList
+  let mut acc : Array String := #[]
+  let mut i := 0
+  while h : i < chars.length do
+    if chars[i] == '<' then
+      match chars.drop (i + 1) |>.takeWhile (· != '>') with
+      | [] => acc := acc.push "<"; i := i + 1
+      | tag =>
+        let close := i + 1 + tag.length
+        if close < chars.length && chars[close]! == '>' then
+          let tok := String.ofList ('<' :: tag ++ ['>'])
+          -- resolve aliases: arrow keys → hjkl (matching evToKey normalization)
+          let tok := match tok with
+            | "<down>" => "j" | "<up>" => "k" | "<right>" => "l" | "<left>" => "h"
+            | t => t
+          acc := acc.push tok
+          i := close + 1
+        else acc := acc.push "<"; i := i + 1
+    else acc := acc.push (chars[i].toString); i := i + 1
+  acc
 
-def charToEvent (c : Char) : Term.Event :=
-  let ch := c.toNat.toUInt32
-  if ch == 0x11 then ⟨Term.eventKey, Term.modShift, Term.keyArrowLeft, 0, 0, 0⟩
-  else if ch == 0x12 then ⟨Term.eventKey, Term.modShift, Term.keyArrowRight, 0, 0, 0⟩
-  else if ch == 0x1c then ⟨Term.eventKey, 0, Term.keyArrowDown, 0, 0, 0⟩
-  else if ch == 0x1d then ⟨Term.eventKey, 0, Term.keyArrowUp, 0, 0, 0⟩
-  else if ch == 0x1e then ⟨Term.eventKey, 0, Term.keyArrowRight, 0, 0, 0⟩
-  else if ch == 0x1f then ⟨Term.eventKey, 0, Term.keyArrowLeft, 0, 0, 0⟩
-  else if ch == 0x7f then ⟨Term.eventKey, 0, Term.keyBackspace2, 0, 0, 0⟩
-  else if ch < 32 then ⟨Term.eventKey, 2, ch.toUInt16, 0, 0, 0⟩
-  else ⟨Term.eventKey, 0, 0, ch, 0, 0⟩
-
-def isKey (ev : Term.Event) (c : Char) : Bool :=
-  ev.type == Term.eventKey && ev.ch == c.toNat.toUInt32
-
-def nextEvent (keys : Array Char) : IO (Term.Event × Array Char) :=
-  if h : keys.size > 0 then pure (charToEvent keys[0], keys.extract 1 keys.size)
-  else do let e ← Term.pollEvent; pure (e, #[])
+def nextKey (keys : Array String) : IO (String × Array String) :=
+  if h : keys.size > 0 then pure (keys[0], keys.extract 1 keys.size)
+  else do let e ← Term.pollEvent; pure (evToKey e, #[])
