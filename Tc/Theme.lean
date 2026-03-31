@@ -1,6 +1,6 @@
 /-
   Theme: CSV-based color themes with fzf picker and live preview via socket.
-  Format: theme,variant,name,fg,bg
+  Format: theme,variant,cursor,selRow,...  (pivoted: style names are columns, cells are "fg bg")
 -/
 import Tc.Types
 import Tc.Term
@@ -14,27 +14,51 @@ structure State where
   themeIdx : Nat
 
 
--- | Style names (index into the 18-element styles array)
+-- | Style names → index into styles array. Styles 0-8 used by C render, 9+ by Lean UI.
 def styleNames : Array String := #[
   "cursor", "selRow", "selColCurRow", "selCol",
-  "curRow", "curCol", "default", "header", "group"
+  "curRow", "curCol", "default", "header", "group",
+  "status", "statusDim", "bar", "barDim", "error", "errorDim", "hint"
 ]
+
+-- | Style index constants for Lean-side UI (C render uses 0-8 directly)
+def sStatus    : Nat := 9
+def sStatusDim : Nat := 10
+def sBar       : Nat := 11
+def sBarDim    : Nat := 12
+def sError     : Nat := 13
+def sErrorDim  : Nat := 14
+def sHint      : Nat := 15
+
+def styleFg (styles : Array UInt32) (idx : Nat) : UInt32 := styles.getD (idx * 2) 0
+def styleBg (styles : Array UInt32) (idx : Nat) : UInt32 := styles.getD (idx * 2 + 1) 0
 
 def parseStyle (s : String) : Option Nat := styleNames.idxOf? s
 
 -- | Default dark theme (fallback if CSV fails)
 private def c (s : String) : UInt32 := Term.parseColor s
 def defaultDark : Array UInt32 := #[
-  c "black", c "brWhite",    -- cursor
-  c "black", c "rgb354",     -- selRow
-  c "black", c "rgb435",     -- selColCurRow
-  c "brMagenta", c "default", -- selCol
-  c "default", c "gray2",    -- curRow
-  c "default", c "gray6",    -- curCol
-  c "default", c "default",  -- default
-  c "green", c "rgb112",     -- header
-  c "default", c "gray5"     -- group
+  c "black", c "brWhite",       -- 0: cursor
+  c "black", c "rgb354",        -- 1: selRow
+  c "black", c "rgb435",        -- 2: selColCurRow
+  c "brMagenta", c "default",   -- 3: selCol
+  c "default", c "gray2",       -- 4: curRow
+  c "default", c "gray6",       -- 5: curCol
+  c "default", c "default",     -- 6: default
+  c "green", c "rgb112",        -- 7: header
+  c "default", c "gray5",       -- 8: group
+  c "cyan", c "default",        -- 9: status
+  c "brBlack", c "default",     -- 10: statusDim
+  c "white", c "blue",          -- 11: bar
+  c "brBlack", c "blue",        -- 12: barDim
+  c "white", c "red",           -- 13: error
+  c "brBlack", c "red",         -- 14: errorDim
+  c "black", c "yellow"         -- 15: hint
 ]
+
+-- | Global styles ref — lets errorPopup/statusMsg access theme without parameter threading
+initialize stylesRef : IO.Ref (Array UInt32) ← IO.mkRef defaultDark
+def getStyles : IO (Array UInt32) := stylesRef.get
 
 -- | Detect terminal background: dark (true) or light (false)
 def isDark : IO Bool := do
@@ -71,20 +95,26 @@ private def loadCsv : IO String := do
     catch _ => pure ()
   pure builtinCsv
 
--- | Load theme by name
+-- | Load theme by name. CSV is pivoted: columns are style names, cells are "fg bg".
 def load (theme variant : String) : IO (Array UInt32) := do
   let content ← loadCsv
-  let matching := content.splitOn "\n"
-    |>.filter (·.length > 0)
-    |>.drop 1
-    |>.map (·.splitOn ",")
-    |>.filter fun r => r.getD 0 "" == theme && r.getD 1 "" == variant
-  let mut styles := defaultDark
-  for row in matching do
-    if let some idx := parseStyle (row.getD 2 "") then
-      styles := styles.set! (idx * 2) (Term.parseColor (row.getD 3 "default"))
-      styles := styles.set! (idx * 2 + 1) (Term.parseColor (row.getD 4 "default"))
-  return styles
+  let lines := content.splitOn "\n" |>.filter (·.length > 0)
+  let header := (lines.headD "").splitOn ","
+  let colNames := header.drop 2  -- style names from header
+  let row := lines.drop 1 |>.find? fun line =>
+    let cols := line.splitOn ","
+    cols.getD 0 "" == theme && cols.getD 1 "" == variant
+  match row with
+  | none => return defaultDark
+  | some r =>
+    let cols := r.splitOn ","
+    let mut styles := defaultDark
+    for i in [:colNames.length] do
+      if let some idx := parseStyle (colNames.getD i "") then
+        let cell := (cols.getD (i + 2) "").splitOn " "
+        styles := styles.set! (idx * 2) (Term.parseColor (cell.getD 0 "default"))
+        styles := styles.set! (idx * 2 + 1) (Term.parseColor (cell.getD 1 "default"))
+    return styles
 
 -- | Load theme by index
 def loadIdx (idx : Nat) : IO (Array UInt32) := do
@@ -97,11 +127,14 @@ def init : IO State := do
   let dark ← isDark
   let variant := if dark then "dark" else "light"
   let styles ← load "default" variant
+  Theme.stylesRef.set styles
   let idx := themes.findIdx? (· == ("default", variant)) |>.getD 0
   pure ⟨styles, idx⟩
 
 def applyIdx (s : State) (idx : Nat) : IO State := do
-  pure { s with styles := ← loadIdx idx, themeIdx := idx }
+  let styles ← loadIdx idx
+  Theme.stylesRef.set styles
+  pure { s with styles, themeIdx := idx }
 
 end State
 

@@ -3,6 +3,7 @@
   Word-wraps long text, supports {/} for page up/down.
 -/
 import Tc.Term
+import Tc.Theme
 
 namespace Tc.UI.Preview
 
@@ -41,15 +42,18 @@ def render (screenH screenW : Nat) (text : String) (scroll : Nat) : IO Unit := d
   let y1 := screenH - 3                  -- last row of box (bottom border)
   let y0 := if y1 + 1 > visible + 2 then y1 - visible - 1 else 0  -- top border
   let actualVisible := y1 - y0 - 1       -- rows between borders
+  let s ← Theme.getStyles
+  let fg := Theme.styleFg s Theme.sBar; let bg := Theme.styleBg s Theme.sBar
+  let dfg := Theme.styleFg s Theme.sBarDim; let dbg := Theme.styleBg s Theme.sBarDim
   -- top border
-  Term.print x0.toUInt32 y0.toUInt32 7 4
+  Term.print x0.toUInt32 y0.toUInt32 fg bg
     ("┌" ++ "".pushn '─' innerW ++ "┐")
   -- content lines with side borders
   for i in [:actualVisible] do
     let line := lines.getD (scroll + i) ""
     let trimmed := if line.length > innerW then (line.take innerW).toString else line
     let padded := trimmed ++ "".pushn ' ' (innerW - trimmed.length)
-    Term.print x0.toUInt32 (y0 + 1 + i).toUInt32 7 4
+    Term.print x0.toUInt32 (y0 + 1 + i).toUInt32 fg bg
       ("│" ++ padded ++ "│")
   -- bottom border with scroll indicator
   let indicator := if nLines > actualVisible
@@ -57,6 +61,6 @@ def render (screenH screenW : Nat) (text : String) (scroll : Nat) : IO Unit := d
     else ""
   let dashW := if innerW > indicator.length then innerW - indicator.length else 0
   let border := "└" ++ "".pushn '─' dashW ++ indicator ++ "┘"
-  Term.print x0.toUInt32 y1.toUInt32 8 4 border
+  Term.print x0.toUInt32 y1.toUInt32 dfg dbg border
 
 end Tc.UI.Preview

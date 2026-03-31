@@ -3,6 +3,7 @@
 -/
 import Tc.Types
 import Tc.Term
+import Tc.Theme
 import Tc.View
 
 namespace Tc.UI.Info
@@ -43,6 +44,7 @@ def render (screenH screenW : Nat) (vk : ViewKind) : IO Unit := do
     let (k, d) := hints.getD i ("", "")
     let kpad := "".pushn ' ' (keyW - k.length) ++ k
     let dpad := (d.take hintW).toString ++ "".pushn ' ' (hintW - min d.length hintW)
-    Term.print x0.toUInt32 (y0 + i).toUInt32 16 3 (kpad ++ " " ++ dpad)
+    let s ← Theme.getStyles
+    Term.print x0.toUInt32 (y0 + i).toUInt32 (Theme.styleFg s Theme.sHint) (Theme.styleBg s Theme.sHint) (kpad ++ " " ++ dpad)
 
 end Tc.UI.Info

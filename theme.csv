@@ -1,109 +1,13 @@
-theme,variant,name,fg,bg
-default,dark,cursor,black,brWhite
-default,dark,selRow,black,rgb354
-default,dark,selColCurRow,black,rgb435
-default,dark,selCol,brMagenta,default
-default,dark,curRow,default,gray2
-default,dark,curCol,default,gray6
-default,dark,default,default,default
-default,dark,header,green,rgb112
-default,dark,group,default,gray5
-default,light,cursor,white,black
-default,light,selRow,black,brCyan
-default,light,selColCurRow,black,rgb435
-default,light,selCol,magenta,default
-default,light,curRow,default,gray20
-default,light,curCol,default,gray20
-default,light,default,default,default
-default,light,header,black,brWhite
-default,light,group,default,gray20
-ansi,dark,cursor,black,brWhite
-ansi,dark,selRow,black,brCyan
-ansi,dark,selColCurRow,black,brMagenta
-ansi,dark,selCol,brYellow,default
-ansi,dark,curRow,default,brBlack
-ansi,dark,curCol,default,brBlack
-ansi,dark,default,default,default
-ansi,dark,header,brWhite,blue
-ansi,dark,group,default,brBlack
-ansi,light,cursor,brWhite,black
-ansi,light,selRow,black,cyan
-ansi,light,selColCurRow,black,magenta
-ansi,light,selCol,blue,default
-ansi,light,curRow,default,white
-ansi,light,curCol,default,white
-ansi,light,default,default,default
-ansi,light,header,black,white
-ansi,light,group,default,white
-nord,dark,cursor,black,rgb234
-nord,dark,selRow,black,rgb232
-nord,dark,selColCurRow,black,rgb435
-nord,dark,selCol,rgb234,default
-nord,dark,curRow,default,gray4
-nord,dark,curCol,default,gray4
-nord,dark,default,gray21,default
-nord,dark,header,gray21,gray4
-nord,dark,group,default,gray4
-nord,light,cursor,gray4,rgb234
-nord,light,selRow,gray4,rgb232
-nord,light,selColCurRow,gray4,rgb435
-nord,light,selCol,rgb234,default
-nord,light,curRow,default,gray21
-nord,light,curCol,default,gray21
-nord,light,default,gray4,default
-nord,light,header,gray4,gray21
-nord,light,group,default,gray21
-dracula,dark,cursor,black,rgb524
-dracula,dark,selRow,black,rgb325
-dracula,dark,selColCurRow,black,rgb435
-dracula,dark,selCol,rgb524,default
-dracula,dark,curRow,default,gray6
-dracula,dark,curCol,default,gray6
-dracula,dark,default,default,default
-dracula,dark,header,brWhite,rgb325
-dracula,dark,group,default,gray6
-dracula,light,cursor,white,rgb325
-dracula,light,selRow,white,rgb524
-dracula,light,selColCurRow,black,rgb435
-dracula,light,selCol,rgb325,default
-dracula,light,curRow,default,gray18
-dracula,light,curCol,default,gray18
-dracula,light,default,default,default
-dracula,light,header,white,rgb325
-dracula,light,group,default,gray18
-gruvbox,dark,cursor,black,rgb520
-gruvbox,dark,selRow,black,rgb330
-gruvbox,dark,selColCurRow,black,rgb543
-gruvbox,dark,selCol,rgb520,default
-gruvbox,dark,curRow,default,gray4
-gruvbox,dark,curCol,default,gray4
-gruvbox,dark,default,rgb553,default
-gruvbox,dark,header,rgb553,rgb310
-gruvbox,dark,group,default,gray4
-gruvbox,light,cursor,rgb310,rgb520
-gruvbox,light,selRow,rgb310,rgb543
-gruvbox,light,selColCurRow,rgb310,rgb330
-gruvbox,light,selCol,red,default
-gruvbox,light,curRow,default,rgb553
-gruvbox,light,curCol,default,rgb553
-gruvbox,light,default,rgb310,default
-gruvbox,light,header,rgb553,rgb310
-gruvbox,light,group,default,rgb553
-monokai,dark,cursor,black,brYellow
-monokai,dark,selRow,black,rgb512
-monokai,dark,selColCurRow,black,rgb325
-monokai,dark,selCol,rgb512,default
-monokai,dark,curRow,default,gray6
-monokai,dark,curCol,default,gray6
-monokai,dark,default,default,default
-monokai,dark,header,brWhite,gray6
-monokai,dark,group,default,gray6
-monokai,light,cursor,gray6,brYellow
-monokai,light,selRow,black,rgb512
-monokai,light,selColCurRow,black,rgb325
-monokai,light,selCol,rgb325,default
-monokai,light,curRow,default,gray20
-monokai,light,curCol,default,gray20
-monokai,light,default,default,default
-monokai,light,header,white,gray6
-monokai,light,group,default,gray20
+theme,variant,cursor,selRow,selColCurRow,selCol,curRow,curCol,default,header,group,status,statusDim,bar,barDim,error,errorDim,hint
+default,dark,black brWhite,black rgb354,black rgb435,brMagenta default,default gray2,default gray6,default default,green rgb112,default gray5,cyan default,brBlack default,white blue,brBlack blue,white red,brBlack red,black yellow
+default,light,white black,black brCyan,black rgb435,magenta default,default gray20,default gray20,default default,black brWhite,default gray20,cyan default,brBlack default,black white,brBlack white,white red,brBlack red,black yellow
+ansi,dark,black brWhite,black brCyan,black brMagenta,brYellow default,default brBlack,default brBlack,default default,brWhite blue,default brBlack,cyan default,brBlack default,white blue,brBlack blue,white red,brBlack red,black yellow
+ansi,light,brWhite black,black cyan,black magenta,blue default,default white,default white,default default,black white,default white,cyan default,brBlack default,black white,brBlack white,white red,brBlack red,black yellow
+nord,dark,black rgb234,black rgb232,black rgb435,rgb234 default,default gray4,default gray4,gray21 default,gray21 gray4,default gray4,cyan default,brBlack default,gray21 gray4,brBlack gray4,white red,brBlack red,black yellow
+nord,light,gray4 rgb234,gray4 rgb232,gray4 rgb435,rgb234 default,default gray21,default gray21,gray4 default,gray4 gray21,default gray21,gray4 default,brBlack default,gray4 gray21,brBlack gray21,white red,brBlack red,black yellow
+dracula,dark,black rgb524,black rgb325,black rgb435,rgb524 default,default gray6,default gray6,default default,brWhite rgb325,default gray6,cyan default,brBlack default,brWhite rgb325,brBlack rgb325,white red,brBlack red,black yellow
+dracula,light,white rgb325,white rgb524,black rgb435,rgb325 default,default gray18,default gray18,default default,white rgb325,default gray18,rgb325 default,brBlack default,white rgb325,brBlack rgb325,white red,brBlack red,black yellow
+gruvbox,dark,black rgb520,black rgb330,black rgb543,rgb520 default,default gray4,default gray4,rgb553 default,rgb553 rgb310,default gray4,rgb553 default,rgb310 default,rgb553 rgb310,rgb310 rgb310,white red,brBlack red,black yellow
+gruvbox,light,rgb310 rgb520,rgb310 rgb543,rgb310 rgb330,red default,default rgb553,default rgb553,rgb310 default,rgb553 rgb310,default rgb553,rgb310 default,rgb553 default,rgb310 rgb553,rgb553 rgb553,white red,brBlack red,black yellow
+monokai,dark,black brYellow,black rgb512,black rgb325,rgb512 default,default gray6,default gray6,default default,brWhite gray6,default gray6,cyan default,brBlack default,white gray6,brBlack gray6,white red,brBlack red,black yellow
+monokai,light,gray6 brYellow,black rgb512,black rgb325,rgb325 default,default gray20,default gray20,default default,white gray6,default gray20,cyan default,brBlack default,white gray6,brBlack gray6,white red,brBlack red,black yellow
