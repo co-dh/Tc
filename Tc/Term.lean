@@ -31,24 +31,18 @@ def modShift : UInt8 := 4
 def ctrlD : UInt32 := 4   -- Ctrl+D (page down)
 def ctrlU : UInt32 := 21  -- Ctrl+U (page up)
 
--- | xterm-256 color names: index → name. Names for ANSI 0-15 + black (16).
--- 0 = TB_DEFAULT (terminal default), 16 = pure black (since 0 is taken).
--- Unnamed slots are "". Themes use rgbRGB/grayN syntax for other colors.
-def colorNames : Array String := Id.run do
-  let mut a := Array.replicate 256 ""
-  for (name, idx) in #[
-    ("default", 0),
-    ("red", 1), ("green", 2), ("yellow", 3), ("blue", 4),
-    ("magenta", 5), ("cyan", 6), ("white", 7),
-    ("brBlack", 8), ("brRed", 9), ("brGreen", 10), ("brYellow", 11),
-    ("brBlue", 12), ("brMagenta", 13), ("brCyan", 14), ("brWhite", 15),
-    ("black", 16)] do
-    a := a.set! idx name
-  return a
+-- | ANSI color names → xterm-256 index. 0 = TB_DEFAULT, 16 = black (since 0 is taken).
+-- Other colors use rgbRGB (cube) or grayN (grayscale) syntax in theme.csv.
+private def colorMap : Std.HashMap String UInt32 := .ofList [
+  ("default", 0), ("red", 1), ("green", 2), ("yellow", 3), ("blue", 4),
+  ("magenta", 5), ("cyan", 6), ("white", 7),
+  ("brBlack", 8), ("brRed", 9), ("brGreen", 10), ("brYellow", 11),
+  ("brBlue", 12), ("brMagenta", 13), ("brCyan", 14), ("brWhite", 15),
+  ("black", 16)]
 
 -- | Parse color string: named | "rgbRGB" (cube) | "gray0"-"gray23"
 def parseColor (s : String) : UInt32 :=
-  if let some i := colorNames.findIdx? (· == s) then i.toUInt32
+  if let some v := colorMap[s]? then v
   else if s.startsWith "rgb" && s.length == 6 then
     match (s.drop 3).toString.toList with
     | [rc, gc, bc] =>
