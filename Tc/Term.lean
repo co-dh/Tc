@@ -31,34 +31,22 @@ def modShift : UInt8 := 4
 def ctrlD : UInt32 := 4   -- Ctrl+D (page down)
 def ctrlU : UInt32 := 21  -- Ctrl+U (page up)
 
--- | ANSI color names → xterm-256 index. 0 = TB_DEFAULT, 16 = black (since 0 is taken).
--- Other colors use rgbRGB (cube) or grayN (grayscale) syntax in theme.csv.
-private def colorMap : Std.HashMap String UInt32 := .ofList [
-  ("default", 0), ("red", 1), ("green", 2), ("yellow", 3), ("blue", 4),
-  ("magenta", 5), ("cyan", 6), ("white", 7),
-  ("brBlack", 8), ("brRed", 9), ("brGreen", 10), ("brYellow", 11),
-  ("brBlue", 12), ("brMagenta", 13), ("brCyan", 14), ("brWhite", 15),
-  ("black", 16)]
+-- | All xterm-256 color names → index. Built once at init.
+-- ANSI names (0-15, black=16), rgbRGB cube (16-231), grayN ramp (232-255).
+private def colorMap : Std.HashMap String UInt32 := Id.run do
+  let mut m : Std.HashMap String UInt32 := {}
+  for (name, idx) in #[("default", 0), ("red", 1), ("green", 2), ("yellow", 3), ("blue", 4),
+      ("magenta", 5), ("cyan", 6), ("white", 7), ("brBlack", 8), ("brRed", 9), ("brGreen", 10),
+      ("brYellow", 11), ("brBlue", 12), ("brMagenta", 13), ("brCyan", 14), ("brWhite", 15),
+      ("black", 16)] do
+    m := m.insert name idx
+  for r in [:6] do for g in [:6] do for b in [:6] do
+    m := m.insert s!"rgb{r}{g}{b}" (16 + 36 * r + 6 * g + b).toUInt32
+  for i in [:24] do
+    m := m.insert s!"gray{i}" (232 + i).toUInt32
+  return m
 
--- | Parse color string: named | "rgbRGB" (cube) | "gray0"-"gray23"
-def parseColor (s : String) : UInt32 :=
-  if let some v := colorMap[s]? then v
-  else if s.startsWith "rgb" && s.length == 6 then
-    match (s.drop 3).toString.toList with
-    | [rc, gc, bc] =>
-      if rc.isDigit && gc.isDigit && bc.isDigit then
-        let r := rc.toNat - '0'.toNat
-        let g := gc.toNat - '0'.toNat
-        let b := bc.toNat - '0'.toNat
-        if r ≤ 5 && g ≤ 5 && b ≤ 5 then (16 + 36 * r + 6 * g + b).toUInt32
-        else 0
-      else 0
-    | _ => 0
-  else if s.startsWith "gray" then
-    match (s.drop 4).toString.toNat? with
-    | some n => if n ≤ 23 then (232 + n).toUInt32 else 0
-    | none => 0
-  else 0
+def parseColor (s : String) : UInt32 := colorMap.getD s 0
 
 -- | Attributes (OR with color)
 def underline : UInt32 := 0x02000000
