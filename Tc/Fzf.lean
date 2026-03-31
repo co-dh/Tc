@@ -44,7 +44,7 @@ def fzfCore (opts : Array String) (input : String) (poll : IO Unit := pure ()) :
       outRef.set out
       done.set true
     while !(← done.get) do
-      if inTmux then poll
+      poll
       IO.sleep 30
     let out ← outRef.get
     let _ ← child'.wait
