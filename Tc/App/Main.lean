@@ -6,7 +6,7 @@ open Tc
 -- parsed CLI arguments
 structure CliArgs where
   path    : Option String := none
-  keys    : Array Char := #[]
+  keys    : Array String := #[]
   test    : Bool := false
   noSign  : Bool := false
   session : Option String := none   -- -s "name" session restore
@@ -22,7 +22,7 @@ def parseArgs (args : List String) : CliArgs :=
   let noSign := args.any (· == "+n")
   let args := args.filter (· != "+n")
   let (session, args) := extractFlag "-s" args
-  let toK s := parseKeys s |>.toList.toArray
+  let toK s := tokenizeKeys s
   match args with
   | "-c" :: k :: _ => { path := none, keys := toK k, test := true, noSign, session }
   | p :: "-c" :: k :: _ => { path := some p, keys := toK k, test := true, noSign, session }
@@ -36,14 +36,14 @@ private def withTui (test : Bool) (f : IO α) : IO α := do
   pure r
 
 -- run app with view
-def runApp (v : View AdbcTable) (pipe test : Bool) (th : Theme.State) (ks : Array Char) : IO AppState := do
+def runApp (v : View AdbcTable) (pipe test : Bool) (th : Theme.State) (ks : Array String) : IO AppState := do
   if pipe then let _ ← Term.reopenTty
   let _ ← Term.init
   withTui test (mainLoop { stk := ⟨v, []⟩, vs := .default, theme := th, info := {} } test ks)
 
 -- run from TSV string result
 def runTsv (r : Except String String) (nm : String) (pipe test : Bool)
-    (th : Theme.State) (ks : Array Char) : IO (Option AppState) := do
+    (th : Theme.State) (ks : Array String) : IO (Option AppState) := do
   match r with
   | .error e => IO.eprintln s!"Parse error: {e}"; return none
   | .ok tsv =>
