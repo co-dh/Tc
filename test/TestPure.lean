@@ -47,16 +47,24 @@ def testStack : ViewStack (MockTable 5 3) := ⟨testView, []⟩
 
 section KeyMapTests
 
--- evToKey: terminal event → readable key string (real mode path, not test keys)
+-- Arrows: unmodified → hjkl
 theorem evToKey_arrow_down  : evToKey ⟨Term.eventKey, 0, Term.keyArrowDown, 0, 0, 0⟩ = "j"  := by native_decide
 theorem evToKey_arrow_up    : evToKey ⟨Term.eventKey, 0, Term.keyArrowUp, 0, 0, 0⟩ = "k"    := by native_decide
 theorem evToKey_arrow_right : evToKey ⟨Term.eventKey, 0, Term.keyArrowRight, 0, 0, 0⟩ = "l" := by native_decide
 theorem evToKey_arrow_left  : evToKey ⟨Term.eventKey, 0, Term.keyArrowLeft, 0, 0, 0⟩ = "h"  := by native_decide
+-- Arrows: modified → <M-direction>
 theorem evToKey_shift_left  : evToKey ⟨Term.eventKey, Term.modShift, Term.keyArrowLeft, 0, 0, 0⟩ = "<S-left>"  := by native_decide
 theorem evToKey_shift_right : evToKey ⟨Term.eventKey, Term.modShift, Term.keyArrowRight, 0, 0, 0⟩ = "<S-right>" := by native_decide
--- Enter/backspace/ctrl via real events
+theorem evToKey_ctrl_up     : evToKey ⟨Term.eventKey, Term.modCtrl, Term.keyArrowUp, 0, 0, 0⟩ = "<C-up>" := by native_decide
+theorem evToKey_alt_down    : evToKey ⟨Term.eventKey, Term.modAlt, Term.keyArrowDown, 0, 0, 0⟩ = "<A-down>" := by native_decide
+-- Special keys
 theorem evToKey_enter : evToKey ⟨Term.eventKey, 0, Term.keyEnter, 0, 0, 0⟩ = "<ret>" := by native_decide
 theorem evToKey_bs    : evToKey ⟨Term.eventKey, 0, Term.keyBackspace2, 0, 0, 0⟩ = "<bs>" := by native_decide
+-- Generic ctrl from control code
+theorem evToKey_ctrl_d : evToKey ⟨Term.eventKey, 2, 4, 0, 0, 0⟩ = "<C-d>" := by native_decide
+theorem evToKey_ctrl_u : evToKey ⟨Term.eventKey, 2, 21, 0, 0, 0⟩ = "<C-u>" := by native_decide
+-- Printable char with modifier
+theorem evToKey_alt_x : evToKey ⟨Term.eventKey, Term.modAlt, 0, 120, 0, 0⟩ = "<A-x>" := by native_decide
 
 end KeyMapTests
 

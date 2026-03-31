@@ -8,39 +8,37 @@ import Tc.CmdConfig
 
 open Tc
 
-namespace KeyMap
-  -- Arrow keys normalized to hjkl for unified nav
-  private def arrow : Array (UInt16 × Char) := #[
-    (Term.keyArrowDown, 'j'), (Term.keyArrowUp, 'k'),
-    (Term.keyArrowRight, 'l'), (Term.keyArrowLeft, 'h')
-  ]
-end KeyMap
+-- Special key code → (bare name, modifier name)
+-- Bare: unmodified output. Modifier: used with S-/C-/A- prefixes.
+-- Arrows map to hjkl bare but left/right/up/down when modified.
+private def keyNames : Array (UInt16 × String × String) := #[
+  (Term.keyArrowDown, "j", "down"), (Term.keyArrowUp, "k", "up"),
+  (Term.keyArrowLeft, "h", "left"), (Term.keyArrowRight, "l", "right"),
+  (Term.keyEnter, "ret", "ret"), (Term.keyBackspace, "bs", "bs"), (Term.keyBackspace2, "bs", "bs"),
+  (Term.keyPageDown, "pgdn", "pgdn"), (Term.keyPageUp, "pgup", "pgup"),
+  (Term.keyHome, "home", "home"), (Term.keyEnd, "end", "end"), (Term.keyEsc, "esc", "esc")
+]
+
+private def modPfx (ev : Term.Event) : String :=
+  (if ev.mod &&& Term.modShift != 0 then "S-" else "") ++
+  (if ev.mod &&& Term.modCtrl  != 0 then "C-" else "") ++
+  (if ev.mod &&& Term.modAlt   != 0 then "A-" else "")
 
 -- | Normalize terminal event to readable key string.
--- Regular chars → "j", "!", " "; special keys → "<ret>", "<pgdn>", "<C-d>", "<S-left>" etc.
+-- Regular chars → "j", " "; special keys → "<ret>", "<pgdn>"; modifiers → "<S-left>", "<C-d>", "<A-x>"
 def evToKey (ev : Term.Event) : String :=
   if ev.type != Term.eventKey then "" else
-  let shift := ev.mod &&& Term.modShift != 0
-  -- Shift+Arrow: "<S-left>", "<S-right>"
-  if shift && ev.key == Term.keyArrowLeft then "<S-left>"
-  else if shift && ev.key == Term.keyArrowRight then "<S-right>"
-  -- Special keys by key code
-  else if ev.key == Term.keyEnter then "<ret>"
-  else if ev.key == Term.keyBackspace || ev.key == Term.keyBackspace2 then "<bs>"
-  else if ev.key == Term.keyPageDown then "<pgdn>"
-  else if ev.key == Term.keyPageUp then "<pgup>"
-  else if ev.key == Term.keyHome then "<home>"
-  else if ev.key == Term.keyEnd then "<end>"
-  -- Arrow keys → hjkl
-  else match KeyMap.arrow.findSome? fun (k, c) => if ev.key == k then some c else none with
-  | some c => c.toString
-  -- Ctrl keys: ch or key field holds the control code (mod=2 for ctrl)
+  let pfx := modPfx ev
+  match keyNames.findSome? fun (k, bare, modN) => if ev.key == k then some (bare, modN) else none with
+  | some (bare, modN) =>
+    if pfx.isEmpty then (if bare.length == 1 then bare else s!"<{bare}>")
+    else s!"<{pfx}{modN}>"
   | none =>
     let code := if ev.ch > 0 then ev.ch else ev.key.toUInt32
-    if code == Term.ctrlD then "<C-d>"
-    else if code == Term.ctrlU then "<C-u>"
-    -- Regular printable chars
-    else if ev.ch > 0 then (Char.ofNat ev.ch.toNat).toString
+    if code > 0 && code < 32 then s!"<C-{(Char.ofNat (code.toNat + 96)).toString}>"
+    else if ev.ch > 0 then
+      let c := (Char.ofNat ev.ch.toNat).toString
+      if pfx.isEmpty then c else s!"<{pfx}{c}>"
     else ""
 
 -- | Tokenize a `-c` key string into descriptive key tokens.
