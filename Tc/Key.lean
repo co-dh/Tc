@@ -45,7 +45,7 @@ def evToKey (ev : Term.Event) : String :=
 
 -- | Tokenize a `-c` key string into descriptive key tokens.
 -- "jj<ret><C-d>" → #["j", "j", "<ret>", "<C-d>"]
--- Aliases: <backslash> → "\"
+-- Aliases: arrow keys → hjkl
 def tokenizeKeys (s : String) : Array String := Id.run do
   let chars := s.toList
   let mut acc : Array String := #[]
@@ -60,7 +60,6 @@ def tokenizeKeys (s : String) : Array String := Id.run do
           let tok := String.ofList ('<' :: tag ++ ['>'])
           -- resolve aliases: arrow keys → hjkl (matching evToKey normalization)
           let tok := match tok with
-            | "<backslash>" => "\\"
             | "<down>" => "j" | "<up>" => "k" | "<right>" => "l" | "<left>" => "h"
             | t => t
           acc := acc.push tok

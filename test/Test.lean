@@ -290,7 +290,7 @@ def test_delete_hidden_cols : IO Unit := do
 
 def test_filter_parquet_full_db : IO Unit := do
   log "filter_parquet_full_db"
-  let (tab, status) := footer (← run "<backslash>" "data/filtered_test.parquet")
+  let (tab, status) := footer (← run "\\" "data/filtered_test.parquet")
   assert (contains tab "\\sym") "\\ filter shows \\sym in tab"
   let countStr := (status.splitOn "r0/" |>.getD 1 "").takeWhile (·.isDigit)
   let count := countStr.toString.toNat?.getD 0
@@ -673,7 +673,7 @@ def test_derive_arg : IO Unit := do
 -- | Filter via argument command: -c "\Exchange == 'P'<ret>" filters rows
 def test_filter_arg : IO Unit := do
   log "filter_arg"
-  let out ← run "<backslash>Exchange == 'P'<ret>" "data/nyse10k.parquet"
+  let out ← run "\\Exchange == 'P'<ret>" "data/nyse10k.parquet"
   let (_, status) := footer out
   -- 528 rows with Exchange=P in nyse10k
   assert (contains status "r0/528") "filter_arg: 528 rows after filter"
@@ -739,7 +739,7 @@ def test_join_inner : IO Unit := do
   log "join_inner"
   -- [ sorts asc → row0=.., row1=left.csv, row2=right.csv (alphabetical)
   -- j<ret> enter left, ! key id, S swap (cursor stays row1), j<ret> enter right, ! key id, S swap, q pop, J join
-  let output ← run "[j<ret><key>Sj<ret><key>SqJ" "data/join_test"
+  let output ← run "[j<ret>!Sj<ret>!SqJ" "data/join_test"
   assert (contains output "alice") "J shows alice from left table"
   assert (contains output "90") "J shows score=90 from right table"
   let (_, status) := footer output

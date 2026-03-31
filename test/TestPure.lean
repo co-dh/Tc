@@ -176,8 +176,8 @@ section TokenizeKeysTests
 #guard tokenizeKeys "jjj<ret>" == #["j", "j", "j", "<ret>"]
 #guard tokenizeKeys "<C-d><C-u>" == #["<C-d>", "<C-u>"]
 #guard tokenizeKeys "!l!<S-left>" == #["!", "l", "!", "<S-left>"]
--- Aliases resolve to their single-char equivalents
-#guard tokenizeKeys "<backslash>" == #["\\"]
+-- Backslash is a regular printable char, no alias needed
+#guard tokenizeKeys "\\" == #["\\"]
 -- Wait tokens
 #guard tokenizeKeys "<wait><wait>" == #["<wait>", "<wait>"]
 -- Arrow aliases resolve to hjkl (matching evToKey normalization)
