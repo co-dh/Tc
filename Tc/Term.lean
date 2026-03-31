@@ -27,10 +27,6 @@ def modAlt   : UInt8 := 1
 def modCtrl  : UInt8 := 2
 def modShift : UInt8 := 4
 
--- | Ctrl+letter codes (Ctrl+A=1, Ctrl+B=2, ...)
-def ctrlD : UInt32 := 4   -- Ctrl+D (page down)
-def ctrlU : UInt32 := 21  -- Ctrl+U (page up)
-
 -- | Colors (xterm-256 palette for TB_OUTPUT_256)
 -- 0-7: standard ANSI, 8-15: bright, 16-231: cube, 232-255: grayscale
 def default : UInt32 := 0x0000  -- termbox TB_DEFAULT (uses terminal default color)
