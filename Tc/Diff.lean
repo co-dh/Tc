@@ -87,8 +87,6 @@ private def renameDiffCols (tblName : String) (valCols : Array String) : IO (Arr
   pure sameHide
 
 -- | FULL OUTER JOIN top 2 stack views on shared categorical columns.
--- Auto-keys non-numeric common columns, suffixes value columns with _left/_right,
--- hides columns with identical values, Δ-prefixes columns that differ.
 def run (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let some parent := s.tl.head? | return none
   let (left, right) := (parent.nav.tbl, s.tbl)
