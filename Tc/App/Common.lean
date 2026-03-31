@@ -352,7 +352,7 @@ private partial def dispatchHandler (a : AppState) (cmdStr : String) : IO AppSta
   | _ => pure a
 
 -- main loop: render → input → dispatch → loop
-partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppState := do
+partial def mainLoop (a : AppState) (test : Bool) (ks : Array String) : IO AppState := do
   -- Lazy sparkline computation: recompute when cache is empty
   let a ← if a.sparklines.isEmpty then
     pure { a with sparklines := ← Sparkline.compute a.stk.tbl }
@@ -390,25 +390,23 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array Char) : IO AppStat
       UI.Preview.render h.toNat w.toNat cellText a.prevScroll
   Term.present
   if test && ks.isEmpty then IO.print (← Term.bufferStr); return a
-  let (ev, ks') ← nextEvent ks
+  let (key, ks') ← nextKey ks
   -- Socket commands from external tools (handler names)
   let a ← match ← Socket.pollCmd with
     | some cmdStr => dispatchHandler a cmdStr
     | none => pure a
-  -- \x16 = <wait> test key: sleep to let socket commands arrive
-  if ev.type == 1 && ev.key == 0x16 then IO.sleep 50; return ← mainLoop a test ks'
+  -- <wait> test key: sleep to let socket commands arrive
+  if key == "<wait>" then IO.sleep 50; return ← mainLoop a test ks'
   -- Empty event (socket wake-up with no key press) → re-render and loop
-  if ev.type == 0 then return ← mainLoop a test ks'
-  -- Resolve key → command via config (context-aware)
-  let key := evToKey ev
+  if key.isEmpty then return ← mainLoop a test ks'
   let vkStr := viewCtxStr a.stk.cur.vkind
   match ← CmdConfig.keyLookup key vkStr with
   | some ci =>
-    -- Arg commands: collect user input first (in test mode, chars until \r), then dispatch
+    -- Arg commands: collect user input first (in test mode, tokens until <ret>), then dispatch
     let (arg, rest) ← if ← CmdConfig.isArgCmd ci.cmd then
-      pure (if test && ks'.any (· == '\r') then
-        let idx := ks'.findIdx? (· == '\r') |>.getD ks'.size
-        (String.ofList (ks'.extract 0 idx).toList, ks'.extract (idx + 1) ks'.size)
+      pure (if test && ks'.any (· == "<ret>") then
+        let idx := ks'.findIdx? (· == "<ret>") |>.getD ks'.size
+        (String.join (ks'.extract 0 idx).toList, ks'.extract (idx + 1) ks'.size)
       else ("", ks'))
     else pure ("", ks')
     match ← a.dispatch ci arg with

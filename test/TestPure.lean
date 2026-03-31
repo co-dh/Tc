@@ -44,32 +44,20 @@ def testView : View (MockTable 5 3) :=
 
 def testStack : ViewStack (MockTable 5 3) := ⟨testView, []⟩
 
-/-! ## evToKey Tests -/
+/-! ## evToKey Tests (real terminal events) -/
 
 section KeyMapTests
 
--- evToKey: terminal event → readable key string
-theorem evToKey_j     : evToKey (charToEvent 'j') = "j"          := by native_decide
-theorem evToKey_ret   : evToKey (charToEvent '\r') = "<ret>"      := by native_decide
-theorem evToKey_bs    : evToKey (charToEvent '\x7f') = "<bs>"     := by native_decide
-theorem evToKey_ctrlD : evToKey (charToEvent '\x04') = "<C-d>"    := by native_decide
-theorem evToKey_ctrlU : evToKey (charToEvent '\x15') = "<C-u>"    := by native_decide
--- Arrow keys via charToEvent (synthetic codes) → normalized hjkl
-theorem evToKey_down  : evToKey (charToEvent '\x1c') = "j"        := by native_decide
-theorem evToKey_up    : evToKey (charToEvent '\x1d') = "k"        := by native_decide
-theorem evToKey_right : evToKey (charToEvent '\x1e') = "l"        := by native_decide
-theorem evToKey_left  : evToKey (charToEvent '\x1f') = "h"        := by native_decide
--- Shift+Arrow via charToEvent
-theorem evToKey_sleft  : evToKey (charToEvent '\x11') = "<S-left>"  := by native_decide
-theorem evToKey_sright : evToKey (charToEvent '\x12') = "<S-right>" := by native_decide
--- Direct terminal arrow events
+-- evToKey: terminal event → readable key string (real mode path, not test keys)
 theorem evToKey_arrow_down  : evToKey ⟨Term.eventKey, 0, Term.keyArrowDown, 0, 0, 0⟩ = "j"  := by native_decide
 theorem evToKey_arrow_up    : evToKey ⟨Term.eventKey, 0, Term.keyArrowUp, 0, 0, 0⟩ = "k"    := by native_decide
 theorem evToKey_arrow_right : evToKey ⟨Term.eventKey, 0, Term.keyArrowRight, 0, 0, 0⟩ = "l" := by native_decide
 theorem evToKey_arrow_left  : evToKey ⟨Term.eventKey, 0, Term.keyArrowLeft, 0, 0, 0⟩ = "h"  := by native_decide
--- Direct shift+arrow events
 theorem evToKey_shift_left  : evToKey ⟨Term.eventKey, Term.modShift, Term.keyArrowLeft, 0, 0, 0⟩ = "<S-left>"  := by native_decide
 theorem evToKey_shift_right : evToKey ⟨Term.eventKey, Term.modShift, Term.keyArrowRight, 0, 0, 0⟩ = "<S-right>" := by native_decide
+-- Enter/backspace/ctrl via real events
+theorem evToKey_enter : evToKey ⟨Term.eventKey, 0, Term.keyEnter, 0, 0, 0⟩ = "<ret>" := by native_decide
+theorem evToKey_bs    : evToKey ⟨Term.eventKey, 0, Term.keyBackspace2, 0, 0, 0⟩ = "<bs>" := by native_decide
 
 end KeyMapTests
 
@@ -171,23 +159,38 @@ end TabNameTests
 -- Filter.dispatch takes AdbcTable (does IO), so can't test with MockTable.
 -- Coverage via screen tests (test_search_jump, test_filter_parquet_full_db, etc.).
 
-/-! ## parseKeys Tests -/
+/-! ## tokenizeKeys Tests -/
 
-section ParseKeysTests
+section TokenizeKeysTests
 
--- From screen tests using <ret>, <C-d>, <C-u> in key sequences
-#guard parseKeys "<ret>" == "\r"
-#guard parseKeys "<C-d>" == "\x04"
-#guard parseKeys "<C-u>" == "\x15"
-#guard parseKeys "<esc>" == "\x1b"
-#guard parseKeys "jjj<ret>" == "jjj\r"
-#guard parseKeys "<C-d><C-u>" == "\x04\x15"
-#guard parseKeys "abc" == "abc"
-#guard parseKeys "<S-left>" == "\x11"
-#guard parseKeys "<S-right>" == "\x12"
-#guard parseKeys "!l!<S-left>" == "!l!\x11"
+-- Single chars become individual tokens
+#guard tokenizeKeys "abc" == #["a", "b", "c"]
+#guard tokenizeKeys "jjj" == #["j", "j", "j"]
+-- Bracketed keys become single tokens
+#guard tokenizeKeys "<ret>" == #["<ret>"]
+#guard tokenizeKeys "<C-d>" == #["<C-d>"]
+#guard tokenizeKeys "<C-u>" == #["<C-u>"]
+#guard tokenizeKeys "<esc>" == #["<esc>"]
+#guard tokenizeKeys "<S-left>" == #["<S-left>"]
+#guard tokenizeKeys "<S-right>" == #["<S-right>"]
+-- Mixed: chars + bracketed
+#guard tokenizeKeys "jjj<ret>" == #["j", "j", "j", "<ret>"]
+#guard tokenizeKeys "<C-d><C-u>" == #["<C-d>", "<C-u>"]
+#guard tokenizeKeys "!l!<S-left>" == #["!", "l", "!", "<S-left>"]
+-- Backslash is a regular printable char, no alias needed
+#guard tokenizeKeys "\\" == #["\\"]
+-- Wait tokens
+#guard tokenizeKeys "<wait><wait>" == #["<wait>", "<wait>"]
+-- Arrow aliases resolve to hjkl (matching evToKey normalization)
+#guard tokenizeKeys "<down><up>" == #["j", "k"]
+#guard tokenizeKeys "<right><left>" == #["l", "h"]
+-- Edge cases: unclosed/empty brackets treated as literal chars
+#guard tokenizeKeys "" == #[]
+#guard tokenizeKeys "<" == #["<"]
+#guard tokenizeKeys "a<b" == #["a", "<", "b"]
+#guard tokenizeKeys "<>" == #["<", ">"]
 
-end ParseKeysTests
+end TokenizeKeysTests
 
 /-! ## Term.parseColor Tests -/
 
