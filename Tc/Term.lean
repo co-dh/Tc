@@ -31,52 +31,22 @@ def modShift : UInt8 := 4
 def ctrlD : UInt32 := 4   -- Ctrl+D (page down)
 def ctrlU : UInt32 := 21  -- Ctrl+U (page up)
 
--- | Colors (xterm-256 palette for TB_OUTPUT_256)
--- 0-7: standard ANSI, 8-15: bright, 16-231: cube, 232-255: grayscale
-def default : UInt32 := 0x0000  -- termbox TB_DEFAULT (uses terminal default color)
-def black   : UInt32 := 16      -- pure black (from 6x6x6 cube, since 0=TB_DEFAULT)
-def red     : UInt32 := 1       -- ANSI red
-def green   : UInt32 := 2       -- ANSI green
-def yellow  : UInt32 := 3       -- ANSI yellow/olive
-def blue    : UInt32 := 4       -- ANSI blue
-def magenta : UInt32 := 5       -- ANSI magenta
-def cyan    : UInt32 := 6       -- ANSI cyan
-def white   : UInt32 := 7       -- ANSI white (light gray)
--- Bright colors (8-15)
-def brBlack   : UInt32 := 8     -- bright black (dark gray)
-def brRed     : UInt32 := 9
-def brGreen   : UInt32 := 10
-def brYellow  : UInt32 := 11
-def brBlue    : UInt32 := 12
-def brMagenta : UInt32 := 13
-def brCyan    : UInt32 := 14    -- light cyan
-def brWhite   : UInt32 := 15    -- bright white
--- Extended palette
-def slate     : UInt32 := 60    -- muted blue-gray
-def sky       : UInt32 := 237   -- dark gray (subtle highlight)
-def mint      : UInt32 := 158   -- soft mint green
-def peach     : UInt32 := 223   -- soft peach
-def lavender  : UInt32 := 183   -- soft purple
-def gray234   : UInt32 := 234   -- very dark gray
-def gray236   : UInt32 := 236
-def gray238   : UInt32 := 238   -- medium-dark gray
-def gray240   : UInt32 := 240   -- medium gray
-def gray250   : UInt32 := 250
-def gray252   : UInt32 := 252   -- very light gray
--- Theme-specific colors (256-color palette)
-def frost     : UInt32 := 110   -- nord ice blue
-def aurora    : UInt32 := 108   -- nord green
-def polar     : UInt32 := 236   -- nord dark
-def snow      : UInt32 := 253   -- nord light
-def pink      : UInt32 := 212   -- dracula pink
-def purple    : UInt32 := 141   -- dracula purple
-def orange    : UInt32 := 208   -- gruvbox orange
-def olive     : UInt32 := 142   -- gruvbox yellow-green
-def sand      : UInt32 := 223   -- gruvbox light yellow
-def cream     : UInt32 := 229   -- gruvbox cream
-def brown     : UInt32 := 130   -- gruvbox dark brown
-def coral     : UInt32 := 204   -- monokai pink-red
-def violet    : UInt32 := 141   -- monokai purple
+-- | All xterm-256 color names → index. Built once at init.
+-- ANSI names (0-15, black=16), rgbRGB cube (16-231), grayN ramp (232-255).
+private def colorMap : Std.HashMap String UInt32 := Id.run do
+  let mut m : Std.HashMap String UInt32 := {}
+  for (name, idx) in #[("default", 0), ("red", 1), ("green", 2), ("yellow", 3), ("blue", 4),
+      ("magenta", 5), ("cyan", 6), ("white", 7), ("brBlack", 8), ("brRed", 9), ("brGreen", 10),
+      ("brYellow", 11), ("brBlue", 12), ("brMagenta", 13), ("brCyan", 14), ("brWhite", 15),
+      ("black", 16)] do
+    m := m.insert name idx
+  for r in [:6] do for g in [:6] do for b in [:6] do
+    m := m.insert s!"rgb{r}{g}{b}" (16 + 36 * r + 6 * g + b).toUInt32
+  for i in [:24] do
+    m := m.insert s!"gray{i}" (232 + i).toUInt32
+  return m
+
+def parseColor (s : String) : UInt32 := colorMap.getD s 0
 
 -- | Attributes (OR with color)
 def underline : UInt32 := 0x02000000

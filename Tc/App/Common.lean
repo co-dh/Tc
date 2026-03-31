@@ -373,7 +373,7 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array String) : IO AppSt
     let label := colName ++ ": " ++ desc
     let maxLen := w.toNat * 2 / 3
     let label := if label.length > maxLen then (label.take maxLen).toString ++ "…" else label
-    Term.print 0 (ht - 1) Term.cyan Term.default label
+    Term.print 0 (ht - 1) (Theme.styleFg a.theme.styles Theme.sStatus) (Theme.styleBg a.theme.styles Theme.sStatus) label
   -- Column aggregation stats (sum/avg/count) cached per column
   let aggCache ← StatusAgg.update a.aggCache a.stk.tbl a.stk.cur.path a.stk.cur.nav.curColIdx
   let a := { a with aggCache }
