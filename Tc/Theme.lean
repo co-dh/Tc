@@ -77,17 +77,21 @@ def themeName (idx : Nat) : String :=
   let (t, v) := themes.getD idx ("default", "dark")
   s!"{t} ({v})"
 
--- | Theme CSV path (next to binary, or CWD)
-def csvPath : IO String := do
+-- | Embedded CSV as compile-time fallback
+private def builtinCsv : String := include_str "../theme.csv"
+
+-- | Find theme.csv: next to binary, then CWD, then builtin
+private def loadCsv : IO String := do
   let bin ← IO.appPath
   let dir := bin.toString.splitOn "/" |>.dropLast |> "/".intercalate
-  let p := s!"{dir}/theme.csv"
-  try let _ ← IO.FS.Handle.mk p .read; pure p
-  catch _ => pure "theme.csv"
+  for p in #[s!"{dir}/theme.csv", "theme.csv"] do
+    try let _ ← IO.FS.Handle.mk p .read; return ← IO.FS.readFile p
+    catch _ => pure ()
+  pure builtinCsv
 
--- | Load theme from CSV by theme/variant name
-def load (path theme variant : String) : IO (Array UInt32) := do
-  let content ← IO.FS.readFile path
+-- | Load theme by name
+def load (theme variant : String) : IO (Array UInt32) := do
+  let content ← loadCsv
   let matching := content.splitOn "\n"
     |>.filter (·.length > 0)
     |>.drop 1
@@ -103,14 +107,14 @@ def load (path theme variant : String) : IO (Array UInt32) := do
 -- | Load theme by index
 def loadIdx (idx : Nat) : IO (Array UInt32) := do
   let (theme, variant) := themes.getD idx ("default", "dark")
-  load (← csvPath) theme variant <|> pure defaultDark
+  load theme variant
 
 namespace State
 
 def init : IO State := do
   let dark ← isDark
   let variant := if dark then "dark" else "light"
-  let styles ← load (← csvPath) "default" variant <|> pure defaultDark
+  let styles ← load "default" variant
   let idx := themes.findIdx? (· == ("default", variant)) |>.getD 0
   pure ⟨styles, idx⟩
 
