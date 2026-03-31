@@ -184,5 +184,10 @@ section TokenizeKeysTests
 -- Arrow aliases resolve to hjkl (matching evToKey normalization)
 #guard tokenizeKeys "<down><up>" == #["j", "k"]
 #guard tokenizeKeys "<right><left>" == #["l", "h"]
+-- Edge cases: unclosed/empty brackets treated as literal chars
+#guard tokenizeKeys "" == #[]
+#guard tokenizeKeys "<" == #["<"]
+#guard tokenizeKeys "a<b" == #["a", "<", "b"]
+#guard tokenizeKeys "<>" == #["<", ">"]
 
 end TokenizeKeysTests
