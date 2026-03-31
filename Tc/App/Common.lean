@@ -312,7 +312,20 @@ private def commands : Array (E × Option HandlerFn) := #[
       match ← Session.loadWith arg with | some stk' => pure stk' | none => pure a.stk)),
   cmd { cmd := .tblJoin,   ctx := "Sa", key := "J", label := "Join tables" }
     (fun a _ arg => a.runStackIO (do
-      match ← Join.runWith a.stk arg with | some s' => pure s' | none => pure a.stk))
+      match ← Join.runWith a.stk arg with | some s' => pure s' | none => pure a.stk)),
+  -- theme: fzf picker with live preview via socket
+  cmd { cmd := .themeOpen, label := "Pick color theme" }
+    (fun a _ _ => do
+      let ref ← IO.mkRef a
+      let render (styles : Array UInt32) : IO Unit := do
+        let a' ← ref.get
+        let (vs', v') ← a'.stk.cur.doRender a'.vs styles a'.heatMode a'.sparklines
+        ref.set { a' with stk := a'.stk.setCur v', vs := vs' }
+        Term.present
+      match ← Theme.run a.theme render with
+      | some t => pure (.ok { (← ref.get) with theme := t }.resetVS)
+      | none   => pure (.ok { (← ref.get) with theme := a.theme }.resetVS)),
+  cmd { cmd := .themePreview } (fun a _ _ => pure (.ok a))
 ]
 
 def initHandlers : IO Unit := do

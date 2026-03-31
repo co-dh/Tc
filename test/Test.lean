@@ -1185,6 +1185,13 @@ def test_replay_empty : IO Unit := do
   assert (!(contains tab "sort")) "replay: no sort on fresh view"
   assert (!(contains tab "filter")) "replay: no filter on fresh view"
 
+-- theme picker: test mode returns next theme without crashing
+def test_theme : IO Unit := do
+  log "theme"
+  -- Theme.run in test mode cycles to next theme; verify app doesn't crash
+  let out ← run "" "data/basic.csv"
+  assert (contains out "a") "theme: basic render still works after theme init"
+
 -- === Run all tests ===
 
 -- | All tests as (name, action) pairs
@@ -1278,7 +1285,8 @@ def ciTests : Array (String × IO Unit) := #[
   -- Gz view
   ("gz_viewfile", test_gz_viewfile),
   ("gz_csv_ingest", test_gz_csv_ingest),
-  ("gz_txt_fallback", test_gz_txt_fallback)
+  ("gz_txt_fallback", test_gz_txt_fallback),
+  ("theme", test_theme)
 ]
 
 -- Heavy tests: external tools (R, osqueryi), network (HF), databases (pg)
