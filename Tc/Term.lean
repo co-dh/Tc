@@ -57,20 +57,24 @@ def brWhite   : UInt32 := 15    -- bright white
 -- grayN: xterm grayscale ramp, N ∈ 0-23, index = 232 + N
 def parseColor (s : String) : UInt32 :=
   match s with
-  | "default"   => 0
-  | "black"     => 16  -- 0 = TB_DEFAULT, so use cube black
-  | "red"       => 1  | "green"   => 2  | "yellow"  => 3
-  | "blue"      => 4  | "magenta" => 5  | "cyan"    => 6  | "white" => 7
-  | "brBlack"   => 8  | "brRed"   => 9  | "brGreen" => 10 | "brYellow" => 11
-  | "brBlue"    => 12 | "brMagenta" => 13 | "brCyan" => 14 | "brWhite" => 15
+  | "default"   => Term.default
+  | "black"     => Term.black
+  | "red"       => Term.red    | "green"     => Term.green
+  | "yellow"    => Term.yellow | "blue"      => Term.blue
+  | "magenta"   => Term.magenta | "cyan"     => Term.cyan    | "white"   => Term.white
+  | "brBlack"   => Term.brBlack | "brRed"    => Term.brRed   | "brGreen" => Term.brGreen
+  | "brYellow"  => Term.brYellow | "brBlue"  => Term.brBlue  | "brMagenta" => Term.brMagenta
+  | "brCyan"    => Term.brCyan | "brWhite"   => Term.brWhite
   | _ =>
     if s.startsWith "rgb" && s.length == 6 then
       match (s.drop 3).toString.toList with
       | [rc, gc, bc] =>
-        let r := rc.toNat - '0'.toNat
-        let g := gc.toNat - '0'.toNat
-        let b := bc.toNat - '0'.toNat
-        if r ≤ 5 && g ≤ 5 && b ≤ 5 then (16 + 36 * r + 6 * g + b).toUInt32
+        if rc.isDigit && gc.isDigit && bc.isDigit then
+          let r := rc.toNat - '0'.toNat
+          let g := gc.toNat - '0'.toNat
+          let b := bc.toNat - '0'.toNat
+          if r ≤ 5 && g ≤ 5 && b ≤ 5 then (16 + 36 * r + 6 * g + b).toUInt32
+          else 0
         else 0
       | _ => 0
     else if s.startsWith "gray" then
