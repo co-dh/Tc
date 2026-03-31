@@ -43,6 +43,6 @@ def render (screenH screenW : Nat) (vk : ViewKind) : IO Unit := do
     let (k, d) := hints.getD i ("", "")
     let kpad := "".pushn ' ' (keyW - k.length) ++ k
     let dpad := (d.take hintW).toString ++ "".pushn ' ' (hintW - min d.length hintW)
-    Term.print x0.toUInt32 (y0 + i).toUInt32 Term.black Term.yellow (kpad ++ " " ++ dpad)
+    Term.print x0.toUInt32 (y0 + i).toUInt32 16 3 (kpad ++ " " ++ dpad)
 
 end Tc.UI.Info

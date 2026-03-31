@@ -31,57 +31,40 @@ def modShift : UInt8 := 4
 def ctrlD : UInt32 := 4   -- Ctrl+D (page down)
 def ctrlU : UInt32 := 21  -- Ctrl+U (page up)
 
--- | Colors (xterm-256 palette for TB_OUTPUT_256)
--- 0-7: standard ANSI, 8-15: bright, 16-231: cube, 232-255: grayscale
-def default : UInt32 := 0x0000  -- termbox TB_DEFAULT (uses terminal default color)
-def black   : UInt32 := 16      -- pure black (from 6x6x6 cube, since 0=TB_DEFAULT)
-def red     : UInt32 := 1       -- ANSI red
-def green   : UInt32 := 2       -- ANSI green
-def yellow  : UInt32 := 3       -- ANSI yellow/olive
-def blue    : UInt32 := 4       -- ANSI blue
-def magenta : UInt32 := 5       -- ANSI magenta
-def cyan    : UInt32 := 6       -- ANSI cyan
-def white   : UInt32 := 7       -- ANSI white (light gray)
--- Bright colors (8-15)
-def brBlack   : UInt32 := 8     -- bright black (dark gray)
-def brRed     : UInt32 := 9
-def brGreen   : UInt32 := 10
-def brYellow  : UInt32 := 11
-def brBlue    : UInt32 := 12
-def brMagenta : UInt32 := 13
-def brCyan    : UInt32 := 14    -- light cyan
-def brWhite   : UInt32 := 15    -- bright white
--- | Parse color string: "default" | ANSI name | "rgbRGB" (cube) | "gray0"-"gray23"
--- ANSI names: black red green yellow blue magenta cyan white + br* variants
--- rgbRGB: xterm 6×6×6 cube, R/G/B ∈ 0-5, index = 16 + 36R + 6G + B
--- grayN: xterm grayscale ramp, N ∈ 0-23, index = 232 + N
+-- | xterm-256 color names: index → name. Names for ANSI 0-15 + black (16).
+-- 0 = TB_DEFAULT (terminal default), 16 = pure black (since 0 is taken).
+-- Unnamed slots are "". Themes use rgbRGB/grayN syntax for other colors.
+def colorNames : Array String := Id.run do
+  let mut a := Array.replicate 256 ""
+  for (name, idx) in #[
+    ("default", 0),
+    ("red", 1), ("green", 2), ("yellow", 3), ("blue", 4),
+    ("magenta", 5), ("cyan", 6), ("white", 7),
+    ("brBlack", 8), ("brRed", 9), ("brGreen", 10), ("brYellow", 11),
+    ("brBlue", 12), ("brMagenta", 13), ("brCyan", 14), ("brWhite", 15),
+    ("black", 16)] do
+    a := a.set! idx name
+  return a
+
+-- | Parse color string: named | "rgbRGB" (cube) | "gray0"-"gray23"
 def parseColor (s : String) : UInt32 :=
-  match s with
-  | "default"   => Term.default
-  | "black"     => Term.black
-  | "red"       => Term.red    | "green"     => Term.green
-  | "yellow"    => Term.yellow | "blue"      => Term.blue
-  | "magenta"   => Term.magenta | "cyan"     => Term.cyan    | "white"   => Term.white
-  | "brBlack"   => Term.brBlack | "brRed"    => Term.brRed   | "brGreen" => Term.brGreen
-  | "brYellow"  => Term.brYellow | "brBlue"  => Term.brBlue  | "brMagenta" => Term.brMagenta
-  | "brCyan"    => Term.brCyan | "brWhite"   => Term.brWhite
-  | _ =>
-    if s.startsWith "rgb" && s.length == 6 then
-      match (s.drop 3).toString.toList with
-      | [rc, gc, bc] =>
-        if rc.isDigit && gc.isDigit && bc.isDigit then
-          let r := rc.toNat - '0'.toNat
-          let g := gc.toNat - '0'.toNat
-          let b := bc.toNat - '0'.toNat
-          if r ≤ 5 && g ≤ 5 && b ≤ 5 then (16 + 36 * r + 6 * g + b).toUInt32
-          else 0
+  if let some i := colorNames.findIdx? (· == s) then i.toUInt32
+  else if s.startsWith "rgb" && s.length == 6 then
+    match (s.drop 3).toString.toList with
+    | [rc, gc, bc] =>
+      if rc.isDigit && gc.isDigit && bc.isDigit then
+        let r := rc.toNat - '0'.toNat
+        let g := gc.toNat - '0'.toNat
+        let b := bc.toNat - '0'.toNat
+        if r ≤ 5 && g ≤ 5 && b ≤ 5 then (16 + 36 * r + 6 * g + b).toUInt32
         else 0
-      | _ => 0
-    else if s.startsWith "gray" then
-      match (s.drop 4).toString.toNat? with
-      | some n => if n ≤ 23 then (232 + n).toUInt32 else 0
-      | none => 0
-    else 0
+      else 0
+    | _ => 0
+  else if s.startsWith "gray" then
+    match (s.drop 4).toString.toNat? with
+    | some n => if n ≤ 23 then (232 + n).toUInt32 else 0
+    | none => 0
+  else 0
 
 -- | Attributes (OR with color)
 def underline : UInt32 := 0x02000000

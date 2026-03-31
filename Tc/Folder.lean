@@ -215,7 +215,7 @@ def drawDialog (title : String) (lines : Array String) (footer : String) : IO Un
   let boxH := lines.size + 4
   let x0 := (w.toNat - boxW) / 2
   let y0 := (h.toNat - boxH) / 2
-  let fg := Term.white; let bg := Term.blue
+  let fg : UInt32 := 7; let bg : UInt32 := 4
   Term.print x0.toUInt32 y0.toUInt32 fg bg ("┌" ++ "".pushn '─' (boxW - 2) ++ "┐")
   let tpad := (boxW - 2 - title.length) / 2
   Term.print x0.toUInt32 (y0 + 1).toUInt32 fg bg ("│" ++ "".pushn ' ' tpad ++ title ++ "".pushn ' ' (boxW - 2 - tpad - title.length) ++ "│")

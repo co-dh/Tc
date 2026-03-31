@@ -42,14 +42,14 @@ def render (screenH screenW : Nat) (text : String) (scroll : Nat) : IO Unit := d
   let y0 := if y1 + 1 > visible + 2 then y1 - visible - 1 else 0  -- top border
   let actualVisible := y1 - y0 - 1       -- rows between borders
   -- top border
-  Term.print x0.toUInt32 y0.toUInt32 Term.white Term.blue
+  Term.print x0.toUInt32 y0.toUInt32 7 4
     ("┌" ++ "".pushn '─' innerW ++ "┐")
   -- content lines with side borders
   for i in [:actualVisible] do
     let line := lines.getD (scroll + i) ""
     let trimmed := if line.length > innerW then (line.take innerW).toString else line
     let padded := trimmed ++ "".pushn ' ' (innerW - trimmed.length)
-    Term.print x0.toUInt32 (y0 + 1 + i).toUInt32 Term.white Term.blue
+    Term.print x0.toUInt32 (y0 + 1 + i).toUInt32 7 4
       ("│" ++ padded ++ "│")
   -- bottom border with scroll indicator
   let indicator := if nLines > actualVisible
@@ -57,6 +57,6 @@ def render (screenH screenW : Nat) (text : String) (scroll : Nat) : IO Unit := d
     else ""
   let dashW := if innerW > indicator.length then innerW - indicator.length else 0
   let border := "└" ++ "".pushn '─' dashW ++ indicator ++ "┘"
-  Term.print x0.toUInt32 y1.toUInt32 Term.brBlack Term.blue border
+  Term.print x0.toUInt32 y1.toUInt32 8 4 border
 
 end Tc.UI.Preview

@@ -45,7 +45,7 @@ private def render (agg : String) : IO Unit := do
   if agg.isEmpty then return
   let ht ← Term.height; let w ← Term.width
   let pos := w.toNat / 3
-  Term.print pos.toUInt32 (ht - 1) Term.brBlack Term.default agg
+  Term.print pos.toUInt32 (ht - 1) 8 0 agg
 
 -- | Update cache if column changed, then render. Returns updated cache.
 def update (cache : Cache) (tbl : AdbcTable) (path : String) (colIdx : Nat) : IO Cache := do

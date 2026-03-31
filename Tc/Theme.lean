@@ -23,16 +23,17 @@ def styleNames : Array String := #[
 def parseStyle (s : String) : Option Nat := styleNames.idxOf? s
 
 -- | Default dark theme (fallback if CSV fails)
+private def c (s : String) : UInt32 := Term.parseColor s
 def defaultDark : Array UInt32 := #[
-  Term.black, Term.brWhite,                       -- cursor
-  Term.black, Term.parseColor "rgb354",            -- selRow
-  Term.black, Term.parseColor "rgb435",            -- selColCurRow
-  Term.brMagenta, Term.default,                    -- selCol
-  Term.default, Term.parseColor "gray2",           -- curRow
-  Term.default, Term.parseColor "gray6",           -- curCol
-  Term.default, Term.default,                      -- default
-  Term.green, Term.parseColor "rgb112",            -- header
-  Term.default, Term.parseColor "gray5"            -- group
+  c "black", c "brWhite",    -- cursor
+  c "black", c "rgb354",     -- selRow
+  c "black", c "rgb435",     -- selColCurRow
+  c "brMagenta", c "default", -- selCol
+  c "default", c "gray2",    -- curRow
+  c "default", c "gray6",    -- curCol
+  c "default", c "default",  -- default
+  c "green", c "rgb112",     -- header
+  c "default", c "gray5"     -- group
 ]
 
 -- | Detect terminal background: dark (true) or light (false)
