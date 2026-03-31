@@ -13,25 +13,6 @@ structure State where
   styles   : Array UInt32
   themeIdx : Nat
 
--- | Color name → terminal value (for theme.csv parsing)
-private def colorMap : Std.HashMap String UInt32 :=
-  .ofList [
-    ("default", Term.default), ("black", Term.black),
-    ("red", Term.red), ("green", Term.green), ("yellow", Term.yellow),
-    ("blue", Term.blue), ("magenta", Term.magenta), ("cyan", Term.cyan), ("white", Term.white),
-    ("brBlack", Term.brBlack), ("brRed", Term.brRed), ("brGreen", Term.brGreen),
-    ("brYellow", Term.brYellow), ("brBlue", Term.brBlue), ("brMagenta", Term.brMagenta),
-    ("brCyan", Term.brCyan), ("brWhite", Term.brWhite),
-    ("slate", Term.slate), ("sky", Term.sky), ("mint", Term.mint),
-    ("peach", Term.peach), ("lavender", Term.lavender),
-    ("gray234", Term.gray234), ("gray236", Term.gray236), ("gray238", Term.gray238),
-    ("gray240", Term.gray240), ("gray250", Term.gray250), ("gray252", Term.gray252),
-    ("frost", Term.frost), ("aurora", Term.aurora), ("polar", Term.polar), ("snow", Term.snow),
-    ("pink", Term.pink), ("purple", Term.purple),
-    ("orange", Term.orange), ("olive", Term.olive), ("sand", Term.sand),
-    ("cream", Term.cream), ("brown", Term.brown), ("coral", Term.coral), ("violet", Term.violet)]
-
-@[inline] def parseColor (s : String) : UInt32 := colorMap.getD s Term.default
 
 -- | Style names (index into the 18-element styles array)
 def styleNames : Array String := #[
@@ -43,15 +24,15 @@ def parseStyle (s : String) : Option Nat := styleNames.idxOf? s
 
 -- | Default dark theme (fallback if CSV fails)
 def defaultDark : Array UInt32 := #[
-  Term.black, Term.brWhite,      -- cursor
-  Term.black, Term.mint,         -- selRow
-  Term.black, Term.lavender,     -- selColCurRow
-  Term.brMagenta, Term.default,  -- selCol
-  Term.default, Term.gray234,    -- curRow
-  Term.default, Term.gray238,    -- curCol
-  Term.default, Term.default,    -- default
-  Term.green, Term.slate,        -- header
-  Term.default, Term.sky         -- group
+  Term.black, Term.brWhite,  -- cursor
+  Term.black, 158,           -- selRow     (rgb354 = mint)
+  Term.black, 183,           -- selColCurRow (rgb435 = lavender)
+  Term.brMagenta, Term.default, -- selCol
+  Term.default, 234,         -- curRow     (gray2)
+  Term.default, 238,         -- curCol     (gray6)
+  Term.default, Term.default, -- default
+  Term.green, 60,            -- header     (rgb112 = slate)
+  Term.default, 237          -- group      (gray5)
 ]
 
 -- | Detect terminal background: dark (true) or light (false)
@@ -100,8 +81,8 @@ def load (theme variant : String) : IO (Array UInt32) := do
   let mut styles := defaultDark
   for row in matching do
     if let some idx := parseStyle (row.getD 2 "") then
-      styles := styles.set! (idx * 2) (parseColor (row.getD 3 "default"))
-      styles := styles.set! (idx * 2 + 1) (parseColor (row.getD 4 "default"))
+      styles := styles.set! (idx * 2) (Term.parseColor (row.getD 3 "default"))
+      styles := styles.set! (idx * 2 + 1) (Term.parseColor (row.getD 4 "default"))
   return styles
 
 -- | Load theme by index

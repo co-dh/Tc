@@ -8,6 +8,7 @@ import Tc.View
 import Tc.UI.Info
 import Tc.Types
 import Tc.Filter
+import Tc.Term
 import Tc.Folder
 import Tc.Data.Text
 import Tc.Util
@@ -187,3 +188,31 @@ section ParseKeysTests
 #guard parseKeys "!l!<S-left>" == "!l!\x11"
 
 end ParseKeysTests
+
+/-! ## Term.parseColor Tests -/
+
+section ParseColorTests
+
+-- default → TB_DEFAULT (0)
+#guard Term.parseColor "default" == 0
+-- ANSI names → standard indices
+#guard Term.parseColor "black" == 16   -- cube black, since 0 = TB_DEFAULT
+#guard Term.parseColor "red" == 1
+#guard Term.parseColor "white" == 7
+#guard Term.parseColor "brCyan" == 14
+#guard Term.parseColor "brWhite" == 15
+-- rgb cube: index = 16 + 36R + 6G + B
+#guard Term.parseColor "rgb000" == 16   -- black in cube
+#guard Term.parseColor "rgb555" == 231  -- white in cube
+#guard Term.parseColor "rgb520" == 208  -- orange
+#guard Term.parseColor "rgb234" == 110  -- frost blue
+-- grayscale: index = 232 + N
+#guard Term.parseColor "gray0" == 232
+#guard Term.parseColor "gray23" == 255
+#guard Term.parseColor "gray4" == 236
+-- invalid → 0 (default)
+#guard Term.parseColor "rgb600" == 0    -- out of range
+#guard Term.parseColor "gray24" == 0    -- out of range
+#guard Term.parseColor "nosuchcolor" == 0
+
+end ParseColorTests

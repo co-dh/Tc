@@ -51,32 +51,33 @@ def brBlue    : UInt32 := 12
 def brMagenta : UInt32 := 13
 def brCyan    : UInt32 := 14    -- light cyan
 def brWhite   : UInt32 := 15    -- bright white
--- Extended palette
-def slate     : UInt32 := 60    -- muted blue-gray
-def sky       : UInt32 := 237   -- dark gray (subtle highlight)
-def mint      : UInt32 := 158   -- soft mint green
-def peach     : UInt32 := 223   -- soft peach
-def lavender  : UInt32 := 183   -- soft purple
-def gray234   : UInt32 := 234   -- very dark gray
-def gray236   : UInt32 := 236
-def gray238   : UInt32 := 238   -- medium-dark gray
-def gray240   : UInt32 := 240   -- medium gray
-def gray250   : UInt32 := 250
-def gray252   : UInt32 := 252   -- very light gray
--- Theme-specific colors (256-color palette)
-def frost     : UInt32 := 110   -- nord ice blue
-def aurora    : UInt32 := 108   -- nord green
-def polar     : UInt32 := 236   -- nord dark
-def snow      : UInt32 := 253   -- nord light
-def pink      : UInt32 := 212   -- dracula pink
-def purple    : UInt32 := 141   -- dracula purple
-def orange    : UInt32 := 208   -- gruvbox orange
-def olive     : UInt32 := 142   -- gruvbox yellow-green
-def sand      : UInt32 := 223   -- gruvbox light yellow
-def cream     : UInt32 := 229   -- gruvbox cream
-def brown     : UInt32 := 130   -- gruvbox dark brown
-def coral     : UInt32 := 204   -- monokai pink-red
-def violet    : UInt32 := 141   -- monokai purple
+-- | Parse color string: "default" | ANSI name | "rgbRGB" (cube) | "gray0"-"gray23"
+-- ANSI names: black red green yellow blue magenta cyan white + br* variants
+-- rgbRGB: xterm 6×6×6 cube, R/G/B ∈ 0-5, index = 16 + 36R + 6G + B
+-- grayN: xterm grayscale ramp, N ∈ 0-23, index = 232 + N
+def parseColor (s : String) : UInt32 :=
+  match s with
+  | "default"   => 0
+  | "black"     => 16  -- 0 = TB_DEFAULT, so use cube black
+  | "red"       => 1  | "green"   => 2  | "yellow"  => 3
+  | "blue"      => 4  | "magenta" => 5  | "cyan"    => 6  | "white" => 7
+  | "brBlack"   => 8  | "brRed"   => 9  | "brGreen" => 10 | "brYellow" => 11
+  | "brBlue"    => 12 | "brMagenta" => 13 | "brCyan" => 14 | "brWhite" => 15
+  | _ =>
+    if s.startsWith "rgb" && s.length == 6 then
+      match (s.drop 3).toString.toList with
+      | [rc, gc, bc] =>
+        let r := rc.toNat - '0'.toNat
+        let g := gc.toNat - '0'.toNat
+        let b := bc.toNat - '0'.toNat
+        if r ≤ 5 && g ≤ 5 && b ≤ 5 then (16 + 36 * r + 6 * g + b).toUInt32
+        else 0
+      | _ => 0
+    else if s.startsWith "gray" then
+      match (s.drop 4).toString.toNat? with
+      | some n => if n ≤ 23 then (232 + n).toUInt32 else 0
+      | none => 0
+    else 0
 
 -- | Attributes (OR with color)
 def underline : UInt32 := 0x02000000
