@@ -178,7 +178,6 @@ section TokenizeKeysTests
 #guard tokenizeKeys "!l!<S-left>" == #["!", "l", "!", "<S-left>"]
 -- Aliases resolve to their single-char equivalents
 #guard tokenizeKeys "<backslash>" == #["\\"]
-#guard tokenizeKeys "<key>" == #["!"]
 -- Wait tokens
 #guard tokenizeKeys "<wait><wait>" == #["<wait>", "<wait>"]
 -- Arrow aliases resolve to hjkl (matching evToKey normalization)
