@@ -58,9 +58,11 @@ theorem evToKey_shift_left  : evToKey ⟨Term.eventKey, Term.modShift, Term.keyA
 theorem evToKey_shift_right : evToKey ⟨Term.eventKey, Term.modShift, Term.keyArrowRight, 0, 0, 0⟩ = "<S-right>" := by native_decide
 theorem evToKey_ctrl_up     : evToKey ⟨Term.eventKey, Term.modCtrl, Term.keyArrowUp, 0, 0, 0⟩ = "<C-up>" := by native_decide
 theorem evToKey_alt_down    : evToKey ⟨Term.eventKey, Term.modAlt, Term.keyArrowDown, 0, 0, 0⟩ = "<A-down>" := by native_decide
--- Special keys
-theorem evToKey_enter : evToKey ⟨Term.eventKey, 0, Term.keyEnter, 0, 0, 0⟩ = "<ret>" := by native_decide
-theorem evToKey_bs    : evToKey ⟨Term.eventKey, 0, Term.keyBackspace2, 0, 0, 0⟩ = "<bs>" := by native_decide
+-- Special keys (termbox2 sets mod=ctrl for control chars like Enter/Bs/Esc)
+theorem evToKey_enter : evToKey ⟨Term.eventKey, Term.modCtrl, Term.keyEnter, 0, 0, 0⟩ = "<ret>" := by native_decide
+theorem evToKey_enter0 : evToKey ⟨Term.eventKey, 0, Term.keyEnter, 0, 0, 0⟩ = "<ret>" := by native_decide
+theorem evToKey_bs    : evToKey ⟨Term.eventKey, Term.modCtrl, Term.keyBackspace, 0, 0, 0⟩ = "<bs>" := by native_decide
+theorem evToKey_bs2   : evToKey ⟨Term.eventKey, 0, Term.keyBackspace2, 0, 0, 0⟩ = "<bs>" := by native_decide
 -- Generic ctrl from control code
 theorem evToKey_ctrl_d : evToKey ⟨Term.eventKey, 2, 4, 0, 0, 0⟩ = "<C-d>" := by native_decide
 theorem evToKey_ctrl_u : evToKey ⟨Term.eventKey, 2, 21, 0, 0, 0⟩ = "<C-u>" := by native_decide

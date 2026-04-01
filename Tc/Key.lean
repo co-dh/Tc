@@ -31,6 +31,9 @@ def evToKey (ev : Term.Event) : String :=
   let pfx := modPfx ev
   match keyNames.findSome? fun (k, bare, modN) => if ev.key == k then some (bare, modN) else none with
   | some (bare, modN) =>
+    -- termbox2 sets TB_MOD_CTRL for ASCII control chars (Enter=0x0D, Bs=0x08, Esc=0x1B).
+    -- Strip that implicit ctrl so Enter produces "<ret>" not "<C-ret>".
+    let pfx := if ev.key < 0x20 then pfx.replace "C-" "" else pfx
     if pfx.isEmpty then (if bare.length == 1 then bare else s!"<{bare}>")
     else s!"<{pfx}{modN}>"
   | none =>
