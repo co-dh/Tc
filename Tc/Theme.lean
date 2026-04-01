@@ -98,7 +98,7 @@ private def loadCsv : IO String := do
 -- | Load theme by name. CSV is pivoted: columns are style names, cells are "fg bg".
 def load (theme variant : String) : IO (Array UInt32) := do
   let content ← loadCsv
-  let lines := content.splitOn "\n" |>.filter (·.length > 0)
+  let lines := content.splitOn "\n" |>.filter (!·.isEmpty)
   let header := (lines.headD "").splitOn ","
   let colNames := header.drop 2  -- style names from header
   let row := lines.drop 1 |>.find? fun line =>

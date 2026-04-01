@@ -36,7 +36,7 @@ private def fmtType (s : String) : String :=
 def listDir (path : String) (depth : Nat) : IO String := do
   let p := if path.isEmpty then "." else path
   let out ← Log.run "find" "find" #["-H", p, "-maxdepth", toString depth, "-printf", "%y\t%s\t%T+\t%p\n"]
-  let lines := out.stdout.splitOn "\n" |>.filter (·.length > 0)
+  let lines := out.stdout.splitOn "\n" |>.filter (!·.isEmpty)
   let hdr := "name\tsize\tmodified\ttype"
   let parentEntry := "..\t0\t\tdir"
   let body := lines.drop 1 |>.map fun line =>
