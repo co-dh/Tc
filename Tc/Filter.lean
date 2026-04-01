@@ -45,6 +45,62 @@ def rowSearch (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun curCol 
   let some rowIdx ← TblOps.findRow s.tbl curCol result start true | return s
   return moveRowTo s rowIdx (some (curCol, result))
 
+-- | findRow with cache: fzf fires focus on every arrow key, so without caching
+-- each fires a SQL query causing visible lag.
+private def cachedFindRow [TblOps T] (cache : IO.Ref (Std.HashMap Nat (Option Nat)))
+    (tbl : T) (col idx : Nat) (val : String) : IO (Option Nat) := do
+  match (← cache.get).get? idx with
+  | some hit => pure hit
+  | none => let r ← TblOps.findRow tbl col val 0 true
+            cache.modify (·.insert idx r); pure r
+
+-- | Build poll callback for live search preview.
+-- On each fzf focus change, finds the matching row (cached) and re-renders.
+private def searchPoll [TblOps T] (tbl : T) (curCol : Nat) (vals : Array String)
+    (sRef : IO.Ref (ViewStack T)) (preview : ViewStack T → IO Unit)
+    : IO (IO.Ref (Std.HashMap Nat (Option Nat)) × IO Unit) := do
+  let lastIdx ← IO.mkRef (none : Option Nat)
+  let cache : IO.Ref (Std.HashMap Nat (Option Nat)) ← IO.mkRef {}
+  let poll : IO Unit := do
+    let some cmdStr ← Socket.pollCmd | pure ()
+    let parts := cmdStr.splitOn " "
+    if parts.headD "" != "search.preview" then return
+    let some idx := (parts.getD 1 "").toNat? | pure ()
+    if idx >= vals.size || (← lastIdx.get) == some idx then return
+    lastIdx.set (some idx)
+    let val := vals.getD idx ""
+    let some rowIdx ← cachedFindRow cache tbl curCol idx val | pure ()
+    let s' := moveRowTo (← sRef.get) rowIdx (some (curCol, val))
+    sRef.set s'; preview s'
+  pure (cache, poll)
+
+-- | Row search with live preview: cursor moves as user browses fzf results.
+-- fzf focus → shell script → socat → socket → poll → findRow → re-render.
+def rowSearchLive (s : ViewStack T) (preview : ViewStack T → IO Unit) : IO (ViewStack T) :=
+  withDistinct s fun curCol curName vals => do
+    if ← Fzf.getTestMode then
+      let result := vals.getD 0 ""
+      if result.isEmpty then return s
+      let some rowIdx ← TblOps.findRow s.tbl curCol result 0 true | return s
+      return moveRowTo s rowIdx (some (curCol, result))
+    -- setup: socat script for fzf execute-silent, indexed items for shell-safe args
+    let sockPath ← Socket.getPath
+    let script ← Tc.tmpPath "search-preview.sh"
+    IO.FS.writeFile script s!"#!/bin/sh\necho \"search.preview $1\" | socat - UNIX-CONNECT:{sockPath}"
+    let items := vals.mapIdx fun i v => s!"{i}\t{v}"
+    let sRef ← IO.mkRef s
+    let (cache, poll) ← searchPoll s.tbl curCol vals sRef preview
+    -- run fzf with live preview polling
+    let opts := #[s!"--prompt=/{curName}: ", "--with-nth=2..", "--delimiter=\t",
+                  s!"--bind=focus:execute-silent(sh {script} \{1})"]
+    let out ← Fzf.fzfCore opts (items.joinWith "\n") poll
+    if out.isEmpty then return ← sRef.get  -- cancelled: keep preview position
+    -- apply final selection (reuse cache from preview)
+    let some idx := out.splitOn "\t" |>.head? |>.bind String.toNat? | return s
+    let result := vals.getD idx ""
+    let some rowIdx ← cachedFindRow cache s.tbl curCol idx result | return s
+    return moveRowTo s rowIdx (some (curCol, result))
+
 -- | search in direction: fwd=true (n), bwd=false (N)
 def searchDir (s : ViewStack T) (fwd : Bool) : IO (ViewStack T) := do
   let v := s.cur
@@ -96,7 +152,6 @@ namespace Tc.Filter
 def dispatch (s : ViewStack AdbcTable) (h : Cmd) : Option (IO (ViewStack AdbcTable)) :=
   match h with
   | .colSearch     => some (s.colSearch)
-  | .rowSearch     => some (s.rowSearch)
   | .rowFilter     => some (s.rowFilter)
   | .rowSearchNext => some (s.searchDir true)
   | .rowSearchPrev => some (s.searchDir false)
