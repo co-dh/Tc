@@ -14,7 +14,7 @@ namespace Tc.Plot
 variable {T : Type} [TblOps T]
 
 -- | Max data points for plot (more is slow and unreadable)
-private def maxPoints : Nat := 2000
+def maxPoints : Nat := 2000
 
 -- | Downsampling interval for interactive plot control
 structure Interval where
@@ -197,7 +197,7 @@ private def renderFrame (pngPath : String)
     let hi (s : String) := s!"\x1b[33m{s}\x1b[0m"
     let bar := (intervals.mapIdx fun i iv =>
       if i == idx then s!"\x1b[1;7m {iv.label} \x1b[0m" else s!" {iv.label} ").joinWith " "
-    IO.println s!"{hi ","}/{hi "."}:{bar}"
+    IO.println s!"\r                                  {hi ","}/{hi "."}:{bar}"
 
 -- | Run plot with interactive controls (in-place re-rendering)
 def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
@@ -261,7 +261,7 @@ def run (s : ViewStack T) (kind : PlotKind) : IO (Option (ViewStack T)) := do
       else pure xType0
   Log.write "plot" s!"xType={xType} (raw={xType0}) xIdx={xIdx} xName={xName}"
   let xIsTime := xType.isTime
-  let needsDownsample := nr > maxPoints || xIsTime
+  let needsDownsample := nr > maxPoints
   let baseStep := if nr > maxPoints then nr / maxPoints else 1
   let hasCat := n.grp.size > 1 && !hasFacet
   let intervals := if needsDownsample then getIntervals xType baseStep else #[⟨"all", 1⟩]

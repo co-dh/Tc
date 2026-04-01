@@ -236,7 +236,7 @@ def fetchMore (t : AdbcTable) : IO (Option AdbcTable) := do
 
 -- | Export plot data to tmpdir/plot.dat via DuckDB COPY (downsample in SQL)
 -- truncLen: SUBSTRING length for time truncation; step: every-Nth-row for non-time
-def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String) (xIsTime : Bool) (step : Nat) (truncLen : Nat)
+def plotExport (t : AdbcTable) (xName yName : String) (catName? : Option String) (xIsTime : Bool) (_step : Nat) (truncLen : Nat)
     : IO (Option (Array String)) := do
   let q := Prql.quote
   -- time-like: use PRQL ds_trunc; non-time: hand-write SQL (PRQL miscompiles ROW_NUMBER + select)

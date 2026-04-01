@@ -81,7 +81,7 @@ private def flatItems (vk : ViewKind) : IO (Array String) := do
 
 -- | Parse flat selection: extract handler name before first |
 def parseFlatSel (sel : String) : Option String :=
-  let h := ((sel.splitOn " | ").headD "").trimRight
+  let h := ((sel.splitOn " | ").headD "").trimAsciiEnd.toString
   if h.isEmpty then none else some h
 
 -- | Command mode: space → flat fzf menu → return handler name

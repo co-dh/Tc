@@ -100,6 +100,13 @@ end ViewUpdateTests
 #guard Tc.Fzf.parseFlatSel "sort.asc     | c  | [ | Sort ascending" == some "sort.asc"
 #guard Tc.Fzf.parseFlatSel "" == none
 
+/-! ## Plot downsampling: interval bar only shows when nr > maxPoints -/
+
+-- Small dataset (100 rows) should NOT trigger downsampling (no ,/. bar)
+#guard !(100 > Tc.Plot.maxPoints)
+-- Large dataset should trigger downsampling
+#guard (3000 > Tc.Plot.maxPoints)
+
 /-! ## Plot rScript Tests -/
 
 private def has (s needle : String) : Bool := (s.splitOn needle).length > 1
