@@ -126,7 +126,7 @@ def escSql (s : String) : String := s.replace "'" "''"
 def freqPctBar (cntData : Array Int64) : Array Float × Array String :=
   let total := cntData.foldl (init := 0) (· + ·)
   let pct := cntData.map fun c => if total > 0 then c.toFloat * 100 / total.toFloat else 0
-  let bar := pct.map fun p => String.ofList (List.replicate (p / 5.0).toUInt32.toNat '#')
+  let bar := pct.map fun p => "".pushn '#' (p / 5.0).toUInt32.toNat
   (pct, bar)
 
 /-! ## Core Typeclasses -/
@@ -221,7 +221,7 @@ def ModifyTable.hide [ModifyTable α] (tbl : α) (cursor : Nat) (sels : Array Na
 def ModifyTable.sort [ModifyTable α] (tbl : α) (cursor : Nat) (selIdxs : Array Nat) (grpIdxs : Array Nat) (asc : Bool) : IO α :=
   let cols := (selIdxs ++ #[cursor])
     |>.filter (!grpIdxs.contains ·)
-    |>.foldl (init := #[]) fun acc c => if acc.contains c then acc else acc.push c
+    |>.toList.eraseDups.toArray
   if cols.isEmpty then pure tbl else sortBy cols asc tbl
 
 

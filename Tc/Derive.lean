@@ -27,7 +27,7 @@ private def samples (col : String) : ColType → String
 private def colHints (names : Array String) (types : Array ColType) : String :=
   let maxLen := names.foldl (fun mx n => max mx n.length) 0
   names.mapIdx (fun i n =>
-    let pad := String.ofList (List.replicate (maxLen - n.length) ' ')
+    let pad := "".pushn ' ' (maxLen - n.length)
     s!"{n}{pad} : {types.getD i .other}")
   |>.joinWith "\n"
 
