@@ -21,10 +21,6 @@ private def commonCols (left right : AdbcTable) : Array (String × ColType) :=
     let rt := right.colTypes.getD ri .other
     if lt == rt then pure (name, lt) else none
 
--- | Deduplicate array preserving insertion order
-private def dedup (a : Array String) : Array String :=
-  a.foldl (init := #[]) fun acc k => if acc.contains k then acc else acc.push k
-
 -- | Columns in `tbl` that don't appear in `common` or `keys`
 private def onlyCols (tbl : AdbcTable) (common : Array (String × ColType)) (keys : Array String) :=
   tbl.colNames.filter fun n => !common.any (·.1 == n) && !keys.contains n
@@ -44,7 +40,7 @@ private def resolveKeys (parentGrp curGrp : Array String) (common : Array (Strin
     |>.filter (fun (_, typ) => !isNumeric typ)
     |>.map (·.1)
     |>.filter (fun n => !existingGrp.contains n)
-  let allKeys := existingGrp ++ autoKeys |> dedup
+  let allKeys := (existingGrp ++ autoKeys).toList.eraseDups.toArray
   if allKeys.isEmpty then none
   else some (allKeys, common.map (·.1) |>.filter (fun n => !allKeys.contains n))
 
