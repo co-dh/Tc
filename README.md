@@ -166,59 +166,36 @@ tv -s mysession                    # Restore saved session
 | `k` / `↑`     | Up     |
 | `h` / `←`     | Left   |
 | `l` / `→`     | Right  |
-| `J` / `PgDn`  | Page down |
-| `K` / `PgUp`  | Page up |
-| `H`           | Page left |
-| `L`           | Page right |
-| `Space V >`   | Bottom |
-| `Space V <`   | Top    |
-| `Space H <`   | First column |
-| `Space H >`   | Last column |
+| `PgDn` / `C-d` | Page down |
+| `PgUp` / `C-u` | Page up |
+| `Home`         | Top    |
+| `End`          | Bottom |
 
 ### Views
 
 | Key         | Action                                                           |
-|-----        |--------                                                          |
+|-------------|------------------------------------------------------------------|
 | `F`         | Frequency view (group by key + cursor column)                    |
 | `M`         | Column metadata view                                             |
 | `Enter`     | Enter (open file in folder, filter from freq, set key from meta) |
-| `Backspace`  | Go to parent directory (folder view)                             |
-| `q` / `Esc` | Pop view (quit if last)                                          |
+| `Backspace` | Go to parent directory (folder view)                             |
+| `q`         | Pop view (quit if last)                                          |
 | `X`         | Transpose (swap rows and columns)                                |
 | `J`         | Join top 2 views (inner/left/right join, union, set diff)        |
-| `V`         | Diff top 2 views (auto-key, hide same columns, Δ prefix diffs)  |
+| `d`         | Diff top 2 views (auto-key, hide same columns, Δ prefix diffs)  |
 | `S`         | Swap top two views                                               |
+| `D`         | Browse folder                                                    |
 | `W`         | Save session (view stack to `~/.cache/tv/sessions/`)             |
-| `L`         | Load session (restore saved view stack)                          |
-| `Q`         | Quit                                                             |
-
-### Clipboard
-
-| Key | Action |
-|-----|--------|
-| `Space y ~` | Yank cell to clipboard |
-| `Space y >` | Yank row (tab-separated) |
-| `Space y <` | Yank column (newline-separated) |
-
-Auto-detects pbcopy (macOS), wl-copy (Wayland), xclip, or xsel.
-
-### Export
-
-| Key | Action |
-|-----|--------|
-| `e` | Export current view (fzf picker: csv, parquet, json) |
-
-Exports to `~/tv_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows.
 
 ### Selection and Grouping
 
 | Key | Action |
 |-----|--------|
-| `t` | Toggle column selection |
 | `T` | Toggle row selection |
 | `!` | Toggle key column (group) |
 | `Shift+←/→` | Reorder key columns (for join ordering) |
-| `H` | Toggle hide column |
+| `H` | Hide/unhide current column |
+| `x` | Delete column(s) from query |
 
 ### Sorting and Transforms
 
@@ -237,13 +214,13 @@ Exports to `~/tv_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows
 | `n` | Next match |
 | `N` | Previous match |
 | `\` | Filter expression (PRQL) |
-| `s` | Column jump (fzf) |
-| `Space` | Command palette (flat fzf menu, bottom-anchored) |
+| `g` | Jump to column by name (fzf) |
+| `Space` | Command palette (all commands with fuzzy search) |
 
 ### Meta View (M)
 
 | Key     | Action                                     |
-|-----    |--------                                    |
+|---------|--------------------------------------------|
 | `0`     | Select all-null columns                    |
 | `1`     | Select single-value columns                |
 | `Enter` | Set selected as key columns, pop to parent |
@@ -252,10 +229,11 @@ Exports to `~/tv_export_<name>.<fmt>`. Includes all filtered/sorted/grouped rows
 
 | Key | Action |
 |-----|--------|
-| `Space p >`/`<` | Increase/decrease decimal precision |
-| `Space w >`/`<` | Widen/narrow columns |
-| `Space T >`/`<` | Cycle themes |
 | `I` | Toggle info overlay (context-specific hints) |
+| `{` / `}` | Scroll cell preview up/down |
+| `e` | Export current view (csv/parquet/json/ndjson) |
+
+Everything else (precision, width, themes, clipboard, heatmap, plots, session load) is accessible via `Space` command palette.
 
 ### Plot
 
@@ -263,34 +241,13 @@ Renders charts via R/ggplot2. Data is exported from DuckDB, downsampled if large
 
 #### Setup
 
-| Column | How to set | Type |
-|--------|-----------|------|
-| **X-axis** | Group a column with `!` | any (numeric, time, string) |
-| **Y-axis** | Move cursor to it | numeric (int, float, decimal) |
-| **Color** (optional) | Group a 2nd column with `!` | categorical (string) |
-| **Facet** (optional) | Group a 3rd column with `!` | categorical (string) |
+1. Group a column with `!` for the x-axis
+2. Move cursor to a numeric column for y-axis
+3. Open `Space` menu and pick a plot type (line, scatter, bar, boxplot, area, step, violin)
 
-**Histogram** is the exception — no group columns needed, just cursor on a numeric column.
+**Histogram/density** are exceptions — no group needed, just cursor on a numeric column.
 
-#### Keybindings
-
-| Key | Action | Columns needed |
-|-----|--------|----------------|
-| `P.` | Line plot | `!` x-axis + cursor on numeric y |
-| `P,` | Bar plot | `!` x-axis + cursor on numeric y |
-| `Ps` | Scatter plot | `!` x-axis + cursor on numeric y |
-| `Pb` | Boxplot | `!` x-axis + cursor on numeric y |
-| `Ph` | Histogram | cursor on numeric column (no `!` needed) |
-
-#### Example workflow
-
-1. Press `!` on the column you want as x-axis (e.g. `Time`)
-2. Move cursor to a numeric column for y-axis (e.g. `Price`)
-3. Press `Ps` for scatter plot
-
-To add color by category: also press `!` on a string column (e.g. `Symbol`).
-
-To add facets (small multiples): group a 3rd column — it becomes the facet, and the 2nd group becomes color.
+Optional: group a 2nd column for color, 3rd for facets.
 
 | Groups | X-axis | Color | Facet |
 |--------|--------|-------|-------|
@@ -300,17 +257,12 @@ To add facets (small multiples): group a 3rd column — it becomes the facet, an
 
 #### Interactive controls
 
-Once in plot view, keys control the chart in-place (no dialog, instant re-render):
+Once in plot view, keys control the chart in-place:
 
 | Key | Action |
 |-----|--------|
-| `h`/`l` | Cycle plot type (line → scatter → bar → box) |
 | `.`/`,` | Coarser/finer downsampling (shown only for large data) |
 | `q` | Exit back to the table |
-
-For time-series x-axis, intervals cycle `1s → 1m → 1h → 1d`. For numeric x-axis, step multiplier increases `1x → 2x → 4x → 8x → 16x`.
-
-Switching plot type with `h`/`l` re-renders instantly with the same data — no need to exit and re-enter.
 
 #### Display
 
