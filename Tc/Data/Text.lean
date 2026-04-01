@@ -31,7 +31,7 @@ private def splitN (s : String) (n : Nat) : Array String := Id.run do
   let mut result : Array String := #[]
   let mut rest := s.trimAsciiStart.toString
   for _ in [:n-1] do
-    match rest.splitOn " " |>.filter (·.length > 0) with
+    match rest.splitOn " " |>.filter (!·.isEmpty) with
     | [] => result := result.push ""  -- pad with empty
     | fld :: tl =>
       result := result.push fld
@@ -64,7 +64,7 @@ private def splitByStarts (s : String) (starts : Array Nat) : Array String := Id
 -- | Parse space-separated text to TSV string (like ps aux, ls -l, systemctl output)
 -- Fixed-width if header has 2+ space gaps AND gives more cols than mode-based
 def fromText (content : String) : Except String String :=
-  let lines := content.splitOn "\n" |>.filter (·.length > 0)
+  let lines := content.splitOn "\n" |>.filter (!·.isEmpty)
   match lines with
   | [] => .error "empty input"
   | hdr :: rest =>

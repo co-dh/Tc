@@ -124,7 +124,7 @@ def escSql (s : String) : String := s.replace "'" "''"
 
 -- | Compute pct and bar from count data (for freq → fromArrays).
 def freqPctBar (cntData : Array Int64) : Array Float × Array String :=
-  let total := cntData.foldl (init := 0) (· + ·)
+  let total := cntData.sum
   let pct := cntData.map fun c => if total > 0 then c.toFloat * 100 / total.toFloat else 0
   let bar := pct.map fun p => "".pushn '#' (p / 5.0).toUInt32.toNat
   (pct, bar)
@@ -304,15 +304,15 @@ elab "cmd_enum " name:ident " where" entries:((ppLine "| " ident " => " str))* :
     | .error e => throwError e
   let nm := name.getId.toString (escape := false)
   -- inductive
-  let ctors := pairs.map (fun (n, _) => s!"  | {n}") |>.toList |> "\n".intercalate
+  let ctors := pairs.map (fun (n, _) => s!"  | {n}") |>.joinWith "\n"
   elabStr s!"inductive {nm} where\n{ctors}\n  deriving BEq, Hashable, Repr, Inhabited"
   elabStr s!"namespace {nm}"
   -- toStr
-  let arms := pairs.map (fun (n, s) => s!"  | .{n} => \"{s}\"") |>.toList |> "\n".intercalate
+  let arms := pairs.map (fun (n, s) => s!"  | .{n} => \"{s}\"") |>.joinWith "\n"
   elabStr s!"def toStr : {nm} → String\n{arms}"
   elabStr s!"instance : ToString {nm} where toString := toStr"
   -- all
-  let items := pairs.map (fun (n, _) => s!".{n}") |>.toList |> ", ".intercalate
+  let items := pairs.map (fun (n, _) => s!".{n}") |>.joinWith ", "
   elabStr s!"def all : Array {nm} := #[{items}]"
   -- strMap + ofString?
   elabStr s!"private def strMap : Std.HashMap String {nm} := all.foldl (init := \{}) fun m c => m.insert c.toStr c"

@@ -35,7 +35,7 @@ def urlEncodeUrl (pfx url : String) : String :=
 def parseLs (raw : String) : String := Id.run do
   let mut rows : Array String := #["name\tsize\tdate\ttype"]
   for line in raw.splitOn "\n" do
-    let parts := line.trimAscii.toString.splitOn " " |>.filter (·.length > 0)
+    let parts := line.trimAscii.toString.splitOn " " |>.filter (!·.isEmpty)
     if parts.length < 9 then continue
     let name := " ".intercalate (parts.drop 8) |>.splitOn " -> " |>.head!
     let size := parts.getD 4 "0"
