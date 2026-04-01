@@ -226,7 +226,18 @@ private def commands : Array (E × Option HandlerFn) := #[
   nav { cmd := .rowSel,     ctx := "r",  key := "T", label := "Select/deselect current row" },
   -- row search/filter
   cmd { cmd := .rowSearch,    ctx := "ca", key := "/", label := "Search for value in current column", resetsVS := true }
-    (argH ViewStack.rowSearch ViewStack.searchWith),
+    (fun a _ arg => do
+      if !arg.isEmpty then return ← a.runStackIO (ViewStack.searchWith a.stk arg)
+      let ref ← IO.mkRef a
+      let preview (stk' : ViewStack AdbcTable) : IO Unit := do
+        let a' ← ref.get
+        let (vs', v') ← stk'.cur.doRender a'.vs a'.theme.styles a'.heatMode a'.sparklines
+        ref.set { a' with stk := stk'.setCur v', vs := vs' }
+        renderTabLine stk'.tabNames 0 (Replay.opsStr stk'.cur)
+        if a'.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat stk'.cur.vkind
+        Term.present
+      let stk' ← ViewStack.rowSearchLive a.stk preview
+      pure (.ok { (← ref.get) with stk := stk' }.resetVS)),
   cmd { cmd := .rowFilter,    ctx := "a",  key := "\\", label := "Filter rows by PRQL expression", resetsVS := true }
     (argH ViewStack.rowFilter ViewStack.filterWith),
   cmd { cmd := .rowSearchNext, ctx := "rc", key := "n", label := "Jump to next search match" } (domainH' Filter.dispatch),

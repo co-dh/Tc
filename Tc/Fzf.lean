@@ -28,9 +28,17 @@ def fzfCore (opts : Array String) (input : String) (poll : IO Unit := pure ()) :
     pure (input.splitOn "\n" |>.filter (!·.isEmpty) |>.headD "")
   else
     let inTmux := (← IO.getEnv "TMUX").isSome
+    let lines := input.splitOn "\n" |>.filter (!·.isEmpty)
+    let popupH := min (lines.length + 2) 15  -- fit content, cap at 15
+    -- measure visible width: strip hidden prefix when --with-nth hides leading fields
+    let visLines := if opts.any (·.startsWith "--with-nth=2")
+      then lines.map fun l => match l.splitOn "\t" with | _ :: rest => "\t".intercalate rest | _ => l
+      else lines
+    let maxW := visLines.foldl (fun m l => max m l.length) 0
+    let popupW := min (max (maxW + 4) 50) 80  -- fit content, floor 50 for typing
     let baseArgs := if inTmux
-      then #["--tmux=bottom,80%,40%", "--layout=reverse", "--exact", "+i"]  -- compact popup at bottom
-      else #["--height=50%", "--layout=reverse", "--exact", "+i"]             -- bottom half inline
+      then #[s!"--tmux=bottom,{popupW},{popupH}", "--layout=reverse", "--exact", "+i"]
+      else #[s!"--height={popupH + 1}", "--layout=reverse", "--exact", "+i"]
     if !inTmux then Term.shutdown
     let child ← IO.Process.spawn { cmd := "fzf", args := baseArgs ++ opts, stdin := .piped, stdout := .piped }
     child.stdin.putStr input
