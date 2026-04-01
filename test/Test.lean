@@ -508,7 +508,7 @@ def test_width_grows_on_scroll : IO Unit := do
   log "width_grows_on_scroll"
   -- wide_scroll.csv: first 22 rows have status=ok, last 5 have status=input-required
   -- Scroll down with many j presses so "input-required" rows are visible
-  let keys := String.mk (List.replicate 26 'j')
+  let keys := String.ofList (List.replicate 26 'j')
   let output ← run keys "data/wide_scroll.csv"
   let lines := dataLines output
   assert (lines.any (contains · "input-required")) "scrolled data should show full 'input-required'"
