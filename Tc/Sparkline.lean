@@ -62,7 +62,7 @@ def compute (t : AdbcTable) (nBars : Nat := 20) : IO (Array String) := do
     for (b, c) in buckets do
       if b < nBars then counts := counts.set! b c
     let maxCnt := counts.foldl max 0
-    let spark := if maxCnt == 0 then List.replicate nBars ' ' |> String.ofList
+    let spark := if maxCnt == 0 then "".pushn ' ' nBars
       else counts.map (fun c =>
         let level := (c * 8 + maxCnt - 1) / maxCnt  -- ceil: 0→0, >0→1..8
         blocks.getD level ' ') |>.toList |> String.ofList
