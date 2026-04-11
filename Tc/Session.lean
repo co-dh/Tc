@@ -134,11 +134,9 @@ private def restoreView (j : Json) : IO (Option (View AdbcTable)) := do
   let nRows := TblOps.nRows tbl
   let nCols := TblOps.colNames tbl |>.size
   if nRows == 0 || nCols == 0 then return none
-  match View.fromTbl tbl path (min col (nCols - 1)) grp (min row (nRows - 1)) with
-  | some view =>
-    let nav' := { view.nav with hidden } |> NavState.colSelsL.set colSels
-    pure (some { view with vkind, disp, prec, widthAdj, search, nav := nav' })
-  | none => pure none
+  let some view := View.fromTbl tbl path (min col (nCols - 1)) grp (min row (nRows - 1)) | return none
+  let nav' := { view.nav with hidden } |> NavState.colSelsL.set colSels
+  pure (some { view with vkind, disp, prec, widthAdj, search, nav := nav' })
 
 /-! ## Public API -/
 
