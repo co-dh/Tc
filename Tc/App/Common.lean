@@ -64,9 +64,8 @@ inductive Action where | quit | unhandled | ok (a : AppState)
 -- arg is empty for non-arg commands, contains user input for arg commands.
 abbrev HandlerFn := AppState → CmdConfig.CmdInfo → String → IO Action
 
--- | Unified handler map: Cmd → HandlerFn. One HashMap for all commands
--- (pure, IO, arg). Set once by `initHandlers` at boot, never mutated after.
--- Lookup falls back to `viewUp`.
+-- | Unified handler map: Cmd → HandlerFn. Set once by `initHandlers` at
+-- boot, never mutated after. Lookup falls back to `viewUp`.
 --
 -- Why an `IO.Ref` instead of a pure top-level def? Ordering cycle:
 --   `dispatch` (below)          needs the lookup
@@ -77,9 +76,7 @@ abbrev HandlerFn := AppState → CmdConfig.CmdInfo → String → IO Action
 -- `commands`, and wrapping the whole chain in a `mutual` block mixes
 -- `partial def` with non-partial `def` in awkward ways. The IORef acts as
 -- a one-shot forward declaration: `dispatch` reads it by name, `commands`
--- is defined after, and `initHandlers` ties the knot at startup. The same
--- constraint is what forces `cmdCache` into `AppState` instead of a
--- top-level value (see the comment on `AppState` above).
+-- is defined after, and `initHandlers` ties the knot at startup.
 initialize handlerMap : IO.Ref (Std.HashMap Cmd HandlerFn) ← IO.mkRef {}
 
 namespace AppState
@@ -202,9 +199,8 @@ private partial def runMenu (a : AppState) : IO Action := do
     | none => pure (.ok a')
   | none => pure (.ok a')
 
--- | Run a stack-level IO action with shared error handling and state reset.
--- Like `tryStk` but for handlers that always produce a new stack (no `Option`)
--- and don't carry a `CmdInfo` (arg handlers bypass the resetsVS flag).
+-- | Stack-level variant for arg handlers: no `CmdInfo`, so `resetsVS` is
+-- applied unconditionally rather than conditionally via `withStk`.
 private def runStackIO (a : AppState) (f : IO (ViewStack AdbcTable)) : IO Action :=
   a.runTry f fun s' => .ok { a with stk := s' }.resetVS
 
