@@ -35,7 +35,7 @@ namespace AppM
 
 -- Structural bind on the program value. `partial` because the recursion runs
 -- through the continuation function space — fine for a control flow effect.
-partial def bind : AppM σ α → (α → AppM σ β) → AppM σ β
+@[inline] partial def bind : AppM σ α → (α → AppM σ β) → AppM σ β
   | .pure x,       f => f x
   | .liftIO io k,  f => .liftIO io  (fun b  => (k b ).bind f)
   | .render s k,   f => .render s   (fun s' => (k s').bind f)
