@@ -104,7 +104,7 @@ private def runViewEffect (a : AppState) (ci : CmdConfig.CmdInfo)
     let grp' := v'.nav.grp.filter (!cols.contains ·)
     let hidden' := v'.nav.hidden.filter (!cols.contains ·)
     pure (v'.rebuild tbl' (grp := grp') (row := v'.nav.row.cur) |>.map fun rv =>
-      s.setCur <| (View.navL ∘ₗ NavState.hiddenL).set hidden' rv)
+      (View.navL ∘ₗ NavState.hiddenL).set hidden' rv |> s.setCur)
   | .freq colNames => tryStk a ci do
     let some (adbc, totalGroups) ← AdbcTable.freqTable s.tbl colNames | return none
     match View.fromTbl adbc s.cur.path 0 colNames with
@@ -185,10 +185,10 @@ end AppState
 -- | Handler combinators — build HandlerFn from domain functions
 -- set prec to absolute value
 private def precSet (v : Nat) : HandlerFn := fun a _ _ =>
-  pure (.ok <| AppState.curPrecL.set v a)
+  pure (AppState.curPrecL.set v a |> .ok)
 -- adjust prec by delta, clamped to [0,17]
 private def precAdj (delta : Int) : HandlerFn := fun a _ _ =>
-  pure (.ok <| AppState.curPrecL.modify (fun p => (Int.ofNat p + delta).toNat |> min 17) a)
+  pure (AppState.curPrecL.modify (fun p => (Int.ofNat p + delta).toNat |> min 17) a |> .ok)
 -- domain dispatch with tryStk + viewUp fallback
 private def domainH (d : ViewStack AdbcTable → Cmd → Option (IO (Option (ViewStack AdbcTable)))) : HandlerFn :=
   fun a ci _ => do

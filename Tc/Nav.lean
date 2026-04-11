@@ -120,19 +120,19 @@ def colSelsL : Lens' (NavState t) (Array String) := colL ∘ₗ NavAxis.selsL
 
 -- Execute by command, no (obj,verb) chars
 def exec (h : Cmd) (nav : NavState t) (rowPg : Nat) : Option (NavState t) :=
-  let r d := some <| rowCurL.modify (clampShift · d nav.nRows) nav
-  let c d := some <| colCurL.modify (clampShift · d nav.nCols) nav
+  let r d := rowCurL.modify (clampShift · d nav.nRows) nav |> some
+  let c d := colCurL.modify (clampShift · d nav.nCols) nav |> some
   match h with
   | .rowInc  => r 1              | .rowDec  => r (-1)
   | .colInc  => c 1              | .colDec  => c (-1)
   | .rowPgdn => r rowPg          | .rowPgup => r (-rowPg)
   | .rowBot  => r (nav.nRows - 1 - nav.row.cur) | .rowTop => r (-nav.row.cur)
   | .colFirst => c (-nav.col.cur) | .colLast => c (nav.nCols - 1 - nav.col.cur)
-  | .rowSel  => some <| rowSelsL.modify (·.toggle nav.row.cur) nav
+  | .rowSel  => rowSelsL.modify (·.toggle nav.row.cur) nav |> some
   | .colGrp  =>
     let newGrp := nav.grp.toggle nav.curColName
     some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames }
-  | .colHide => some <| hiddenL.modify (·.toggle nav.curColName) nav
+  | .colHide => hiddenL.modify (·.toggle nav.curColName) nav |> some
   | .colShiftL | .colShiftR =>
     let name := nav.curColName
     match nav.grp.idxOf? name with
@@ -146,8 +146,8 @@ def exec (h : Cmd) (nav : NavState t) (rowPg : Nat) : Option (NavState t) :=
         let gj := nav.grp.getD j ""
         let newGrp := nav.grp.set! i gj |>.set! j gi
         let d := if fwd then (1 : Int) else -1
-        some <| colCurL.modify (clampShift · d nav.nCols)
-          { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames }
+        colCurL.modify (clampShift · d nav.nCols)
+          { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames } |> some
     | none => none
   | _ => none
 

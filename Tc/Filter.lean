@@ -22,7 +22,7 @@ private def moveRowTo (s : ViewStack T) (rowIdx : Nat) (search : Option (Nat × 
 private def moveColTo (s : ViewStack T) (colIdx : Nat) : ViewStack T :=
   let v := s.cur
   let delta : Int := colIdx - v.nav.col.cur
-  s.setCur <| (View.navL ∘ₗ NavState.colCurL).modify (clampShift · delta v.nav.nCols) v
+  (View.navL ∘ₗ NavState.colCurL).modify (clampShift · delta v.nav.nCols) v |> s.setCur
 
 -- | col search: fzf jump to column by name (IO version for backward compat)
 def colSearch (s : ViewStack T) : IO (ViewStack T) := do
