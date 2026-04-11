@@ -82,7 +82,9 @@ def sources : Array Config := #[
   -- S3: aws s3api JSON output, download via aws s3 cp
   { pfx := "s3://", minParts := 3,
     listCmd := "aws s3api list-objects-v2 --bucket {1} --delimiter / --prefix {2+}/ {extra} --output json",
-    listSql := "SELECT split_part(unnest.Key, '/', -1) as name, unnest.Size as size, unnest.LastModified as date, 'file' as type FROM (SELECT unnest(Contents) FROM read_json_auto('{src}')) WHERE unnest.Key IS NOT NULL UNION ALL SELECT split_part(unnest.Prefix, '/', -2) as name, 0 as size, '' as date, 'dir' as type FROM (SELECT unnest(CommonPrefixes) FROM read_json_auto('{src}')) WHERE unnest.Prefix IS NOT NULL",
+    -- read_json with explicit columns: missing keys become NULL, unnest(NULL) → 0 rows.
+    -- MATERIALIZED ensures the JSON file is parsed once even though the CTE is used twice.
+    listSql := "WITH j AS MATERIALIZED (SELECT * FROM read_json('{src}', columns={\"Contents\": 'STRUCT(\"Key\" VARCHAR, \"Size\" BIGINT, \"LastModified\" VARCHAR)[]', \"CommonPrefixes\": 'STRUCT(\"Prefix\" VARCHAR)[]'})) SELECT split_part(c.\"Key\", '/', -1) as name, c.\"Size\" as size, c.\"LastModified\" as date, 'file' as type FROM j, unnest(j.Contents) as t(c) WHERE c.\"Key\" IS NOT NULL UNION ALL SELECT split_part(c.\"Prefix\", '/', -2) as name, 0 as size, '' as date, 'dir' as type FROM j, unnest(j.CommonPrefixes) as t(c) WHERE c.\"Prefix\" IS NOT NULL",
     downloadCmd := "aws s3 cp {extra} {path} {tmp}/{name}",
     needsDownload := true, dirSuffix := true },
   -- HF dataset browser: curl HF Hub API; fallback to org-level listing
