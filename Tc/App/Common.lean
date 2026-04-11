@@ -1,4 +1,5 @@
 -- App/Common: app state, dispatch, main loop
+import Tc.AppF
 import Tc.Filter
 import Tc.Folder
 import Tc.SourceConfig
@@ -378,8 +379,8 @@ private partial def dispatchHandler (a : AppState) (cmdStr : String) : IO AppSta
   | .ok a' => pure { a' with prevScroll := 0 }
   | _ => pure a
 
--- main loop: render → input → dispatch → loop
-partial def mainLoop (a : AppState) (test : Bool) (ks : Array String) : IO AppState := do
+-- Status line + per-frame caches; common to both interpreters.
+private def renderBase (a : AppState) : IO AppState := do
   -- Lazy sparkline computation: recompute when cache is empty
   let a ← if a.sparklines.isEmpty then
     pure { a with sparklines := ← Sparkline.compute a.stk.tbl }
@@ -387,7 +388,7 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array String) : IO AppSt
   let (vs', v') ← a.stk.cur.doRender a.vs a.theme.styles a.heatMode a.sparklines
   let a := { a with stk := a.stk.setCur v', vs := vs' }
   renderTabLine a.stk.tabNames 0 (Replay.opsStr a.stk.cur)
-  -- Show column description on status line from DuckDB column comments (cached)
+  -- Column description on status line from DuckDB column comments (cached by path+col)
   let colName := a.stk.cur.nav.curColName
   let (cachedPath, cachedCol, _) := a.statusCache
   let a ← if cachedPath == a.stk.cur.path && cachedCol == colName then pure a
@@ -401,46 +402,119 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array String) : IO AppSt
     let maxLen := w.toNat * 2 / 3
     let label := if label.length > maxLen then (label.take maxLen).toString ++ "…" else label
     Term.print 0 (ht - 1) (Theme.styleFg a.theme.styles Theme.sStatus) (Theme.styleBg a.theme.styles Theme.sStatus) label
-  -- Column aggregation stats (sum/avg/count) cached per column
   let aggCache ← StatusAgg.update a.aggCache a.stk.tbl a.stk.cur.path a.stk.cur.nav.curColIdx
   let a := { a with aggCache }
   if a.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat a.stk.cur.vkind
-  -- Preview box for truncated cell text (skip in test mode)
-  if !test then do
+  pure a
+
+-- Full frame render. `showPreview` toggles the truncated-cell overlay; prod
+-- shows it, test skips it (tests don't exercise the preview box).
+private def renderFrame (showPreview : Bool) (a : AppState) : IO AppState := do
+  let a ← renderBase a
+  if showPreview then
     let h ← Term.height; let w ← Term.width
     let nav := a.stk.cur.nav
-    let curCol := nav.curColIdx
-    let cellText ← TblOps.cellStr nav.tbl nav.row.cur curCol
-    -- Show preview if cell text wider than column display width
+    let cellText ← TblOps.cellStr nav.tbl nav.row.cur nav.curColIdx
     let colW := min (a.stk.cur.widths.getD nav.col.cur 10) 50
     if cellText.length + 2 > colW then
       UI.Preview.render h.toNat w.toNat cellText a.prevScroll
   Term.present
-  if test && ks.isEmpty then IO.print (← Term.bufferStr); return a
-  let (key, ks') ← nextKey ks
-  -- Socket commands from external tools (handler names)
-  let a ← match ← Socket.pollCmd with
-    | some cmdStr => dispatchHandler a cmdStr
-    | none => pure a
-  -- <wait> test key: sleep to let socket commands arrive
-  if key == "<wait>" then IO.sleep 50; return ← mainLoop a test ks'
-  -- Empty event (socket wake-up with no key press) → re-render and loop
-  if key.isEmpty then return ← mainLoop a test ks'
-  let vkStr := viewCtxStr a.stk.cur.vkind
-  match ← CmdConfig.keyLookup key vkStr with
-  | some ci =>
-    -- Arg commands: collect user input first (in test mode, tokens until <ret>), then dispatch
-    let (arg, rest) ← if ← CmdConfig.isArgCmd ci.cmd then
-      pure (if test && ks'.any (· == "<ret>") then
-        let idx := ks'.findIdx? (· == "<ret>") |>.getD ks'.size
-        (String.join (ks'.extract 0 idx).toList, ks'.extract (idx + 1) ks'.size)
-      else ("", ks'))
-    else pure ("", ks')
-    match ← a.dispatch ci arg with
-    | .quit => pure a
-    | .unhandled => mainLoop a test rest
-    | .ok a'' =>
-      let a'' := if ci.cmd matches .cellUp | .cellDn then a'' else { a'' with prevScroll := 0 }
-      mainLoop a'' test rest
-  | none => mainLoop a test ks'
+  pure a
+
+-- Loop program expressed over AppM. Free of any test/prod conditionals —
+-- the interpreter decides render flavor, key source, and arg collection.
+partial def loopProg (a : AppState) : AppM AppState AppState := do
+  let a ← AppM.doRender a
+  match ← AppM.poll with
+  | none => pure a
+  | some key =>
+    -- Socket commands from external tools (handler names)
+    let a ← match ← Socket.pollCmd with
+      | some cmdStr => dispatchHandler a cmdStr
+      | none => pure a
+    -- <wait>: sleep so external socat → socket → pollCmd can land mid-run.
+    -- Only used by socket-dispatch tests that race an out-of-process sender
+    -- against the -c keystroke stream; normal synchronous tests don't need it.
+    if key == "<wait>" then do IO.sleep 50; loopProg a
+    else if key.isEmpty then loopProg a
+    else
+      let vkStr := viewCtxStr a.stk.cur.vkind
+      match ← CmdConfig.keyLookup key vkStr with
+      | some ci =>
+        let arg ← if ← CmdConfig.isArgCmd ci.cmd then AppM.readArg' else pure ""
+        match ← a.dispatch ci arg with
+        | .quit => pure a
+        | .unhandled => loopProg a
+        | .ok a'' =>
+          -- Reset cell-preview scroll offset after every command except the
+          -- two that explicitly scroll the preview ({, }): moving to a new
+          -- cell should start the overlay at the top, but actively scrolling
+          -- within it must not reset mid-gesture. Handled here rather than
+          -- in dispatch so the generic dispatcher stays agnostic of UI state.
+          let a'' := if ci.cmd matches .cellUp | .cellDn then a'' else { a'' with prevScroll := 0 }
+          loopProg a''
+      | none => loopProg a
+
+-- Production interpreter: real Term.pollEvent; arg commands open fzf from inside their handlers.
+private def prodInterp : AppM.Interp AppState where
+  render  := renderFrame (showPreview := true)
+  nextKey := do let e ← Term.pollEvent; pure (some (evToKey e))
+  readArg := pure ""
+
+-- Test interpreter. Used by the `-c "keys"` test harness: tests spawn `tv`,
+-- feed it a canned keystroke string, then read the rendered terminal buffer
+-- from stdout to assert on what the UI would have shown.
+--
+-- The interpreter lives in an `IO.Ref (Array String)` — a mutable reference
+-- holding the unconsumed suffix of the keystroke queue. Each call to
+-- `nextKey`/`readArg` reads the current queue, decides what to return, and
+-- writes the remaining tokens back. This is the only piece of test state;
+-- rendering is real (writes to the termbox fake-buffer) and command handlers
+-- run in real IO (real DuckDB queries, real file ops, etc.). The test/prod
+-- difference is *just* where keystrokes come from and what happens when the
+-- queue runs out — everything else is identical to production.
+private def testInterp (ref : IO.Ref (Array String)) : AppM.Interp AppState where
+  -- Tests don't exercise the truncated-cell preview overlay → skip it to
+  -- keep the asserted buffer predictable across terminal sizes.
+  render  := renderFrame (showPreview := false)
+  -- Poll for the next keystroke. In production this blocks on the terminal;
+  -- here we pop from the queue instead. Empty queue means "the test is
+  -- finished": print the current termbox buffer so the parent `-c` process
+  -- can capture it from stdout, then return `none` which tells `loopProg`
+  -- to exit cleanly (see the `| none => pure a` branch above).
+  nextKey := do
+    let ks ← ref.get
+    if ks.isEmpty then
+      IO.print (← Term.bufferStr)
+      pure none
+    else
+      -- `Key.nextKey` pops the first token; ks' is the rest of the queue.
+      let (key, ks') ← nextKey ks
+      ref.set ks'
+      pure (some key)
+  -- Arg commands (`/`, `\`, `=`, etc.) prompt the user for a string. In
+  -- production the handler opens an fzf popup; in tests we splice the arg
+  -- directly into the keystroke stream terminated by a `<ret>` token, e.g.
+  -- `"/foo<ret>"` means "press `/`, then type `foo`, then Enter". Here we
+  -- scan forward to the next `<ret>`, concatenate the tokens before it into
+  -- the arg string, and drop everything up to and including the `<ret>` so
+  -- the outer loop picks up after the Enter. If there is no `<ret>` in the
+  -- queue we return "" (same as prod when the user cancels fzf) so the
+  -- handler takes its "empty arg" branch.
+  readArg := do
+    let ks ← ref.get
+    if ks.any (· == "<ret>") then
+      let idx := ks.findIdx? (· == "<ret>") |>.getD ks.size
+      ref.set (ks.extract (idx + 1) ks.size)
+      pure ((ks.extract 0 idx).joinWith "")
+    else
+      pure ""
+
+-- Main loop entry point: picks the interpreter and runs the free-monad program.
+def mainLoop (a : AppState) (test : Bool) (ks : Array String) : IO AppState := do
+  if test then
+    let ref ← IO.mkRef ks
+    (loopProg a).run (testInterp ref)
+  else
+    (loopProg a).run prodInterp
 
