@@ -514,14 +514,10 @@ def test_width_grows_on_scroll : IO Unit := do
   assert (lines.any (contains · "input-required")) "scrolled data should show full 'input-required'"
 
 -- | Cached network reachability check: curl once, cache result
-def cachedCurlCheck (ref : IO.Ref (Option Bool)) (url : String) : IO Bool := do
-  match ← ref.get with
-  | some v => pure v
-  | none =>
+def cachedCurlCheck (ref : IO.Ref (Option Bool)) (url : String) : IO Bool :=
+  cachedCheck ref do
     let r ← IO.Process.output { cmd := "curl", args := #["-sf", "--max-time", "3", url] }
-    let ok := r.exitCode == 0
-    ref.set (some ok)
-    pure ok
+    pure (r.exitCode == 0)
 
 -- === HF tests ===
 
@@ -560,6 +556,42 @@ def test_hf_org_list : IO Unit := do
   let output ← run "" "hf://datasets/tablegpt/"
   assert (contains output "AppleStockData") "HF org lists datasets"
   assert (contains output "dow") "HF org shows downloads column"
+
+-- === S3 tests ===
+
+initialize s3AccessCache : IO.Ref (Option Bool) ← IO.mkRef none
+def hasS3Access : IO Bool := cachedCheck s3AccessCache do
+  unless (← hasCmd "aws") do return false
+  let r ← IO.Process.output { cmd := "aws", args := #["s3api", "list-objects-v2",
+    "--bucket", "overturemaps-us-west-2", "--delimiter", "/", "--max-keys", "1",
+    "--no-sign-request", "--output", "json"] }
+  pure (r.exitCode == 0)
+
+private def s3path := "s3://overturemaps-us-west-2/release/"
+-- TV_S3_NO_SIGN=1 is how tv v4.28.0+ requests --no-sign-request
+-- (replaced the former `+n` CLI flag in PR #112).
+private def s3run (keys : String) := run keys s3path (env := #[("TV_S3_NO_SIGN", "1")])
+
+def test_s3_list : IO Unit := do
+  log "s3_list"
+  unless (← hasS3Access) do log "  skip (no S3 access)"; return
+  assert (contains (← s3run "") "dir") "S3 listing shows dir type"
+
+def test_s3_enter_dir : IO Unit := do
+  log "s3_enter_dir"
+  unless (← hasS3Access) do log "  skip (no S3 access)"; return
+  let output ← s3run "j<ret>"
+  assert (contains output "dir" || contains output "file") "S3 enter dir shows contents"
+
+def test_s3_backspace : IO Unit := do
+  log "s3_backspace"
+  unless (← hasS3Access) do log "  skip (no S3 access)"; return
+  assert (contains (← s3run "j<ret><bs>") "release") "S3 backspace returns to parent"
+
+def test_s3_sort : IO Unit := do
+  log "s3_sort"
+  unless (← hasS3Access) do log "  skip (no S3 access)"; return
+  assert (contains (← s3run "[") "dir") "S3 sort doesn't break listing"
 
 -- === FTP tests ===
 
@@ -1304,6 +1336,9 @@ def heavyTests : Array (String × IO Unit) := #[
   ("hf_enter_parquet", test_hf_enter_parquet),
   ("hf_backspace", test_hf_backspace),
   ("hf_org_list", test_hf_org_list),
+  -- S3 tests
+  ("s3_list", test_s3_list), ("s3_enter_dir", test_s3_enter_dir),
+  ("s3_backspace", test_s3_backspace), ("s3_sort", test_s3_sort),
   -- FTP tests
   ("ftp_list", test_ftp_list),
   ("ftp_enter_dir", test_ftp_enter_dir),

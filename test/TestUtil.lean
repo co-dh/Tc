@@ -10,11 +10,10 @@ def log (msg : String) : IO Unit := do
   let h ← IO.FS.Handle.mk "test.log" .append
   h.putStrLn msg; h.flush
 
-def run (keys : String) (file : String := "") : IO String := do
-  log s!"  run: {file} keys={keys}"
-  let keys' := keys
-  let args := if file.isEmpty then #["-c", keys'] else #[file, "-c", keys']
-  let out ← IO.Process.output { cmd := bin, args }
+def run (keys : String) (file : String := "") (env : Array (String × String) := #[]) : IO String := do
+  log s!"  run: {file} {env} keys={keys}"
+  let args := if file.isEmpty then #["-c", keys] else #[file, "-c", keys]
+  let out ← IO.Process.output { cmd := bin, args, env := env.map fun (k, v) => (k, some v) }
   if !out.stderr.isEmpty then log s!"  stderr: {out.stderr.trimAscii.toString}"
   if out.exitCode != 0 then log s!"  exit: {out.exitCode}"
   log "  done"
@@ -49,5 +48,11 @@ def hasFile (path : String) : IO Bool :=
 def hasCmd (cmd : String) : IO Bool := do
   let r ← IO.Process.output { cmd := "sh", args := #["-c", s!"command -v {cmd}"] }
   pure (r.exitCode == 0)
+
+-- | Generic cached bool check: run check once, cache result
+def cachedCheck (ref : IO.Ref (Option Bool)) (check : IO Bool) : IO Bool := do
+  match ← ref.get with
+  | some v => pure v
+  | none => let ok ← check; ref.set (some ok); pure ok
 
 end TestUtil
