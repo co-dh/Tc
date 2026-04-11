@@ -91,20 +91,20 @@ private def runViewEffect (a : AppState) (ci : CmdConfig.CmdInfo)
   | .quit => pure .quit
   | .fetchMore =>
     match ← (TblOps.fetchMore s.tbl).toBaseIO with
-    | .ok (some tbl') => match v'.rebuild tbl' (row := v'.nav.row.cur.val) with
+    | .ok (some tbl') => match v'.rebuild tbl' (row := v'.nav.row.cur) with
       | some rv => pure (.ok { a' with stk := s.setCur rv }.resetVS)
       | none => pure (.ok a')
     | .ok none => pure (.ok a')
     | .error err => errAction a' err
   | .sort colIdx sels grp asc => tryStk a ci do
     let tbl' ← ModifyTable.sort s.tbl colIdx sels grp asc
-    pure (v'.rebuild tbl' (col := colIdx) (row := v'.nav.row.cur.val) |>.map s.setCur)
+    pure (v'.rebuild tbl' (col := colIdx) (row := v'.nav.row.cur) |>.map s.setCur)
   | .exclude cols => tryStk a ci do
     let tbl' ← AdbcTable.excludeCols s.tbl cols
     let grp' := v'.nav.grp.filter (!cols.contains ·)
     let hidden' := v'.nav.hidden.filter (!cols.contains ·)
-    pure (v'.rebuild tbl' (grp := grp') (row := v'.nav.row.cur.val) |>.map fun rv =>
-      s.setCur { rv with nav := NavState.hiddenL.set hidden' rv.nav })
+    pure (v'.rebuild tbl' (grp := grp') (row := v'.nav.row.cur) |>.map fun rv =>
+      s.setCur <| (View.navL ∘ₗ NavState.hiddenL).set hidden' rv)
   | .freq colNames => tryStk a ci do
     let some (adbc, totalGroups) ← AdbcTable.freqTable s.tbl colNames | return none
     match View.fromTbl adbc s.cur.path 0 colNames with
@@ -410,9 +410,9 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array String) : IO AppSt
     let h ← Term.height; let w ← Term.width
     let nav := a.stk.cur.nav
     let curCol := nav.curColIdx
-    let cellText ← TblOps.cellStr nav.tbl nav.row.cur.val curCol
+    let cellText ← TblOps.cellStr nav.tbl nav.row.cur curCol
     -- Show preview if cell text wider than column display width
-    let colW := min (a.stk.cur.widths.getD nav.col.cur.val 10) 50
+    let colW := min (a.stk.cur.widths.getD nav.col.cur 10) 50
     if cellText.length + 2 > colW then
       UI.Preview.render h.toNat w.toNat cellText a.prevScroll
   Term.present

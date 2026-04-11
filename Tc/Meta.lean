@@ -27,8 +27,7 @@ def push (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
 private def selBy (s : ViewStack AdbcTable) (flt : String) : IO (ViewStack AdbcTable) := do
   if s.cur.vkind != .colMeta then return s
   let rows ← AdbcTable.queryMetaIndices (metaTblName s) flt
-  let v := s.cur
-  return s.setCur { v with nav := NavState.rowSelsL.set rows v.nav }
+  return (ViewStack.hdL ∘ₗ View.navL ∘ₗ NavState.rowSelsL).set rows s
 
 def selNull (s : ViewStack AdbcTable)   := selBy s "null_pct == 100"
 def selSingle (s : ViewStack AdbcTable) := selBy s "dist == 1"
@@ -41,10 +40,9 @@ def setKey (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   match s.pop with
   | some s' =>
     let di := dispOrder colNames (TblOps.colNames s'.tbl)
-    let v := s'.cur
-    let nav' := { v.nav with grp := colNames, dispIdxs := di }
+    let nav' := { s'.cur.nav with grp := colNames, dispIdxs := di }
       |> NavState.colSelsL.set colNames
-    return some (s'.setCur { v with nav := nav' })
+    return some ((ViewStack.hdL ∘ₗ View.navL).set nav' s')
   | none => return some s
 
 -- | Dispatch meta handler to IO action. Returns none if handler not recognized.

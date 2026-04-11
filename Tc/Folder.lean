@@ -56,7 +56,7 @@ private def pathColIdx (names : Array String) : Option Nat :=
 
 -- | Get single cell value as string from current row
 private def cellStr (v : View AdbcTable) (colIdx : Nat) : IO String := do
-  let cols ← TblOps.getCols v.nav.tbl #[colIdx] v.nav.row.cur.val (v.nav.row.cur.val + 1)
+  let cols ← TblOps.getCols v.nav.tbl #[colIdx] v.nav.row.cur (v.nav.row.cur + 1)
   return cols.getD 0 default |>.get 0 |>.toRaw
 
 -- | Get path column value from current row
@@ -204,7 +204,7 @@ def selPaths (v : View AdbcTable) : IO (Array String) := do
     let some pathCol := pathColIdx v.nav.colNames | return #[]
     let cols ← TblOps.getCols v.nav.tbl #[pathCol] 0 v.nRows
     let c := cols.getD 0 default
-    let rows := if v.nav.row.sels.isEmpty then #[v.nav.row.cur.val] else v.nav.row.sels
+    let rows := if v.nav.row.sels.isEmpty then #[v.nav.row.cur] else v.nav.row.sels
     return rows.map fun r => c.get r |>.toRaw |> joinPath curDir
   | _ => return #[]
 
@@ -268,7 +268,7 @@ private def refreshView (s : ViewStack AdbcTable) (path : String) (depth : Nat)
     : IO (Option (ViewStack AdbcTable)) := do
   match ← mkView path depth with
   | some v =>
-    let row := min s.cur.nav.row.cur.val (if v.nRows > 0 then v.nRows - 1 else 0)
+    let row := min s.cur.nav.row.cur (if v.nRows > 0 then v.nRows - 1 else 0)
     pure (View.fromTbl v.nav.tbl path (row := row) |>.map fun x =>
       s.setCur { x with vkind := .fld path depth, disp := s.cur.disp })
   | none => pure (some s)

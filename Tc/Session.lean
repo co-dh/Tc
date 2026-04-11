@@ -90,7 +90,7 @@ private def viewToJson (v : View AdbcTable) : Json :=
   Json.mkObj [
     ("path", toJson v.path), ("vkind", toJson v.vkind),
     ("disp", toJson v.disp), ("prec", toJson v.prec), ("widthAdj", toJson v.widthAdj),
-    ("row", toJson v.nav.row.cur.val), ("col", toJson v.nav.col.cur.val),
+    ("row", toJson v.nav.row.cur), ("col", toJson v.nav.col.cur),
     ("grp", toJson v.nav.grp), ("hidden", toJson v.nav.hidden),
     ("colSels", toJson v.nav.col.sels), ("search", search),
     ("query", Json.mkObj [("base", toJson q.base), ("ops", toJson q.ops)])

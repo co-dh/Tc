@@ -10,9 +10,7 @@ namespace Tc
 
 -- | View: wraps NavState for table type T
 structure View (T : Type) [TblOps T] where
-  nRows : Nat
-  nCols : Nat
-  nav : NavState nRows nCols T
+  nav : NavState T
   path : String              -- source file/command (for tab display)
   vkind : ViewKind := .tbl
   disp : String := ""        -- custom display name (overrides filename)
@@ -26,14 +24,16 @@ namespace View
 
 variable {T : Type} [TblOps T]
 
--- | Field lenses for non-dependent View fields, auto-generated via `gen_lenses`.
--- (nRows/nCols/nav are skipped — their types are mutually dependent, so they can't
--- be expressed as simple `Lens' (View T) A` — the codomain would depend on the source.)
-gen_lenses (View T) where path, vkind, disp, prec, widthAdj, widths, search, sameHide
+-- | Field lenses for View — nav is now a plain field lens since NavState is no longer
+-- dependent on nRows/nCols type params.
+gen_lenses (View T) where nav, path, vkind, disp, prec, widthAdj, widths, search, sameHide
 
 -- | Create from NavState + path
-def new {nr nc : Nat} (nav : NavState nr nc T) (path : String) : View T :=
-  { nRows := nr, nCols := nc, nav, path }
+def new (nav : NavState T) (path : String) : View T := { nav, path }
+
+-- | Cached row/col counts (from NavState, which caches them from the table)
+@[inline] def nRows (v : View T) : Nat := v.nav.nRows
+@[inline] def nCols (v : View T) : Nat := v.nav.nCols
 
 -- | Current folder directory (or "." for non-folder views)
 @[inline] def curDir (v : View T) : String := match v.vkind with | .fld dir _ => dir | _ => "."
@@ -54,27 +54,15 @@ def new {nr nc : Nat} (nav : NavState nr nc T) (path : String) : View T :=
 
 -- | Create View from table + path (returns none if empty)
 def fromTbl (tbl : T) (path : String)
-    (col : Nat := 0) (grp : Array String := #[]) (row : Nat := 0) : Option (View T) := do
-  let nCols := (TblOps.colNames tbl).size
-  let nRows := TblOps.nRows tbl
-  if hc : nCols > 0 then
-    if hr : nRows > 0 then some (View.new (NavState.newAt tbl rfl rfl hr hc col grp row) path)
-    else none
-  else none
+    (col : Nat := 0) (grp : Array String := #[]) (row : Nat := 0) : Option (View T) :=
+  NavState.newAt tbl col grp row |>.map fun nav => View.new nav path
 
 -- | Rebuild view with new table, preserving all attributes from old view.
--- Only nRows/nCols/nav change; everything else (vkind, disp, prec, etc.) is kept.
-def rebuild (old : View T) (tbl : T) (col : Nat := old.nav.col.cur.val)
+-- Only nav changes; everything else (vkind, disp, prec, etc.) is kept.
+def rebuild (old : View T) (tbl : T) (col : Nat := old.nav.col.cur)
     (grp : Array String := old.nav.grp) (row : Nat := 0) : Option (View T) :=
-  let nCols := (TblOps.colNames tbl).size
-  let nRows := TblOps.nRows tbl
-  if hc : nCols > 0 then
-    if hr : nRows > 0 then
-      let nav := NavState.newAt tbl rfl rfl hr hc col grp row
-              |> NavState.hiddenL.set old.nav.hidden
-      some { old with nRows, nCols, nav, widths := #[] }
-    else none
-  else none
+  NavState.newAt tbl col grp row |>.map fun nav =>
+    { old with nav := NavState.hiddenL.set old.nav.hidden nav, widths := #[] }
 
 -- | Pure update by command
 def update (v : View T) (h : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
@@ -92,7 +80,7 @@ def update (v : View T) (h : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
       else if n.hidden.contains name then n.hidden else n.hidden.push name
     some (v, .exclude cols)
   | _ => NavState.exec h n rowPg |>.map fun nav' =>
-    let needsMore := nav'.row.cur.val + 1 >= v.nRows
+    let needsMore := nav'.row.cur + 1 >= v.nRows
       && TblOps.totalRows n.tbl > v.nRows
       && (h == .rowInc || h == .rowPgdn || h == .rowBot)
     ({ v with nav := nav' }, if needsMore then .fetchMore else .none)

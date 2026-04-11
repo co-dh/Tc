@@ -3,7 +3,7 @@
 
   Key abstractions:
   - NavState: generic over table type + navigation state
-  - NavAxis: cursor (Fin) + selections (Array)
+  - NavAxis: cursor (Nat) + selections (Array)
 -/
 import Tc.Types
 import Tc.Lens
@@ -13,37 +13,27 @@ namespace Tc
 def clamp (val lo hi : Nat) : Nat := if hi ≤ lo then lo else max lo (min val (hi - 1))
 -- Adjust offset to keep cursor visible: off ≤ cur < off + page
 def adjOff (cur off page : Nat) : Nat := clamp off (cur + 1 - page) (cur + 1)
-end Tc
 
--- Clamp Fin by delta, staying in [0, n)
-namespace Fin
-def clamp (f : Fin n) (d : Int) : Fin n :=
-  let v := ((f.val : Int) + d).toNat
-  let v' := min v (n - 1)
-  ⟨v', Nat.lt_of_le_of_lt (Nat.min_le_right _ _) (Nat.sub_lt f.pos Nat.one_pos)⟩
-end Fin
-
-namespace Tc
+-- | Shift a Nat cursor by Int delta, then clamp to [0, n). n=0 yields 0.
+@[inline] def clampShift (cur : Nat) (d : Int) (n : Nat) : Nat :=
+  if n == 0 then 0 else min (((cur : Int) + d).toNat) (n - 1)
 
 /-! ## Structures -/
 
 -- NavAxis: cursor + selection for one axis (row or col)
-structure NavAxis (n : Nat) (elem : Type) [BEq elem] where
-  cur  : Fin n              -- cursor position
+structure NavAxis (elem : Type) [BEq elem] where
+  cur  : Nat := 0           -- cursor position (clamped at call sites)
   sels : Array elem := #[]  -- selected elements
-
--- Default NavAxis for n > 0
-def NavAxis.default [BEq elem] (h : n > 0) : NavAxis n elem := ⟨⟨0, h⟩, {}⟩
 
 -- | Field lenses for NavAxis — auto-generated, enable composable nested updates via `∘ₗ`.
 namespace NavAxis
-variable {n : Nat} {elem : Type} [BEq elem]
-gen_lenses (NavAxis n elem) where cur, sels
+variable {elem : Type} [BEq elem]
+gen_lenses (NavAxis elem) where cur, sels
 end NavAxis
 
 -- Type aliases: Row uses Nat (index), Col uses String (name, stable across deletion)
-abbrev RowNav (m : Nat) := NavAxis m Nat
-abbrev ColNav (n : Nat) := NavAxis n String
+abbrev RowNav := NavAxis Nat
+abbrev ColNav := NavAxis String
 
 -- Find index of element in array (O(n) linear scan)
 def Array.idxOf? [BEq α] (a : Array α) (x : α) : Option Nat :=
@@ -51,7 +41,6 @@ def Array.idxOf? [BEq α] (a : Array α) (x : α) : Option Nat :=
 
 -- Compute display order: group names first (in grp array order), then rest
 -- Group order matters for join key ordering (Shift+Arrow reorders grp)
--- Uses filter partition (preserves size proof) + qsort by grp position
 def dispOrder (group : Array String) (names : Array String) : Array Nat :=
   let n := names.size
   let isGrp := fun i => group.contains (names.getD i "")
@@ -59,32 +48,6 @@ def dispOrder (group : Array String) (names : Array String) : Array Nat :=
   let grpSorted := Array.range n |>.filter isGrp |>.qsort fun a b =>
     (group.idxOf? (names.getD a "")).getD 0 < (group.idxOf? (names.getD b "")).getD 0
   grpSorted ++ (Array.range n |>.filter (!isGrp ·))
-
--- Helper: list filter partition
-private theorem list_filter_partition (p : α → Bool) (l : List α) :
-    (l.filter p).length + (l.filter (!p ·)).length = l.length := by
-  induction l with
-  | nil => simp
-  | cons h t ih => simp only [List.filter_cons]; split <;> simp_all <;> omega
-
--- qsort preserves size (Vector round-trip)
-private theorem qsort_size (a : Array α) (f : α → α → Bool) : (a.qsort f).size = a.size := by
-  simp [Array.qsort]; split <;> simp [Vector.size_toArray]
-
--- dispOrder preserves size (filter partition of range n, qsort preserves size)
-theorem dispOrder_size (group : Array String) (names : Array String) :
-    (dispOrder group names).size = names.size := by
-  simp only [dispOrder]
-  rw [Array.size_append, qsort_size]
-  let isGrp := fun i => group.contains (names.getD i "")
-  have s1 : (Array.filter isGrp (Array.range names.size)).size =
-      (List.filter isGrp (List.range names.size)).length := by
-    rw [Array.size_eq_length_toList, Array.toList_filter, Array.toList_range]
-  have s2 : (Array.filter (!isGrp ·) (Array.range names.size)).size =
-      (List.filter (!isGrp ·) (List.range names.size)).length := by
-    rw [Array.size_eq_length_toList, Array.toList_filter, Array.toList_range]
-  rw [s1, s2]
-  exact list_filter_partition isGrp (List.range names.size) |>.symm ▸ by simp [List.length_range]
 
 -- When a column is grouped, its index appears first in dispOrder
 theorem dispOrder_grp_first :
@@ -94,16 +57,14 @@ theorem dispOrder_grp_first :
 def colIdxAt (group : Array String) (names : Array String) (i : Nat) : Nat :=
   (dispOrder group names).getD i 0
 
--- NavState: generic over table type + navigation state
--- nRows/nCols are type params (not phantom) because Fin needs compile-time bounds.
--- TblOps.nRows tbl is runtime (depends on tbl field), can't use directly in Fin.
--- So we lift values to type level, then prove they match table via hRows/hCols.
-structure NavState (nRows nCols : Nat) (t : Type) [TblOps t] where
+-- NavState: generic over table type + navigation state.
+-- nRows/nCols are cached from tbl at construction, used for cursor clamping.
+structure NavState (t : Type) [TblOps t] where
   tbl      : t                                              -- underlying table
-  hRows    : TblOps.nRows tbl = nRows                    -- row count matches
-  hCols    : (TblOps.colNames tbl).size = nCols          -- col count matches
-  row      : RowNav nRows
-  col      : ColNav nCols
+  nRows    : Nat                                            -- cached TblOps.nRows tbl
+  nCols    : Nat                                            -- cached (TblOps.colNames tbl).size
+  row      : RowNav := {}
+  col      : ColNav := {}
   grp      : Array String := #[]                            -- grouped column names (stable)
   hidden   : Array String := #[]                            -- hidden column names (width=1)
   dispIdxs : Array Nat := dispOrder grp (TblOps.colNames tbl)  -- cached display order
@@ -113,67 +74,61 @@ namespace NavState
 variable {t : Type} [TblOps t]
 
 -- | Column names from table
-@[inline] def colNames (nav : NavState nRows nCols t) : Array String := TblOps.colNames nav.tbl
+@[inline] def colNames (nav : NavState t) : Array String := TblOps.colNames nav.tbl
 
 -- | Current column index in data order
-@[inline] def curColIdx (nav : NavState nRows nCols t) : Nat := colIdxAt nav.grp nav.colNames nav.col.cur.val
+@[inline] def curColIdx (nav : NavState t) : Nat := colIdxAt nav.grp nav.colNames nav.col.cur
 
 -- | Current column name
-@[inline] def curColName (nav : NavState nRows nCols t) : String := nav.colNames.getD nav.curColIdx ""
+@[inline] def curColName (nav : NavState t) : String := nav.colNames.getD nav.curColIdx ""
 
 -- | Current column type
-@[inline] def curColType (nav : NavState nRows nCols t) : ColType := TblOps.colType nav.tbl nav.curColIdx
+@[inline] def curColType (nav : NavState t) : ColType := TblOps.colType nav.tbl nav.curColIdx
 
 -- | Column names in display order (grouped first, then rest)
-def dispColNames (nav : NavState nRows nCols t) : Array String :=
+def dispColNames (nav : NavState t) : Array String :=
   nav.grp ++ (nav.colNames |>.filter (!nav.grp.contains ·))
 
 -- | Selected column indices
-def selColIdxs (nav : NavState nRows nCols t) : Array Nat := nav.col.sels |>.filterMap nav.colNames.idxOf?
+def selColIdxs (nav : NavState t) : Array Nat := nav.col.sels |>.filterMap nav.colNames.idxOf?
 
 -- | Hidden column indices (for C render)
-def hiddenIdxs (nav : NavState nRows nCols t) : Array Nat := nav.hidden |>.filterMap nav.colNames.idxOf?
+def hiddenIdxs (nav : NavState t) : Array Nat := nav.hidden |>.filterMap nav.colNames.idxOf?
 
--- Constructor for external use
-def new (tbl : t) (hRows : TblOps.nRows tbl = nRows) (hCols : (TblOps.colNames tbl).size = nCols)
-    (hr : nRows > 0) (hc : nCols > 0) : NavState nRows nCols t :=
-  ⟨tbl, hRows, hCols, NavAxis.default hr, NavAxis.default hc, #[], #[], dispOrder #[] (TblOps.colNames tbl)⟩
-
--- Constructor with initial row/col cursor and group (clamped to valid range)
-def newAt (tbl : t) (hRows : TblOps.nRows tbl = nRows) (hCols : (TblOps.colNames tbl).size = nCols)
-    (hr : nRows > 0) (hc : nCols > 0) (col : Nat) (grp : Array String := #[]) (row : Nat := 0)
-    : NavState nRows nCols t :=
-  let c := min col (nCols - 1)
-  let r := min row (nRows - 1)
-  have hltc : c < nCols := Nat.lt_of_le_of_lt (Nat.min_le_right ..) (Nat.sub_lt hc Nat.one_pos)
-  have hltr : r < nRows := Nat.lt_of_le_of_lt (Nat.min_le_right ..) (Nat.sub_lt hr Nat.one_pos)
-  ⟨tbl, hRows, hCols, ⟨⟨r, hltr⟩, #[]⟩, ⟨⟨c, hltc⟩, #[]⟩, grp, #[], dispOrder grp (TblOps.colNames tbl)⟩
+-- | Constructor: empty table → none
+def newAt (tbl : t) (col : Nat := 0) (grp : Array String := #[]) (row : Nat := 0)
+    : Option (NavState t) :=
+  let nCols := (TblOps.colNames tbl).size
+  let nRows := TblOps.nRows tbl
+  if nCols == 0 || nRows == 0 then none
+  else some {
+    tbl, nRows, nCols,
+    row := { cur := min row (nRows - 1) },
+    col := { cur := min col (nCols - 1) },
+    grp, dispIdxs := dispOrder grp (TblOps.colNames tbl) }
 
 -- | Field lenses for NavState — auto-generated. Used to express nested `row.cur`/`col.cur`
 -- updates as single-line compositions rather than nested `{ nav with X := { nav.X with Y := ... } }`.
--- (tbl and proof fields hRows/hCols are skipped — they're not independently updatable.)
-section NavStateLenses
-variable {nr nc : Nat}
-gen_lenses (NavState nr nc t) where row, col, grp, hidden, dispIdxs
+-- (tbl, nRows, nCols skipped — they're construction-time invariants, not updated during navigation.)
+gen_lenses (NavState t) where row, col, grp, hidden, dispIdxs
 
 -- | Composite lenses: cursor through row/col axis
-def rowCurL  : Lens' (NavState nr nc t) (Fin nr) := rowL ∘ₗ NavAxis.curL
-def colCurL  : Lens' (NavState nr nc t) (Fin nc) := colL ∘ₗ NavAxis.curL
-def rowSelsL : Lens' (NavState nr nc t) (Array Nat)    := rowL ∘ₗ NavAxis.selsL
-def colSelsL : Lens' (NavState nr nc t) (Array String) := colL ∘ₗ NavAxis.selsL
-end NavStateLenses
+def rowCurL  : Lens' (NavState t) Nat            := rowL ∘ₗ NavAxis.curL
+def colCurL  : Lens' (NavState t) Nat            := colL ∘ₗ NavAxis.curL
+def rowSelsL : Lens' (NavState t) (Array Nat)    := rowL ∘ₗ NavAxis.selsL
+def colSelsL : Lens' (NavState t) (Array String) := colL ∘ₗ NavAxis.selsL
 
 -- Execute by command, no (obj,verb) chars
-def exec (h : Cmd) (nav : NavState nRows nCols t) (rowPg : Nat) : Option (NavState nRows nCols t) :=
-  let r d := some <| rowCurL.modify (·.clamp d) nav
-  let c d := some <| colCurL.modify (·.clamp d) nav
+def exec (h : Cmd) (nav : NavState t) (rowPg : Nat) : Option (NavState t) :=
+  let r d := some <| rowCurL.modify (clampShift · d nav.nRows) nav
+  let c d := some <| colCurL.modify (clampShift · d nav.nCols) nav
   match h with
   | .rowInc  => r 1              | .rowDec  => r (-1)
   | .colInc  => c 1              | .colDec  => c (-1)
   | .rowPgdn => r rowPg          | .rowPgup => r (-rowPg)
-  | .rowBot  => r (nRows - 1 - nav.row.cur.val) | .rowTop => r (-nav.row.cur.val)
-  | .colFirst => c (-nav.col.cur.val) | .colLast => c (nCols - 1 - nav.col.cur.val)
-  | .rowSel  => some <| rowSelsL.modify (·.toggle nav.row.cur.val) nav
+  | .rowBot  => r (nav.nRows - 1 - nav.row.cur) | .rowTop => r (-nav.row.cur)
+  | .colFirst => c (-nav.col.cur) | .colLast => c (nav.nCols - 1 - nav.col.cur)
+  | .rowSel  => some <| rowSelsL.modify (·.toggle nav.row.cur) nav
   | .colGrp  =>
     let newGrp := nav.grp.toggle nav.curColName
     some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames }
@@ -191,7 +146,7 @@ def exec (h : Cmd) (nav : NavState nRows nCols t) (rowPg : Nat) : Option (NavSta
         let gj := nav.grp.getD j ""
         let newGrp := nav.grp.set! i gj |>.set! j gi
         let d := if fwd then (1 : Int) else -1
-        some <| colCurL.modify (·.clamp d)
+        some <| colCurL.modify (clampShift · d nav.nCols)
           { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames }
     | none => none
   | _ => none
