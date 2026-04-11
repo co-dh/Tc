@@ -20,6 +20,7 @@ import Tc.Diff
 import Tc.StatusAgg
 import Tc.Export
 import Tc.Replay
+import Tc.Lens
 
 open Tc
 
@@ -34,6 +35,18 @@ structure AppState where
   sparklines : Array String := #[]  -- per-column sparkline cache (empty = recompute)
   statusCache : String × String × String := ("", "", "")  -- (path, col, desc) — avoids per-frame DB query
   aggCache : StatusAgg.Cache := StatusAgg.Cache.empty
+
+-- | Field lenses for AppState — auto-generated, non-dependent fields only.
+namespace AppState
+gen_lenses AppState where stk, vs, theme, info, prevScroll, heatMode, sparklines, aggCache
+
+-- | Composed lens pointing at the currently-focused view.
+def curViewL : Lens' AppState (View AdbcTable) := stkL ∘ₗ ViewStack.hdL
+
+-- | Composed lens pointing at the focused view's decimal precision (3 levels deep).
+-- Used by precSet/precAdj to avoid triple-nested `{ a with stk := a.stk.setCur { ... } }`.
+def curPrecL : Lens' AppState Nat := curViewL ∘ₗ View.precL
+end AppState
 
 -- | Dispatch result: quit, unhandled, or new state
 inductive Action where | quit | unhandled | ok (a : AppState)
@@ -91,7 +104,7 @@ private def runViewEffect (a : AppState) (ci : CmdConfig.CmdInfo)
     let grp' := v'.nav.grp.filter (!cols.contains ·)
     let hidden' := v'.nav.hidden.filter (!cols.contains ·)
     pure (v'.rebuild tbl' (grp := grp') (row := v'.nav.row.cur.val) |>.map fun rv =>
-      s.setCur { rv with nav := { rv.nav with hidden := hidden' } })
+      s.setCur { rv with nav := NavState.hiddenL.set hidden' rv.nav })
   | .freq colNames => tryStk a ci do
     let some (adbc, totalGroups) ← AdbcTable.freqTable s.tbl colNames | return none
     match View.fromTbl adbc s.cur.path 0 colNames with
@@ -172,12 +185,10 @@ end AppState
 -- | Handler combinators — build HandlerFn from domain functions
 -- set prec to absolute value
 private def precSet (v : Nat) : HandlerFn := fun a _ _ =>
-  pure (.ok { a with stk := a.stk.setCur { a.stk.cur with prec := v } })
+  pure (.ok <| AppState.curPrecL.set v a)
 -- adjust prec by delta, clamped to [0,17]
 private def precAdj (delta : Int) : HandlerFn := fun a _ _ =>
-  let cur := a.stk.cur.prec
-  let p := (Int.ofNat cur + delta).toNat |> min 17
-  pure (.ok { a with stk := a.stk.setCur { a.stk.cur with prec := p } })
+  pure (.ok <| AppState.curPrecL.modify (fun p => (Int.ofNat p + delta).toNat |> min 17) a)
 -- domain dispatch with tryStk + viewUp fallback
 private def domainH (d : ViewStack AdbcTable → Cmd → Option (IO (Option (ViewStack AdbcTable)))) : HandlerFn :=
   fun a ci _ => do

@@ -15,14 +15,14 @@ variable {T : Type} [TblOps T]
 private def moveRowTo (s : ViewStack T) (rowIdx : Nat) (search : Option (Nat × String) := none) : ViewStack T :=
   let v := s.cur
   let delta : Int := rowIdx - v.nav.row.cur.val
-  let nav' := { v.nav with row := { v.nav.row with cur := v.nav.row.cur.clamp delta } }
+  let nav' := NavState.rowCurL.modify (·.clamp delta) v.nav
   s.setCur { v with nav := nav', search := search.orElse (fun _ => v.search) }
 
 -- | Move col cursor to target index (pure helper)
 private def moveColTo (s : ViewStack T) (colIdx : Nat) : ViewStack T :=
   let v := s.cur
   let delta : Int := colIdx - v.nav.col.cur.val
-  let nav' := { v.nav with col := { v.nav.col with cur := v.nav.col.cur.clamp delta } }
+  let nav' := NavState.colCurL.modify (·.clamp delta) v.nav
   s.setCur { v with nav := nav' }
 
 -- | col search: fzf jump to column by name (IO version for backward compat)
