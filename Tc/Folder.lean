@@ -80,7 +80,7 @@ private def mkFldView (adbc : AdbcTable) (path : String) (depth : Nat) (disp : S
   View.fromTbl adbc path (grp := grp) |>.map fun v =>
     { v with vkind := .fld path depth, disp }
 
--- | Create folder view — config-driven listing, local fallback
+-- | Create folder view — config-driven listing, local fallback.
 def mkView (path : String) (depth : Nat) : IO (Option (View AdbcTable)) := do
   match ← SourceConfig.findSource path with
   | some cfg =>
@@ -133,24 +133,25 @@ def goParent (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
     | some s' => pure (some s')
     | none => tryView s (dir ++ "/..") (curDepth s) false
 
--- | Try to open a file as data, fall back to viewer
-private def openFile (s : ViewStack AdbcTable) (curDir p : String) (cfg : Option SourceConfig.Config)
-    : IO (Option (ViewStack AdbcTable)) := do
+-- | Try to open a file as data, fall back to viewer.
+-- `test` is needed for `FileFormat.viewFile` (bat/less fall-back).
+private def openFile (test : Bool) (s : ViewStack AdbcTable) (curDir p : String)
+    (cfg : Option SourceConfig.Config) : IO (Option (ViewStack AdbcTable)) := do
   let fullPath := joinPath curDir p
   if FileFormat.isDataFile p then
     let openPath ← match cfg with | some c => c.resolve fullPath | none => pure fullPath
     match ← FileFormat.openFile openPath with
     | some v => return some (s.push v)
-    | none => if cfg.isNone then FileFormat.viewFile fullPath
+    | none => if cfg.isNone then FileFormat.viewFile test fullPath
   else
     let viewPath ← match cfg with | some c => c.runDownload fullPath | none => pure fullPath
     if p.endsWith ".gz" then
       if let some v ← FileFormat.tryReadCsv viewPath then return some (s.push v)
-    FileFormat.viewFile viewPath
+    FileFormat.viewFile test viewPath
   pure (some s)
 
 -- | Enter directory or view file based on current row
-def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
+def enter (test : Bool) (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let curDir := s.cur.curDir
   let cfg ← SourceConfig.findSource curDir
   -- Attach-based: FileFormat or config-driven (e.g. pg://)
@@ -180,13 +181,13 @@ def enter (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
           | none => return some s
         if !c.enterUrl.isEmpty then
           return ← tryView s (SourceConfig.expand c.enterUrl #[("name", p)]) (curDepth s) true
-      openFile s curDir p cfg
+      openFile test s curDir p cfg
   | some 's', some p =>
     if cfg.isSome then pure (some s) else
     let fullPath := joinPath curDir p
     let stat ← IO.Process.output { cmd := "test", args := #["-d", fullPath] }
     if stat.exitCode == 0 then tryView s fullPath (curDepth s) true
-    else openFile s curDir p none
+    else openFile test s curDir p none
   | _, _ => pure none
 
 -- | Get trash command (trash-put or gio trash)
@@ -239,8 +240,8 @@ partial def waitYN : IO Bool := do
   else waitYN
 
 -- | Confirm deletion with popup dialog (auto-decline in test mode)
-def confirmDel (paths : Array String) : IO Bool := do
-  if ← Fzf.getTestMode then return false
+def confirmDel (test : Bool) (paths : Array String) : IO Bool := do
+  if test then return false
   let title := s!"Delete {paths.size} file(s)?"
   let shown := paths.toList.take 6 |>.toArray
   let lines := if paths.size > 6
@@ -273,31 +274,34 @@ private def refreshView (s : ViewStack AdbcTable) (path : String) (depth : Nat)
       s.setCur { x with vkind := .fld path depth, disp := s.cur.disp })
   | none => pure (some s)
 
-def del (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
+def del (test : Bool) (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let .fld path depth := s.cur.vkind | return none
   if (← SourceConfig.findSource path).isSome then return some s
   let paths ← selPaths s.cur
   if paths.isEmpty then return none
-  if !(← confirmDel paths) then return some s
+  if !(← confirmDel test paths) then return some s
   let _ ← trashFiles paths
   refreshView s path depth
 
-def setDepth (s : ViewStack AdbcTable) (delta : Int) : IO (Option (ViewStack AdbcTable)) := do
+def setDepth (s : ViewStack AdbcTable) (delta : Int)
+    : IO (Option (ViewStack AdbcTable)) := do
   let .fld path depth := s.cur.vkind | return none
   if (← SourceConfig.findSource path).isSome then return some s
   let newDepth := max 1 ((depth : Int) + delta).toNat
   if newDepth == depth then pure (some s) else refreshView s path newDepth
 
 -- | Dispatch folder handler to IO action. Returns none if handler not recognized.
-def dispatch (s : ViewStack AdbcTable) (h : Cmd) : Option (IO (Option (ViewStack AdbcTable))) :=
-  let opt f := some (f s)
+-- `test` is only needed by `enter`/`del` (for viewFile fall-back and the
+-- confirmation dialog respectively); other branches ignore it.
+def dispatch (test : Bool) (s : ViewStack AdbcTable) (h : Cmd)
+    : Option (IO (Option (ViewStack AdbcTable))) :=
   match h with
-  | .folderPush     => opt push
+  | .folderPush     => some (push s)
   | .folderDepthInc => some (setDepth s 1)
   | .folderDepthDec => some (setDepth s (-1))
-  | .folderDel      => if s.cur.vkind matches .fld _ _ then opt del else none
-  | .folderParent   => if s.cur.vkind matches .fld _ _ then opt goParent else none
-  | .folderEnter    => if s.cur.vkind matches .fld _ _ then opt enter else none
+  | .folderDel      => if s.cur.vkind matches .fld _ _ then some (del test s) else none
+  | .folderParent   => if s.cur.vkind matches .fld _ _ then some (goParent s) else none
+  | .folderEnter    => if s.cur.vkind matches .fld _ _ then some (enter test s) else none
   | _ => none
 
 end Tc.Folder

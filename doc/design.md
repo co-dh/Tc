@@ -85,10 +85,10 @@ Adding a source = add an entry to the array with prefix, list/download commands,
 │    findSource : longest prefix match                    │
 │    runList, runDownload, runEnter, runSetup             │
 ├──────────────┬──────────────────┬───────────────────────┤
-│  s3://       │  hf://           │  osquery://            │
-│  aws CLI     │  HF Hub API      │  osqueryi --json       │
-│  +n = public │  curl            │  python3 metadata      │
-│  buckets     │  disk cache      │  stub views            │
+│  s3://         │  hf://           │  osquery://            │
+│  aws CLI       │  HF Hub API      │  osqueryi --json       │
+│ TV_S3_NO_SIGN  │  curl            │  python3 metadata      │
+│  = public      │  disk cache      │  stub views            │
 ├──────────────┼──────────────────┼───────────────────────┤
 │  ftp://      │  rest://         │  pg://                 │
 │  curl ls -l  │  curl JSON       │  ATTACH POSTGRES       │

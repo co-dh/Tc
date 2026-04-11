@@ -65,13 +65,13 @@ private def resolveOps (s : ViewStack AdbcTable) : Option (Array JoinOp × Array
   pure (if joinOk then allOps else #[.union, .diff], leftGrp)
 
 -- Full workflow: validate stack, show fzf menu, execute, push result
-def run (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
+def run (test : Bool) (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   let some (ops, leftGrp) := resolveOps s | return none
   let some parent := s.tl.head? | return none
   let (lName, _) ← prepareView parent.nav.tbl "l"
   let (rName, _) ← prepareView s.tbl "r"
   let items := ops.map fun op => s!"{opLabel op}  |  {prqlStr lName rName leftGrp op}"
-  let some idx ← Fzf.fzfIdx #["--prompt=join> "] items | return none
+  let some idx ← Fzf.fzfIdx test #["--prompt=join> "] items | return none
   ops.getD idx .inner |> (execJoin s · leftGrp)
 
 -- | Join by operation index directly (no fzf). Called by socket/dispatch.
