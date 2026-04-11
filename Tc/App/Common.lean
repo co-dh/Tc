@@ -461,20 +461,46 @@ private def prodInterp : AppM.Interp AppState where
   nextKey := do let e ← Term.pollEvent; pure (some (evToKey e))
   readArg := pure ""
 
--- Test interpreter: keystroke queue lives in an IO.Ref; empty queue ⇒ dump
--- the term buffer for the `-c` harness to capture, then signal EOF via `none`.
--- Arg commands read their input by collecting tokens from the queue up to `<ret>`.
+-- Test interpreter. Used by the `-c "keys"` test harness: tests spawn `tv`,
+-- feed it a canned keystroke string, then read the rendered terminal buffer
+-- from stdout to assert on what the UI would have shown.
+--
+-- The interpreter lives in an `IO.Ref (Array String)` — a mutable reference
+-- holding the unconsumed suffix of the keystroke queue. Each call to
+-- `nextKey`/`readArg` reads the current queue, decides what to return, and
+-- writes the remaining tokens back. This is the only piece of test state;
+-- rendering is real (writes to the termbox fake-buffer) and command handlers
+-- run in real IO (real DuckDB queries, real file ops, etc.). The test/prod
+-- difference is *just* where keystrokes come from and what happens when the
+-- queue runs out — everything else is identical to production.
 private def testInterp (ref : IO.Ref (Array String)) : AppM.Interp AppState where
+  -- Tests don't exercise the truncated-cell preview overlay → skip it to
+  -- keep the asserted buffer predictable across terminal sizes.
   render  := renderFrame (showPreview := false)
+  -- Poll for the next keystroke. In production this blocks on the terminal;
+  -- here we pop from the queue instead. Empty queue means "the test is
+  -- finished": print the current termbox buffer so the parent `-c` process
+  -- can capture it from stdout, then return `none` which tells `loopProg`
+  -- to exit cleanly (see the `| none => pure a` branch above).
   nextKey := do
     let ks ← ref.get
     if ks.isEmpty then
       IO.print (← Term.bufferStr)
       pure none
     else
+      -- `Key.nextKey` pops the first token; ks' is the rest of the queue.
       let (key, ks') ← nextKey ks
       ref.set ks'
       pure (some key)
+  -- Arg commands (`/`, `\`, `=`, etc.) prompt the user for a string. In
+  -- production the handler opens an fzf popup; in tests we splice the arg
+  -- directly into the keystroke stream terminated by a `<ret>` token, e.g.
+  -- `"/foo<ret>"` means "press `/`, then type `foo`, then Enter". Here we
+  -- scan forward to the next `<ret>`, concatenate the tokens before it into
+  -- the arg string, and drop everything up to and including the `<ret>` so
+  -- the outer loop picks up after the Enter. If there is no `<ret>` in the
+  -- queue we return "" (same as prod when the user cancels fzf) so the
+  -- handler takes its "empty arg" branch.
   readArg := do
     let ks ← ref.get
     if ks.any (· == "<ret>") then
