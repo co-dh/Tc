@@ -6,6 +6,7 @@
   - NavAxis: cursor (Fin) + selections (Array)
 -/
 import Tc.Types
+import Tc.Lens
 
 namespace Tc
 -- Clamp value to [lo, hi)
@@ -33,6 +34,12 @@ structure NavAxis (n : Nat) (elem : Type) [BEq elem] where
 
 -- Default NavAxis for n > 0
 def NavAxis.default [BEq elem] (h : n > 0) : NavAxis n elem := ⟨⟨0, h⟩, {}⟩
+
+-- | Field lenses for NavAxis — auto-generated, enable composable nested updates via `∘ₗ`.
+namespace NavAxis
+variable {n : Nat} {elem : Type} [BEq elem]
+gen_lenses (NavAxis n elem) where cur, sels
+end NavAxis
 
 -- Type aliases: Row uses Nat (index), Col uses String (name, stable across deletion)
 abbrev RowNav (m : Nat) := NavAxis m Nat
@@ -142,21 +149,35 @@ def newAt (tbl : t) (hRows : TblOps.nRows tbl = nRows) (hCols : (TblOps.colNames
   have hltr : r < nRows := Nat.lt_of_le_of_lt (Nat.min_le_right ..) (Nat.sub_lt hr Nat.one_pos)
   ⟨tbl, hRows, hCols, ⟨⟨r, hltr⟩, #[]⟩, ⟨⟨c, hltc⟩, #[]⟩, grp, #[], dispOrder grp (TblOps.colNames tbl)⟩
 
+-- | Field lenses for NavState — auto-generated. Used to express nested `row.cur`/`col.cur`
+-- updates as single-line compositions rather than nested `{ nav with X := { nav.X with Y := ... } }`.
+-- (tbl and proof fields hRows/hCols are skipped — they're not independently updatable.)
+section NavStateLenses
+variable {nr nc : Nat}
+gen_lenses (NavState nr nc t) where row, col, grp, hidden, dispIdxs
+
+-- | Composite lenses: cursor through row/col axis
+def rowCurL  : Lens' (NavState nr nc t) (Fin nr) := rowL ∘ₗ NavAxis.curL
+def colCurL  : Lens' (NavState nr nc t) (Fin nc) := colL ∘ₗ NavAxis.curL
+def rowSelsL : Lens' (NavState nr nc t) (Array Nat)    := rowL ∘ₗ NavAxis.selsL
+def colSelsL : Lens' (NavState nr nc t) (Array String) := colL ∘ₗ NavAxis.selsL
+end NavStateLenses
+
 -- Execute by command, no (obj,verb) chars
 def exec (h : Cmd) (nav : NavState nRows nCols t) (rowPg : Nat) : Option (NavState nRows nCols t) :=
-  let r d := some { nav with row := { nav.row with cur := nav.row.cur.clamp d } }
-  let c d := some { nav with col := { nav.col with cur := nav.col.cur.clamp d } }
+  let r d := some <| rowCurL.modify (·.clamp d) nav
+  let c d := some <| colCurL.modify (·.clamp d) nav
   match h with
   | .rowInc  => r 1              | .rowDec  => r (-1)
   | .colInc  => c 1              | .colDec  => c (-1)
   | .rowPgdn => r rowPg          | .rowPgup => r (-rowPg)
   | .rowBot  => r (nRows - 1 - nav.row.cur.val) | .rowTop => r (-nav.row.cur.val)
   | .colFirst => c (-nav.col.cur.val) | .colLast => c (nCols - 1 - nav.col.cur.val)
-  | .rowSel  => some { nav with row := { nav.row with sels := nav.row.sels.toggle nav.row.cur.val } }
+  | .rowSel  => some <| rowSelsL.modify (·.toggle nav.row.cur.val) nav
   | .colGrp  =>
     let newGrp := nav.grp.toggle nav.curColName
     some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames }
-  | .colHide => some { nav with hidden := nav.hidden.toggle nav.curColName }
+  | .colHide => some <| hiddenL.modify (·.toggle nav.curColName) nav
   | .colShiftL | .colShiftR =>
     let name := nav.curColName
     match nav.grp.idxOf? name with
@@ -170,8 +191,8 @@ def exec (h : Cmd) (nav : NavState nRows nCols t) (rowPg : Nat) : Option (NavSta
         let gj := nav.grp.getD j ""
         let newGrp := nav.grp.set! i gj |>.set! j gi
         let d := if fwd then (1 : Int) else -1
-        some { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames,
-                        col := { nav.col with cur := nav.col.cur.clamp d } }
+        some <| colCurL.modify (·.clamp d)
+          { nav with grp := newGrp, dispIdxs := dispOrder newGrp nav.colNames }
     | none => none
   | _ => none
 

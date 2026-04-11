@@ -4,6 +4,7 @@
 -/
 import Tc.Types
 import Tc.Render
+import Tc.Lens
 
 namespace Tc
 
@@ -24,6 +25,11 @@ structure View (T : Type) [TblOps T] where
 namespace View
 
 variable {T : Type} [TblOps T]
+
+-- | Field lenses for non-dependent View fields, auto-generated via `gen_lenses`.
+-- (nRows/nCols/nav are skipped — their types are mutually dependent, so they can't
+-- be expressed as simple `Lens' (View T) A` — the codomain would depend on the source.)
+gen_lenses (View T) where path, vkind, disp, prec, widthAdj, widths, search, sameHide
 
 -- | Create from NavState + path
 def new {nr nc : Nat} (nav : NavState nr nc T) (path : String) : View T :=
@@ -65,7 +71,8 @@ def rebuild (old : View T) (tbl : T) (col : Nat := old.nav.col.cur.val)
   if hc : nCols > 0 then
     if hr : nRows > 0 then
       let nav := NavState.newAt tbl rfl rfl hr hc col grp row
-      some { old with nRows, nCols, nav := { nav with hidden := old.nav.hidden }, widths := #[] }
+              |> NavState.hiddenL.set old.nav.hidden
+      some { old with nRows, nCols, nav, widths := #[] }
     else none
   else none
 
@@ -102,6 +109,9 @@ structure ViewStack (T : Type) [TblOps T] where
 namespace ViewStack
 
 variable {T : Type} [TblOps T]
+
+-- | Field lens for the current (head) view on the stack.
+def hdL : Lens' (ViewStack T) (View T) := fieldL% hd
 
 @[inline] def cur (s : ViewStack T) : View T := s.hd
 @[inline] def tbl (s : ViewStack T) : T := s.hd.nav.tbl
