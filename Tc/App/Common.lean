@@ -64,8 +64,19 @@ inductive Action where | quit | unhandled | ok (a : AppState)
 -- arg is empty for non-arg commands, contains user input for arg commands.
 abbrev HandlerFn := AppState → CmdConfig.CmdInfo → String → IO Action
 
--- | Unified handler map: Cmd → HandlerFn.
--- One HashMap for all commands (pure, IO, arg). Lookup falls back to viewUp.
+-- | Unified handler map: Cmd → HandlerFn. Set once by `initHandlers` at
+-- boot, never mutated after. Lookup falls back to `viewUp`.
+--
+-- Why an `IO.Ref` instead of a pure top-level def? Ordering cycle:
+--   `dispatch` (below)          needs the lookup
+--   `runMenu`  (below)          calls `dispatch`
+--   `commands` (further below)  captures `runMenu` in its closures
+--   lookup table                is built from `commands`
+-- A pure `def handlerTable := commands.foldl …` would forward-reference
+-- `commands`, and wrapping the whole chain in a `mutual` block mixes
+-- `partial def` with non-partial `def` in awkward ways. The IORef acts as
+-- a one-shot forward declaration: `dispatch` reads it by name, `commands`
+-- is defined after, and `initHandlers` ties the knot at startup.
 initialize handlerMap : IO.Ref (Std.HashMap Cmd HandlerFn) ← IO.mkRef {}
 
 namespace AppState
@@ -81,14 +92,22 @@ def withStk (a : AppState) (ci : CmdConfig.CmdInfo) (s' : ViewStack AdbcTable) :
 private def errAction (a : AppState) (e : IO.Error) : IO Action := do
   let msg := e.toString; Log.error msg; errorPopup msg; pure (.ok a)
 
--- | Try/catch wrapper for stack-level IO (resets vs+sparklines on success)
-private def tryStk (a : AppState) (ci : CmdConfig.CmdInfo)
-    (f : IO (Option (ViewStack AdbcTable))) : IO Action := do
+-- | Generic try/catch wrapper: run `f`, map success via `ok`, route errors
+-- through `errAction` so they surface as a popup instead of crashing the loop.
+-- Callers supply the success branch so the same plumbing serves both
+-- stack-transforming handlers and arg-running handlers.
+private def runTry (a : AppState) (f : IO α) (ok : α → Action) : IO Action := do
   match ← f.toBaseIO with
-  | .ok (some s') =>
-    pure (.ok (a.withStk ci s').resetVS)
-  | .ok none => pure (.ok a)
+  | .ok x => pure (ok x)
   | .error e => errAction a e
+
+-- | Try/catch wrapper for stack-level IO (resets vs+sparklines on success).
+-- `none` means the handler declined to update (e.g. no-op filter cancel).
+private def tryStk (a : AppState) (ci : CmdConfig.CmdInfo)
+    (f : IO (Option (ViewStack AdbcTable))) : IO Action :=
+  a.runTry f fun
+    | some s' => .ok (a.withStk ci s').resetVS
+    | none    => .ok a
 
 -- | Execute a residual Effect from View.update/Freq.update inline
 private def runViewEffect (a : AppState) (ci : CmdConfig.CmdInfo)
@@ -116,19 +135,16 @@ private def runViewEffect (a : AppState) (ci : CmdConfig.CmdInfo)
       (View.navL ∘ₗ NavState.hiddenL).set hidden' rv |> s.setCur)
   | .freq colNames => tryStk a ci do
     let some (adbc, totalGroups) ← AdbcTable.freqTable s.tbl colNames | return none
-    match View.fromTbl adbc s.cur.path 0 colNames with
-    | some fv => pure (some (s.push { fv with vkind := .freqV colNames totalGroups, disp := s!"freq {colNames.joinWith ","}" }))
-    | none => pure none
+    let some fv := View.fromTbl adbc s.cur.path 0 colNames | return none
+    let vkind := .freqV colNames totalGroups
+    pure (some (s.push { fv with vkind, disp := s!"freq {colNames.joinWith ","}" }))
   | .freqFilter cols row => tryStk a ci do
-    match s.cur.vkind, s.pop with
-    | .freqV _ _, some s' => do
-      let expr ← Freq.filterExprIO s.tbl cols row
-      match ← TblOps.filter s'.tbl expr with
-      | some tbl' => match s'.cur.rebuild tbl' (row := 0) with
-        | some rv => pure (some (s'.push rv))
-        | none => pure none
-      | none => pure none
-    | _, _ => pure none
+    let .freqV _ _ := s.cur.vkind | return none
+    let some s' := s.pop | return none
+    let expr ← Freq.filterExprIO s.tbl cols row
+    let some tbl' ← TblOps.filter s'.tbl expr | return none
+    let some rv := s'.cur.rebuild tbl' (row := 0) | return none
+    pure (some (s'.push rv))
 
 -- | View.update + runViewEffect fallback for nav/sort/exclude/freq handlers
 private def viewUp (a : AppState) (ci : CmdConfig.CmdInfo) : IO Action := do
@@ -183,11 +199,10 @@ private partial def runMenu (a : AppState) : IO Action := do
     | none => pure (.ok a')
   | none => pure (.ok a')
 
--- | Run a stack-level IO action with shared error handling and state reset
-private def runStackIO (a : AppState) (f : IO (ViewStack AdbcTable)) : IO Action := do
-  match ← f.toBaseIO with
-  | .ok s' => pure (.ok { a with stk := s' }.resetVS)
-  | .error e => errAction a e
+-- | Stack-level variant for arg handlers: no `CmdInfo`, so `resetsVS` is
+-- applied unconditionally rather than conditionally via `withStk`.
+private def runStackIO (a : AppState) (f : IO (ViewStack AdbcTable)) : IO Action :=
+  a.runTry f fun s' => .ok { a with stk := s' }.resetVS
 
 end AppState
 
