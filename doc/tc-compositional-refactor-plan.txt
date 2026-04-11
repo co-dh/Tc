@@ -1,0 +1,198 @@
+================================================================================
+ tc — Compositional Refactor Plan (9 Haskell-inspired tasks)
+ Generated: 2026-04-11
+ Branch context: claude/haskell-lenses-explanation-NtvZo
+================================================================================
+
+GOAL
+----
+Move tc from imperative-IO style toward a more compositional Lean 4 style
+by applying 9 Haskell-inspired patterns. Each task is scoped to run as its
+own `/feature` workflow (worktree → plan → approve → implement → PR).
+
+Tasks that touch the same files are grouped so parallel worktrees don't
+collide at merge time.
+
+--------------------------------------------------------------------------------
+ GROUPING (7 parallel groups + 1 deferred integration)
+--------------------------------------------------------------------------------
+
+GROUP A — Lenses + NavState optics      (tasks #1 + #5)
+  Branch     : claude/lenses-navstate
+  New file   : Tc/Lens.lean    (~80 lines: van Laarhoven Lens, view/set/over,
+                                 zoom, composition, macros for record fields)
+  Edits      : Tc/View.lean, Tc/Types.lean (NavState lenses),
+               Tc/Meta.lean, Tc/Filter.lean, Tc/App/Common.lean
+  Kills      : nested `{ v with nav := { nav with ... } }` updates at
+               Tc/Meta.lean:30, Tc/Meta.lean:43-44, Tc/App/Common.lean:94,
+               Tc/Filter.lean:19, Tc/View.lean:68
+  Acceptance : all nested-with patterns replaced by `over (navL ∘ hiddenL)`
+               style; `lake build` green; no behavior change.
+
+GROUP B — Free-monad Cmd/Effect interpreter      (task #2)
+  Branch     : claude/free-monad-cmd
+  New file   : Tc/AppF.lean    (AppF functor, Free AppF, interpreters for
+                                 IO and pure-test)
+  Edits      : Tc/Cmd.lean, Tc/App/Main.lean, Tc/App/Common.lean
+  Kills      : IO-soup in runApp / runTsv / appMain; unifies test mode
+               (-c keys) and production under one interpreter switch.
+  Acceptance : test mode uses a pure interpreter (no Term/Fzf/IO refs);
+               production uses the IO interpreter; both behave identically
+               on existing test suite.
+
+GROUP C — ReaderT Env IO (kill mutable globals)   (task #3)
+  Branch     : claude/readert-env
+  New file   : Tc/Env.lean     (Env structure: theme, logPath, testMode,
+                                 noSign, cmdCfg cache)
+  Edits      : Tc/App/Main.lean, Tc/App/Common.lean, Tc/Fzf.lean,
+               Tc/SourceConfig.lean, Tc/Theme.lean, Tc/Log.lean (if present)
+  Kills      : Fzf.setTestMode, SourceConfig.setNoSign, Log.setLogPath
+               global mutation — replaced with Env fields passed via
+               ReaderT Env IO.
+  Acceptance : no top-level `IO.Ref` / global-state writes for these
+               five pieces of config; Env built once in `main`.
+
+GROUP D — Profunctor/arrow Op pipeline            (task #4)
+  Branch     : claude/op-pipeline
+  New file   : Tc/Pipe.lean    (Pipe α β ≈ Kleisli IO, Category+Arrow-ish
+                                 instances, compose with `>=>`)
+  Edits      : Tc/Runner.lean, Tc/Join.lean (if Op runs there)
+  Kills      : sequential imperative application of Op values; replaces
+               with `Pipe` composition so a pipeline is a single value
+               you can inspect / serialize / run.
+  Acceptance : Op list execution goes through Pipe; Session.lean's Op
+               JSON round-trip still works (leave Session.lean alone).
+
+GROUP E — Validation applicative in Session       (task #6)
+  Branch     : claude/session-validation
+  New file   : Tc/Validation.lean  (Validation ε α, Applicative instance
+                                     that accumulates ε via Semigroup)
+  Edits      : Tc/Session.lean (fromJson? instances)
+  Kills      : early-fail behavior at Tc/Session.lean:49+ ; restore now
+               reports all malformed fields at once.
+  Acceptance : malformed session JSON with 3 bad fields reports all 3
+               in one error message, not just the first.
+
+GROUP F — Recursion schemes for Filter Expr       (task #7)
+  Branch     : claude/filter-recursion-schemes
+  New file   : none (all in Tc/Filter.lean)
+  Edits      : Tc/Filter.lean — define ExprF functor, Fix ExprF, cata,
+               rewrite existing passes as algebras.
+  Kills      : hand-rolled recursion in Expr walkers; each new pass
+               becomes an algebra, not a full recursive walk.
+  Acceptance : existing Expr passes all compile through cata; no
+               behavior change.
+
+GROUP G — Contravariant SourceConfig combinators  (task #8)
+  Branch     : claude/sourceconfig-contravariant
+  New file   : none (all in Tc/SourceConfig.lean)
+  Edits      : Tc/SourceConfig.lean — Matcher type with contravariant
+                                       composition; findSource becomes
+                                       `runMatcher (src1 <> src2 <> ...)`
+  Kills      : imperative search in findSource.
+  Acceptance : test-mode can stub a Matcher; behavior unchanged.
+
+GROUP H — End-to-end integration                  (task #9) [DEFERRED]
+  Branch     : claude/integrate-ABC
+  Depends on : A, B, C merged.
+  Edits      : Tc/App/Main.lean — wire lenses + free-monad + ReaderT
+               through appMain so the patterns work together.
+  Acceptance : appMain is <40 lines, each stage is a named value, the
+               three patterns visibly cooperate.
+
+--------------------------------------------------------------------------------
+ KNOWN RISKS / CONFLICTS
+--------------------------------------------------------------------------------
+
+  * B vs C both rewrite appMain / App/Common.lean.
+    → Whichever merges second must rebase. Suggest merging C first (smaller
+      surface) then B.
+
+  * A may touch App/Common.lean line 94 (nested update).
+    → If A lands first, B and C rebase trivially. If B or C lands first,
+      A's lens edit at that line needs to re-target the new code shape.
+
+  * D vs E both touch Session.lean area.
+    → Keep D out of Session.lean entirely. D only edits Runner.lean and
+      creates Tc/Pipe.lean. E has Session.lean to itself.
+
+  * F (Filter.lean) may clash with A (which also touches Filter.lean:19
+    for the nested-update fix).
+    → A's edit is one line; do A first, then F rebases trivially.
+
+  * Each refactor requires `lake build` to verify. Build time may exceed
+    single-command timeouts for heavy groups (B, C, H). Agents should run
+    build in background or split into multiple bash calls.
+
+--------------------------------------------------------------------------------
+ RECOMMENDED LANDING ORDER
+--------------------------------------------------------------------------------
+
+  Wave 1 (no conflicts, land in any order):
+    E  claude/session-validation
+    F  claude/filter-recursion-schemes
+    G  claude/sourceconfig-contravariant
+    D  claude/op-pipeline
+
+  Wave 2 (touch View/NavState/appMain area, land one at a time):
+    A  claude/lenses-navstate        ← land first (enables A's lens use)
+    C  claude/readert-env            ← land second (Env scaffolding)
+    B  claude/free-monad-cmd         ← land last (biggest surface)
+
+  Wave 3:
+    H  claude/integrate-ABC          ← after A+B+C green on main
+
+--------------------------------------------------------------------------------
+ LOCAL /feature INVOCATIONS (copy-paste)
+--------------------------------------------------------------------------------
+
+  /feature Group A — Lenses + NavState optics
+      Add Tc/Lens.lean (van Laarhoven lens, view/set/over, composition,
+      field-lens macro). Refactor nested record updates in Tc/View.lean,
+      Tc/Meta.lean:30, Tc/Meta.lean:43-44, Tc/App/Common.lean:94,
+      Tc/Filter.lean:19, Tc/View.lean:68 to use composed lenses. No
+      behavior change. Branch: claude/lenses-navstate.
+
+  /feature Group B — Free-monad Cmd/Effect interpreter
+      Add Tc/AppF.lean with Free AppF and two interpreters (IO and pure
+      test). Refactor runApp/runTsv/appMain in Tc/App/Main.lean and
+      Tc/App/Common.lean to produce Free AppF values, interpreted at the
+      edge. Unify -c test mode with production under an interpreter
+      switch. Branch: claude/free-monad-cmd.
+
+  /feature Group C — ReaderT Env IO
+      Add Tc/Env.lean with Env (theme, logPath, testMode, noSign,
+      cmdCfg). Convert Fzf.setTestMode / SourceConfig.setNoSign /
+      Log.setLogPath from mutable globals to Env fields. Thread a
+      ReaderT Env IO through appMain; no IO.Ref globals for these five
+      pieces of config. Branch: claude/readert-env.
+
+  /feature Group D — Profunctor/arrow Op pipeline
+      Add Tc/Pipe.lean with Pipe α β (Kleisli IO), Category/Arrow-ish
+      composition. Refactor Tc/Runner.lean so Op execution goes through
+      Pipe composition. Leave Tc/Session.lean untouched. Branch:
+      claude/op-pipeline.
+
+  /feature Group E — Validation applicative for Session
+      Add Tc/Validation.lean (Validation ε α with error-accumulating
+      Applicative). Rewrite fromJson? instances in Tc/Session.lean to
+      accumulate all field errors. Branch: claude/session-validation.
+
+  /feature Group F — Recursion schemes for Filter.Expr
+      In Tc/Filter.lean, introduce ExprF functor + Fix ExprF + cata.
+      Rewrite existing Expr passes as algebras over ExprF. No behavior
+      change. Branch: claude/filter-recursion-schemes.
+
+  /feature Group G — Contravariant SourceConfig combinators
+      Refactor Tc/SourceConfig.lean with a Matcher type and contravariant
+      combinators so findSource becomes `runMatcher (src1 <> src2 <> ...)`.
+      Branch: claude/sourceconfig-contravariant.
+
+  /feature Group H — Integration (after A+B+C)
+      Wire the Lens/Free-monad/ReaderT patterns through appMain so they
+      cooperate. Only run after A, B, C are merged. Branch:
+      claude/integrate-ABC.
+
+================================================================================
+ END OF PLAN
+================================================================================
