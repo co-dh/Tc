@@ -34,15 +34,10 @@ structure Config where
   fallbackCmd    : String := ""   -- shell cmd template if listCmd fails (e.g. org-level listing)
   fallbackSql    : String := ""   -- SQL transform for fallbackCmd output
 
--- | Global flag: use --no-sign-request for S3 (set via +n arg)
-initialize noSign : IO.Ref Bool ← IO.mkRef false
-
-def setNoSign (b : Bool) : IO Unit := noSign.set b
-def getNoSign : IO Bool := noSign.get
-
--- | Get S3 extra args string
+-- | Build S3 extra args string. Reads `TV_S3_NO_SIGN` directly — S3 is the
+-- only caller that cares, so no reason to thread a flag through upstream layers.
 def s3Extra : IO String := do
-  if ← getNoSign then pure "--no-sign-request" else pure ""
+  if (← IO.getEnv "TV_S3_NO_SIGN").isSome then pure "--no-sign-request" else pure ""
 
 -- | Split path into components after stripping prefix
 def pathParts (pfx path : String) : Array String :=
@@ -195,7 +190,8 @@ private def nameFromPath (path : String) : String :=
 
 -- | Build template vars for a config + path (shared by runList/runDownload).
 -- Returns (vars, tmpDir) so callers don't need to search the array.
-private def Config.cmdVars (cfg : Config) (path : String) : IO (Array (String × String) × String) := do
+private def Config.cmdVars (cfg : Config) (path : String)
+    : IO (Array (String × String) × String) := do
   validateShellSafe path "path"
   let tmpDir ← Tc.tmpPath "src"
   let _ ← Log.run "src" "mkdir" #["-p", tmpDir]

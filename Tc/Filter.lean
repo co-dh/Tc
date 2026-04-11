@@ -25,8 +25,8 @@ private def moveColTo (s : ViewStack T) (colIdx : Nat) : ViewStack T :=
   (View.navL ∘ₗ NavState.colCurL).modify (clampShift · delta v.nav.nCols) v |> s.setCur
 
 -- | col search: fzf jump to column by name (IO version for backward compat)
-def colSearch (s : ViewStack T) : IO (ViewStack T) := do
-  let some idx ← Fzf.fzfIdx #["--prompt=Column: "] s.cur.nav.dispColNames | return s
+def colSearch (test : Bool) (s : ViewStack T) : IO (ViewStack T) := do
+  let some idx ← Fzf.fzfIdx test #["--prompt=Column: "] s.cur.nav.dispColNames | return s
   return moveColTo s idx
 
 -- | Shared: resolve current column, fetch sorted distinct values
@@ -38,8 +38,9 @@ private def withDistinct (s : ViewStack T)
   vals.qsort (· < ·) |> f curCol curName
 
 -- | row search (/): find value in current column, jump to matching row (IO)
-def rowSearch (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun curCol curName vals => do
-  let some result ← Fzf.fzf #[s!"--prompt=/{curName}: "] (vals.joinWith "\n") | return s
+def rowSearch (test : Bool) (s : ViewStack T) : IO (ViewStack T) :=
+    withDistinct s fun curCol curName vals => do
+  let some result ← Fzf.fzf test #[s!"--prompt=/{curName}: "] (vals.joinWith "\n") | return s
   let start := s.cur.nav.row.cur + 1
   let some rowIdx ← TblOps.findRow s.tbl curCol result start true | return s
   return moveRowTo s rowIdx (some (curCol, result))
@@ -75,9 +76,9 @@ private def searchPoll [TblOps T] (tbl : T) (curCol : Nat) (vals : Array String)
 
 -- | Row search with live preview: cursor moves as user browses fzf results.
 -- fzf focus → shell script → socat → socket → poll → findRow → re-render.
-def rowSearchLive (s : ViewStack T) (preview : ViewStack T → IO Unit) : IO (ViewStack T) :=
+def rowSearchLive (test : Bool) (s : ViewStack T) (preview : ViewStack T → IO Unit) : IO (ViewStack T) :=
   withDistinct s fun curCol curName vals => do
-    if ← Fzf.getTestMode then
+    if test then
       let result := vals.getD 0 ""
       if result.isEmpty then return s
       let some rowIdx ← TblOps.findRow s.tbl curCol result 0 true | return s
@@ -92,7 +93,7 @@ def rowSearchLive (s : ViewStack T) (preview : ViewStack T → IO Unit) : IO (Vi
     -- run fzf with live preview polling
     let opts := #[s!"--prompt=/{curName}: ", "--with-nth=2..", "--delimiter=\t",
                   s!"--bind=focus:execute-silent(sh {script} \{1})"]
-    let out ← Fzf.fzfCore opts (items.joinWith "\n") poll
+    let out ← Fzf.fzfCore test opts (items.joinWith "\n") poll
     if out.isEmpty then return ← sRef.get  -- cancelled: keep preview position
     -- apply final selection (reuse cache from preview)
     let some idx := out.splitOn "\t" |>.head? |>.bind String.toNat? | return s
@@ -110,10 +111,11 @@ def searchDir (s : ViewStack T) (fwd : Bool) : IO (ViewStack T) := do
 
 -- | row filter (\): filter rows by expression, push filtered view (IO)
 -- Uses TblOps.buildFilter for backend-specific syntax (PRQL vs q)
-def rowFilter (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun _curCol curName vals => do
+def rowFilter (test : Bool) (s : ViewStack T) : IO (ViewStack T) :=
+    withDistinct s fun _curCol curName vals => do
   let typ := TblOps.colType s.tbl _curCol
   let header := TblOps.filterPrompt s.tbl curName (toString typ)
-  let some result ← Fzf.fzf #["--print-query", s!"--header={header}", "--prompt=filter > "] (vals.joinWith "\n") | return s
+  let some result ← Fzf.fzf test #["--print-query", s!"--header={header}", "--prompt=filter > "] (vals.joinWith "\n") | return s
   let expr := TblOps.buildFilter s.tbl curName vals result typ.isNumeric
   if expr.isEmpty then return s
   let some tbl' ← TblOps.filter s.tbl expr | return s
@@ -148,10 +150,11 @@ end Tc.ViewStack
 namespace Tc.Filter
 
 -- | Dispatch filter handler to IO action. Returns none if handler not recognized.
-def dispatch (s : ViewStack AdbcTable) (h : Cmd) : Option (IO (ViewStack AdbcTable)) :=
+-- `test` suppresses fzf in colSearch/rowFilter when the -c harness is driving.
+def dispatch (test : Bool) (s : ViewStack AdbcTable) (h : Cmd) : Option (IO (ViewStack AdbcTable)) :=
   match h with
-  | .colSearch     => some (s.colSearch)
-  | .rowFilter     => some (s.rowFilter)
+  | .colSearch     => some (s.colSearch test)
+  | .rowFilter     => some (s.rowFilter test)
   | .rowSearchNext => some (s.searchDir true)
   | .rowSearchPrev => some (s.searchDir false)
   | _ => none

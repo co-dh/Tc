@@ -16,8 +16,8 @@ end Tc.ExportFmt
 namespace Tc.Export
 
 -- | Prompt user for export format via fzf
-def pickFmt : IO (Option ExportFmt) := do
-  match ← Fzf.fzf #["--prompt=export: "] "csv\nparquet\njson\nndjson" with
+def pickFmt (test : Bool) : IO (Option ExportFmt) := do
+  match ← Fzf.fzf test #["--prompt=export: "] "csv\nparquet\njson\nndjson" with
   | some raw => pure (raw.trimAscii.toString |> StrEnum.ofString?)
   | none => pure none
 

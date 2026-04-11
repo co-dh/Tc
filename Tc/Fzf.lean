@@ -1,8 +1,9 @@
 /-
-  Fzf: helpers for running fzf picker
-  Suspends terminal, spawns fzf, returns selection
-  In testMode, returns first value without spawning fzf
+  Fzf: helpers for running fzf picker.
+  Suspends terminal, spawns fzf, returns selection.
+  In test mode (passed explicitly), returns first value without spawning fzf.
 -/
+import Tc.CmdConfig
 import Tc.Key
 import Tc.Term
 
@@ -11,20 +12,11 @@ open Tc
 
 namespace Tc.Fzf
 
--- | Global testMode flag (set by App.main)
-initialize testMode : IO.Ref Bool ← IO.mkRef false
-
--- | Set testMode
-def setTestMode (b : Bool) : IO Unit := testMode.set b
-
--- | Get testMode
-def getTestMode : IO Bool := testMode.get
-
--- | Core fzf: testMode returns first line, else spawn fzf
--- Uses --tmux popup if in tmux (keeps table visible), otherwise compact at bottom
--- poll: optional callback invoked in loop while fzf runs (tmux only, for live socket dispatch)
-def fzfCore (opts : Array String) (input : String) (poll : IO Unit := pure ()) : IO String := do
-  if ← getTestMode then
+-- | Core fzf: test=true returns first line; otherwise spawn fzf.
+-- Uses --tmux popup if in tmux (keeps table visible), otherwise compact at bottom.
+-- poll: optional callback invoked in loop while fzf runs (tmux only, for live socket dispatch).
+def fzfCore (test : Bool) (opts : Array String) (input : String) (poll : IO Unit := pure ()) : IO String := do
+  if test then
     pure (input.splitOn "\n" |>.filter (!·.isEmpty) |>.headD "")
   else
     let inTmux := (← IO.getEnv "TMUX").isSome
@@ -61,27 +53,27 @@ def fzfCore (opts : Array String) (input : String) (poll : IO Unit := pure ()) :
     pure out.trimAscii.toString
 
 -- | Single select: returns none if empty/cancelled
-def fzf (opts : Array String) (input : String) : IO (Option String) := do
-  let out ← fzfCore opts input
+def fzf (test : Bool) (opts : Array String) (input : String) : IO (Option String) := do
+  let out ← fzfCore test opts input
   pure (if out.isEmpty then none else some out)
 
--- | Index select: testMode returns 0
-def fzfIdx (opts : Array String) (items : Array String) : IO (Option Nat) := do
-  if ← getTestMode then pure (if items.isEmpty then none else some 0)
+-- | Index select: test=true returns 0
+def fzfIdx (test : Bool) (opts : Array String) (items : Array String) : IO (Option Nat) := do
+  if test then pure (if items.isEmpty then none else some 0)
   else
     let numbered := items.mapIdx fun i s => s!"{i}\t{s}"
-    let out ← fzfCore (#["--with-nth=2.."] ++ opts) (numbered.joinWith "\n")
+    let out ← fzfCore test (#["--with-nth=2.."] ++ opts) (numbered.joinWith "\n")
     if out.isEmpty then return none
     match out.splitOn "\t" |>.head? |>.bind String.toNat? with
     | some n => return some n
     | none => return none
 
 -- | Build aligned menu items: "handler | ctx | key | label" with padding
-private def flatItems (vk : ViewKind) : IO (Array String) := do
-  let items ← CmdConfig.menuItems vk.ctxStr
+private def flatItems (cache : CmdConfig.Cache) (vk : ViewKind) : Array String :=
+  let items := cache.menuItems vk.ctxStr
   let (maxH, maxX, maxK) := items.foldl
     (fun (mh, mx, mk) (h, x, k, _) => (max mh h.length, max mx x.length, max mk k.length)) (0, 0, 0)
-  return items.map fun (handler, ctx, key, label) =>
+  items.map fun (handler, ctx, key, label) =>
     let hp := handler ++ "".pushn ' ' (maxH - handler.length)
     let xp := ctx ++ "".pushn ' ' (maxX - ctx.length)
     let kp := key ++ "".pushn ' ' (maxK - key.length)
@@ -92,14 +84,15 @@ def parseFlatSel (sel : String) : Option String :=
   let h := ((sel.splitOn " | ").headD "").trimAsciiEnd.toString
   if h.isEmpty then none else some h
 
--- | Command mode: space → flat fzf menu → return handler name
--- poll: callback invoked while fzf popup is open (for external socket dispatch + re-render)
-def cmdMode (vk : ViewKind) (poll : IO Unit := pure ()) : IO (Option String) := do
-  let items ← flatItems vk
+-- | Command mode: space → flat fzf menu → return handler name.
+-- poll: callback invoked while fzf popup is open (for external socket dispatch + re-render).
+def cmdMode (test : Bool) (cache : CmdConfig.Cache) (vk : ViewKind) (poll : IO Unit := pure ())
+    : IO (Option String) := do
+  let items := flatItems cache vk
   if items.isEmpty then return none
   let input := items.joinWith "\n"
   let opts := #["--prompt=cmd "]
-  let out ← fzfCore opts input poll
+  let out ← fzfCore test opts input poll
   if out.isEmpty then return none
   pure (parseFlatSel out)
 

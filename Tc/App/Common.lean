@@ -25,12 +25,20 @@ import Tc.Lens
 
 open Tc
 
--- | App state: view stack + render state + theme + info + preview scroll
+-- | App state: view stack + render state + theme + info + preview scroll.
+-- `testMode` is the only "runtime config" that varies per invocation and is
+-- needed deep in handlers; other former-globals read their env vars directly.
+-- `cmdCache` is a process-lifetime immutable cache derived from the `commands`
+-- array below; it lives in AppState (rather than a top-level def) because the
+-- `commands` array references helpers that also need the cache, and Lean 4
+-- can't forward-declare across that boundary. Built once in `main`.
 structure AppState where
-  stk   : ViewStack AdbcTable
-  vs    : ViewState
-  theme : Theme.State
-  info  : UI.Info.State
+  stk      : ViewStack AdbcTable
+  testMode : Bool                -- true when driven by the `-c "keys"` test harness
+  cmdCache : CmdConfig.Cache     -- command dispatch cache (keyInfo/cmdInfo/argCmds/menu)
+  vs       : ViewState
+  theme    : Theme.State
+  info     : UI.Info.State
   prevScroll : Nat := 0
   heatMode : UInt8 := 0  -- 0=off, 1=numeric, 2=categorical, 3=both
   sparklines : Array String := #[]  -- per-column sparkline cache (empty = recompute)
@@ -157,7 +165,7 @@ private partial def runMenu (a : AppState) : IO Action := do
     match ← Socket.pollCmd with
     | some cmdStr =>
       Log.write "sock" s!"poll cmd={cmdStr}"
-      let some ci ← CmdConfig.handlerLookup cmdStr | pure ()
+      let some ci ← a.cmdCache.handlerLookup cmdStr | pure ()
       match (← ref.get).pureDispatch ci with
       | some a' =>
         let (vs', v') ← a'.stk.cur.doRender a'.vs a'.theme.styles a'.heatMode a'.sparklines
@@ -165,12 +173,12 @@ private partial def runMenu (a : AppState) : IO Action := do
         Term.present
       | none => pure ()
     | none => pure ()
-  let handler? ← Fzf.cmdMode a.stk.cur.vkind poll
+  let handler? ← Fzf.cmdMode a.testMode a.cmdCache a.stk.cur.vkind poll
   let a' ← ref.get
   let _ ← Socket.pollCmd  -- drain stale preview command from fzf focus
   match handler? with
   | some h =>
-    match ← CmdConfig.handlerLookup h with
+    match ← a.cmdCache.handlerLookup h with
     | some ci => a'.dispatch ci
     | none => pure (.ok a')
   | none => pure (.ok a')
@@ -190,15 +198,15 @@ private def precSet (v : Nat) : HandlerFn := fun a _ _ =>
 -- adjust prec by delta, clamped to [0,17]
 private def precAdj (delta : Int) : HandlerFn := fun a _ _ =>
   pure (AppState.curPrecL.modify (fun p => (Int.ofNat p + delta).toNat |> min 17) a |> .ok)
--- domain dispatch with tryStk + viewUp fallback
-private def domainH (d : ViewStack AdbcTable → Cmd → Option (IO (Option (ViewStack AdbcTable)))) : HandlerFn :=
+-- domain dispatch with tryStk + viewUp fallback (dispatcher takes testMode)
+private def domainH (d : Bool → ViewStack AdbcTable → Cmd → Option (IO (Option (ViewStack AdbcTable)))) : HandlerFn :=
   fun a ci _ => do
-    if let some f := d a.stk ci.cmd then return ← a.tryStk ci f
+    if let some f := d a.testMode a.stk ci.cmd then return ← a.tryStk ci f
     a.viewUp ci
--- domain dispatch returning non-optional (Filter style)
-private def domainH' (d : ViewStack AdbcTable → Cmd → Option (IO (ViewStack AdbcTable))) : HandlerFn :=
+-- domain dispatch returning non-optional (Filter style, dispatcher takes testMode)
+private def domainH' (d : Bool → ViewStack AdbcTable → Cmd → Option (IO (ViewStack AdbcTable))) : HandlerFn :=
   fun a ci _ => do
-    if let some f := d a.stk ci.cmd then return ← a.tryStk ci (some <$> f)
+    if let some f := d a.testMode a.stk ci.cmd then return ← a.tryStk ci (some <$> f)
     a.viewUp ci
 -- stack op
 private def stkH : HandlerFn := fun a ci _ =>
@@ -208,10 +216,11 @@ private def stkH : HandlerFn := fun a ci _ =>
 private def plotH : HandlerFn := fun a ci _ => do
   if let some k := ci.cmd.plotKind? then return ← a.tryStk ci (Plot.run a.stk k)
   pure .unhandled
--- arg command: fzf version when empty, direct when arg given
-private def argH (fzf : ViewStack AdbcTable → IO (ViewStack AdbcTable))
+-- arg command: fzf version when empty, direct when arg given.
+-- fzf variant takes testMode so it can be stubbed in -c test mode.
+private def argH (fzf : Bool → ViewStack AdbcTable → IO (ViewStack AdbcTable))
     (direct : ViewStack AdbcTable → String → IO (ViewStack AdbcTable)) : HandlerFn :=
-  fun a _ arg => a.runStackIO (if arg.isEmpty then fzf a.stk else direct a.stk arg)
+  fun a _ arg => a.runStackIO (if arg.isEmpty then fzf a.testMode a.stk else direct a.stk arg)
 
 -- | Abbrev for Entry construction
 private abbrev E := CmdConfig.Entry
@@ -248,7 +257,7 @@ private def commands : Array (E × Option HandlerFn) := #[
         renderTabLine stk'.tabNames 0 (Replay.opsStr stk'.cur)
         if a'.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat stk'.cur.vkind
         Term.present
-      let stk' ← ViewStack.rowSearchLive a.stk preview
+      let stk' ← ViewStack.rowSearchLive a.testMode a.stk preview
       pure (.ok { (← ref.get) with stk := stk' }.resetVS)),
   cmd { cmd := .rowFilter,    ctx := "a",  key := "\\", label := "Filter rows by PRQL expression", resetsVS := true }
     (argH ViewStack.rowFilter ViewStack.filterWith),
@@ -326,7 +335,7 @@ private def commands : Array (E × Option HandlerFn) := #[
   -- arg-only commands
   cmd { cmd := .tblExport, ctx := "a",  key := "e", label := "Export table (csv/parquet/json/ndjson)" }
     (fun a _ arg => a.runStackIO (if arg.isEmpty then do
-      match ← Export.pickFmt with | some f => Export.run a.stk f | none => pure a.stk
+      match ← Export.pickFmt a.testMode with | some f => Export.run a.stk f | none => pure a.stk
       else Export.runWith a.stk arg)),
   cmd { cmd := .sessSave,  ctx := "a",  key := "W", label := "Save session" }
     (fun a _ arg => a.runStackIO (do Session.saveWith a.stk arg; pure a.stk)),
@@ -348,7 +357,7 @@ private def commands : Array (E × Option HandlerFn) := #[
         renderTabLine a'.stk.tabNames 0 (Replay.opsStr a'.stk.cur)
         if a'.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat a'.stk.cur.vkind
         Term.present
-      match ← Theme.run a.theme render with
+      match ← Theme.run a.testMode a.theme render with
       | some t => pure (.ok { (← ref.get) with theme := t }.resetVS)
       | none   => do
         Theme.stylesRef.set a.theme.styles
@@ -356,12 +365,16 @@ private def commands : Array (E × Option HandlerFn) := #[
   cmd { cmd := .themePreview } (fun a _ _ => pure (.ok a))
 ]
 
+-- | Build the immutable CmdConfig cache from the command table.
+-- Called once by `main` to populate `AppState.cmdCache`.
+def cmdCache : CmdConfig.Cache := CmdConfig.build (commands.map (·.1))
+
 def initHandlers : IO Unit := do
-  commands.map (·.1) |> CmdConfig.init
   let mut m : Std.HashMap Cmd HandlerFn := {}
   for (e, fn?) in commands do
     if let some f := fn? then m := m.insert e.cmd f
   handlerMap.set m
+  Log.write "init" s!"commands: {commands.size} entries"
 
 -- | Alias for ViewKind.ctxStr (used in dispatch)
 def viewCtxStr := ViewKind.ctxStr
@@ -374,7 +387,7 @@ private partial def dispatchHandler (a : AppState) (cmdStr : String) : IO AppSta
     | [h] => (h, "")
     | h :: rest => (h, rest |> " ".intercalate)
     | [] => (cmdStr, "")
-  let some ci ← CmdConfig.handlerLookup h | pure a
+  let some ci ← a.cmdCache.handlerLookup h | pure a
   match ← a.dispatch ci arg with
   | .ok a' => pure { a' with prevScroll := 0 }
   | _ => pure a
@@ -439,9 +452,9 @@ partial def loopProg (a : AppState) : AppM AppState AppState := do
     else if key.isEmpty then loopProg a
     else
       let vkStr := viewCtxStr a.stk.cur.vkind
-      match ← CmdConfig.keyLookup key vkStr with
+      match a.cmdCache.keyLookup key vkStr with
       | some ci =>
-        let arg ← if ← CmdConfig.isArgCmd ci.cmd then AppM.readArg' else pure ""
+        let arg ← if a.cmdCache.isArgCmd ci.cmd then AppM.readArg' else pure ""
         match ← a.dispatch ci arg with
         | .quit => pure a
         | .unhandled => loopProg a

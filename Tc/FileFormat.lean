@@ -49,10 +49,10 @@ private def spawn (cmd : String) (args : Array String) : IO Unit := do
   let _ ← IO.Process.spawn { cmd, args, stdin := .inherit, stdout := .inherit, stderr := .inherit } >>= (·.wait)
 
 -- | View file with bat (if available) or less. .gz files piped through zcat.
-def viewFile (path : String) : IO Unit := do
+def viewFile (test : Bool) (path : String) : IO Unit := do
   let gz := path.endsWith ".gz"
   let esc := path.replace "'" "'\\''"
-  if ← Fzf.getTestMode then
+  if test then
     let r ← if gz
       then IO.Process.output { cmd := "sh", args := #["-c", s!"zcat '{esc}' | bat --paging=never --plain"] }
       else IO.Process.output { cmd := "bat", args := #["--paging=never", "--plain", path] }

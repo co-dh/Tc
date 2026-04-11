@@ -8,7 +8,6 @@ structure CliArgs where
   path    : Option String := none
   keys    : Array String := #[]
   test    : Bool := false
-  noSign  : Bool := false
   session : Option String := none   -- -s "name" session restore
 
 -- extract flag with value, return (value?, remaining args)
@@ -17,17 +16,15 @@ private def extractFlag (flag : String) : List String → Option String × List 
     else let (r, rest') := extractFlag flag (v :: rest); (r, f :: rest')
   | other => (none, other)
 
--- parse args: path?, -c keys?, test mode, +n, -s session
+-- parse args: path?, -c keys?, test mode, -s session
 def parseArgs (args : List String) : CliArgs :=
-  let noSign := args.any (· == "+n")
-  let args := args.filter (· != "+n")
   let (session, args) := extractFlag "-s" args
   let toK s := tokenizeKeys s
   match args with
-  | "-c" :: k :: _ => { path := none, keys := toK k, test := true, noSign, session }
-  | p :: "-c" :: k :: _ => { path := some p, keys := toK k, test := true, noSign, session }
-  | p :: _ => { path := some p, noSign, session }
-  | [] => { noSign, session }
+  | "-c" :: k :: _ => { path := none, keys := toK k, test := true, session }
+  | p :: "-c" :: k :: _ => { path := some p, keys := toK k, test := true, session }
+  | p :: _ => { path := some p, session }
+  | [] => { session }
 
 -- | Init/shutdown socket + terminal around a mainLoop call
 private def withTui (test : Bool) (f : IO α) : IO α := do
@@ -35,14 +32,20 @@ private def withTui (test : Bool) (f : IO α) : IO α := do
   if !test then Term.shutdown
   pure r
 
+-- | Build a fresh AppState at the top of a view. `testMode` and `cmdCache`
+-- are the only fields that can't be defaulted from outside appMain.
+private def mkState (test : Bool) (stk : ViewStack AdbcTable) (th : Theme.State) : AppState :=
+  { stk, testMode := test, cmdCache, vs := .default, theme := th, info := {} }
+
 -- run app with view
-def runApp (v : View AdbcTable) (pipe test : Bool) (th : Theme.State) (ks : Array String) : IO AppState := do
+def runApp (test : Bool) (v : View AdbcTable) (pipe : Bool) (th : Theme.State) (ks : Array String)
+    : IO AppState := do
   if pipe then let _ ← Term.reopenTty
   let _ ← Term.init
-  withTui test (mainLoop { stk := ⟨v, []⟩, vs := .default, theme := th, info := {} } test ks)
+  withTui test (mainLoop (mkState test ⟨v, []⟩ th) test ks)
 
 -- run from TSV string result
-def runTsv (r : Except String String) (nm : String) (pipe test : Bool)
+def runTsv (test : Bool) (r : Except String String) (nm : String) (pipe : Bool)
     (th : Theme.State) (ks : Array String) : IO (Option AppState) := do
   match r with
   | .error e => IO.eprintln s!"Parse error: {e}"; return none
@@ -51,38 +54,37 @@ def runTsv (r : Except String String) (nm : String) (pipe test : Bool)
     | none => IO.eprintln "Empty table"; return none
     | some adbc => match View.fromTbl adbc nm with
       | none => IO.eprintln "Empty table"; return none
-      | some v => some <$> runApp v pipe test th ks
+      | some v => some <$> runApp test v pipe th ks
 
 -- output table as plain text
 def outputTable (a : AppState) : IO Unit := do
   IO.println (← AdbcTable.toText a.stk.tbl)
 
--- main entry point: init backend, parse args, run app
+-- main entry point: parse args, run app
 def appMain (args : List String) : IO Unit := do
   let cli := parseArgs args
-  let (path?, keys, testMode, noSign) := (cli.path, cli.keys, cli.test, cli.noSign)
-  let envTest := (← IO.getEnv "TV_TEST_MODE").isSome
-  Fzf.setTestMode (testMode || envTest)
-  SourceConfig.setNoSign noSign
-  let pipeMode ← if testMode then pure false else (! ·) <$> Term.isattyStdin
+  let test := cli.test
+  let path? := cli.path
+  let keys := cli.keys
+  Log.setLogPath (← Log.path)       -- C-side setter: called exactly once at boot
+  let pipeMode ← if test then pure false else (! ·) <$> Term.isattyStdin
   let theme ← Theme.State.init
-  Log.setLogPath (← Log.path)
   Log.write "init" s!"tmpdir={← Tc.tmpDir.get}"
   let err ← try AdbcTable.init catch e => IO.eprintln s!"Backend init error: {e}"; return
   if !err.isEmpty then IO.eprintln s!"Backend init failed: {err}"; return
-  initHandlers  -- also initializes CmdConfig caches
+  initHandlers  -- populate handlerMap (runtime dispatch)
   -- session restore: -s name
   if let some sessName := cli.session then
     try
       match ← Session.load sessName with
       | some stk =>
         let _ ← Term.init
-        let _ ← withTui testMode (mainLoop { stk, vs := .default, theme, info := {} } testMode keys)
+        let _ ← withTui test (mainLoop (mkState test stk theme) test keys)
       | none => IO.eprintln s!"Session not found: {sessName}"
     finally AdbcTable.shutdown; Tc.cleanupTmp
     return
   if pipeMode && path?.isNone then
-    if let some a ← runTsv (← Tc.TextParse.fromStdin) "stdin" true testMode theme keys then
+    if let some a ← runTsv test (← Tc.TextParse.fromStdin) "stdin" true theme keys then
       outputTable a
     return
   let path := path?.getD ""
@@ -98,25 +100,25 @@ def appMain (args : List String) : IO Unit := do
           if !rest.isEmpty then
             match ← cfg.runEnter rest with
             | some adbc => match View.fromTbl adbc s!"{cfg.pfx}{rest}" with
-              | some v => let _ ← runApp v pipeMode testMode theme keys
+              | some v => let _ ← runApp test v pipeMode theme keys
               | none => IO.eprintln s!"Empty: {p}"
             | none => IO.eprintln s!"Cannot open: {p}"
             return
       match ← Folder.mkView p 1 with
-      | some v => let _ ← runApp v pipeMode testMode theme keys
+      | some v => let _ ← runApp test v pipeMode theme keys
       | none => IO.eprintln s!"Cannot browse: {p}"
     else if path.endsWith ".txt" then
-      let _ ← runTsv (Tc.TextParse.fromText (← IO.FS.readFile path)) path pipeMode testMode theme keys
+      let _ ← runTsv test (Tc.TextParse.fromText (← IO.FS.readFile path)) path pipeMode theme keys
     else if path.endsWith ".gz" && !FileFormat.isDataFile path then
       -- Smart: try read_csv for unrecognized .gz (handles decompression natively)
       match ← FileFormat.tryReadCsv path with
-      | some v => let _ ← runApp v pipeMode testMode theme keys
-      | none => FileFormat.viewFile path
+      | some v => let _ ← runApp test v pipeMode theme keys
+      | none => FileFormat.viewFile test path
     else
       -- try/catch: DuckDB throws on unrecognized formats
       match ← try FileFormat.openFile path catch e => Log.write "open" s!"{e}"; pure none with
-      | some v => let _ ← runApp v pipeMode testMode theme keys
-      | none => FileFormat.viewFile path
+      | some v => let _ ← runApp test v pipeMode theme keys
+      | none => FileFormat.viewFile test path
   finally
     AdbcTable.shutdown
     Tc.cleanupTmp

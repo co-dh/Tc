@@ -46,7 +46,9 @@ def setKey (s : ViewStack AdbcTable) : IO (Option (ViewStack AdbcTable)) := do
   | none => return some s
 
 -- | Dispatch meta handler to IO action. Returns none if handler not recognized.
-def dispatch (s : ViewStack AdbcTable) (h : Cmd) : Option (IO (Option (ViewStack AdbcTable))) :=
+-- `_test` is unused here but kept for a uniform dispatcher signature.
+def dispatch (_test : Bool) (s : ViewStack AdbcTable) (h : Cmd)
+    : Option (IO (Option (ViewStack AdbcTable))) :=
   match h with
   | .metaPush      => some (push s)
   | .metaSelNull   => some (some <$> selNull s)

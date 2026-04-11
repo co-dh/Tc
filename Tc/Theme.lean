@@ -141,9 +141,9 @@ end State
 -- | fzf theme picker with live preview.
 -- applyAndRender: called with loaded styles when user moves focus (for live re-render).
 -- Returns (selectedIdx, styles), or none on cancel.
-def run (cur : State) (applyAndRender : Array UInt32 → IO Unit) : IO (Option State) := do
+def run (test : Bool) (cur : State) (applyAndRender : Array UInt32 → IO Unit) : IO (Option State) := do
   let curIdx := cur.themeIdx
-  if ← Fzf.getTestMode then
+  if test then
     let idx := (curIdx + 1) % themes.size
     return some { styles := ← loadIdx idx, themeIdx := idx }
   let sockPath ← Socket.getPath
@@ -162,7 +162,7 @@ def run (cur : State) (applyAndRender : Array UInt32 → IO Unit) : IO (Option S
   let opts := #[
     "--prompt=theme: ", "--with-nth=2..", "--delimiter=\t",
     s!"--bind=focus:execute-silent({script} \{1})"]
-  let out ← Fzf.fzfCore opts (items.joinWith "\n") poll
+  let out ← Fzf.fzfCore test opts (items.joinWith "\n") poll
   if out.isEmpty then return none
   match out.splitOn "\t" |>.head? |>.bind String.toNat? with
   | some idx => some <$> cur.applyIdx idx

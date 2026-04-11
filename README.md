@@ -106,9 +106,10 @@ get a `Δ` prefix.
 
 ### Remote sources
 
-Browse S3 buckets (`tv s3://bucket/ +n`), HuggingFace datasets
+Browse S3 buckets (`tv s3://bucket/`), HuggingFace datasets
 (`tv hf://datasets/user/dataset`), and FTP servers (`tv ftp://ftp.nyse.com/`)
-the same way you browse local folders.
+the same way you browse local folders. For public S3 buckets, set
+`TV_S3_NO_SIGN=1` in your shell to skip credential signing.
 
 ### Also
 
@@ -145,9 +146,9 @@ tv data.csv                        # CSV file
 tv data.parquet                    # Parquet file
 tv data.duckdb                     # DuckDB file (list tables)
 tv .                               # Browse current directory
-tv s3://bucket/prefix              # Browse S3 bucket
+tv s3://bucket/prefix              # Browse S3 bucket (private: uses ~/.aws creds)
 tv s3://bucket/path/file.csv       # Open S3 file directly
-tv s3://bucket/prefix +n           # S3 public bucket (no credentials)
+TV_S3_NO_SIGN=1 tv s3://bucket/    # S3 public bucket (anonymous access)
 tv hf://datasets/user/dataset      # HuggingFace Hub dataset
 tv ftp://ftp.nyse.com/             # Browse FTP server
 tv osquery://                      # Browse osquery tables

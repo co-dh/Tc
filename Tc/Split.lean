@@ -50,10 +50,10 @@ def runWith (s : ViewStack AdbcTable) (pat : String) : IO (ViewStack AdbcTable) 
   return s.push { v with disp := s!":{curName}" }
 
 -- | Prompt for pattern via fzf, then split.
-def run (s : ViewStack AdbcTable) : IO (ViewStack AdbcTable) := do
+def run (test : Bool) (s : ViewStack AdbcTable) : IO (ViewStack AdbcTable) := do
   let curName := s.cur.nav.curColName
   let header := s!"Split '{curName}' by delimiter or regex"
-  let some raw ← Fzf.fzf #["--print-query", "--prompt=split: ", s!"--header={header}"] suggestions | return s
+  let some raw ← Fzf.fzf test #["--print-query", "--prompt=split: ", s!"--header={header}"] suggestions | return s
   runWith s raw.trimAscii.toString
 
 end Tc.Split
