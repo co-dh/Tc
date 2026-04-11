@@ -446,6 +446,11 @@ partial def loopProg (a : AppState) : AppM AppState AppState := do
         | .quit => pure a
         | .unhandled => loopProg a
         | .ok a'' =>
+          -- Reset cell-preview scroll offset after every command except the
+          -- two that explicitly scroll the preview ({, }): moving to a new
+          -- cell should start the overlay at the top, but actively scrolling
+          -- within it must not reset mid-gesture. Handled here rather than
+          -- in dispatch so the generic dispatcher stays agnostic of UI state.
           let a'' := if ci.cmd matches .cellUp | .cellDn then a'' else { a'' with prevScroll := 0 }
           loopProg a''
       | none => loopProg a
