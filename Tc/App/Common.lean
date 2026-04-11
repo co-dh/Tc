@@ -432,6 +432,9 @@ partial def loopProg (a : AppState) : AppM AppState AppState := do
     let a ← match ← Socket.pollCmd with
       | some cmdStr => dispatchHandler a cmdStr
       | none => pure a
+    -- <wait>: sleep so external socat → socket → pollCmd can land mid-run.
+    -- Only used by socket-dispatch tests that race an out-of-process sender
+    -- against the -c keystroke stream; normal synchronous tests don't need it.
     if key == "<wait>" then do IO.sleep 50; loopProg a
     else if key.isEmpty then loopProg a
     else
