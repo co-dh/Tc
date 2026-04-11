@@ -36,10 +36,14 @@ instance : TblOps (MockTable nRows nCols) where
 
 def mock53 : MockTable 5 3 := ⟨#["c0", "c1", "c2"]⟩
 
+-- mock53 is non-empty (5x3); newAt is the real path. Raw fallback is unreachable,
+-- kept only to satisfy the type without introducing an Inhabited instance (which would
+-- tempt callers to hand-construct NavState).
 def testNav : NavState (MockTable 5 3) :=
-  { tbl := mock53, nRows := 5, nCols := 3 }
+  (NavState.newAt mock53).getD { tbl := mock53, nRows := 5, nCols := 3 }
 
-def testView : View (MockTable 5 3) := View.new testNav "data/test.csv"
+def testView : View (MockTable 5 3) :=
+  (View.fromTbl mock53 "data/test.csv").getD (View.new testNav "data/test.csv")
 
 def testStack : ViewStack (MockTable 5 3) := ⟨testView, []⟩
 
@@ -150,7 +154,7 @@ section TabNameTests
 
 -- Table view: shows filename (from test_freq_enter_parquet: "tab shows sample.parquet")
 def tblView : View (MockTable 5 3) :=
-  View.new { tbl := mock53, nRows := 5, nCols := 3 } "data/sample.parquet"
+  (View.fromTbl mock53 "data/sample.parquet").getD (View.new testNav "data/sample.parquet")
 #guard tblView.tabName == "sample.parquet"
 
 -- Folder view: shows path (from test_folder_tab: "Folder tab shows absolute path")

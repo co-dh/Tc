@@ -31,10 +31,6 @@ gen_lenses (View T) where nav, path, vkind, disp, prec, widthAdj, widths, search
 -- | Create from NavState + path
 def new (nav : NavState T) (path : String) : View T := { nav, path }
 
--- | Cached row/col counts (from NavState, which caches them from the table)
-@[inline] def nRows (v : View T) : Nat := v.nav.nRows
-@[inline] def nCols (v : View T) : Nat := v.nav.nCols
-
 -- | Current folder directory (or "." for non-folder views)
 @[inline] def curDir (v : View T) : String := match v.vkind with | .fld dir _ => dir | _ => "."
 
@@ -80,8 +76,8 @@ def update (v : View T) (h : Cmd) (rowPg : Nat) : Option (View T × Effect) :=
       else if n.hidden.contains name then n.hidden else n.hidden.push name
     some (v, .exclude cols)
   | _ => NavState.exec h n rowPg |>.map fun nav' =>
-    let needsMore := nav'.row.cur + 1 >= v.nRows
-      && TblOps.totalRows n.tbl > v.nRows
+    let needsMore := nav'.row.cur + 1 >= v.nav.nRows
+      && TblOps.totalRows n.tbl > v.nav.nRows
       && (h == .rowInc || h == .rowPgdn || h == .rowBot)
     ({ v with nav := nav' }, if needsMore then .fetchMore else .none)
 

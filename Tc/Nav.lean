@@ -14,7 +14,8 @@ def clamp (val lo hi : Nat) : Nat := if hi ≤ lo then lo else max lo (min val (
 -- Adjust offset to keep cursor visible: off ≤ cur < off + page
 def adjOff (cur off page : Nat) : Nat := clamp off (cur + 1 - page) (cur + 1)
 
--- | Shift a Nat cursor by Int delta, then clamp to [0, n). n=0 yields 0.
+-- | Shift a Nat cursor by Int delta, then clamp to [0, n). `n = 0` is defensive only —
+-- `NavState.newAt` refuses to build empty navs, so all live cursors have `n > 0`.
 @[inline] def clampShift (cur : Nat) (d : Int) (n : Nat) : Nat :=
   if n == 0 then 0 else min (((cur : Int) + d).toNat) (n - 1)
 
@@ -57,17 +58,19 @@ theorem dispOrder_grp_first :
 def colIdxAt (group : Array String) (names : Array String) (i : Nat) : Nat :=
   (dispOrder group names).getD i 0
 
--- NavState: generic over table type + navigation state.
--- nRows/nCols are cached from tbl at construction, used for cursor clamping.
+-- | NavState: table + navigation cursors + column visibility.
+-- `nRows`/`nCols` are cached so the render/keystroke hot path avoids recomputing
+-- `(TblOps.colNames tbl).size`. `newAt` enforces `nRows, nCols > 0`, so `nRows - 1`
+-- is safe without re-checking.
 structure NavState (t : Type) [TblOps t] where
-  tbl      : t                                              -- underlying table
-  nRows    : Nat                                            -- cached TblOps.nRows tbl
-  nCols    : Nat                                            -- cached (TblOps.colNames tbl).size
+  tbl      : t
+  nRows    : Nat
+  nCols    : Nat
   row      : RowNav := {}
   col      : ColNav := {}
-  grp      : Array String := #[]                            -- grouped column names (stable)
-  hidden   : Array String := #[]                            -- hidden column names (width=1)
-  dispIdxs : Array Nat := dispOrder grp (TblOps.colNames tbl)  -- cached display order
+  grp      : Array String := #[]              -- grouped column names (stable across reorder)
+  hidden   : Array String := #[]              -- hidden column names (width=1)
+  dispIdxs : Array Nat := dispOrder grp (TblOps.colNames tbl)
 
 namespace NavState
 
@@ -98,14 +101,15 @@ def hiddenIdxs (nav : NavState t) : Array Nat := nav.hidden |>.filterMap nav.col
 -- | Constructor: empty table → none
 def newAt (tbl : t) (col : Nat := 0) (grp : Array String := #[]) (row : Nat := 0)
     : Option (NavState t) :=
-  let nCols := (TblOps.colNames tbl).size
+  let names := TblOps.colNames tbl
+  let nCols := names.size
   let nRows := TblOps.nRows tbl
   if nCols == 0 || nRows == 0 then none
   else some {
     tbl, nRows, nCols,
     row := { cur := min row (nRows - 1) },
     col := { cur := min col (nCols - 1) },
-    grp, dispIdxs := dispOrder grp (TblOps.colNames tbl) }
+    grp, dispIdxs := dispOrder grp names }
 
 -- | Field lenses for NavState — auto-generated. Used to express nested `row.cur`/`col.cur`
 -- updates as single-line compositions rather than nested `{ nav with X := { nav.X with Y := ... } }`.

@@ -28,6 +28,10 @@ Interactive mode: c0-c8 selects plot type by digit, ,/. adjusts downsampling.
 - **Data flow**: Same as boxplot (category x, numeric y)
 - **R**: `geom_violin()` with optional `geom_boxplot(width=0.1)`
 
+## Lean Style
+- **Prefer `|>` over `<|`** — they are equivalent, but the codebase uses left-to-right pipe only.
+  Write `x |> f` or `f x`, never `f <| x`. (The `<|>` Alternative operator is unrelated — leave it alone.)
+
 ## Architecture Notes
 - PlotKind enum in Cmd.lean: .line, .bar, .scatter, .hist, .box, .area, .density, .step, .violin
 - Plot type selected via `col .val n` (c0-c8 digit keys)

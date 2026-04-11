@@ -202,7 +202,7 @@ def selPaths (v : View AdbcTable) : IO (Array String) := do
   match v.vkind with
   | .fld curDir _ =>
     let some pathCol := pathColIdx v.nav.colNames | return #[]
-    let cols ← TblOps.getCols v.nav.tbl #[pathCol] 0 v.nRows
+    let cols ← TblOps.getCols v.nav.tbl #[pathCol] 0 v.nav.nRows
     let c := cols.getD 0 default
     let rows := if v.nav.row.sels.isEmpty then #[v.nav.row.cur] else v.nav.row.sels
     return rows.map fun r => c.get r |>.toRaw |> joinPath curDir
@@ -268,7 +268,7 @@ private def refreshView (s : ViewStack AdbcTable) (path : String) (depth : Nat)
     : IO (Option (ViewStack AdbcTable)) := do
   match ← mkView path depth with
   | some v =>
-    let row := min s.cur.nav.row.cur (if v.nRows > 0 then v.nRows - 1 else 0)
+    let row := min s.cur.nav.row.cur (if v.nav.nRows > 0 then v.nav.nRows - 1 else 0)
     pure (View.fromTbl v.nav.tbl path (row := row) |>.map fun x =>
       s.setCur { x with vkind := .fld path depth, disp := s.cur.disp })
   | none => pure (some s)
