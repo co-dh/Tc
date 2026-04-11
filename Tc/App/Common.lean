@@ -92,20 +92,20 @@ private def runViewEffect (a : AppState) (ci : CmdConfig.CmdInfo)
   | .quit => pure .quit
   | .fetchMore =>
     match ← (TblOps.fetchMore s.tbl).toBaseIO with
-    | .ok (some tbl') => match v'.rebuild tbl' (row := v'.nav.row.cur.val) with
+    | .ok (some tbl') => match v'.rebuild tbl' (row := v'.nav.row.cur) with
       | some rv => pure (.ok { a' with stk := s.setCur rv }.resetVS)
       | none => pure (.ok a')
     | .ok none => pure (.ok a')
     | .error err => errAction a' err
   | .sort colIdx sels grp asc => tryStk a ci do
     let tbl' ← ModifyTable.sort s.tbl colIdx sels grp asc
-    pure (v'.rebuild tbl' (col := colIdx) (row := v'.nav.row.cur.val) |>.map s.setCur)
+    pure (v'.rebuild tbl' (col := colIdx) (row := v'.nav.row.cur) |>.map s.setCur)
   | .exclude cols => tryStk a ci do
     let tbl' ← AdbcTable.excludeCols s.tbl cols
     let grp' := v'.nav.grp.filter (!cols.contains ·)
     let hidden' := v'.nav.hidden.filter (!cols.contains ·)
-    pure (v'.rebuild tbl' (grp := grp') (row := v'.nav.row.cur.val) |>.map fun rv =>
-      s.setCur { rv with nav := NavState.hiddenL.set hidden' rv.nav })
+    pure (v'.rebuild tbl' (grp := grp') (row := v'.nav.row.cur) |>.map fun rv =>
+      (View.navL ∘ₗ NavState.hiddenL).set hidden' rv |> s.setCur)
   | .freq colNames => tryStk a ci do
     let some (adbc, totalGroups) ← AdbcTable.freqTable s.tbl colNames | return none
     match View.fromTbl adbc s.cur.path 0 colNames with
@@ -186,10 +186,10 @@ end AppState
 -- | Handler combinators — build HandlerFn from domain functions
 -- set prec to absolute value
 private def precSet (v : Nat) : HandlerFn := fun a _ _ =>
-  pure (.ok <| AppState.curPrecL.set v a)
+  pure (AppState.curPrecL.set v a |> .ok)
 -- adjust prec by delta, clamped to [0,17]
 private def precAdj (delta : Int) : HandlerFn := fun a _ _ =>
-  pure (.ok <| AppState.curPrecL.modify (fun p => (Int.ofNat p + delta).toNat |> min 17) a)
+  pure (AppState.curPrecL.modify (fun p => (Int.ofNat p + delta).toNat |> min 17) a |> .ok)
 -- domain dispatch with tryStk + viewUp fallback
 private def domainH (d : ViewStack AdbcTable → Cmd → Option (IO (Option (ViewStack AdbcTable)))) : HandlerFn :=
   fun a ci _ => do
@@ -414,8 +414,8 @@ private def renderFrame (showPreview : Bool) (a : AppState) : IO AppState := do
   if showPreview then
     let h ← Term.height; let w ← Term.width
     let nav := a.stk.cur.nav
-    let cellText ← TblOps.cellStr nav.tbl nav.row.cur.val nav.curColIdx
-    let colW := min (a.stk.cur.widths.getD nav.col.cur.val 10) 50
+    let cellText ← TblOps.cellStr nav.tbl nav.row.cur nav.curColIdx
+    let colW := min (a.stk.cur.widths.getD nav.col.cur 10) 50
     if cellText.length + 2 > colW then
       UI.Preview.render h.toNat w.toNat cellText a.prevScroll
   Term.present

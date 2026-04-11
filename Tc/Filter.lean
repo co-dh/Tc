@@ -14,16 +14,15 @@ variable {T : Type} [TblOps T]
 -- | Move row cursor to target index (pure helper)
 private def moveRowTo (s : ViewStack T) (rowIdx : Nat) (search : Option (Nat × String) := none) : ViewStack T :=
   let v := s.cur
-  let delta : Int := rowIdx - v.nav.row.cur.val
-  let nav' := NavState.rowCurL.modify (·.clamp delta) v.nav
-  s.setCur { v with nav := nav', search := search.orElse (fun _ => v.search) }
+  let delta : Int := rowIdx - v.nav.row.cur
+  let v' := (View.navL ∘ₗ NavState.rowCurL).modify (clampShift · delta v.nav.nRows) v
+  s.setCur { v' with search := search.orElse (fun _ => v.search) }
 
 -- | Move col cursor to target index (pure helper)
 private def moveColTo (s : ViewStack T) (colIdx : Nat) : ViewStack T :=
   let v := s.cur
-  let delta : Int := colIdx - v.nav.col.cur.val
-  let nav' := NavState.colCurL.modify (·.clamp delta) v.nav
-  s.setCur { v with nav := nav' }
+  let delta : Int := colIdx - v.nav.col.cur
+  (View.navL ∘ₗ NavState.colCurL).modify (clampShift · delta v.nav.nCols) v |> s.setCur
 
 -- | col search: fzf jump to column by name (IO version for backward compat)
 def colSearch (s : ViewStack T) : IO (ViewStack T) := do
@@ -41,7 +40,7 @@ private def withDistinct (s : ViewStack T)
 -- | row search (/): find value in current column, jump to matching row (IO)
 def rowSearch (s : ViewStack T) : IO (ViewStack T) := withDistinct s fun curCol curName vals => do
   let some result ← Fzf.fzf #[s!"--prompt=/{curName}: "] (vals.joinWith "\n") | return s
-  let start := s.cur.nav.row.cur.val + 1
+  let start := s.cur.nav.row.cur + 1
   let some rowIdx ← TblOps.findRow s.tbl curCol result start true | return s
   return moveRowTo s rowIdx (some (curCol, result))
 
@@ -105,7 +104,7 @@ def rowSearchLive (s : ViewStack T) (preview : ViewStack T → IO Unit) : IO (Vi
 def searchDir (s : ViewStack T) (fwd : Bool) : IO (ViewStack T) := do
   let v := s.cur
   let some (col, val) := v.search | return s
-  let start := if fwd then v.nav.row.cur.val + 1 else v.nav.row.cur.val
+  let start := if fwd then v.nav.row.cur + 1 else v.nav.row.cur
   let some rowIdx ← TblOps.findRow v.nav.tbl col val start fwd | return s
   return moveRowTo s rowIdx
 
@@ -140,7 +139,7 @@ def searchWith (s : ViewStack T) (val : String) : IO (ViewStack T) := do
   if val.isEmpty then return s
   let v := s.cur
   let curCol := v.nav.curColIdx
-  let start := v.nav.row.cur.val + 1
+  let start := v.nav.row.cur + 1
   let some rowIdx ← TblOps.findRow s.tbl curCol val start true | return s
   return moveRowTo s rowIdx (some (curCol, val))
 

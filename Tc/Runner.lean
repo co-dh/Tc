@@ -24,7 +24,7 @@ def update (s : ViewStack AdbcTable) (h : Cmd) : Option (ViewStack AdbcTable × 
   match h with
   | .freqOpen => some (s, .freq colNames)
   | .freqFilter => match s.cur.vkind with
-    | .freqV cols _ => some (s, .freqFilter cols s.cur.nav.row.cur.val)
+    | .freqV cols _ => some (s, .freqFilter cols s.cur.nav.row.cur)
     | _ => none
   | _ => none
 

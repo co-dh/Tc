@@ -36,11 +36,14 @@ instance : TblOps (MockTable nRows nCols) where
 
 def mock53 : MockTable 5 3 := ⟨#["c0", "c1", "c2"]⟩
 
-def testNav : NavState 5 3 (MockTable 5 3) :=
-  NavState.new mock53 rfl rfl (by decide) (by decide)
+-- mock53 is non-empty (5x3); newAt is the real path. Raw fallback is unreachable,
+-- kept only to satisfy the type without introducing an Inhabited instance (which would
+-- tempt callers to hand-construct NavState).
+def testNav : NavState (MockTable 5 3) :=
+  (NavState.newAt mock53).getD { tbl := mock53, nRows := 5, nCols := 3 }
 
 def testView : View (MockTable 5 3) :=
-  View.new (NavState.new mock53 rfl rfl (by decide) (by decide)) "data/test.csv"
+  (View.fromTbl mock53 "data/test.csv").getD (View.new testNav "data/test.csv")
 
 def testStack : ViewStack (MockTable 5 3) := ⟨testView, []⟩
 
@@ -85,11 +88,11 @@ section ViewUpdateTests
 
 -- Navigation delegates to NavState and returns Effect.none
 -- (from test_nav_down: "j moves to row 1")
-#guard (View.update testView .rowInc 1).map (·.1.nav.row.cur.val) == some 1
+#guard (View.update testView .rowInc 1).map (·.1.nav.row.cur) == some 1
 #guard (View.update testView .rowInc 1).map (·.2) == some .none
 
 -- row.dec at 0 stays at 0 (from test_nav_up: "jk returns to row 0")
-#guard (View.update testView .rowDec 1).map (·.1.nav.row.cur.val) == some 0
+#guard (View.update testView .rowDec 1).map (·.1.nav.row.cur) == some 0
 
 end ViewUpdateTests
 
@@ -151,7 +154,7 @@ section TabNameTests
 
 -- Table view: shows filename (from test_freq_enter_parquet: "tab shows sample.parquet")
 def tblView : View (MockTable 5 3) :=
-  View.new (NavState.new mock53 rfl rfl (by decide) (by decide)) "data/sample.parquet"
+  (View.fromTbl mock53 "data/sample.parquet").getD (View.new testNav "data/sample.parquet")
 #guard tblView.tabName == "sample.parquet"
 
 -- Folder view: shows path (from test_folder_tab: "Folder tab shows absolute path")
