@@ -1,4 +1,5 @@
 -- App/Common: app state, dispatch, main loop
+import Tc.AppF
 import Tc.Filter
 import Tc.Folder
 import Tc.SourceConfig
@@ -378,8 +379,10 @@ private partial def dispatchHandler (a : AppState) (cmdStr : String) : IO AppSta
   | .ok a' => pure { a' with prevScroll := 0 }
   | _ => pure a
 
--- main loop: render → input → dispatch → loop
-partial def mainLoop (a : AppState) (test : Bool) (ks : Array String) : IO AppState := do
+-- Per-frame render pieces shared by both interpreters.
+-- Splits the old mainLoop render prelude so the test/prod interpreters can
+-- reuse all of it except the optional preview overlay (prod-only).
+private def renderBase (a : AppState) : IO AppState := do
   -- Lazy sparkline computation: recompute when cache is empty
   let a ← if a.sparklines.isEmpty then
     pure { a with sparklines := ← Sparkline.compute a.stk.tbl }
@@ -405,42 +408,96 @@ partial def mainLoop (a : AppState) (test : Bool) (ks : Array String) : IO AppSt
   let aggCache ← StatusAgg.update a.aggCache a.stk.tbl a.stk.cur.path a.stk.cur.nav.curColIdx
   let a := { a with aggCache }
   if a.info.vis then UI.Info.render (← Term.height).toNat (← Term.width).toNat a.stk.cur.vkind
-  -- Preview box for truncated cell text (skip in test mode)
-  if !test then do
-    let h ← Term.height; let w ← Term.width
-    let nav := a.stk.cur.nav
-    let curCol := nav.curColIdx
-    let cellText ← TblOps.cellStr nav.tbl nav.row.cur.val curCol
-    -- Show preview if cell text wider than column display width
-    let colW := min (a.stk.cur.widths.getD nav.col.cur.val 10) 50
-    if cellText.length + 2 > colW then
-      UI.Preview.render h.toNat w.toNat cellText a.prevScroll
+  pure a
+
+-- Production render: base + preview overlay for truncated cells.
+private def renderProd (a : AppState) : IO AppState := do
+  let a ← renderBase a
+  let h ← Term.height; let w ← Term.width
+  let nav := a.stk.cur.nav
+  let curCol := nav.curColIdx
+  let cellText ← TblOps.cellStr nav.tbl nav.row.cur.val curCol
+  -- Show preview if cell text wider than column display width
+  let colW := min (a.stk.cur.widths.getD nav.col.cur.val 10) 50
+  if cellText.length + 2 > colW then
+    UI.Preview.render h.toNat w.toNat cellText a.prevScroll
   Term.present
-  if test && ks.isEmpty then IO.print (← Term.bufferStr); return a
-  let (key, ks') ← nextKey ks
-  -- Socket commands from external tools (handler names)
-  let a ← match ← Socket.pollCmd with
-    | some cmdStr => dispatchHandler a cmdStr
-    | none => pure a
-  -- <wait> test key: sleep to let socket commands arrive
-  if key == "<wait>" then IO.sleep 50; return ← mainLoop a test ks'
-  -- Empty event (socket wake-up with no key press) → re-render and loop
-  if key.isEmpty then return ← mainLoop a test ks'
-  let vkStr := viewCtxStr a.stk.cur.vkind
-  match ← CmdConfig.keyLookup key vkStr with
-  | some ci =>
-    -- Arg commands: collect user input first (in test mode, tokens until <ret>), then dispatch
-    let (arg, rest) ← if ← CmdConfig.isArgCmd ci.cmd then
-      pure (if test && ks'.any (· == "<ret>") then
-        let idx := ks'.findIdx? (· == "<ret>") |>.getD ks'.size
-        (String.join (ks'.extract 0 idx).toList, ks'.extract (idx + 1) ks'.size)
-      else ("", ks'))
-    else pure ("", ks')
-    match ← a.dispatch ci arg with
-    | .quit => pure a
-    | .unhandled => mainLoop a test rest
-    | .ok a'' =>
-      let a'' := if ci.cmd matches .cellUp | .cellDn then a'' else { a'' with prevScroll := 0 }
-      mainLoop a'' test rest
-  | none => mainLoop a test ks'
+  pure a
+
+-- Test render: base only (no preview box; tests don't exercise it).
+private def renderTest (a : AppState) : IO AppState := do
+  let a ← renderBase a
+  Term.present
+  pure a
+
+-- Loop program expressed over AppM. Free of any test/prod conditionals —
+-- the interpreter decides render flavor, key source, and arg collection.
+partial def loopProg (a : AppState) : AppM AppState AppState := do
+  let a ← AppM.doRender a
+  match ← AppM.poll with
+  | none => pure a   -- test mode: keystroke queue drained; interpreter already dumped buffer
+  | some key =>
+    -- Socket commands from external tools (handler names) — same in both modes
+    let a ← match ← Socket.pollCmd with
+      | some cmdStr => dispatchHandler a cmdStr
+      | none => pure a
+    -- <wait> test key: sleep to let socket commands arrive
+    if key == "<wait>" then do IO.sleep 50; loopProg a
+    -- Empty event (socket wake-up with no key press) → re-render and loop
+    else if key.isEmpty then loopProg a
+    else
+      let vkStr := viewCtxStr a.stk.cur.vkind
+      match ← CmdConfig.keyLookup key vkStr with
+      | some ci =>
+        -- Arg commands read their input via the interpreter (fzf in prod, <ret>-terminated in test)
+        let arg ← if ← CmdConfig.isArgCmd ci.cmd then AppM.readArg' else pure ""
+        match ← a.dispatch ci arg with
+        | .quit => pure a
+        | .unhandled => loopProg a
+        | .ok a'' =>
+          let a'' := if ci.cmd matches .cellUp | .cellDn then a'' else { a'' with prevScroll := 0 }
+          loopProg a''
+      | none => loopProg a
+
+-- Production interpreter: real Term.pollEvent, always Some; handlers open fzf themselves.
+private def prodInterp : AppM.Interp AppState where
+  render  := renderProd
+  nextKey := do let e ← Term.pollEvent; pure (some (evToKey e))
+  readArg := pure ""
+
+-- Test interpreter state: residual keystroke queue (shared across calls via IO.Ref).
+private structure TestS where ks : Array String
+
+-- Test interpreter: keystroke queue is consumed per poll; empty queue ⇒ dump buffer, return none.
+-- Arg commands collect tokens from the queue up to a `<ret>` sentinel, matching the old behavior.
+private def testInterp (ref : IO.Ref TestS) : AppM.Interp AppState where
+  render  := renderTest
+  nextKey := do
+    let t ← ref.get
+    if t.ks.isEmpty then
+      -- Mirrors the old `if test && ks.isEmpty` drain branch: print the final
+      -- term buffer so the -c test harness can capture it, then signal EOF.
+      IO.print (← Term.bufferStr)
+      pure none
+    else
+      let (key, ks') ← nextKey t.ks
+      ref.set { t with ks := ks' }
+      pure (some key)
+  readArg := do
+    let t ← ref.get
+    if t.ks.any (· == "<ret>") then
+      let idx := t.ks.findIdx? (· == "<ret>") |>.getD t.ks.size
+      let arg := String.join (t.ks.extract 0 idx).toList
+      ref.set { t with ks := t.ks.extract (idx + 1) t.ks.size }
+      pure arg
+    else
+      pure ""
+
+-- Main loop entry point: picks the interpreter and runs the free-monad program.
+def mainLoop (a : AppState) (test : Bool) (ks : Array String) : IO AppState := do
+  if test then
+    let ref ← IO.mkRef { ks : TestS }
+    (loopProg a).run (testInterp ref)
+  else
+    (loopProg a).run prodInterp
 
