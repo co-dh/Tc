@@ -178,6 +178,124 @@ end UnitCounit
 
 end Fong
 
+/-! ## Example: the `Gr : Grph → DDS` functor (discrete shadow)
+
+Fong & Spivak's running database example uses two schemas:
+
+  Grph :  V   E  with arrows  s, t : E → V
+  DDS  :  S        with arrow  next : S → S
+
+The functor `Gr : Grph → DDS` collapses both objects to `S` and sends
+`s ↦ id_S`, `t ↦ next`. Given a DDS instance `(X, f : X → X)`, the
+precomposition `Δ_Gr(X, f)` is the *trajectory graph*: vertex set `X`,
+edge set `X`, source `id`, target `f` — one edge from every state `x`
+to `f(x)`.
+
+**Scope caveat.** Our formalization treats `X, Y` as **discrete**
+categories, so the arrows `s, t, next` and the choice `Gr(s) = id`,
+`Gr(t) = next` are not captured — the example below is the
+object-level shadow (`GrObj = {V, E}`, `DDSObj = {S}`, `Gr = const S`).
+Even at this level the three functors become concrete operations on
+indexed type families, and the adjunctions reduce to familiar
+"function-of-pair ↔ pair-of-functions" bijections. The full story
+requires Kan extensions; see the discussion above.
+-/
+
+namespace GrDDS
+open Fong
+
+inductive GrObj | V | E deriving DecidableEq
+inductive DDSObj | S deriving DecidableEq
+
+/-- `Gr` on objects. Both `V` and `E` go to the single DDS object `S`.
+    (The arrow-level `s ↦ id`, `t ↦ next` is not captured here.) -/
+def Gr : GrObj → DDSObj := fun _ => .S
+
+/-! ### Δ_Gr : DDS-object-family  ↦  Grph-object-family
+
+`Δ_Gr(B)` sends both `V` and `E` to the same type `B(S)` — i.e. the state
+set is copied into the vertex slot and the edge slot. In Fong's full story
+this is exactly why the trajectory-graph construction "uses the states
+twice" (once for vertices, once for edges). -/
+
+/-- Δ of a DDS family is the "double" family — `V` and `E` both get `B S`. -/
+example (B : DDSObj → Type) : Δ Gr B = (fun _ => B .S) := by
+  funext x; cases x <;> rfl
+
+/-- Concrete: the 4-cycle DDS has state set `Fin 4`. Δ_Gr yields 4 vertices
+    and 4 edges (the trajectory graph at the object level). -/
+def cycle4 : DDSObj → Type := fun .S => Fin 4
+
+example : Δ Gr cycle4 .V = Fin 4 := rfl
+example : Δ Gr cycle4 .E = Fin 4 := rfl
+
+/-! ### Σ_Gr : Grph-object-family ↦ DDS-object-family
+
+`Σ_Gr(A)(S)` is the disjoint union `A(V) ⊔ A(E)`, since both objects of
+`Grph` have `Gr`-image `S`. (In the full Kan-extension version this
+disjoint union gets quotiented using `s, t` and `next` to force
+functoriality — here we see only the "before quotient" step.) -/
+
+/-- A small concrete Grph-object-family: 3 vertices, 5 edges.
+    `abbrev` so `smallGr .V` reduces to `Fin 3` during elaboration. -/
+abbrev smallGr : GrObj → Type
+  | .V => Fin 3
+  | .E => Fin 5
+
+/-- Elements of `Σ_Gr(smallGr)(S)` tag each element with its source object. -/
+example : Sg Gr smallGr .S := Sg.mk .V (0 : Fin 3)   -- vertex 0
+example : Sg Gr smallGr .S := Sg.mk .V (2 : Fin 3)   -- vertex 2
+example : Sg Gr smallGr .S := Sg.mk .E (4 : Fin 5)   -- edge 4
+
+/-! ### Π_Gr : Grph-object-family ↦ DDS-object-family
+
+`Π_Gr(A)(S)` packages a choice of *one vertex and one edge* simultaneously —
+the product `A(V) × A(E)`. -/
+
+/-- Build an element of `Π_Gr(A)(S)` from a vertex and an edge. -/
+example (A : GrObj → Type) (v : A .V) (e : A .E) : Pr Gr A .S :=
+  fun | .V, _ => v | .E, _ => e
+
+/-! ### Σ ⊣ Δ in this example: `pair of fns ↔ fn out of union`
+
+A morphism `Σ_Gr(A) ⟶ (constant Target)` is the same as a morphism
+`A ⟶ Δ_Gr(constant Target) = (V ↦ Target, E ↦ Target)`, which in turn is
+the same as a pair of functions `(A V → Target, A E → Target)`.
+
+This is the universal property of the disjoint union. -/
+
+/-- Right-to-left: a pair of functions gives a map out of the union. -/
+example {A : GrObj → Type} {Target : Type}
+    (fV : A .V → Target) (fE : A .E → Target) :
+    Hom (Sg Gr A) (fun _ => Target) :=
+  sdInv Gr (fun | .V, a => fV a | .E, a => fE a)
+
+/-- Left-to-right: a map out of the union gives a pair of functions. -/
+example {A : GrObj → Type} {Target : Type}
+    (g : Hom (Sg Gr A) (fun _ => Target)) :
+    (A .V → Target) × (A .E → Target) :=
+  let p := sdTo Gr g
+  (p .V, p .E)
+
+/-! ### Δ ⊣ Π in this example: `fn into product ↔ pair of fns`
+
+Symmetrically, `(constant Source) ⟶ Π_Gr(A)` corresponds to
+`Δ_Gr(constant Source) ⟶ A`, i.e. a pair of functions
+`(Source → A V, Source → A E)`. -/
+
+example {A : GrObj → Type} {Source : Type}
+    (gV : Source → A .V) (gE : Source → A .E) :
+    Hom (fun _ : DDSObj => Source) (Pr Gr A) :=
+  dpTo Gr (fun | .V, s => gV s | .E, s => gE s)
+
+example {A : GrObj → Type} {Source : Type}
+    (h : Hom (fun _ : DDSObj => Source) (Pr Gr A)) :
+    (Source → A .V) × (Source → A .E) :=
+  let p := dpInv Gr h
+  (p .V, p .E)
+
+end GrDDS
+
 /-! ## Final summary of the two adjunctions -/
 
 -- Σ_f ⊣ Δ_f: bijection of Hom-sets, with naturality
