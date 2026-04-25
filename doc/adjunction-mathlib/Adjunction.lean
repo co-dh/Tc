@@ -24,7 +24,7 @@ A reader who knows the math but not Lean will want this dictionary:
 
 | Lean / Mathlib              | Math meaning                                       |
 |-----------------------------|----------------------------------------------------|
-| `[Category C]`              | "C is a category" — typeclass attaching `Hom`,    |
+| `[Category C]`              | "C is a category" — typeclass attaching `Hom`,     |
 |                             | `id`, `∘` to `C` (kept reusable across proofs)     |
 | `X ⟶ Y`                     | `Hom_C(X, Y)` (typed `\hom` in editor)             |
 | `f ≫ g`                     | `g ∘ f` — diagrammatic order: f first, then g!     |
@@ -33,7 +33,7 @@ A reader who knows the math but not Lean will want this dictionary:
 | `F.obj X`                   | `F(X)` on objects                                  |
 | `F.map f`                   | `F(f)` on morphisms                                |
 | `F ⋙ G`                     | composition `G ∘ F` (read left-to-right)           |
-| `α : F ⟶ G`                 | natural transformation between `F, G : C ⥤ D`     |
+| `α : F ⟶ G`                 | natural transformation between `F, G : C ⥤ D`      |
 | `α.app X`                   | the component `α_X : F(X) ⟶ G(X)`                  |
 | `F ⊣ G`                     | "F is left adjoint to G"                           |
 | `[HasLeftKanExtension F G]` | the typeclass "Lan_F G exists" (pointwise)         |
@@ -64,12 +64,16 @@ open CategoryTheory CategoryTheory.Functor
 
 universe v v' u u'
 
-/-! ## Part 1 — the abstract triple
+/-! ## Part 1 — the abstract adjunction triple `Σ_F ⊣ Δ_F ⊣ Π_F`
 
-For *any* `F : C ⥤ D`, the triple exists whenever the relevant pointwise
-Kan extensions do. For the target `E = Type _` and small `C, D` the
-required `HasLeftKanExtension` / `HasRightKanExtension` instances are
-supplied by Mathlib for free, because `Type _` has all small (co)limits.
+"Triple" here means the *three functors* `Σ_F, Δ_F, Π_F` linked by two
+adjunctions — *not* the three categories or the three letters `F, C, D`.
+
+For *any* `F : C ⥤ D`, the three functors exist whenever the relevant
+pointwise Kan extensions do. For the target `E = Type _` and small
+`C, D`, the required `HasLeftKanExtension` / `HasRightKanExtension`
+instances are supplied by Mathlib for free, because `Type _` has all
+small (co)limits.
 
 The `variable` declarations introduce *implicit* type and category
 parameters that Lean fills in from context — this saves us re-typing
