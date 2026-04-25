@@ -18,8 +18,9 @@ Naming follows Milewski's blog:
   · ε : (Δ c) ⇛ D is a cone over D with apex c
 -/
 
--- I: the indexing category (a commutative triangle).
-namespace I
+-- The indexing category (a commutative triangle), with all the data —
+-- inductives, helper composition, Cat instance — under one name `Icat`.
+namespace Icat
 inductive Obj | X | Y | Z
 inductive Hom : Obj → Obj → Type
   | id : (o : Obj) → Hom o o
@@ -31,7 +32,7 @@ def Hom.comp : ∀ {a b c : Obj}, Hom a b → Hom b c → Hom a c
   | _, _, _, .id _, m => m
   | _, _, _, m,     .id _ => m
   | _, _, _, .f,    .g => .h
-end I
+end Icat
 
 /-- A small category. -/
 structure Cat where
@@ -44,19 +45,24 @@ structure Cat where
   assoc : ∀ {a b c d : Obj} (p : Hom a b) (q : Hom b c) (r : Hom c d),
             comp (comp p q) r = comp p (comp q r)
 
+/-- Infix for the morphism type: `X ⟶ Y = C.Hom X Y` (Mathlib's `\hom`). -/
+@[reducible] def Cat.hom {C : Cat} (X Y : C.Obj) : Type := C.Hom X Y
+
+infixr:10 " ⟶ " => Cat.hom
+
 /-- Infix for category composition: `f ≫ g = C.comp f g` (diagrammatic order). -/
 @[reducible] def Cat.then {C : Cat} {a b c : C.Obj}
-    (f : C.Hom a b) (g : C.Hom b c) : C.Hom a c := C.comp f g
+    (f : a ⟶ b) (g : b ⟶ c) : a ⟶ c := C.comp f g
 
 infixl:80 " ≫ " => Cat.then
 
 /-- A functor between two categories. `o` = object map, `f` = morphism map. -/
 structure Func (S T : Cat) where
   o : S.Obj → T.Obj
-  f : {a b : S.Obj} → S.Hom a b → T.Hom (o a) (o b)
+  f : {a b : S.Obj} → (a ⟶ b) → (o a ⟶ o b)
   f_id : ∀ (a : S.Obj), f (S.idH a) = T.idH (o a)
-  f_comp : ∀ {a b c : S.Obj} (p : S.Hom a b) (q : S.Hom b c),
-              f (S.comp p q) = T.comp (f p) (f q)
+  f_comp : ∀ {a b c : S.Obj} (p : a ⟶ b) (q : b ⟶ c),
+              f (p ≫ q) = f p ≫ f q
 
 /-- Notation for functors: `S ⇒ T` (typed `\Rightarrow`). -/
 infixr:25 " ⇒ " => Func
@@ -73,19 +79,21 @@ infixl:80 " ⋙ " => fun F G => Func.compose G F
 
 /-- Natural transformation between two functors `F, G : S ⇒ T`. -/
 structure NatTrans {S T : Cat} (F G : S ⇒ T) where
-  app : (a : S.Obj) → T.Hom (F.o a) (G.o a)
-  naturality : ∀ {a b : S.Obj} (m : S.Hom a b),
-    T.comp (F.f m) (app b) = T.comp (app a) (G.f m)
+  app : (a : S.Obj) → (F.o a ⟶ G.o a)
+  naturality : ∀ {a b : S.Obj} (m : a ⟶ b),
+    F.f m ≫ app b = app a ≫ G.f m
 
 /-- Notation for natural transformations: `F ⇛ G` (typed `\Rrightarrow`). -/
 infixr:25 " ⇛ " => NatTrans
 
--- I packaged as a Cat (so it can be source of a Func).
+-- The Cat instance for the triangle, sharing the `Icat` namespace with
+-- its underlying Obj/Hom inductives. Same name serves as namespace and
+-- as the Cat-valued definition.
 def Icat : Cat where
-  Obj := I.Obj
-  Hom := I.Hom
-  idH := I.Hom.id
-  comp := I.Hom.comp
+  Obj := Icat.Obj
+  Hom := Icat.Hom
+  idH := Icat.Hom.id
+  comp := Icat.Hom.comp
   id_comp m := by cases m <;> rfl
   comp_id m := by cases m <;> rfl
   assoc α β γ := by cases α <;> cases β <;> cases γ <;> rfl
@@ -130,15 +138,22 @@ def Δ (c : C.Obj) : Icat ⇒ C := K ⋙ F c
 `Δc ⇛ D`. (Cone direction = Milewski's Part 1 / Ran.) -/
 abbrev Cone (D : Icat ⇒ C) (c : C.Obj) : Type := (Δ c) ⇛ D
 
-/-- The data of a cone over `D` with apex `c`: three legs to the diagram's
-three objects, plus the three compatibility equations. -/
+/-- The data of a cone over `D` with apex `c`: three legs `lx, ly, lz` plus
+three compatibility-equation **hypotheses** (Lean's `h…` convention,
+suffix matches the I-arrow being satisfied). Together the three `h…`
+fields say *the cone commutes with the diagram* — both paths from `c`
+to each diagram object agree. `hh` is redundant given `hf`, `hg`, and
+`D.f_comp .f .g`, but kept for symmetry.
+
+See `kaen_extension_cone.pdf` (rendered from `kaen_extension_cone.typ`)
+for the diagram. -/
 structure ConeData (D : Icat ⇒ C) (c : C.Obj) where
-  lx : C.Hom c (D.o .X)
-  ly : C.Hom c (D.o .Y)
-  lz : C.Hom c (D.o .Z)
-  hxy : lx ≫ D.f .f = ly
-  hyz : ly ≫ D.f .g = lz
-  hxz : lx ≫ D.f .h = lz
+  lx : c ⟶ D.o .X
+  ly : c ⟶ D.o .Y
+  lz : c ⟶ D.o .Z
+  hf : lx ≫ D.f .f = ly        -- going c → X → Y matches the direct leg c → Y
+  hg : ly ≫ D.f .g = lz        -- going c → Y → Z matches the direct leg c → Z
+  hh : lx ≫ D.f .h = lz        -- going c → X → Z matches the direct leg c → Z (redundant)
 
 /-- Build a cone `ε` from a `ConeData`. The result is a real natural
 transformation `(Δ c) ⇛ D`; naturality follows from the legs and the
@@ -150,20 +165,20 @@ def ε {D : Icat ⇒ C} {c : C.Obj} (cd : ConeData D c) : (Δ c) ⇛ D where
     | .Z => cd.lz
   naturality m := match m with
     | .id .X => by
-        show C.idH c ≫ cd.lx = cd.lx ≫ D.f (I.Hom.id I.Obj.X)
-        have h : D.f (I.Hom.id I.Obj.X) = C.idH (D.o I.Obj.X) := D.f_id _
+        show C.idH c ≫ cd.lx = cd.lx ≫ D.f (Icat.Hom.id Icat.Obj.X)
+        have h : D.f (Icat.Hom.id Icat.Obj.X) = C.idH (D.o Icat.Obj.X) := D.f_id _
         rw [h]; exact (C.id_comp _).trans (C.comp_id _).symm
     | .id .Y => by
-        show C.idH c ≫ cd.ly = cd.ly ≫ D.f (I.Hom.id I.Obj.Y)
-        have h : D.f (I.Hom.id I.Obj.Y) = C.idH (D.o I.Obj.Y) := D.f_id _
+        show C.idH c ≫ cd.ly = cd.ly ≫ D.f (Icat.Hom.id Icat.Obj.Y)
+        have h : D.f (Icat.Hom.id Icat.Obj.Y) = C.idH (D.o Icat.Obj.Y) := D.f_id _
         rw [h]; exact (C.id_comp _).trans (C.comp_id _).symm
     | .id .Z => by
-        show C.idH c ≫ cd.lz = cd.lz ≫ D.f (I.Hom.id I.Obj.Z)
-        have h : D.f (I.Hom.id I.Obj.Z) = C.idH (D.o I.Obj.Z) := D.f_id _
+        show C.idH c ≫ cd.lz = cd.lz ≫ D.f (Icat.Hom.id Icat.Obj.Z)
+        have h : D.f (Icat.Hom.id Icat.Obj.Z) = C.idH (D.o Icat.Obj.Z) := D.f_id _
         rw [h]; exact (C.id_comp _).trans (C.comp_id _).symm
-    | .f     => (C.id_comp _).trans cd.hxy.symm
-    | .g     => (C.id_comp _).trans cd.hyz.symm
-    | .h     => (C.id_comp _).trans cd.hxz.symm
+    | .f     => (C.id_comp _).trans cd.hf.symm
+    | .g     => (C.id_comp _).trans cd.hg.symm
+    | .h     => (C.id_comp _).trans cd.hh.symm
 
 /-- **Universal property** of a limit cone over `D` with apex `c`:
 for every other cone `ε'` (apex `c'`), there is a *unique* morphism
@@ -171,13 +186,13 @@ for every other cone `ε'` (apex `c'`), there is a *unique* morphism
 corresponding leg of `ε` post-composed with that morphism. -/
 structure IsLimit {D : Icat ⇒ C} {c : C.Obj} (ε : Cone D c) where
   /-- The unique factoring map from any cone's apex to `c`. -/
-  lift : ∀ {c' : C.Obj}, Cone D c' → C.Hom c' c
+  lift : ∀ {c' : C.Obj}, Cone D c' → (c' ⟶ c)
   /-- The factoring map makes the legs commute. -/
-  factors : ∀ {c' : C.Obj} (ε' : Cone D c') (i : I.Obj),
+  factors : ∀ {c' : C.Obj} (ε' : Cone D c') (i : Icat.Obj),
     ε'.app i = lift ε' ≫ ε.app i
   /-- The factoring map is unique with this property. -/
-  uniq : ∀ {c' : C.Obj} (ε' : Cone D c') (u : C.Hom c' c),
-    (∀ (i : I.Obj), ε'.app i = u ≫ ε.app i) → u = lift ε'
+  uniq : ∀ {c' : C.Obj} (ε' : Cone D c') (u : c' ⟶ c),
+    (∀ (i : Icat.Obj), ε'.app i = u ≫ ε.app i) → u = lift ε'
 
 /-! ## Worked example: the limit of any triangle diagram is its leftmost vertex
 
@@ -191,28 +206,22 @@ def limCD (D : Icat ⇒ C) : ConeData D (D.o .X) where
   lx := C.idH (D.o .X)
   ly := D.f .f
   lz := D.f .h
-  hxy := C.id_comp _                              -- idH X ≫ D.f .f = D.f .f
-  hyz := (D.f_comp I.Hom.f I.Hom.g).symm          -- D.f .f ≫ D.f .g = D.f .h
-  hxz := C.id_comp _                              -- idH X ≫ D.f .h = D.f .h
+  hf := C.id_comp _                               -- idH X ≫ D.f .f = D.f .f
+  hg := (D.f_comp Icat.Hom.f Icat.Hom.g).symm           -- D.f .f ≫ D.f .g = D.f .h
+  hh := C.id_comp _                               -- idH X ≫ D.f .h = D.f .h
 
 /-- Witness that the cone built from `limCD` is a limit. -/
 def limIsLimit (D : Icat ⇒ C) : IsLimit (ε (limCD D)) where
   lift ε' := ε'.app .X
   factors ε' i := match i with
     | .X => (C.comp_id _).symm
-    | .Y => by
-        have h := ε'.naturality I.Hom.f
-        rw [show (Δ _).f I.Hom.f = C.idH _ from rfl, C.id_comp] at h
-        exact h
-    | .Z => by
-        have h := ε'.naturality I.Hom.h
-        rw [show (Δ _).f I.Hom.h = C.idH _ from rfl, C.id_comp] at h
-        exact h
+    | .Y => (C.id_comp (ε'.app .Y)).symm.trans (ε'.naturality Icat.Hom.f)
+    | .Z => (C.id_comp (ε'.app .Z)).symm.trans (ε'.naturality Icat.Hom.h)
   uniq ε' u huniv := by
     have h := huniv .X
     -- (ε (limCD D)).app .X = C.idH (D.o .X) by rfl, so:
     -- h : ε'.app .X = u ≫ C.idH (D.o .X) = u (by comp_id)
-    rw [show (ε (limCD D)).app I.Obj.X = C.idH (D.o I.Obj.X) from rfl] at h
+    rw [show (ε (limCD D)).app Icat.Obj.X = C.idH (D.o Icat.Obj.X) from rfl] at h
     exact (h.trans (C.comp_id u)).symm
 
 end
