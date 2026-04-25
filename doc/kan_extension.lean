@@ -145,8 +145,8 @@ fields say *the cone commutes with the diagram* — both paths from `c`
 to each diagram object agree. `hh` is redundant given `hf`, `hg`, and
 `D.f_comp .f .g`, but kept for symmetry.
 
-See `kaen_extension_cone.pdf` (rendered from `kaen_extension_cone.typ`)
-for the diagram. -/
+See `kan_extension.pdf` (rendered from `kan_extension.typ`) for the
+diagram. -/
 structure ConeData (D : Icat ⇒ C) (c : C.Obj) where
   lx : c ⟶ D.o .X
   ly : c ⟶ D.o .Y
