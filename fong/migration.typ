@@ -32,25 +32,37 @@ t -- F --> next
 */
 
 #import "@preview/cetz:0.3.4": canvas, draw
+#import "@preview/ilm:1.4.1": *
 
-#set page(width: 17cm, height: auto, margin: 1.5cm)
-#set text(font: "DejaVu Sans", size: 11pt)
-#set heading(numbering: "1.")
+#show: ilm.with(
+  title: [Schema migration: \ #text(size: 0.8em)[*Gr* → *DDS*]],
+  author: "Fong & Spivak — Seven Sketches §3.11",
+  date: datetime(year: 2026, month: 4, day: 26),
+  abstract: [
+    A worked example of categorical schema migration: the schema
+    *Gr* (a directed multigraph) and *DDS* (a discrete dynamical
+    system), the migration functor `F : Gr → DDS`, and the three legs
+    of the migration triple Σ#sub[`F`] ⊣ Δ#sub[`F`] ⊣ Π#sub[`F`].
+    The Lean file `migration.lean` and the Python script `migrate.py`
+    both consume the schema data from a comment block at the top of
+    this typst source.],
+  bibliography: none,
+  figure-index: (enabled: false),
+  table-index: (enabled: false),
+  listing-index: (enabled: false),
+)
+
+// Code-block style and our custom q/PRQL syntaxes.
 #show raw.where(block: true): set block(
   stroke: 0.5pt + gray, inset: 8pt, radius: 3pt, width: 100%)
-#show link: set text(fill: blue.darken(20%))
-
-// Custom syntax highlighting for q and PRQL — typst's built-in
-// syntect bundle covers neither, so we ship minimal .sublime-syntax
-// files alongside this source.
 #set raw(syntaxes: ("q.sublime-syntax", "prql.sublime-syntax"))
 
-= Schema migration: Gr → DDS
+= Source-of-truth file
 
-This file is the single source of truth for the *schemas* (`Gr`,
-`DDS`) and the *migration functor* `F : Gr → DDS`.  The schema data
-sits in a typst comment at the top of this source so two non-typst
-consumers can parse it directly:
+This `.typ` file is the single source of truth for the *schemas*
+(`Gr`, `DDS`) and the *migration functor* `F : Gr → DDS`.  The schema
+data sits in a typst comment at the top of this source so two
+non-typst consumers can parse it directly:
 
 + `migration.lean` — at elaboration time, via `mermaid_pres!` in
   `Mermaid.lean` — to build the `Gr` and `DDS` categories and check

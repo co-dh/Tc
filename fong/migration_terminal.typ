@@ -32,17 +32,30 @@ next -- ! --> id
 */
 
 #import "@preview/cetz:0.3.4": canvas, draw
+#import "@preview/ilm:1.4.1": *
 
-#set page(width: 17cm, height: auto, margin: 1.5cm)
-#set text(font: "DejaVu Sans", size: 11pt)
-#set heading(numbering: "1.")
+#show: ilm.with(
+  title: [Schema migration: \ #text(size: 0.8em)[*DDS* → *1*]],
+  author: "Fong & Spivak — Seven Sketches §3.4.4",
+  date: datetime(year: 2026, month: 4, day: 26),
+  abstract: [
+    Specialising the migration triple to the unique functor
+    `!: C → 1` from a category `C` to the terminal category.
+    Choosing `C := DDS` collapses Σ#sub[`!`] ⊣ Δ#sub[`!`] ⊣ Π#sub[`!`]
+    to three familiar set-level constructions: the orbit set, the
+    "flat" DDS on a state set, and the fixed-point set.  Companion
+    to `migration.typ`.],
+  bibliography: none,
+  figure-index: (enabled: false),
+  table-index: (enabled: false),
+  listing-index: (enabled: false),
+)
+
 #show raw.where(block: true): set block(
   stroke: 0.5pt + gray, inset: 8pt, radius: 3pt, width: 100%)
-#show link: set text(fill: blue.darken(20%))
-
 #set raw(syntaxes: ("q.sublime-syntax", "prql.sublime-syntax"))
 
-= Schema migration: DDS → 1   (Fong §3.4.4)
+= The terminal category and  `!`
 
 The *terminal category* `1` has exactly one object — call it `*` — and
 exactly one arrow on it (the identity).  For any category `C` there is
