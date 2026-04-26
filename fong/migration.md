@@ -32,31 +32,43 @@ ignored by the Lean parser but kept for visual rendering.
 
 ## Schemas and the migration functor — one diagram
 
-Both schemas (`Gr`, `DDS`) and the functor `F : Gr → DDS` live in a
-single mermaid block.  GitHub renders the whole thing as one graph;
-the parser splits it into three logical sections by the `%% id:`
-markers and stops at either the next marker or the closing fence.
+Both schemas and the functor `F : Gr → DDS` live in one mermaid block,
+arranged top-to-bottom: source category `Gr` on top, target category
+`DDS` on the bottom, each in its own subgraph with a tinted background.
+The arrow names of each schema (`s`, `t` for `Gr`; `id`, `next` for
+`DDS`) are also rendered as nodes inside their subgraphs so the F
+mapping `s ↦ id`, `t ↦ next` can be drawn as actual arrows.
 
-* **Gr section** — `Gr`-objects (`V`, `E`, blue) and arrows (`s`, `t`)
-  between them.
-* **DDS section** — the `DDS`-object (`S`, orange) with its `next`
-  self-loop.
-* **F section** — for each line `<gr-thing> -- F --> <dds-thing>`:
-    - if the source is a `Gr`-object (`V`, `E`), it's part of the
-      **object map**;
-    - if it's a `Gr`-arrow label (`s`, `t`, yellow), it's part of the
-      **edge map**, and the target is a `DDS` path — either `id` for
-      the empty path (red) or a `DDS` arrow label like `next` (red)
-      for a single-step path.
+GitHub renders the whole thing as one graph; the parser splits it into
+three logical sections by the `%% id:` markers (stopping at the next
+marker or the closing fence).
+
+* **Gr** — objects `V`, `E` in blue; arrow-name nodes `s`, `t` in yellow.
+* **DDS** — object `S` in orange; arrow-name nodes `id`, `next` in red
+  (we add `id` explicitly even though the identity is implicit in any
+  category, so the F edge map can target it).
+* **F** — solid `F`-labelled arrows from Gr-things to DDS-things:
+  `V→S`, `E→S` (object map) and `s→id`, `t→next` (edge map).
 
 ```mermaid
-flowchart LR
+flowchart TB
+
   %% id: Gr
-  E -- s --> V
-  E -- t --> V
+  subgraph Gr [Gr]
+    direction LR
+    E -- s --> V
+    E -- t --> V
+    s
+    t
+  end
 
   %% id: DDS
-  S -- next --> S
+  subgraph DDS [DDS]
+    direction LR
+    S -- next --> S
+    id
+    next
+  end
 
   %% id: F
   V -- F --> S
@@ -64,12 +76,14 @@ flowchart LR
   s -- F --> id
   t -- F --> next
 
+  style Gr  fill:#eaf2fb,stroke:#6c8ebf,color:#000
+  style DDS fill:#fdf1e3,stroke:#d79b00,color:#000
   style V fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:#000
   style E fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:#000
   style S fill:#ffe6cc,stroke:#d79b00,stroke-width:2px,color:#000
   style s fill:#fff2cc,stroke:#d6b656,color:#000
   style t fill:#fff2cc,stroke:#d6b656,color:#000
-  style id fill:#f8cecc,stroke:#b85450,color:#000
+  style id   fill:#f8cecc,stroke:#b85450,color:#000
   style next fill:#f8cecc,stroke:#b85450,color:#000
 ```
 
