@@ -41,23 +41,33 @@ ignored by the Lean parser but kept for visual rendering.
 
 ## Schemas and the migration functor — one diagram
 
-Both schemas and the functor `F : Gr → DDS` live in one mermaid block,
-arranged top-to-bottom: source category `Gr` on top, target category
-`DDS` on the bottom, each in its own subgraph with a tinted background.
-The arrow names of each schema (`s`, `t` for `Gr`; `id`, `next` for
-`DDS`) are also rendered as nodes inside their subgraphs so the F
-mapping `s ↦ id`, `t ↦ next` can be drawn as actual arrows.
+The headline diagram is rendered from [`migration.typ`](migration.typ)
+(CeTZ + Typst) into [`migration.svg`](migration.svg).  Both schemas
+live in one figure — `Gr` on top (blue), `DDS` on bottom (orange) —
+and the functor `F : Gr → DDS` is drawn as **dashed grey arrows**:
 
-GitHub renders the whole thing as one graph; the parser splits it into
-three logical sections by the `%% id:` markers (stopping at the next
-marker or the closing fence).
+* the *object map* `V↦S`, `E↦S` runs along the panel edges, and
+* the *edge map* `s↦id`, `t↦next` runs from the midpoint of each
+  Gr arrow to the midpoint of its DDS image — i.e. the F arrows
+  literally point from one arrow to another, the way a functor's edge
+  component should.  (Mermaid edge labels aren't graph nodes, so the
+  same picture in mermaid would need duplicate `s`,`t`,`id`,`next`
+  nodes as a workaround.)
 
-* **Gr** — objects `V`, `E` in blue; arrow-name nodes `s`, `t` in yellow.
-* **DDS** — object `S` in orange; arrow-name nodes `id`, `next` in red
-  (we add `id` explicitly even though the identity is implicit in any
-  category, so the F edge map can target it).
-* **F** — solid `F`-labelled arrows from Gr-things to DDS-things:
-  `V→S`, `E→S` (object map) and `s→id`, `t→next` (edge map).
+![Schema migration Gr → DDS](migration.svg)
+
+Re-render after editing the source with:
+
+```sh
+typst compile fong/migration.typ fong/migration.svg
+```
+
+The mermaid block below carries the *same* schema data in
+machine-readable form — Lean's [`mermaid_pres!`](Mermaid.lean) reads
+it at elaboration time, and [`migrate.py`](migrate.py) reads it when
+emitting PRQL/q.  The parser splits the block into three logical
+sections by `%% id:` markers (stopping at the next marker or the
+closing fence).
 
 ```mermaid
 flowchart TB
