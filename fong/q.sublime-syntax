@@ -1,0 +1,46 @@
+%YAML 1.2
+---
+# Minimal Sublime-syntax for q (kdb+) — just enough to colour the
+# generated triple.q in fong/migration.pdf.
+
+name: q
+file_extensions: [q]
+scope: source.q
+
+contexts:
+  main:
+    # Line comments: q uses `/` at the start of a line, or
+    # `space-/-space` for inline.  Block-comment is `\` … `\`.
+    - match: '^/.*$'
+      scope: comment.line.slash.q
+    - match: '\s/.*$'
+      scope: comment.line.slash.q
+    - match: '"'
+      push: string
+
+    # Symbols (backtick-prefixed).
+    - match: '`[A-Za-z_][A-Za-z0-9_]*'
+      scope: constant.other.symbol.q
+
+    # SQL-ish keywords used in q-sql.
+    - match: '\b(select|exec|update|delete|insert|upsert|from|where|by|fby|in|within|like|asc|desc|distinct|cross|aj|lj|ij|uj|ej|wj|pj)\b'
+      scope: keyword.control
+
+    # Built-in adverbs / control / common functions.
+    - match: '\b(do|while|if|each|over|scan|prior|first|last|next|prev|count|sum|avg|min|max|raze|enlist|flip|reverse|asc|desc|key|value|cols|show)\b'
+      scope: support.function
+
+    # q adverbs: \, /, ', \:, /:, ':
+    - match: "\\\\:|/:|':|\\\\|/|'"
+      scope: keyword.operator
+
+    # Numbers (ints, floats, dates).
+    - match: '\b\d+(\.\d+)?\b'
+      scope: constant.numeric.q
+
+  string:
+    - meta_scope: string.quoted.double.q
+    - match: '\\.'
+      scope: constant.character.escape.q
+    - match: '"'
+      pop: true

@@ -1,0 +1,34 @@
+%YAML 1.2
+---
+# Minimal Sublime-syntax for PRQL — just enough to colour the
+# generated triple.prql in fong/migration.pdf.
+
+name: prql
+file_extensions: [prql]
+scope: source.prql
+
+contexts:
+  main:
+    - match: '#.*$'
+      scope: comment.line.number-sign.prql
+    - match: '"'
+      push: string
+
+    # PRQL keywords (a subset; covers what migrate.py emits plus
+    # common pipeline verbs the reader is likely to recognise).
+    - match: '\b(let|from|select|filter|derive|sort|group|aggregate|join|loop|window|take|drop|append|case|when|null|true|false|prql|module|type|in)\b'
+      scope: keyword.control
+
+    # s-string / f-string prefixes.
+    - match: '\b[sf]"'
+      push: string
+
+    - match: '\b\d+(\.\d+)?\b'
+      scope: constant.numeric.prql
+
+  string:
+    - meta_scope: string.quoted.double.prql
+    - match: '\\.'
+      scope: constant.character.escape.prql
+    - match: '"'
+      pop: true

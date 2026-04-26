@@ -40,6 +40,11 @@ t -- F --> next
   stroke: 0.5pt + gray, inset: 8pt, radius: 3pt, width: 100%)
 #show link: set text(fill: blue.darken(20%))
 
+// Custom syntax highlighting for q and PRQL — typst's built-in
+// syntect bundle covers neither, so we ship minimal .sublime-syntax
+// files alongside this source.
+#set raw(syntaxes: ("q.sublime-syntax", "prql.sublime-syntax"))
+
 = Schema migration: Gr → DDS
 
 This file is the single source of truth for the *schemas* (`Gr`,
@@ -106,14 +111,14 @@ arrow to another, the way a functor's edge component should.
   circle(V, radius: 0.34, fill: rgb("#dae8fc"), stroke: gr-stroke + 1pt)
   content(V, text(size: 13pt)[$V$])
 
-  // s curves up, t curves down.  Labels are placed on the LEFT/RIGHT
-  // flanks of their arc (not at the apex) so each label sits roughly
-  // above its target arrow in the DDS panel — F: s↦id ends up nearly
-  // vertical on the left, F: t↦next nearly vertical on the right.
+  // s curves up, t curves down.  Each label sits at the arc's apex
+  // (just above the s-arc, just below the t-arc) so it visibly
+  // labels the arrow it names.  The F edge-map arrows below are
+  // drawn as diagonals from these apexes, not as vertical lines.
   let s-apex = (2.0, 0.85)
   let t-apex = (2.0, -0.45)
-  let s-label = (0.85, 1.30)      // above s-arc, on the left — above id
-  let t-label = (3.15, -1.00)     // below t-arc, on the right — above next
+  let s-label = (s-apex.at(0), s-apex.at(1) + 0.40)   // above s-arc apex
+  let t-label = (t-apex.at(0), t-apex.at(1) - 0.40)   // below t-arc apex
   bezier((E.at(0)+0.34, E.at(1)+0.10), (V.at(0)-0.34, V.at(1)+0.10),
          (1.2, s-apex.at(1)+0.05), (2.8, s-apex.at(1)+0.05),
          mark: (end: ">"), stroke: 1pt)
@@ -134,8 +139,8 @@ arrow to another, the way a functor's edge component should.
 
   let id-apex = (0.85, -4.1)
   let nx-apex = (3.15, -4.1)
-  let id-label = (id-apex.at(0), id-apex.at(1) + 0.85)   // above id loop
-  let nx-label = (nx-apex.at(0), nx-apex.at(1) + 0.85)   // above next loop
+  let id-label = (id-apex.at(0) - 0.45, id-apex.at(1))   // left of id loop
+  let nx-label = (nx-apex.at(0) + 0.55, nx-apex.at(1))   // right of next loop
   bezier((S.at(0)-0.34, S.at(1)+0.22), (S.at(0)-0.34, S.at(1)-0.22),
          (id-apex.at(0)+0.10, S.at(1)+0.55), (id-apex.at(0)+0.10, S.at(1)-0.55),
          mark: (end: ">"), stroke: 1pt)
@@ -156,17 +161,17 @@ arrow to another, the way a functor's edge component should.
        mark: (end: ">"), stroke: f-stroke)
   content((4.10, -2.10), f-text[$F$])
 
-  // ── F: edge map (s↦id, t↦next) — nearly vertical, originating
-  // just below each Gr-arrow label and terminating just above each
-  // DDS-arrow label.
-  line((s-label.at(0), s-label.at(1) - 0.20),
-       (id-label.at(0), id-label.at(1) + 0.25),
+  // ── F: edge map (s↦id, t↦next) — diagonals from the s/t labels
+  // (sitting on their arcs) down to the id/next labels (sitting at
+  // the loop apexes).  The arrow tips touch the destination label.
+  line((s-label.at(0) - 0.10, s-label.at(1) - 0.18),
+       (id-label.at(0) + 0.30, id-label.at(1) + 0.18),
        mark: (end: ">"), stroke: f-stroke)
-  content((s-label.at(0) + 0.30, -1.35), f-text[$F$])
-  line((t-label.at(0), t-label.at(1) - 0.20),
-       (nx-label.at(0), nx-label.at(1) + 0.25),
+  content((1.20, -1.10), f-text[$F$])
+  line((t-label.at(0) + 0.10, t-label.at(1) - 0.18),
+       (nx-label.at(0) - 0.30, nx-label.at(1) + 0.18),
        mark: (end: ">"), stroke: f-stroke)
-  content((t-label.at(0) + 0.30, -2.10), f-text[$F$])
+  content((2.85, -2.50), f-text[$F$])
 }))
 
 Reading the F section off: $V ↦ S$, $E ↦ S$, $s ↦ "identity"$, $t ↦ "next"$.
