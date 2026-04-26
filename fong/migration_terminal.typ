@@ -32,12 +32,14 @@ next -- ! --> id
 */
 
 #import "@preview/cetz:0.3.4": canvas, draw
-#import "@preview/ilm:1.4.1": *
+#import "@preview/arkheion:0.1.0": arkheion
 
-#show: ilm.with(
-  title: [Schema migration: \ #text(size: 0.8em)[*DDS* → *1*]],
-  author: "Fong & Spivak — Seven Sketches §3.4.4",
-  date: datetime(year: 2026, month: 4, day: 26),
+#show: arkheion.with(
+  title: "Schema migration: DDS → 1",
+  authors: (
+    (name: "Fong & Spivak — Seven Sketches §3.4.4",
+     email: "", affiliation: ""),
+  ),
   abstract: [
     Specialising the migration triple to the unique functor
     `!: C → 1` from a category `C` to the terminal category.
@@ -45,14 +47,10 @@ next -- ! --> id
     to three familiar set-level constructions: the orbit set, the
     "flat" DDS on a state set, and the fixed-point set.  Companion
     to `migration.typ`.],
-  bibliography: none,
-  figure-index: (enabled: false),
-  table-index: (enabled: false),
-  listing-index: (enabled: false),
 )
 
 #show raw.where(block: true): set block(
-  stroke: 0.5pt + gray, inset: 8pt, radius: 3pt, width: 100%)
+  stroke: 0.5pt + gray, inset: 6pt, radius: 3pt, width: 100%)
 #set raw(syntaxes: ("q.sublime-syntax", "prql.sublime-syntax"))
 
 = The terminal category and  `!`

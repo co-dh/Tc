@@ -32,29 +32,27 @@ t -- F --> next
 */
 
 #import "@preview/cetz:0.3.4": canvas, draw
-#import "@preview/ilm:1.4.1": *
+#import "@preview/arkheion:0.1.0": arkheion
 
-#show: ilm.with(
-  title: [Schema migration: \ #text(size: 0.8em)[*Gr* → *DDS*]],
-  author: "Fong & Spivak — Seven Sketches §3.11",
-  date: datetime(year: 2026, month: 4, day: 26),
+#show: arkheion.with(
+  title: "Schema migration: Gr → DDS",
+  authors: (
+    (name: "Fong & Spivak — Seven Sketches §3.11",
+     email: "", affiliation: ""),
+  ),
   abstract: [
-    A worked example of categorical schema migration: the schema
-    *Gr* (a directed multigraph) and *DDS* (a discrete dynamical
-    system), the migration functor `F : Gr → DDS`, and the three legs
-    of the migration triple Σ#sub[`F`] ⊣ Δ#sub[`F`] ⊣ Π#sub[`F`].
-    The Lean file `migration.lean` and the Python script `migrate.py`
-    both consume the schema data from a comment block at the top of
-    this typst source.],
-  bibliography: none,
-  figure-index: (enabled: false),
-  table-index: (enabled: false),
-  listing-index: (enabled: false),
+    A worked example of categorical schema migration: the schema *Gr*
+    (a directed multigraph) and *DDS* (a discrete dynamical system),
+    the migration functor `F : Gr → DDS`, and the three legs of the
+    migration triple Σ#sub[`F`] ⊣ Δ#sub[`F`] ⊣ Π#sub[`F`].  The Lean
+    file `migration.lean` and the Python script `migrate.py` both
+    consume the schema data from a comment block at the top of this
+    typst source.],
 )
 
 // Code-block style and our custom q/PRQL syntaxes.
 #show raw.where(block: true): set block(
-  stroke: 0.5pt + gray, inset: 8pt, radius: 3pt, width: 100%)
+  stroke: 0.5pt + gray, inset: 6pt, radius: 3pt, width: 100%)
 #set raw(syntaxes: ("q.sublime-syntax", "prql.sublime-syntax"))
 
 = Source-of-truth file
