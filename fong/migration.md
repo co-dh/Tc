@@ -39,8 +39,8 @@ Two objects (`V`, `E`) and two parallel arrows from `E` to `V`:
 flowchart LR
   E -- s --> V
   E -- t --> V
-  classDef obj fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:#000
-  class V,E obj
+  style V fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:#000
+  style E fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:#000
 ```
 
 ## Schema `DDS` — discrete dynamical systems
@@ -51,8 +51,7 @@ One object `S` and a single self-loop `next : S → S`:
 %% id: DDS
 flowchart LR
   S -- next --> S
-  classDef obj fill:#ffe6cc,stroke:#d79b00,stroke-width:2px,color:#000
-  class S obj
+  style S fill:#ffe6cc,stroke:#d79b00,stroke-width:2px,color:#000
 ```
 
 ## Migration `F : Gr → DDS`
@@ -74,14 +73,13 @@ flowchart LR
   E -- F --> S
   s -- F --> id
   t -- F --> next
-  classDef grObj  fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:#000
-  classDef grArr  fill:#fff2cc,stroke:#d6b656,color:#000
-  classDef ddsObj fill:#ffe6cc,stroke:#d79b00,stroke-width:2px,color:#000
-  classDef ddsArr fill:#f8cecc,stroke:#b85450,color:#000
-  class V,E   grObj
-  class s,t   grArr
-  class S     ddsObj
-  class id,next ddsArr
+  style V fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:#000
+  style E fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:#000
+  style s fill:#fff2cc,stroke:#d6b656,color:#000
+  style t fill:#fff2cc,stroke:#d6b656,color:#000
+  style S fill:#ffe6cc,stroke:#d79b00,stroke-width:2px,color:#000
+  style id fill:#f8cecc,stroke:#b85450,color:#000
+  style next fill:#f8cecc,stroke:#b85450,color:#000
 ```
 
 Reading this off: V↦S, E↦S, s↦identity, t↦next.
