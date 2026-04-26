@@ -5,11 +5,11 @@
 // Compile:   typst compile fong/migration.typ fong/migration.pdf
 //
 // Three other consumers read this file:
-//   • migration.lean       — at elab time via mermaid_pres! in Mermaid.lean
+//   • migration.lean       — at elab time via schema_pres! in Schema.lean
 //   • migrate.py           — emits PRQL or q for the migration triple
 //   • the human reader     — via the rendered PDF
 
-/*  schema-data — parsed by both migrate.py and Mermaid.lean.
+/*  schema-data — parsed by both migrate.py and Schema.lean.
     Format mirrors the original mermaid block: a section is opened by
     a `%% id: <NAME>` comment and runs until the next such marker or
     the closing block-comment fence.  Inside, only edge lines of the
@@ -62,8 +62,8 @@ This `.typ` file is the single source of truth for the *schemas*
 data sits in a typst comment at the top of this source so two
 non-typst consumers can parse it directly:
 
-+ `migration.lean` — at elaboration time, via `mermaid_pres!` in
-  `Mermaid.lean` — to build the `Gr` and `DDS` categories and check
++ `migration.lean` — at elaboration time, via `schema_pres!` in
+  `Schema.lean` — to build the `Gr` and `DDS` categories and check
   the inline functor against the parsed `F`.
 + `migrate.py` — to emit PRQL (for DuckDB) or q (for kdb+) implementing
   the migration triple Σ ⊣ Δ ⊣ Π.

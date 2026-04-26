@@ -1,5 +1,5 @@
 import kan_extension
-import Mermaid
+import Schema
 
 /-!
 # Schema migration via Kan extensions
@@ -197,10 +197,10 @@ The schema data lives in `migration.typ`, inside a block comment that
 follows the original mermaid edge format (`<src> -- <label> --> <tgt>`
 under `%% id: <NAME>` markers).  We embed that file's contents at
 compile time with `include_str` and parse out the labelled edges with
-the small `Mermaid` library.  This way the diagram typst renders into
+the small `Schema` library.  This way the diagram typst renders into
 the PDF and the data Lean sees are *literally the same source*.
 
-`FinGraphPres` (defined in `Mermaid.lean`) carries the parsed data:
+`FinGraphPres` (defined in `Schema.lean`) carries the parsed data:
 a list of distinct object names plus a list of `(src, tgt, label)`
 edge triples with numeric indices.  Here we add the conversion to
 our `Graph` interface — for each source/target pair, the edge type
@@ -212,7 +212,7 @@ def FinGraphPres.toGraph (P : FinGraphPres) : Graph where
 
 /-! ### `Gr` and `DDS`, parsed from the typst source
 
-`mermaid_pres!` is a custom term elaborator (defined in `Mermaid.lean`)
+`schema_pres!` is a custom term elaborator (defined in `Schema.lean`)
 that reads the typst file at *elaboration time*, runs the mermaid-edge
 parser, and emits a literal `FinGraphPres`.  Doing the parsing at
 elab time (rather than at term-reduction time) is essential: most of
@@ -225,8 +225,8 @@ Nodes are listed in the order they first appear in edge lines, so
 for `Gr` (whose first line is `E -- s --> V`) we get **`E = 0`, `V = 1`**.
 For `DDS`, the only node is `S = 0`. -/
 
-def Gr_data : FinGraphPres := mermaid_pres! "migration.typ" "Gr"
-def DDS_data : FinGraphPres := mermaid_pres! "migration.typ" "DDS"
+def Gr_data : FinGraphPres := schema_pres! "migration.typ" "Gr"
+def DDS_data : FinGraphPres := schema_pres! "migration.typ" "DDS"
 
 def Gr_pres : Graph := Gr_data.toGraph
 def DDS_pres : Graph := DDS_data.toGraph
@@ -271,7 +271,7 @@ The pattern `⟨0, _⟩, ⟨1, _⟩, ⟨0, _⟩` reads: source object 0 (E),
 target object 1 (V), edge index 0 (s).  Other source/target pairs
 have `Fin 0` edge type and are vacuously handled by exhaustiveness. -/
 
-def F_data : FinGraphPres := mermaid_pres! "migration.typ" "F"
+def F_data : FinGraphPres := schema_pres! "migration.typ" "F"
 
 def Gr_to_DDS_pres : GraphHom Gr_pres DDS_pres where
   o _ := ⟨0, by decide⟩
