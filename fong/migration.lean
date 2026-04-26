@@ -254,20 +254,32 @@ abbrev ddsNext : ddsS ⟶ ddsS := .cons ⟨0, by decide⟩ (.nil _)
 
 /-! ### `Gr → DDS` — Fong's running example
 
-The migration data is small enough to keep inline rather than parsing
-it from the markdown: collapse both objects to `S`; map `s` to the
-identity (an edge's "source" is just itself in the dynamical-system
-view) and `t` to `next`.
+The migration `F` also lives in `migration.md` as a mermaid block, with
+each edge of the form `<gr-thing> -- F --> <dds-thing>`.  Object lines
+(`V→S`, `E→S`) and edge lines (`s→id`, `t→next`) share the same block;
+the schema-aware Python app `migrate.py` classifies them at runtime.
+
+We expose the parsed data here so external tools — or a `#guard` — can
+verify that the mermaid hasn't drifted from the hand-written
+`Gr_to_DDS_pres` below.  Constructing the `GraphHom` programmatically
+from `F_data` would require lookups and termination proofs; for a
+four-line table the inline form is clearer.
 
 The pattern `⟨0, _⟩, ⟨1, _⟩, ⟨0, _⟩` reads: source object 0 (E),
 target object 1 (V), edge index 0 (s).  Other source/target pairs
 have `Fin 0` edge type and are vacuously handled by exhaustiveness. -/
+
+def F_data : FinGraphPres := mermaid_pres! "migration.md" "F"
 
 def Gr_to_DDS_pres : GraphHom Gr_pres DDS_pres where
   o _ := ⟨0, by decide⟩
   e {a b} edge := match a, b, edge with
     | ⟨0, _⟩, ⟨1, _⟩, ⟨0, _⟩ => .nil _                          -- s ↦ id_S
     | ⟨0, _⟩, ⟨1, _⟩, ⟨1, _⟩ => .cons ⟨0, by decide⟩ (.nil _)   -- t ↦ next
+
+-- Sanity check: F_data parsed from migration.md matches the inline functor.
+#guard F_data.objects = ["V", "S", "E", "s", "id", "t", "next"]
+#guard F_data.edges = [(0, 1, "F"), (2, 1, "F"), (3, 4, "F"), (5, 6, "F")]
 
 def Gr_to_DDS : Gr ⇒ DDS := Gr_to_DDS_pres.toFunc
 
