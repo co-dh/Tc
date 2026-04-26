@@ -8,17 +8,26 @@ Single source of truth for the **schemas** (`Gr`, `DDS`) and the
    build the `Gr` and `DDS` categories and check the inline functor
    against the parsed `F`.
 2. GitHub — to render the mermaid blocks below.
-3. [`migrate.py`](migrate.py) — to emit PRQL implementing the migration
-   triple Σ ⊣ Δ ⊣ Π over a user-supplied DuckDB instance:
+3. [`migrate.py`](migrate.py) — to emit either PRQL (for DuckDB) or
+   q (for kdb+) implementing the migration triple Σ ⊣ Δ ⊣ Π:
 
    ```sh
+   # PRQL/DuckDB:
    ./migrate.py migration.md mydb.duckdb > triple.prql
    prqlc compile -t sql.duckdb triple.prql | duckdb mydb.duckdb
+
+   # q/kdb+:
+   ./migrate.py --target=q migration.md > triple.q
+   q triple.q                                 # interactive
+   q)DDS:([] s:0 1 2 3 4 5 6; next_:3 3 4 4 4 6 5)
+   q)show sigma delta DDS                     # round-trip
    ```
 
-   `mydb.duckdb` should already contain a table `DDS(s, next)` filled
-   with a DDS instance.  See `sample.duckdb` (created on demand) for
-   Fong's §3.11 example.
+   For PRQL, `mydb.duckdb` should already contain a table
+   `DDS(s, next)` filled with a DDS instance.  See `sample.duckdb`
+   (created on demand) for Fong's §3.11 example.  For q, the table
+   is created in-process — the column for the DDS arrow `next` is
+   renamed `next_` because `next` is a built-in q identifier.
 
 A schema's mermaid block is identified by a `%% id: <NAME>` comment as
 its first non-fence line.  Inside, only edge lines of the form
@@ -133,7 +142,7 @@ WITH RECURSIVE traj(state, step) AS (
 SELECT * FROM traj
 ```
 
-### Round-trip check
+### Round-trip check (PRQL)
 
 `Σ_F ∘ Δ_F` should recover the original DDS instance.  On Fong's
 §3.11 example:
@@ -152,3 +161,48 @@ duckdb sample.duckdb -c "CREATE TABLE DDS(s INT, next INT);
 returns the original 7 rows — and the `from E` query returns exactly
 the trajectory triples `(id, src, tgt)` that the rfl tests in
 `migration.lean` verify.
+
+## Generated q for Σ ⊣ Δ ⊣ Π
+
+`./migrate.py --target=q migration.md` emits q definitions for the
+same triple, parameterised over the schemas above.  Here `next` from
+the DDS schema is renamed `next_` in q (the bare name is a built-in
+in `.q`).
+
+### Δ_F : DDS instance → Gr instance
+
+```q
+delta:{[D]
+  E:([] id:D`s; s:D`s; t:D`next_);
+  V:([] id:asc distinct D`s);
+  `E`V!(E;V)}
+```
+
+### Σ_F : Gr instance → DDS instance
+
+```q
+sigma:{[G]
+  E:G`E;
+  ([] s:E`s; next_:E`t)}
+```
+
+### Π_F : Gr instance → DDS instance (depth-N trajectories)
+
+```q
+pi:{[G;N]
+  E:G`E;
+  step:exec first t by s from E;
+  verts:asc distinct (E`s),E`t;
+  ([] start:verts; traj:{[s;N;v] N {x[y]}[s]\v}[step;N] each verts)}
+```
+
+### Round-trip check (q)
+
+```sh
+./migrate.py --target=q migration.md > triple.q
+q triple.q
+q)DDS:([] s:0 1 2 3 4 5 6; next_:3 3 4 4 4 6 5)
+q)show sigma delta DDS         / recovers DDS
+q)DDS~`s xasc sigma delta DDS  / 1b — round-trip succeeds
+q)show pi[delta DDS;4]         / depth-4 trajectories from each vertex
+```

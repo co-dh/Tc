@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""migrate.py — generate PRQL for Fong's schema migration triple.
+"""migrate.py — generate PRQL or q for Fong's schema migration triple.
 
 Reads a single source-of-truth markdown file with mermaid blocks for
 the schemas (Gr, DDS) and the migration functor (F), plus a DuckDB
-file holding a DDS instance (table `DDS` with columns matching the
-DDS schema's state and arrows), and emits PRQL for Δ_F, Σ_F, Π_F.
+file holding a DDS instance, and emits Δ_F, Σ_F, Π_F as either PRQL
+(for DuckDB) or q (for kdb+).
 
-Usage: migrate.py <migration.md> <database.duckdb>
+Usage: migrate.py [--target=prql|q] <migration.md> [<database.duckdb>]
+
+The DuckDB path is only consulted when --target=prql, to introspect
+the DDS table's columns.  For q the columns come from the schema's
+arrow names (with q reserved words like `next` suffixed with `_`).
 """
 
 from __future__ import annotations
@@ -55,6 +59,23 @@ def duckdb_describe(db_path: str, table: str) -> list[str] | None:
         return rows[1:] if rows and rows[0] == 'column_name' else rows
     except subprocess.CalledProcessError:
         return None
+
+
+# q has a small set of identifiers that can't be used as column or
+# variable names (built-ins in the .q namespace).  Anything used as a
+# Gr-arrow or DDS-arrow name in migration.md gets `_`-suffixed when
+# emitted for q so the script parses.
+Q_RESERVED = {
+    'next', 'first', 'last', 'count', 'each', 'over', 'scan',
+    'do', 'while', 'if', 'select', 'from', 'where', 'by',
+    'exec', 'update', 'delete', 'in', 'within', 'like',
+    'vs', 'sv', 'asc', 'desc', 'distinct', 'cross',
+}
+
+
+def q_id(name: str) -> str:
+    """Map a schema-arrow name to a q identifier (column or variable)."""
+    return name + '_' if name in Q_RESERVED else name
 
 
 def emit_prql(gr_arrows, gr_objs, obj_map, edge_map, table_name: str = 'DDS') -> None:
@@ -123,11 +144,103 @@ def emit_prql(gr_arrows, gr_objs, obj_map, edge_map, table_name: str = 'DDS') ->
         print(f"# )")
 
 
+def emit_q(gr_arrows, gr_objs, obj_map, edge_map, table_name: str = 'DDS') -> None:
+    """Emit q (kdb+) code for the migration triple.
+
+    Reserved-word arrows get a trailing `_` in the generated q
+    identifiers — e.g. the DDS arrow `next` becomes column `next_`.
+    Otherwise the q text mirrors the PRQL structure: one function per
+    leg of the triple, parameterised by the schema instance."""
+
+    nxt_arrow = next((a for a, p in edge_map.items() if p), None)
+    id_arrow = next((a for a, p in edge_map.items() if not p), None)
+    edge_obj = next((o for o in sorted(gr_objs)
+                     if any(src == o for src, _ in gr_arrows.values())), None)
+
+    # ── Δ_F : DDS → Gr ────────────────────────────────────────
+    print(f"/ ────────────────────────────────────────────")
+    print(f"/ Δ_F : DDS instance → Gr instance")
+    print(f"/ Takes a `{table_name}` table, returns a dict of Gr-tables.")
+    print(f"/ ────────────────────────────────────────────")
+    body_lines = []
+    for obj in sorted(gr_objs):
+        f_obj = obj_map.get(obj, '?')
+        out_arrows = [(lbl, tgt) for lbl, (src, tgt) in gr_arrows.items() if src == obj]
+        if not out_arrows:
+            body_lines.append(f"  / Gr {obj} ↦ DDS {f_obj}: vertex set")
+            body_lines.append(f"  {obj}:([] id:asc distinct D`s);")
+        else:
+            cols = ['id:D`s']
+            for arrow, _ in out_arrows:
+                path = edge_map.get(arrow, [])
+                if not path:                          # F(arrow) = identity
+                    cols.append(f"{q_id(arrow)}:D`s")
+                elif len(path) == 1:                  # F(arrow) = single-step
+                    cols.append(f"{q_id(arrow)}:D`{q_id(path[0])}")
+            body_lines.append(f"  / Gr {obj} ↦ DDS {f_obj}: edge set")
+            body_lines.append(f"  {obj}:([] {'; '.join(cols)});")
+    keys = ''.join(f'`{o}' for o in sorted(gr_objs))
+    vals = ';'.join(sorted(gr_objs))
+    print(f"delta:{{[D]")
+    for ln in body_lines:
+        print(ln)
+    print(f"  {keys}!({vals})}}")
+    print()
+
+    # ── Σ_F : Gr → DDS ────────────────────────────────────────
+    print(f"/ ────────────────────────────────────────────")
+    print(f"/ Σ_F : Gr instance → DDS instance  (free DDS on G, left Kan)")
+    print(f"/ Conditional on each Gr-vertex having ≤1 out-edge.")
+    print(f"/ ────────────────────────────────────────────")
+    if edge_obj and id_arrow and nxt_arrow:
+        # DDS column names: `s` for the state, q_id(dds_step) for the
+        # step arrow (e.g. q_id("next") = "next_").
+        dds_step = edge_map[nxt_arrow][0]
+        print(f"sigma:{{[G]")
+        print(f"  E:G`{edge_obj};")
+        print(f"  / Gr arrow `{id_arrow} ↦ identity, Gr arrow `{nxt_arrow} ↦ DDS step `{dds_step}")
+        print(f"  ([] s:E`{id_arrow}; {q_id(dds_step)}:E`{nxt_arrow})}}")
+    print()
+
+    # ── Π_F : Gr → DDS ────────────────────────────────────────
+    print(f"/ ────────────────────────────────────────────")
+    print(f"/ Π_F : Gr instance → DDS instance  (trajectories, right Kan)")
+    print(f"/ Length-N trajectory from each Gr-vertex.  Assumes function-like")
+    print(f"/ (each vertex has ≤1 out-edge); for general G the result is a")
+    print(f"/ tree of paths, not implemented here.")
+    print(f"/ ────────────────────────────────────────────")
+    if edge_obj and id_arrow and nxt_arrow:
+        ida, nxa = q_id(id_arrow), q_id(nxt_arrow)
+        print(f"pi:{{[G;N]")
+        print(f"  E:G`{edge_obj};")
+        print(f"  step:exec first {nxa} by {ida} from E;")
+        print(f"  verts:asc distinct (E`{ida}),E`{nxa};")
+        print(f"  ([] start:verts; traj:{{[s;N;v] N {{x[y]}}[s]\\v}}[step;N] each verts)}}")
+    print()
+
+
 def main() -> None:
-    if len(sys.argv) != 3:
-        print(__doc__, file=sys.stderr)
+    args = sys.argv[1:]
+    target = 'prql'
+    rest = []
+    for a in args:
+        if a.startswith('--target='):
+            target = a.split('=', 1)[1]
+        else:
+            rest.append(a)
+    if target not in ('prql', 'q'):
+        print(f"Unknown target {target!r} (expected prql or q)", file=sys.stderr)
         sys.exit(1)
-    md_path, db_path = sys.argv[1], sys.argv[2]
+    if target == 'prql':
+        if len(rest) != 2:
+            print(__doc__, file=sys.stderr)
+            sys.exit(1)
+        md_path, db_path = rest
+    else:
+        if len(rest) != 1:
+            print(__doc__, file=sys.stderr)
+            sys.exit(1)
+        md_path, db_path = rest[0], None
     md = Path(md_path).read_text()
 
     gr_edges = parse_mermaid_block(md, 'Gr')
@@ -150,24 +263,27 @@ def main() -> None:
         elif src in gr_arrows:
             edge_map[src] = [] if tgt == 'id' else [tgt]
 
-    print(f"# migration.md → PRQL")
-    print(f"# ────────────────────────")
-    print(f"# Gr  objects = {sorted(gr_objs)}")
-    print(f"# Gr  arrows  = {gr_arrows}")
-    print(f"# DDS objects = {sorted(dds_objs)}")
-    print(f"# DDS arrows  = {dds_arrows}")
-    print(f"# F object map = {obj_map}")
-    print(f"# F edge   map = {edge_map}")
+    com = '#' if target == 'prql' else '/'
+    print(f"{com} migration.md → {target}")
+    print(f"{com} ────────────────────────")
+    print(f"{com} Gr  objects = {sorted(gr_objs)}")
+    print(f"{com} Gr  arrows  = {gr_arrows}")
+    print(f"{com} DDS objects = {sorted(dds_objs)}")
+    print(f"{com} DDS arrows  = {dds_arrows}")
+    print(f"{com} F object map = {obj_map}")
+    print(f"{com} F edge   map = {edge_map}")
     print()
 
-    cols = duckdb_describe(db_path, 'DDS')
-    if cols is None:
-        print(f"# WARN: could not introspect DDS table in {db_path} (duckdb CLI missing or table absent).")
+    if target == 'prql':
+        cols = duckdb_describe(db_path, 'DDS')
+        if cols is None:
+            print(f"# WARN: could not introspect DDS table in {db_path} (duckdb CLI missing or table absent).")
+        else:
+            print(f"# DDS instance table `{db_path}` columns: {cols}")
+        print()
+        emit_prql(gr_arrows, gr_objs, obj_map, edge_map, table_name='DDS')
     else:
-        print(f"# DDS instance table `{db_path}` columns: {cols}")
-    print()
-
-    emit_prql(gr_arrows, gr_objs, obj_map, edge_map, table_name='DDS')
+        emit_q(gr_arrows, gr_objs, obj_map, edge_map, table_name='DDS')
 
 
 if __name__ == '__main__':
