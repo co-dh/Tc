@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """migrate.py — generate PRQL or q for Fong's schema migration triple.
 
-Reads a single source-of-truth markdown file with mermaid blocks for
-the schemas (Gr, DDS) and the migration functor (F), plus a DuckDB
-file holding a DDS instance, and emits Δ_F, Σ_F, Π_F as either PRQL
-(for DuckDB) or q (for kdb+).
+Reads a single source-of-truth Typst file (`migration.typ`) whose
+top-of-file block comment carries the schemas (Gr, DDS) and the
+migration functor (F) in the legacy mermaid edge format, and emits
+Δ_F, Σ_F, Π_F as either PRQL (for DuckDB) or q (for kdb+).
 
-Usage: migrate.py [--target=prql|q] <migration.md> [<database.duckdb>]
+Usage: migrate.py [--target=prql|q] <migration.typ> [<database.duckdb>]
 
 The DuckDB path is only consulted when --target=prql, to introspect
 the DDS table's columns.  For q the columns come from the schema's
@@ -22,18 +22,19 @@ import sys
 from pathlib import Path
 
 
-def parse_mermaid_block(md: str, block_id: str) -> list[tuple[str, str, str]]:
+def parse_schema_block(md: str, block_id: str) -> list[tuple[str, str, str]]:
     """Extract `(src, label, tgt)` edges from the section tagged `%% id: <block_id>`.
 
-    A section runs from its `%% id:` marker until **either** the next `%% id:`
-    marker or the closing ``` fence — so multiple sections can share a single
-    mermaid block in the source markdown."""
+    A section runs from its `%% id:` marker until the next `%% id:` marker, the
+    closing ``` mermaid fence, or the closing `*/` block-comment fence — whichever
+    comes first.  This lets us host the same mermaid-style schema data inside a
+    typst `/* ... */` comment with no parser changes worth speaking of."""
     start_re = re.compile(rf'^\s*%% id: {re.escape(block_id)}\s*$', re.MULTILINE)
     m = start_re.search(md)
     if not m:
         return []
     rest = md[m.end():]
-    end_re = re.compile(r'^\s*```|^\s*%% id: ', re.MULTILINE)
+    end_re = re.compile(r'^\s*```|^\s*%% id: |\*/', re.MULTILINE)
     em = end_re.search(rest)
     section = rest[:em.start()] if em else rest
     edges = []
@@ -63,7 +64,7 @@ def duckdb_describe(db_path: str, table: str) -> list[str] | None:
 
 # q has a small set of identifiers that can't be used as column or
 # variable names (built-ins in the .q namespace).  Anything used as a
-# Gr-arrow or DDS-arrow name in migration.md gets `_`-suffixed when
+# Gr-arrow or DDS-arrow name in migration.typ gets `_`-suffixed when
 # emitted for q so the script parses.
 Q_RESERVED = {
     'next', 'first', 'last', 'count', 'each', 'over', 'scan',
@@ -243,11 +244,11 @@ def main() -> None:
         md_path, db_path = rest[0], None
     md = Path(md_path).read_text()
 
-    gr_edges = parse_mermaid_block(md, 'Gr')
-    dds_edges = parse_mermaid_block(md, 'DDS')
-    f_edges = parse_mermaid_block(md, 'F')
+    gr_edges = parse_schema_block(md, 'Gr')
+    dds_edges = parse_schema_block(md, 'DDS')
+    f_edges = parse_schema_block(md, 'F')
     if not (gr_edges and dds_edges and f_edges):
-        print(f"Missing one of Gr / DDS / F mermaid blocks in {md_path}", file=sys.stderr)
+        print(f"Missing one of Gr / DDS / F schema blocks in {md_path}", file=sys.stderr)
         sys.exit(1)
 
     gr_objs = {n for e in gr_edges for n in (e[0], e[2])}
@@ -264,7 +265,7 @@ def main() -> None:
             edge_map[src] = [] if tgt == 'id' else [tgt]
 
     com = '#' if target == 'prql' else '/'
-    print(f"{com} migration.md → {target}")
+    print(f"{com} migration.typ → {target}")
     print(f"{com} ────────────────────────")
     print(f"{com} Gr  objects = {sorted(gr_objs)}")
     print(f"{com} Gr  arrows  = {gr_arrows}")

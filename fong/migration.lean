@@ -191,13 +191,14 @@ def toFunc (φ : GraphHom G H) : G.toCat ⇒ H.toCat where
 
 end GraphHom
 
-/-! ## 2. The schemas, loaded from `migration.md`
+/-! ## 2. The schemas, loaded from `migration.typ`
 
-The schema diagrams live in `migration.md`, where GitHub renders them
-as mermaid.  We embed that file's contents at compile time with
-`include_str` and parse out the labelled edges with the small
-`Mermaid` library.  This way the diagram you see on GitHub and the
-data Lean sees are *literally the same source*.
+The schema data lives in `migration.typ`, inside a block comment that
+follows the original mermaid edge format (`<src> -- <label> --> <tgt>`
+under `%% id: <NAME>` markers).  We embed that file's contents at
+compile time with `include_str` and parse out the labelled edges with
+the small `Mermaid` library.  This way the diagram typst renders into
+the PDF and the data Lean sees are *literally the same source*.
 
 `FinGraphPres` (defined in `Mermaid.lean`) carries the parsed data:
 a list of distinct object names plus a list of `(src, tgt, label)`
@@ -209,10 +210,10 @@ def FinGraphPres.toGraph (P : FinGraphPres) : Graph where
   Obj := Fin P.objects.length
   Edge a b := Fin (P.edges.filter (fun e => e.1 == a.val && e.2.1 == b.val) |>.length)
 
-/-! ### `Gr` and `DDS`, parsed from the markdown
+/-! ### `Gr` and `DDS`, parsed from the typst source
 
 `mermaid_pres!` is a custom term elaborator (defined in `Mermaid.lean`)
-that reads the `.md` file at *elaboration time*, runs the mermaid
+that reads the typst file at *elaboration time*, runs the mermaid-edge
 parser, and emits a literal `FinGraphPres`.  Doing the parsing at
 elab time (rather than at term-reduction time) is essential: most of
 Lean's `String` operations are `@[extern]` and don't reduce in the
@@ -220,12 +221,12 @@ kernel, so a `def` that calls the parser would block all subsequent
 `rfl` tests.  As a literal, on the other hand, the parsed presentation
 is just a chunk of constant data the kernel can compute on freely.
 
-Mermaid lists nodes in the order they first appear in edge lines, so
-for `Gr` (whose only line is `E -- s --> V`) we get **`E = 0`, `V = 1`**.
+Nodes are listed in the order they first appear in edge lines, so
+for `Gr` (whose first line is `E -- s --> V`) we get **`E = 0`, `V = 1`**.
 For `DDS`, the only node is `S = 0`. -/
 
-def Gr_data : FinGraphPres := mermaid_pres! "migration.md" "Gr"
-def DDS_data : FinGraphPres := mermaid_pres! "migration.md" "DDS"
+def Gr_data : FinGraphPres := mermaid_pres! "migration.typ" "Gr"
+def DDS_data : FinGraphPres := mermaid_pres! "migration.typ" "DDS"
 
 def Gr_pres : Graph := Gr_data.toGraph
 def DDS_pres : Graph := DDS_data.toGraph
@@ -254,13 +255,14 @@ abbrev ddsNext : ddsS ⟶ ddsS := .cons ⟨0, by decide⟩ (.nil _)
 
 /-! ### `Gr → DDS` — Fong's running example
 
-The migration `F` also lives in `migration.md` as a mermaid block, with
-each edge of the form `<gr-thing> -- F --> <dds-thing>`.  Object lines
-(`V→S`, `E→S`) and edge lines (`s→id`, `t→next`) share the same block;
-the schema-aware Python app `migrate.py` classifies them at runtime.
+The migration `F` also lives in `migration.typ` (in the same schema
+block), with each edge of the form `<gr-thing> -- F --> <dds-thing>`.
+Object lines (`V→S`, `E→S`) and edge lines (`s→id`, `t→next`) share
+the same section; the schema-aware Python app `migrate.py` classifies
+them at runtime.
 
 We expose the parsed data here so external tools — or a `#guard` — can
-verify that the mermaid hasn't drifted from the hand-written
+verify that the schema source hasn't drifted from the hand-written
 `Gr_to_DDS_pres` below.  Constructing the `GraphHom` programmatically
 from `F_data` would require lookups and termination proofs; for a
 four-line table the inline form is clearer.
@@ -269,7 +271,7 @@ The pattern `⟨0, _⟩, ⟨1, _⟩, ⟨0, _⟩` reads: source object 0 (E),
 target object 1 (V), edge index 0 (s).  Other source/target pairs
 have `Fin 0` edge type and are vacuously handled by exhaustiveness. -/
 
-def F_data : FinGraphPres := mermaid_pres! "migration.md" "F"
+def F_data : FinGraphPres := mermaid_pres! "migration.typ" "F"
 
 def Gr_to_DDS_pres : GraphHom Gr_pres DDS_pres where
   o _ := ⟨0, by decide⟩
@@ -277,7 +279,7 @@ def Gr_to_DDS_pres : GraphHom Gr_pres DDS_pres where
     | ⟨0, _⟩, ⟨1, _⟩, ⟨0, _⟩ => .nil _                          -- s ↦ id_S
     | ⟨0, _⟩, ⟨1, _⟩, ⟨1, _⟩ => .cons ⟨0, by decide⟩ (.nil _)   -- t ↦ next
 
--- Sanity check: F_data parsed from migration.md matches the inline functor.
+-- Sanity check: F_data parsed from migration.typ matches the inline functor.
 #guard F_data.objects = ["V", "S", "E", "s", "id", "t", "next"]
 #guard F_data.edges = [(0, 1, "F"), (2, 1, "F"), (3, 4, "F"), (5, 6, "F")]
 

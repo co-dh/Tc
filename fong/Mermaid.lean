@@ -49,9 +49,11 @@ private def parse? (line : String) : Option Edge :=
 end Edge
 
 /-- Walk a list of lines, collecting those between `%% id: <id>` and
-either the next ``` fence or the next `%% id:` marker (whichever comes
-first — the latter case lets multiple sections share one mermaid
-block).  Recursion is structural on the line list. -/
+the next ``` mermaid fence, the next `%% id:` marker, or the closing
+`*/` of a typst block comment (whichever comes first — the second
+case lets multiple sections share one block, and the third lets us
+host the same data inside a typst comment).  Recursion is structural
+on the line list. -/
 private def collectBlock (id : String) :
     List String → Bool → List String → List String
   | [],           _,    acc => acc.reverse
@@ -60,7 +62,8 @@ private def collectBlock (id : String) :
       else collectBlock id rest false acc
   | line :: rest, true,  acc =>
       let t := trim line
-      if t.startsWith "```" || t.startsWith "%% id:" then acc.reverse
+      if t.startsWith "```" || t.startsWith "%% id:" || t == "*/"
+      then acc.reverse
       else collectBlock id rest true (line :: acc)
 
 /-- Extract all edges from the mermaid block named `id` in `md`. -/
