@@ -106,16 +106,22 @@ arrow to another, the way a functor's edge component should.
   circle(V, radius: 0.34, fill: rgb("#dae8fc"), stroke: gr-stroke + 1pt)
   content(V, text(size: 13pt)[$V$])
 
+  // s curves up, t curves down.  Labels are placed on the LEFT/RIGHT
+  // flanks of their arc (not at the apex) so each label sits roughly
+  // above its target arrow in the DDS panel — F: s↦id ends up nearly
+  // vertical on the left, F: t↦next nearly vertical on the right.
   let s-apex = (2.0, 0.85)
   let t-apex = (2.0, -0.45)
+  let s-label = (0.85, 1.30)      // above s-arc, on the left — above id
+  let t-label = (3.15, -1.00)     // below t-arc, on the right — above next
   bezier((E.at(0)+0.34, E.at(1)+0.10), (V.at(0)-0.34, V.at(1)+0.10),
          (1.2, s-apex.at(1)+0.05), (2.8, s-apex.at(1)+0.05),
          mark: (end: ">"), stroke: 1pt)
-  content((s-apex.at(0), s-apex.at(1)+0.40), arr-text[$s$])
+  content(s-label, arr-text[$s$])
   bezier((E.at(0)+0.34, E.at(1)-0.10), (V.at(0)-0.34, V.at(1)-0.10),
          (1.2, t-apex.at(1)-0.05), (2.8, t-apex.at(1)-0.05),
          mark: (end: ">"), stroke: 1pt)
-  content((t-apex.at(0), t-apex.at(1)-0.40), arr-text[$t$])
+  content(t-label, arr-text[$t$])
 
   // ── DDS panel (bottom) ──
   rect((-1.4, -5.6), (5.4, -2.6),
@@ -128,79 +134,65 @@ arrow to another, the way a functor's edge component should.
 
   let id-apex = (0.85, -4.1)
   let nx-apex = (3.15, -4.1)
+  let id-label = (id-apex.at(0), id-apex.at(1) + 0.85)   // above id loop
+  let nx-label = (nx-apex.at(0), nx-apex.at(1) + 0.85)   // above next loop
   bezier((S.at(0)-0.34, S.at(1)+0.22), (S.at(0)-0.34, S.at(1)-0.22),
-         (id-apex.at(0)+0.10, S.at(1)+0.65), (id-apex.at(0)+0.10, S.at(1)-0.65),
+         (id-apex.at(0)+0.10, S.at(1)+0.55), (id-apex.at(0)+0.10, S.at(1)-0.55),
          mark: (end: ">"), stroke: 1pt)
-  content((id-apex.at(0)-0.20, id-apex.at(1)), arr-text2[$"id"$])
+  content(id-label, arr-text2[$"id"$])
   bezier((S.at(0)+0.34, S.at(1)-0.22), (S.at(0)+0.34, S.at(1)+0.22),
-         (nx-apex.at(0)-0.10, S.at(1)-0.65), (nx-apex.at(0)-0.10, S.at(1)+0.65),
+         (nx-apex.at(0)-0.10, S.at(1)-0.55), (nx-apex.at(0)-0.10, S.at(1)+0.55),
          mark: (end: ">"), stroke: 1pt)
-  content((nx-apex.at(0)+0.30, nx-apex.at(1)), arr-text2[$"next"$])
+  content(nx-label, arr-text2[$"next"$])
 
-  // ── F: object map (E↦S, V↦S) ──
-  line((E.at(0)-0.05, E.at(1)-0.34), (S.at(0)-1.10, S.at(1)+0.32),
+  // ── F: object map (E↦S, V↦S) — drawn at the panel-corner ends, so
+  // the middle stays clear for the edge-map arrows.  Arrowheads aim
+  // at the LEFT and RIGHT edges of `S` (not its centre) so they
+  // don't visually merge with the s→id / t→next arrows below.
+  line((E.at(0), E.at(1)-0.34), (S.at(0)-0.40, S.at(1)+0.30),
        mark: (end: ">"), stroke: f-stroke)
-  content((-0.10, -1.85), f-text[$F$])
-  line((V.at(0)+0.05, V.at(1)-0.34), (S.at(0)+1.10, S.at(1)+0.32),
+  content((-0.10, -2.10), f-text[$F$])
+  line((V.at(0), V.at(1)-0.34), (S.at(0)+0.40, S.at(1)+0.30),
        mark: (end: ">"), stroke: f-stroke)
-  content((4.10, -1.85), f-text[$F$])
+  content((4.10, -2.10), f-text[$F$])
 
-  // ── F: edge map (s↦id, t↦next) ──
-  line((s-apex.at(0)-0.30, s-apex.at(1)+0.20), (id-apex.at(0)+0.20, id-apex.at(1)+0.55),
+  // ── F: edge map (s↦id, t↦next) — nearly vertical, originating
+  // just below each Gr-arrow label and terminating just above each
+  // DDS-arrow label.
+  line((s-label.at(0), s-label.at(1) - 0.20),
+       (id-label.at(0), id-label.at(1) + 0.25),
        mark: (end: ">"), stroke: f-stroke)
-  content((1.05, 0.20), f-text[$F$])
-  line((t-apex.at(0)+0.30, t-apex.at(1)-0.20), (nx-apex.at(0)-0.20, nx-apex.at(1)+0.55),
+  content((s-label.at(0) + 0.30, -1.35), f-text[$F$])
+  line((t-label.at(0), t-label.at(1) - 0.20),
+       (nx-label.at(0), nx-label.at(1) + 0.25),
        mark: (end: ">"), stroke: f-stroke)
-  content((2.95, -1.10), f-text[$F$])
+  content((t-label.at(0) + 0.30, -2.10), f-text[$F$])
 }))
 
 Reading the F section off: $V ↦ S$, $E ↦ S$, $s ↦ "identity"$, $t ↦ "next"$.
 
-= Generated PRQL for Σ ⊣ Δ ⊣ Π
+= Generated PRQL and q
 
-These are the queries `migrate.py` emits for the schemas above.  They
-assume the input DuckDB has a table `DDS(s, next)` for the DDS-side
-direction, or tables `V(id)` / `E(id, s, t)` for the Gr-side direction.
+The blocks below are *not* hand-written: each is the verbatim output
+of `migrate.py` reading the schema-data block at the top of this file
+and emitting code for its target.  Re-run before compiling typst:
 
-== Δ_F : DDS instance → Gr instance (trajectory graph)
-
-Each DDS row becomes a Gr-edge with `src = s` (because `F(s) = id`)
-and `tgt = next` (because `F(t) = next`).  `V` is the deduplicated
-state set.
-
-```prql
-let E = (from DDS | select { id = s, s = s, t = next })
-let V = (from DDS | select { id = s } | group {id} (take 1))
+```sh
+./migrate.py            migration.typ /dev/null > triple.prql
+./migrate.py --target=q migration.typ            > triple.q
+typst compile fong/migration.typ fong/migration.pdf
 ```
 
-== Σ_F : Gr instance → DDS instance (free DDS on G)
+== PRQL  (`triple.prql`)
 
-Each Gr-edge $u → v$ is read as $"next"(u) = v$.  Conditional on each
-vertex having ≤1 out-edge in $G$ (otherwise targets must be identified,
-which needs a quotient PRQL doesn't express directly).
+The PRQL workflow assumes the input DuckDB has a table `DDS(s, next)`
+for the DDS direction, or tables `V(id)` / `E(id, s, t)` for the Gr
+direction.  The Π_F leg is emitted as a commented raw-SQL recursive
+CTE template — pure PRQL has no recursion.
 
-```prql
-let DDS_sigma = (from E | select { s = s, next = t })
-```
+#raw(read("triple.prql"), lang: "prql", block: true)
 
-== Π_F : Gr instance → DDS instance (trajectories)
-
-The set of infinite trajectories in $G$.  Pure PRQL has no recursion,
-so `migrate.py` emits a commented raw-SQL recursive CTE template — set
-the bound $N$ to the trajectory length you want:
-
-```sql
-WITH RECURSIVE traj(state, step) AS (
-  SELECT id, 0 FROM E
-  UNION ALL
-  SELECT e.tgt, t.step + 1 FROM traj t
-  JOIN E e ON e.id = t.state
-  WHERE t.step < N
-)
-SELECT * FROM traj
-```
-
-== Round-trip check (PRQL)
+=== Round-trip check (PRQL)
 
 $Σ_F ∘ Δ_F$ should recover the original DDS instance.  On Fong's §3.11
 example:
@@ -220,41 +212,16 @@ returns the original 7 rows — and the `from E` query returns exactly
 the trajectory triples `(id, src, tgt)` that the rfl tests in
 `migration.lean` verify.
 
-= Generated q for Σ ⊣ Δ ⊣ Π
+== q  (`triple.q`)
 
-`./migrate.py --target=q migration.typ` emits q definitions for the
-same triple, parameterised over the schemas above.  Here `next` from
-the DDS schema is renamed `next_` in q (the bare name is a built-in
-in `.q`).
+The DDS arrow `next` becomes column `next_` in q (the bare name is a
+built-in in `.q`).  Type comments on each function spell out the
+expected shapes of its inputs; the `pi` definition uses q's scan
+iterator (`\`) to apply `step` $N$ times starting from each vertex.
 
-== Δ_F : DDS instance → Gr instance
+#raw(read("triple.q"), lang: "q", block: true)
 
-```q
-delta:{[D]
-  E:([] id:D`s; s:D`s; t:D`next_);
-  V:([] id:asc distinct D`s);
-  `E`V!(E;V)}
-```
-
-== Σ_F : Gr instance → DDS instance
-
-```q
-sigma:{[G]
-  E:G`E;
-  ([] s:E`s; next_:E`t)}
-```
-
-== Π_F : Gr instance → DDS instance (depth-N trajectories)
-
-```q
-pi:{[G;N]
-  E:G`E;
-  step:exec first t by s from E;
-  verts:asc distinct (E`s),E`t;
-  ([] start:verts; traj:{[s;N;v] N {x[y]}[s]\v}[step;N] each verts)}
-```
-
-== Round-trip check (q)
+=== Round-trip check (q)
 
 ```sh
 ./migrate.py --target=q migration.typ > triple.q

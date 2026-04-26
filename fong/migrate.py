@@ -158,27 +158,47 @@ def emit_q(gr_arrows, gr_objs, obj_map, edge_map, table_name: str = 'DDS') -> No
     edge_obj = next((o for o in sorted(gr_objs)
                      if any(src == o for src, _ in gr_arrows.values())), None)
 
+    dds_cols = ['s'] + [q_id(edge_map[a][0]) for a in edge_map if edge_map[a]]
+    gr_table_specs = []
+    for obj in sorted(gr_objs):
+        out_arrows = [lbl for lbl, (src, _) in gr_arrows.items() if src == obj]
+        if not out_arrows:
+            gr_table_specs.append(f"`{obj}: ([] id:long)")
+        else:
+            spec = ', '.join(['id:long'] + [f'{q_id(a)}:long' for a in out_arrows])
+            gr_table_specs.append(f"`{obj}: ([] {spec})")
+
     # ── Δ_F : DDS → Gr ────────────────────────────────────────
     print(f"/ ────────────────────────────────────────────")
-    print(f"/ Δ_F : DDS instance → Gr instance")
-    print(f"/ Takes a `{table_name}` table, returns a dict of Gr-tables.")
+    print(f"/ Δ_F : DDS → Gr   (precomposition / pullback)")
+    print(f"/")
+    print(f"/   D :: table {table_name}({', '.join(c+':long' for c in dds_cols)})")
+    print(f"/   returns dict of Gr-tables: {' | '.join(gr_table_specs)}")
+    print(f"/")
+    print(f"/ Each Gr-arrow `a out of object O reads from the column F(a)")
+    print(f"/ of `{table_name}`: an arrow F maps to identity copies the state column,")
+    print(f"/ an arrow F maps to a step copies the step's DDS column.")
     print(f"/ ────────────────────────────────────────────")
     body_lines = []
     for obj in sorted(gr_objs):
         f_obj = obj_map.get(obj, '?')
         out_arrows = [(lbl, tgt) for lbl, (src, tgt) in gr_arrows.items() if src == obj]
         if not out_arrows:
-            body_lines.append(f"  / Gr {obj} ↦ DDS {f_obj}: vertex set")
+            body_lines.append(f"  / Gr {obj} ↦ DDS {f_obj}: vertex set (no out-arrows)")
             body_lines.append(f"  {obj}:([] id:asc distinct D`s);")
         else:
             cols = ['id:D`s']
+            arrow_notes = []
             for arrow, _ in out_arrows:
                 path = edge_map.get(arrow, [])
-                if not path:                          # F(arrow) = identity
+                if not path:
                     cols.append(f"{q_id(arrow)}:D`s")
-                elif len(path) == 1:                  # F(arrow) = single-step
+                    arrow_notes.append(f"`{arrow}↦id")
+                elif len(path) == 1:
                     cols.append(f"{q_id(arrow)}:D`{q_id(path[0])}")
-            body_lines.append(f"  / Gr {obj} ↦ DDS {f_obj}: edge set")
+                    arrow_notes.append(f"`{arrow}↦`{path[0]}")
+            body_lines.append(f"  / Gr {obj} ↦ DDS {f_obj}: edge set "
+                              f"({', '.join(arrow_notes)})")
             body_lines.append(f"  {obj}:([] {'; '.join(cols)});")
     keys = ''.join(f'`{o}' for o in sorted(gr_objs))
     vals = ';'.join(sorted(gr_objs))
@@ -190,33 +210,46 @@ def emit_q(gr_arrows, gr_objs, obj_map, edge_map, table_name: str = 'DDS') -> No
 
     # ── Σ_F : Gr → DDS ────────────────────────────────────────
     print(f"/ ────────────────────────────────────────────")
-    print(f"/ Σ_F : Gr instance → DDS instance  (free DDS on G, left Kan)")
-    print(f"/ Conditional on each Gr-vertex having ≤1 out-edge.")
+    print(f"/ Σ_F : Gr → DDS   (free DDS on G; left Kan extension)")
+    print(f"/")
+    print(f"/   G :: dict of Gr-tables (as returned by delta)")
+    print(f"/   returns table {table_name}({', '.join(c+':long' for c in dds_cols)})")
+    print(f"/")
+    print(f"/ Each Gr-edge u→v in `E reads as `next`(u) = v.  Sound only when")
+    print(f"/ each Gr-vertex has ≤1 out-edge in G — otherwise targets must be")
+    print(f"/ identified, which would need a quotient (not done here).")
     print(f"/ ────────────────────────────────────────────")
     if edge_obj and id_arrow and nxt_arrow:
-        # DDS column names: `s` for the state, q_id(dds_step) for the
-        # step arrow (e.g. q_id("next") = "next_").
         dds_step = edge_map[nxt_arrow][0]
         print(f"sigma:{{[G]")
         print(f"  E:G`{edge_obj};")
-        print(f"  / Gr arrow `{id_arrow} ↦ identity, Gr arrow `{nxt_arrow} ↦ DDS step `{dds_step}")
+        print(f"  / `{id_arrow}↦id  (state column),  `{nxt_arrow}↦`{dds_step}  (step column)")
         print(f"  ([] s:E`{id_arrow}; {q_id(dds_step)}:E`{nxt_arrow})}}")
     print()
 
     # ── Π_F : Gr → DDS ────────────────────────────────────────
     print(f"/ ────────────────────────────────────────────")
-    print(f"/ Π_F : Gr instance → DDS instance  (trajectories, right Kan)")
-    print(f"/ Length-N trajectory from each Gr-vertex.  Assumes function-like")
-    print(f"/ (each vertex has ≤1 out-edge); for general G the result is a")
-    print(f"/ tree of paths, not implemented here.")
+    print(f"/ Π_F : Gr → DDS   (trajectories; right Kan extension)")
+    print(f"/")
+    print(f"/   G :: dict of Gr-tables;  N :: depth (long)")
+    print(f"/   returns table (start:long; traj:list of long)")
+    print(f"/")
+    print(f"/ For each Gr-vertex v, traj is the length-(N+1) sequence")
+    print(f"/   v, step v, step (step v), ..., step^N v")
+    print(f"/ where `step :: src→tgt` is the next-vertex map read off `E.")
+    print(f"/ Assumes function-like G (≤1 out-edge per vertex); a multi-edge")
+    print(f"/ G would yield a tree of paths, not implemented here.")
     print(f"/ ────────────────────────────────────────────")
     if edge_obj and id_arrow and nxt_arrow:
         ida, nxa = q_id(id_arrow), q_id(nxt_arrow)
         print(f"pi:{{[G;N]")
         print(f"  E:G`{edge_obj};")
+        print(f"  / step :: src-vertex → tgt-vertex  (q dict, indexable as step[v])")
         print(f"  step:exec first {nxa} by {ida} from E;")
+        print(f"  / all vertices appearing as either src or tgt of some Gr-edge")
         print(f"  verts:asc distinct (E`{ida}),E`{nxa};")
-        print(f"  ([] start:verts; traj:{{[s;N;v] N {{x[y]}}[s]\\v}}[step;N] each verts)}}")
+        print(f"  / scan: starting from each v, apply `step` N times")
+        print(f"  ([] start:verts; traj:{{[step;N;v] N {{x[y]}}[step]\\v}}[step;N] each verts)}}")
     print()
 
 

@@ -1,0 +1,40 @@
+# migration.typ → prql
+# ────────────────────────
+# Gr  objects = ['E', 'V']
+# Gr  arrows  = {'s': ('E', 'V'), 't': ('E', 'V')}
+# DDS objects = ['S']
+# DDS arrows  = {'next': ('S', 'S')}
+# F object map = {'V': 'S', 'E': 'S'}
+# F edge   map = {'s': [], 't': ['next']}
+
+# WARN: could not introspect DDS table in /dev/null (duckdb CLI missing or table absent).
+
+# ────────────────────────────────────────────
+# Δ_F : DDS instance → Gr instance
+# Reads from table `DDS`.
+# ────────────────────────────────────────────
+# Gr object E ↦ DDS object S: edge set with arrow projections.
+let E = (from DDS | select { id = s, s = s, t = next })
+
+# Gr object V ↦ DDS object S: vertex set.
+let V = (from DDS | select { id = s } | group {id} (take 1))
+
+# ────────────────────────────────────────────
+# Σ_F : Gr instance → DDS instance  (left Kan extension)
+# Free DDS on G: states = vertices, next absorbs out-edges.
+# Conditional on each vertex having ≤1 out-edge in G.
+# ────────────────────────────────────────────
+# Read state from arrow `s` (which F sends to identity)
+# and next from arrow `t` (which F sends to a step).
+let DDS_sigma = (from E | select { s = s, next = t })
+
+# ────────────────────────────────────────────
+# Π_F : Gr instance → DDS instance  (right Kan extension)
+# Set of (infinite) trajectories in G.  Pure PRQL has no recursion;
+# below is a finite-depth unfold as a recursive CTE in raw SQL.
+# ────────────────────────────────────────────
+# WITH RECURSIVE traj(state, step) AS (
+#   SELECT id, 0 FROM E
+#   UNION ALL
+#   SELECT e.tgt, t.step + 1 FROM traj t JOIN E e ON e.id = t.state WHERE t.step < N
+# )
