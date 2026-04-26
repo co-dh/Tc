@@ -85,3 +85,42 @@ fongMigration = Triple
 --   3
 --   ghci> tgt g 3
 --   0
+
+------------------------------------------------------------------------
+-- Dataframe-style wrappers: rows in / rows out, Δ_F on the path
+------------------------------------------------------------------------
+
+-- DDS rows: (state, next state)
+type DDSRows a = [(a, a)]
+
+-- Gr rows: (arrow, src vertex, tgt vertex)
+type GrRows a = [(a, a, a)]
+
+ddsFromRows :: Eq a => DDSRows a -> DDSInst a
+ddsFromRows rows = DDSInst (\s -> maybe s id (lookup s rows))
+
+grToRows :: [e] -> GrInst v e -> [(e, v, v)]
+grToRows edges g = [(e, src g e, tgt g e) | e <- edges]
+
+-- Δ on data — actually goes through `deltaTrajectory`.
+deltaRows :: Eq a => DDSRows a -> GrRows a
+deltaRows rows =
+  let dds = ddsFromRows rows
+      gr  = deltaTrajectory dds
+  in  grToRows (map fst rows) gr
+
+------------------------------------------------------------------------
+-- Self-test
+------------------------------------------------------------------------
+
+main :: IO ()
+main = do
+  let input  = [(0,1),(1,2),(2,3),(3,0)] :: DDSRows Int
+      output = deltaRows input
+      expected = [(0,0,1),(1,1,2),(2,2,3),(3,3,0)] :: GrRows Int
+  putStrLn $ "input:    " ++ show input
+  putStrLn $ "output:   " ++ show output
+  putStrLn $ "expected: " ++ show expected
+  if output == expected
+    then putStrLn "PASS"
+    else putStrLn "FAIL"
