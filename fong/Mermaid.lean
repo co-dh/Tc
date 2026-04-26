@@ -49,7 +49,9 @@ private def parse? (line : String) : Option Edge :=
 end Edge
 
 /-- Walk a list of lines, collecting those between `%% id: <id>` and
-the next ``` fence.  The recursion is structural on the line list. -/
+either the next ``` fence or the next `%% id:` marker (whichever comes
+first — the latter case lets multiple sections share one mermaid
+block).  Recursion is structural on the line list. -/
 private def collectBlock (id : String) :
     List String → Bool → List String → List String
   | [],           _,    acc => acc.reverse
@@ -57,7 +59,8 @@ private def collectBlock (id : String) :
       if trim line == s!"%% id: {id}" then collectBlock id rest true acc
       else collectBlock id rest false acc
   | line :: rest, true,  acc =>
-      if (trim line).startsWith "```" then acc.reverse
+      let t := trim line
+      if t.startsWith "```" || t.startsWith "%% id:" then acc.reverse
       else collectBlock id rest true (line :: acc)
 
 /-- Extract all edges from the mermaid block named `id` in `md`. -/

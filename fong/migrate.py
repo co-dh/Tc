@@ -19,19 +19,27 @@ from pathlib import Path
 
 
 def parse_mermaid_block(md: str, block_id: str) -> list[tuple[str, str, str]]:
-    """Extract `(src, label, tgt)` edges from the mermaid block tagged `%% id: <block_id>`."""
-    pattern = rf'```mermaid\s*\n%% id: {re.escape(block_id)}\s*\n(.*?)\n```'
-    m = re.search(pattern, md, re.DOTALL)
+    """Extract `(src, label, tgt)` edges from the section tagged `%% id: <block_id>`.
+
+    A section runs from its `%% id:` marker until **either** the next `%% id:`
+    marker or the closing ``` fence — so multiple sections can share a single
+    mermaid block in the source markdown."""
+    start_re = re.compile(rf'^\s*%% id: {re.escape(block_id)}\s*$', re.MULTILINE)
+    m = start_re.search(md)
     if not m:
         return []
+    rest = md[m.end():]
+    end_re = re.compile(r'^\s*```|^\s*%% id: ', re.MULTILINE)
+    em = end_re.search(rest)
+    section = rest[:em.start()] if em else rest
     edges = []
-    for line in m.group(1).split('\n'):
+    for line in section.split('\n'):
         line = line.strip()
         if not line or line.startswith('%%') or '-->' not in line:
             continue
-        em = re.match(r'(\S+)\s+--\s+(.+?)\s+-->\s+(\S+)', line)
-        if em:
-            edges.append((em.group(1), em.group(2).strip(), em.group(3)))
+        e = re.match(r'(\S+)\s+--\s+(.+?)\s+-->\s+(\S+)', line)
+        if e:
+            edges.append((e.group(1), e.group(2).strip(), e.group(3)))
     return edges
 
 
