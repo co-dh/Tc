@@ -1,19 +1,32 @@
-// migration.typ — single source of truth for three worked examples
-// of Fong & Spivak's schema-migration pipeline:
+// migration.typ — three worked examples of Fong & Spivak's
+// schema-migration triple Σ_F ⊣ Δ_F ⊣ Π_F:
 //
-//   I.    F : Gr → DDS              (§3.11 — the running example)
-//   II.   ! : DDS → 1               (§3.4.4 — the terminal functor)
-//   III.  Schema  Air                (§3.2  — airline reservations)
+//   Part I.   F : Gr → DDS              (§3.11 — running example)
+//   Part II.  ! : DDS → 1                (§3.4.4 — terminal functor)
+//   Part III. ! : Air → 1                 (§3.2  — airline reservations)
 //
-// The schema-data block at the top is parsed by both Schema.lean
-// (`schema_pres!`) and migrate.py (`parse_schema_block`).  All
-// downstream artefacts — diagrams, prose, code blocks — live inside
-// this one typst file.
+// For each part the typst file embeds *three* artefacts produced from
+// a single specification text file at fong/examples/<name>.txt:
 //
-// Compile:   typst compile fong/migration.typ fong/migration.pdf
+//   1. the spec itself (raw `.txt`);
+//   2. the q triple    (read from triple-<name>.q);
+//   3. the PRQL triple (read from triple-<name>.prql).
+//
+// Each triple is produced by running
+//
+//   LEAN_PATH=. lean --run migration.lean examples/<name>.txt q
+//   LEAN_PATH=. lean --run migration.lean examples/<name>.txt prql
+//
+// from the fong/ directory.  The Lean source is the single source of
+// truth: there is no Python codegen any more.
 
-/*  schema-data — `%% id: <NAME>` blocks, edge lines of the form
-        <src> -- <label> --> <tgt>
+/*  schema-data block — read by `schema_pres!` in migration.lean at
+    elaboration time.  Keep this block syntactically isomorphic to
+    what files in `examples/` produce so the inline lean schemas and
+    the text-file specs can't drift.  (NB: avoid the literal slash-
+    star sequence in this comment — typst block comments nest, and
+    an unbalanced inner `/` `*` would silently swallow the rest of
+    the document.)
 
 %% id: Gr
 E -- s --> V
@@ -53,15 +66,13 @@ P -- home   --> C
      email: "", affiliation: ""),
   ),
   abstract: [
-    Three concrete examples of categorical schema migration, sharing
-    a single schema-data block at the top of this typst source so
-    `Schema.lean` and `migrate.py` can both read them without leaving
-    typst.  Part I works through Fong's running example
-    `F : Gr → DDS` (§3.11), with the migration triple compiled to
-    PRQL and q.  Part II specialises to the terminal functor
-    `! : DDS → 1` (§3.4.4), where the triple becomes orbit set / flat
-    DDS / fixed-point set.  Part III draws the airline-reservation
-    schema `Air` (§3.2), with two natural functors out of it.],
+    Three concrete examples of categorical schema migration, each
+    described by a tiny edge-list spec under `fong/examples/`.
+    `migration.lean` parses the spec, instantiates `FinGraphPres` for
+    `C` and `D`, and emits a complete migration triple
+    `(Δ_F, Σ_F, Π_F)` in either q or PRQL.  All three pieces of code
+    you read below — the parsed schemas, the round-trip examples, and
+    the generated triples — come from that one Lean source.],
 )
 
 #show raw.where(block: true): set block(
@@ -69,50 +80,64 @@ P -- home   --> C
 #set raw(syntaxes: ("q.sublime-syntax", "prql.sublime-syntax"))
 
 // ════════════════════════════════════════════════════════════════
+= Pipeline
+// ════════════════════════════════════════════════════════════════
+
+Each example file under `fong/examples/` is a plain text edge-list:
+
+```
+%% id: <category-name>
+<src> -- <arrow-label> --> <tgt>
+...
+
+%% id: <functor-name>
+<C-object> -- F --> <D-object>
+<C-arrow>  -- F --> <D-path>
+```
+
+The runner `lean --run migration.lean <spec>.txt {q|prql}` consumes
+one of these files and prints a complete triple to stdout:
+
+```sh
+cd fong/
+LEAN_PATH=. lean --run migration.lean examples/bang.txt q     > triple-bang.q
+LEAN_PATH=. lean --run migration.lean examples/bang.txt prql  > triple-bang.prql
+```
+
+Three reasoning regimes are recognised automatically:
+
++ *F is the identity functor* — Σ_F and Π_F are the identity.
++ *D is terminal* (the "bang" functor `!: C → 1`) — Σ_F is the
+  union-find quotient (orbits / connected components) and Π_F is the
+  set of compatible families across all C-arrows.
++ *Otherwise* — the q/PRQL emit a TODO stub for Σ and Π; only Δ_F
+  (precomposition / pullback) is produced in full generality.
+
+The three sections that follow exhibit one example for each regime:
+Part I uses the third (Δ only), Parts II and III use the second
+(full triple).
+
+
+// ════════════════════════════════════════════════════════════════
 = Part I.  `F : Gr → DDS`  (§3.11)
 // ════════════════════════════════════════════════════════════════
 
-== Source-of-truth file
+== The spec
 
-This `.typ` file is the single source of truth for the schemas (`Gr`,
-`DDS`, plus `Air` and `1` below) and the migration functor
-`F : Gr → DDS`.  The schema data sits in a typst comment at the top
-of this source so two non-typst consumers can parse it directly:
+`Gr` is a directed graph (objects $E$, $V$ with `s, t : E → V`); `DDS`
+is a discrete dynamical system (one state object $S$ with a self-loop
+`next`).  The functor sends both `Gr`-objects to $S$, the source map
+to the identity, and the target map to `next` — i.e. an edge $e$ of
+`Gr` represents the trajectory step $s(e) ↦ "next"(s(e))$ in `DDS`.
 
-+ `migration.lean` — at elaboration time, via `schema_pres!` in
-  `Schema.lean` — to build the `Gr` and `DDS` categories and check
-  the inline functor against the parsed `F`.
-+ `migrate.py` — to emit PRQL (for DuckDB) or q (for kdb+) implementing
-  the migration triple Σ ⊣ Δ ⊣ Π.
-
-The two `migrate.py` workflows:
-
-```sh
-# PRQL/DuckDB:
-./migrate.py migration.typ mydb.duckdb > triple.prql
-prqlc compile -t sql.duckdb triple.prql | duckdb mydb.duckdb
-
-# q/kdb+:
-./migrate.py --target=q migration.typ > triple.q
-q triple.q                                 # interactive
-q)DDS:([] s:0 1 2 3 4 5 6; next_:3 3 4 4 4 6 5)
-q)show sigma delta DDS                     # round-trip
-```
-
-For PRQL, `mydb.duckdb` should already contain a table `DDS(s, next)`
-filled with a DDS instance.  See `sample.duckdb` (created on demand)
-for Fong's §3.11 example.  For q, the table is created in-process —
-the column for the DDS arrow `next` is renamed `next_` because `next`
-is a built-in q identifier.
+#raw(read("examples/gr_to_dds.txt"), block: true)
 
 == The diagram
 
-`Gr` is on top (blue panel), `DDS` on the bottom (orange panel), and
-the functor `F` is drawn as *dashed grey arrows* from Gr to DDS — the
-*object map* `V↦S`, `E↦S` runs along the panel edges, and the *edge
-map* `s↦id`, `t↦next` runs from the midpoint of each Gr arrow to the
-midpoint of its DDS image, so the F arrows literally point from one
-arrow to another, the way a functor's edge component should.
+`Gr` on top (blue), `DDS` at the bottom (orange); `F` is dashed grey.
+The *object map* `V↦S`, `E↦S` runs along the panel edges, and the
+*edge map* `s↦id`, `t↦next` runs from each `Gr`-arrow midpoint to its
+`DDS` image.
 
 #align(center, canvas(length: 1.0cm, {
   import draw: *
@@ -126,7 +151,6 @@ arrow to another, the way a functor's edge component should.
   let f-stroke = (paint: gray, dash: "dashed", thickness: 0.8pt)
   let f-text(b) = text(fill: gray.darken(20%), weight: "bold", size: 10pt, b)
 
-  // ── Gr panel (top) ──
   rect((-1.4, -1.4), (5.4, 1.8),
        fill: gr-fill, stroke: gr-stroke + 1pt, radius: 0.18)
   content((-0.6, 1.45), text(weight: "bold", fill: gr-stroke, size: 13pt)[Gr])
@@ -151,7 +175,6 @@ arrow to another, the way a functor's edge component should.
          mark: (end: ">"), stroke: 1pt)
   content(t-label, arr-text[$t$])
 
-  // ── DDS panel (bottom) ──
   rect((-1.4, -5.6), (5.4, -2.6),
        fill: dds-fill, stroke: dds-stroke + 1pt, radius: 0.18)
   content((-0.4, -2.95), text(weight: "bold", fill: dds-stroke, size: 13pt)[DDS])
@@ -173,7 +196,6 @@ arrow to another, the way a functor's edge component should.
          mark: (end: ">"), stroke: 1pt)
   content(nx-label, arr-text2[$"next"$])
 
-  // ── F: object map (E↦S, V↦S) ──
   line((E.at(0), E.at(1)-0.34), (S.at(0)-0.40, S.at(1)+0.30),
        mark: (end: ">"), stroke: f-stroke)
   content((-0.10, -2.10), f-text[$F$])
@@ -181,7 +203,6 @@ arrow to another, the way a functor's edge component should.
        mark: (end: ">"), stroke: f-stroke)
   content((4.10, -2.10), f-text[$F$])
 
-  // ── F: edge map (s↦id, t↦next) ──
   line((s-label.at(0) - 0.10, s-label.at(1) - 0.18),
        (id-label.at(0) + 0.30, id-label.at(1) + 0.18),
        mark: (end: ">"), stroke: f-stroke)
@@ -192,68 +213,39 @@ arrow to another, the way a functor's edge component should.
   content((2.85, -2.50), f-text[$F$])
 }))
 
-Reading the F section off: $V ↦ S$, $E ↦ S$, $s ↦ "identity"$, $t ↦ "next"$.
+== Generated triple
 
-== Generated PRQL and q
+`D = DDS` is *not* terminal (it has the non-identity arrow `next`), so
+this falls into the third regime: only Δ_F is produced in full; Σ_F
+and Π_F are emitted as TODO stubs awaiting the pointwise Kan-extension
+construction.
 
-The blocks below are *not* hand-written: each is the verbatim output
-of `migrate.py` reading the schema-data block above and emitting code
-for its target.  Re-run before compiling typst:
+=== q
 
-```sh
-./migrate.py            migration.typ /dev/null > triple.prql
-./migrate.py --target=q migration.typ            > triple.q
-typst compile fong/migration.typ fong/migration.pdf
-```
+#raw(read("triple-gr_to_dds.q"), lang: "q", block: true)
 
-=== PRQL  (`triple.prql`)
+=== PRQL
 
-The PRQL workflow assumes the input DuckDB has a table `DDS(s, next)`
-for the DDS direction, or tables `V(id)` / `E(id, s, t)` for the Gr
-direction.  The Π_F leg is emitted as a commented raw-SQL recursive
-CTE template — pure PRQL has no recursion.
+#raw(read("triple-gr_to_dds.prql"), lang: "prql", block: true)
 
-#raw(read("triple.prql"), lang: "prql", block: true)
+== Round-trip on Δ_F
 
-==== Round-trip check (PRQL)
-
-$Σ_F ∘ Δ_F$ should recover the original DDS instance.  On Fong's §3.11
-example:
+`delta` of a DDS-instance produces the trajectory graph: every state
+becomes a vertex, and every $(s, "next"(s))$ pair becomes an edge of
+$"Gr"$.  Concretely (q):
 
 ```sh
-duckdb sample.duckdb -c "CREATE TABLE DDS(s INT, next INT);
-  INSERT INTO DDS VALUES (0,3),(1,3),(2,4),(3,4),(4,4),(5,6),(6,5);"
-
-./migrate.py migration.typ sample.duckdb \
-  | grep '^let' \
-  | (cat; echo 'from DDS_sigma | sort s') \
-  | prqlc compile -t sql.duckdb \
-  | duckdb sample.duckdb
+$ q
+q)\l triple-gr_to_dds.q
+q)D:enlist[`S]!enlist ([] id:0 1 2 3 4; next_:1 2 3 3 0)
+q)delta D
+E| +`id`s`t!(0 1 2 3 4;0 1 2 3 4;1 2 3 3 0)
+V| +(,`id)!,`s#0 1 2 3 4
 ```
 
-returns the original 7 rows — and the `from E` query returns exactly
-the trajectory triples `(id, src, tgt)` that the rfl tests in
-`migration.lean` verify.
-
-=== q  (`triple.q`)
-
-The DDS arrow `next` becomes column `next_` in q (the bare name is a
-built-in in `.q`).  Type comments on each function spell out the
-expected shapes of its inputs; the `pi` definition uses q's scan
-iterator (`\`) to apply `step` $N$ times starting from each vertex.
-
-#raw(read("triple.q"), lang: "q", block: true)
-
-==== Round-trip check (q)
-
-```sh
-./migrate.py --target=q migration.typ > triple.q
-q triple.q
-q)DDS:([] s:0 1 2 3 4 5 6; next_:3 3 4 4 4 6 5)
-q)show sigma delta DDS         / recovers DDS
-q)DDS~`s xasc sigma delta DDS  / 1b — round-trip succeeds
-q)show pi[delta DDS;4]         / depth-4 trajectories from each vertex
-```
+Edge $e_i$ has source $i$ and target `next`$(i)$.  Vertex set is
+$"asc distinct"$ over all states — exactly the trajectory graph that
+`migration.lean`'s rfl tests verify on the same data.
 
 
 // ════════════════════════════════════════════════════════════════
@@ -262,19 +254,19 @@ q)show pi[delta DDS;4]         / depth-4 trajectories from each vertex
 
 == The terminal category and `!`
 
-The *terminal category* `1` has exactly one object — call it `*` — and
-exactly one arrow on it (the identity).  For any category `C` there is
-a unique functor `!: C → 1` collapsing every object of `C` to `*` and
-every arrow to `id`#sub[`*`].
+The terminal category `1` has one object — call it `*` — and only its
+identity arrow.  For any category `C` there is a unique functor
+`!: C → 1` collapsing every object to `*` and every arrow to `id`.
 
-Specialising `C := DDS` gives the picture below.  `DDS` (top, orange)
-has its state object `S` and its arrow `next : S → S`; `1` (bottom,
-purple) has only `*` and its identity.  The functor `!` is drawn as
-dashed grey arrows: the *object map* `S ↦ *` runs along the centre,
-and the *edge map* `next ↦ id`#sub[`*`] runs from the apex of the
-`next`-loop in DDS to the apex of the identity loop in `1`.
+== The spec
+
+#raw(read("examples/bang.txt"), block: true)
 
 == The diagram
+
+`DDS` (top, orange) has its state object $S$ and the arrow `next`;
+`1` (bottom, purple) has only `*` and `id`#sub[`*`].  `!` is dashed:
+$S ↦ ast$, $"next" ↦ "id"_ast$.
 
 #align(center, canvas(length: 1.0cm, {
   import draw: *
@@ -324,106 +316,58 @@ and the *edge map* `next ↦ id`#sub[`*`] runs from the apex of the
          mark: (end: ">"), stroke: 1pt)
   content(one-id-label, arr-text2[$"id"_ast$])
 
-  // !: object map  S ↦ *
   line((S.at(0), S.at(1)-0.40), (star.at(0), star.at(1)+0.40),
        mark: (end: ">"), stroke: f-stroke)
   content((S.at(0) + 0.20, (S.at(1)+star.at(1))/2), f-text[$!$])
 
-  // !: edge map  next ↦ id_*
   line((nx-apex.at(0), nx-apex.at(1) - 0.55),
        (one-id-apex.at(0), one-id-apex.at(1) + 0.55),
        mark: (end: ">"), stroke: f-stroke)
   content((nx-apex.at(0) + 0.20, (nx-apex.at(1)+one-id-apex.at(1))/2), f-text[$!$])
 }))
 
-The picture says: every DDS-thing collapses.  `S` lands on `*`; the
-non-trivial arrow `next` lands on the only arrow `id`#sub[`*`] there
-is.  The implicit identity on `S` also lands on `id`#sub[`*`] (that's
-forced by functoriality and not drawn).
+== Generated triple
 
-== The migration triple
+Because `D = 1` is terminal, the codegen emits all three legs in full.
+`Σ_!` is the orbit set (union-find quotient by `next`); `Π_!` is the
+fixed-point set; `Δ_!` is the flat instance where every state is its
+own successor.
 
-For `F = !` the three legs of `Σ_! ⊣ Δ_! ⊣ Π_!` collapse to familiar
-constructions on a DDS.
+=== q
 
-=== Δ#sub[`!`] : Set → DDS-Set   (a set, with `next = id`)
+#raw(read("triple-bang.q"), lang: "q", block: true)
 
-Pre-composition by `!` turns a set $X = G(ast)$ into a DDS-instance
-with state set $X$ and `next $= id_X$`: every state is its own
-successor — a flat set, dynamically.
+=== PRQL
 
-```q
-delta:{[X] ([] s:X; next_:X)}
-```
+#raw(read("triple-bang.prql"), lang: "prql", block: true)
 
-```prql
-let DDS_delta = (from X | select { s = x, next = x })
-```
-
-=== Σ#sub[`!`] : DDS-Set → Set   (orbits of `next`)
-
-The left Kan extension along `!` is the colimit, and the colimit of a
-DDS is the *quotient* of the state set by the smallest equivalence
-relation identifying `s` with `next(s)` for every state.  In English:
-the set of *connected components* (orbits) of the state graph.
-
-For Fong's §3.11 example the orbits are
-$ {0,1,2,3,4} quad "and" quad {5,6} $
-— two orbits: a sink rooted at the fixed point 4, and a 2-cycle.
-
-```q
-/ orbits via union-find on the (s, next_) edge list
-sigma:{[D]
-  / build forest: parent[s] := next_
-  parent:exec next_!s from D;
-  / repeatedly compress to a fixed point (works for finite state)
-  root:{[p;v] $[v=p[v]; v; .z.s[p; p[v]]]};
-  comps:asc distinct root[parent;] each exec s from D;
-  ([] orbit:comps)}
-```
-
-```prql
-# Pure PRQL has no recursion; the orbit set needs a recursive CTE:
-# WITH RECURSIVE reach(a, b) AS (
-#   SELECT s, next FROM DDS
-#   UNION
-#   SELECT r.a, d.next FROM reach r JOIN DDS d ON d.s = r.b
-# )
-# SELECT DISTINCT MIN(b) AS orbit FROM reach GROUP BY a
-```
-
-=== Π#sub[`!`] : DDS-Set → Set   (fixed points of `next`)
-
-The right Kan extension along `!` is the limit, and the limit of a
-DDS is its set of *fixed points* `${s : next(s) = s}$` — the states
-that the dynamics never moves.  For §3.11 there is a single fixed
-point, `4`.
-
-```q
-pi:{[D] exec s from D where s=next_}
-```
-
-```prql
-let DDS_pi = (from DDS | filter s == next | select { s })
-```
-
-== Round-trip with the §3.11 example
+== Round-trip with Fong's §3.11 instance
 
 ```sh
-q -q
-q)DDS:([] s:0 1 2 3 4 5 6; next_:3 3 4 4 4 6 5)
-q)pi DDS                     / fixed points    => 4
-q)sigma DDS                  / orbits          => (0; 5)   (representatives)
-q)show count sigma DDS       / number of orbits => 2
-q)delta exec s from DDS      / flat DDS        => state=s, next_=s
+$ q
+q)\l triple-bang.q
+q)I:enlist[`S]!enlist ([] id:0 1 2 3 4 5 6; next_:1 2 3 3 5 6 4)
+q)sigma I                       / connected components
+orbit
+-----
+"S_3"
+"S_6"
+q)pi I                          / fixed points
+x_S
+---
+3
+q)delta enlist[`star]!enlist ([] id:`a`b`c)  / flat DDS on {a,b,c}
+S| +`id`next_!(`a`b`c;`a`b`c)
 ```
 
-Two orbits and one fixed point — exactly Fong's §3.11 picture, now
-read off from `Σ_!` and `Π_!` directly.
+Two orbits (the chain $0→1→2→3$ ending at the fixed point 3, and the
+3-cycle $4→5→6→4$ whose canonical representative is 6); one fixed
+point (3); and `Δ_!` of the three-element set `{a,b,c}` is flat:
+each state's `next` equals itself.
 
 
 // ════════════════════════════════════════════════════════════════
-= Part III.  Schema  `Air`  (§3.2)
+= Part III.  `! : Air → 1`  (§3.2)
 // ════════════════════════════════════════════════════════════════
 
 == The schema
@@ -447,17 +391,11 @@ and five arrows:
   [`P -- home   --> C`], [the passenger's home city],
 )
 
-An *instance* of `Air` is a database: one table per object, one
-foreign-key column per arrow.  In Lean / categorical terms it's a
-functor `Air ⇒ Set`.
+== The spec
+
+#raw(read("examples/air_to_one.txt"), block: true)
 
 == The diagram
-
-`C` sits at the centre; `F` (top-left), `P` (top-right), `B`
-(bottom-centre) all point at it directly or indirectly.  The two
-arrows `F → C` are the familiar `src` / `tgt` pair (same shape as
-`Gr`'s `s, t : E → V`), which suggests the obvious sub-schema: forget
-`P` and `B` and you're left with `Gr`.
 
 #align(center, canvas(length: 1.0cm, {
   import draw: *
@@ -508,56 +446,46 @@ arrows `F → C` are the familiar `src` / `tgt` pair (same shape as
   content((5.30, -0.50), arr-text[$"who"$])
 }))
 
-== A sample instance
+== Generated triple
 
-The §3.11-shaped concrete instance: three cities, three flights
-forming a triangle, two passengers, three bookings.
+Same regime as Part II (`D = 1` is terminal), but now Σ_! and Π_!
+range over the four C-objects and five C-arrows, so the union-find
+edge set has five contributions and the limit's compatibility
+constraint is a five-way conjunction.
 
-#table(columns: 4, stroke: 0.4pt + gray, inset: 6pt, align: left,
-  [*C*],   [],    [*F*], [`(src, tgt)`],
-  [`ATL`], [],    [`f1`], [`(ATL, JFK)`],
-  [`JFK`], [],    [`f2`], [`(JFK, LAX)`],
-  [`LAX`], [],    [`f3`], [`(LAX, ATL)`],
-)
+=== q
 
-#table(columns: 4, stroke: 0.4pt + gray, inset: 6pt, align: left,
-  [*P*],     [`home`], [*B*],   [`(flight, who)`],
-  [`alice`], [`ATL`],  [`r1`],  [`(f1, alice)`],
-  [`bob`],   [`JFK`],  [`r2`],  [`(f2, bob)`],
-  [],        [],       [`r3`],  [`(f3, alice)`],
-)
+#raw(read("triple-air_to_one.q"), lang: "q", block: true)
 
-== Two natural functors out of `Air`
+=== PRQL
 
-=== `π : Air → Gr` — flight network
+#raw(read("triple-air_to_one.prql"), lang: "prql", block: true)
 
-The sub-schema `(F, C)` with the two arrows `src, tgt : F → C` is
-exactly `Gr`, with `Flight` playing `E` and `City` playing `V`.  The
-inclusion `Gr ↪ Air` has a left adjoint *forgetful* functor
-`π : Air → Gr` that drops `Person` and `Booking`.
+== Round-trip with a small instance
 
-For our sample instance, `Δ_π` of any `Gr`-instance pulls back to an
-`Air`-instance with `P = B = ∅`; `Σ_π` of an `Air`-instance forgets
-the `P, B` tables and keeps `(C, F)` — i.e. just the directed-graph
-"flight network" of who-flies-where.
+Two flights (SFO→LAX, SFO→JFK), three cities (0=SFO, 1=LAX, 2=JFK),
+two passengers (Alice/home SFO, Bob/home LAX), two bookings
+(Alice on 0, Bob on 1).
 
-=== `! : Air → 1` — counts
+```sh
+$ q
+q)\l triple-air_to_one.q
+q)I:`F`C`B`P!(([] id:0 1; src:0 0; tgt:1 2);
+              ([] id:0 1 2);
+              ([] id:0 1; flight:0 1; who:0 1);
+              ([] id:0 1; home:0 1))
+q)sigma I              / one connected blob  →  one orbit
+orbit
+-----
+"P_1"
+q)pi I                 / no compatible family — every flight has src≠tgt
+x_F x_C x_B x_P
+---------------
+```
 
-As in Part II, collapsing everything to the terminal category `1`
-turns `Σ_!` into the orbit/connected-component set, `Π_!` into the
-limit (compatible families across all five arrows), and `Δ_!` into
-the trivial flat instance.  For the sample data:
-
-- `Σ_!`(`Air`) — connected components of the bipartite-ish graph on
-  `C ⊔ F ⊔ P ⊔ B` glued by the five arrows.  Here everything is one
-  connected blob, so the orbit set has size 1.
-- `Π_!`(`Air`) — sections / fixed points.  None: every arrow goes
-  between different objects, so there's nothing to "fix".
-
-== Where the data comes from
-
-The edge lines in the schema-data block at the top of this typst
-source are the source of truth.  `Schema.lean`'s `schema_pres!` and
-`migrate.py`'s `parse_schema_block` both consume them; the diagrams
-above are hand-laid-out CeTZ.  Adding a new arrow means: add one line
-to the block, redraw, recompile.
+The single orbit is correct: every flight links cities, every booking
+links a flight to a person, every person has a home city — so the
+union-find quotient collapses all 9 entities (2F + 3C + 2P + 2B) into
+one component.  `Π_!` is empty because the limit demands
+$"src"(x_F) = "tgt"(x_F)$, but neither flight in our instance is a
+self-loop.

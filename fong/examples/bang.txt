@@ -1,0 +1,21 @@
+Fong & Spivak §3.4.4 — the terminal functor on DDS.
+
+  C = DDS (state object S with a self-loop `next`)
+  D = 1   (the terminal category: one object `star`, identity only —
+           we declare `star` as a bare object since 1 has no
+           non-identity arrows)
+  F = !  : DDS → 1  collapses S to star and `next` to identity.
+
+  Σ_!  = orbits of `next` (connected components / colim)
+  Δ_!  = flat DDS:  every state is its own next  (precomposition)
+  Π_!  = fixed points of `next`        (limit)
+
+%% id: C
+S -- next --> S
+
+%% id: D
+star
+
+%% id: F
+S    -- F --> star
+next -- F --> id

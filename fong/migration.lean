@@ -255,11 +255,11 @@ abbrev ddsNext : ddsS ⟶ ddsS := .cons ⟨0, by decide⟩ (.nil _)
 
 /-! ### `Gr → DDS` — Fong's running example
 
-The migration `F` also lives in `migration.typ` (in the same schema
-block), with each edge of the form `<gr-thing> -- F --> <dds-thing>`.
-Object lines (`V→S`, `E→S`) and edge lines (`s→id`, `t→next`) share
-the same section; the schema-aware Python app `migrate.py` classifies
-them at runtime.
+The migration `F` also lives in `examples/gr_to_dds.txt`, with each
+edge of the form `<gr-thing> -- F --> <dds-thing>`.  Object lines
+(`V→S`, `E→S`) and edge lines (`s→id`, `t→next`) share the same
+section; the parser in `Migrate.Spec.parse` (below, §5) classifies
+them by inspecting the C/D-side ids.
 
 We expose the parsed data here so external tools — or a `#guard` — can
 verify that the schema source hasn't drifted from the hand-written
@@ -485,3 +485,423 @@ example :
 -- respectively), so they typecheck applied to any `G : TypeFunc Gr`.
 example (G : TypeFunc Gr) (d : DDS.Obj) : Type := fongMigration.lan G d
 example (G : TypeFunc Gr) (d : DDS.Obj) : Type := fongMigration.ran G d
+
+/-! ## 5. Generic codegen — read a spec, emit q / PRQL
+
+The categorical structures above (`Graph`, `GraphHom`, `schemaMigration`)
+work for *any* migration `F : C → D` presented as a graph homomorphism.
+The pieces below are the executable side of that:
+
+* `Migrate.Spec` packages the `(C, D, F)` triple as plain text — the
+  same `%% id: <name>` schema-data block used by `Schema.lean`'s
+  `schema_pres!`.
+* `Migrate.emitQ` / `emitPrql` walk the spec and emit code for the
+  three legs of the triple.
+
+`Δ_F` is fully generic: for every C-object `c` we emit one row-table
+with one column per outgoing C-arrow, computed by following each
+F-image path through the supplied D-instance.  Length-0 paths read the
+`id` column; length-1 paths read a single column; length-≥2 paths emit
+a chained dict-lookup.
+
+`Σ_F` / `Π_F` cover three regimes — F is the identity (emit
+`identity`), D is terminal `1` (emit a real union-find / compatible-
+family driver), or otherwise (emit a documented stub naming the
+per-`d` fibres `F⁻¹(d)`).  The first two cover the textbook examples;
+the third honestly admits that algorithmic Kan extensions for
+arbitrary F are non-trivial. -/
+
+namespace Migrate
+
+abbrev Path := List String
+
+structure Spec where
+  cObjs    : List String
+  cArrows  : List (String × String × String)     -- (label, src, tgt)
+  dObjs    : List String
+  dArrows  : List (String × String × String)
+  fObj     : List (String × String)              -- (C-obj, D-obj)
+  fArr     : List (String × Path)                -- (C-arrow-label, path-in-D)
+  deriving Inhabited
+
+namespace Spec
+
+private def collectObjs (es : List Schema.Edge) : List String :=
+  es.foldl (init := []) fun acc e =>
+    let acc := if acc.contains e.src then acc else acc ++ [e.src]
+    if acc.contains e.tgt then acc else acc ++ [e.tgt]
+
+/-- Scan a `%% id: <id>` block for bare-identifier lines (no `--`).
+    Lets a schema declare standalone objects (e.g. the terminal
+    category `1`: one bare object `star`, no arrows). -/
+private def collectBareObjs (src : String) (id : String) : List String :=
+  let lines := src.splitOn "\n"
+  let rec go : List String → Bool → List String → List String
+    | [],         _,     acc => acc.reverse
+    | l :: rest,  false, acc =>
+        if l.trimAscii.toString == s!"%% id: {id}" then go rest true acc
+        else go rest false acc
+    | l :: rest,  true,  acc =>
+        let t := l.trimAscii.toString
+        if t.startsWith "```" || t.startsWith "%% id:" || t == "*/" then acc.reverse
+        else if t.isEmpty || t.startsWith "%%" || t.contains '-' then go rest true acc
+        else go rest true (t :: acc)
+  go lines false []
+
+/-- Parse a spec file (three `%% id: C / D / F` blocks). -/
+def parse (src : String) : Spec :=
+  let cE := Schema.parse src "C"
+  let dE := Schema.parse src "D"
+  let fE := Schema.parse src "F"
+  let cBare := collectBareObjs src "C"
+  let dBare := collectBareObjs src "D"
+  let dedup (xs : List String) : List String :=
+    xs.foldl (init := []) fun acc x => if acc.contains x then acc else acc ++ [x]
+  let cObjs := dedup (collectObjs cE ++ cBare)
+  let dObjs := dedup (collectObjs dE ++ dBare)
+  let cArrows := cE.map fun e => (e.label, e.src, e.tgt)
+  let dArrows := dE.map fun e => (e.label, e.src, e.tgt)
+  let parsePath (s : String) : Path :=
+    let s := s.trimAscii.toString
+    if s == "id" then []
+    else (s.splitOn ".").map (·.trimAscii.toString) |>.filter (· != "")
+  let fObj := fE.filterMap fun e =>
+    if cObjs.contains e.src then some (e.src, e.tgt) else none
+  let fArr := fE.filterMap fun e =>
+    if cObjs.contains e.src then none else some (e.src, parsePath e.tgt)
+  { cObjs, cArrows, dObjs, dArrows, fObj, fArr }
+
+def outArrows (sp : Spec) (c : String) : List (String × String) :=
+  sp.cArrows.filterMap fun (lbl, s, t) => if s == c then some (lbl, t) else none
+
+def fImageObj (sp : Spec) (c : String) : Option String := sp.fObj.lookup c
+def fImageArr (sp : Spec) (a : String) : Option Path := sp.fArr.lookup a
+
+def isIdentity (sp : Spec) : Bool :=
+  sp.cObjs == sp.dObjs &&
+  sp.cArrows == sp.dArrows &&
+  sp.fObj.all (fun (a, b) => a == b) &&
+  sp.fArr.all (fun (a, p) => p == [a])
+
+def isTerminal (sp : Spec) : Bool :=
+  sp.dObjs.length == 1 && sp.dArrows.isEmpty
+
+def terminalObj (sp : Spec) : String := sp.dObjs.head?.getD "*"
+
+def fibre (sp : Spec) (d : String) : List String :=
+  sp.fObj.filterMap fun (c, d') => if d' == d then some c else none
+
+end Spec
+
+open Spec
+
+/-! ### Identifier escaping for q -/
+
+def qReserved : List String :=
+  ["next", "first", "last", "count", "each", "over", "scan",
+   "do", "while", "if", "select", "from", "where", "by",
+   "exec", "update", "delete", "in", "within", "like",
+   "vs", "sv", "asc", "desc", "distinct", "cross"]
+
+def qId (s : String) : String := if qReserved.contains s then s ++ "_" else s
+
+/-! ### Path-following expression for q -/
+
+private def stepTgt (sp : Spec) (start step : String) : String :=
+  match sp.dArrows.find? (fun (lbl, src, _) => lbl == step && src == start) with
+  | some (_, _, t) => t
+  | none           => start
+
+partial def qFollow (sp : Spec) (start : String) : Path → String
+  | []           => s!"(D`{start})`id"
+  | [step]       => s!"(D`{start})`{qId step}"
+  | step :: rest =>
+    let rec chain (curObj : String) (steps : Path) (curExpr : String) : String :=
+      match steps with
+      | []         => curExpr
+      | ns :: more =>
+        let dict := s!"((D`{curObj})`id !((D`{curObj})`{qId ns}))"
+        chain (stepTgt sp curObj ns) more s!"{dict}[{curExpr}]"
+    chain (stepTgt sp start step) rest s!"((D`{start})`{qId step})"
+
+private def prqlFollow (_sp : Spec) (start : String) (p : Path) : String :=
+  match p with
+  | []     => "id"
+  | [step] => qId step
+  | _      => s!"# TODO multi-step path {p} from {start} — chain joins"
+
+/-! ### Δ_F : per C-object -/
+
+private def qDeltaBody (sp : Spec) (c : String) : List String := Id.run do
+  let some fc := fImageObj sp c | return [s!"  {qId c}:();  / F({c}) undefined"]
+  let outs := outArrows sp c
+  if outs.isEmpty then
+    return [s!"  / C-object {c} ↦ D-object {fc} : vertex-like (no out-arrows)",
+            s!"  {qId c}:([] id:asc distinct (D`{fc})`id);"]
+  let mut cols := [s!"id:(D`{fc})`id"]
+  let mut notes : List String := []
+  for (a, _) in outs do
+    let some p := fImageArr sp a | continue
+    cols := cols ++ [s!"{qId a}:{qFollow sp fc p}"]
+    let pStr := if p.isEmpty then "id" else ".".intercalate p
+    notes := notes ++ [s!"`{a}↦{pStr}"]
+  return [s!"  / C-object {c} ↦ D-object {fc} : ({", ".intercalate notes})",
+          s!"  {qId c}:([] {"; ".intercalate cols});"]
+
+def emitQDelta (sp : Spec) : List String := Id.run do
+  -- Never emit a `/` line whose only content is whitespace: q treats
+  -- such a line as the start of a block comment, swallowing every
+  -- definition below until a `\` line.  Comment dividers must have
+  -- non-whitespace content after the `/`.
+  let header := [
+    "/ ────────────────────────────────────────────",
+    "/ Δ_F : D-instance → C-instance   (precomposition / pullback)",
+    "/   D :: dict of D-tables, one entry per D-object,",
+    "/         each table has an `id` column plus one column per",
+    "/         outgoing D-arrow.",
+    "/   returns dict of C-tables, computed by following F(arrow)",
+    "/         through D for each C-arrow.",
+    "/ ────────────────────────────────────────────"]
+  let mut body := ["delta:{[D]"]
+  for c in sp.cObjs do
+    body := body ++ qDeltaBody sp c
+  -- Single-key dict needs `enlist[…]!enlist …`; multi-key uses
+  -- `` `a`b`c!(a;b;c) ``.
+  let dict :=
+    match sp.cObjs with
+    | [c]   => s!"enlist[`{qId c}]!enlist {qId c}"
+    | many  =>
+        let keys := many.foldl (· ++ "`" ++ qId ·) ""
+        let vals := ";".intercalate (many.map qId)
+        s!"{keys}!({vals})"
+  body := body ++ [s!"  {dict}" ++ "}"]
+  return header ++ body
+
+def emitPrqlDelta (sp : Spec) : List String := Id.run do
+  let mut out := [
+    "# ────────────────────────────────────────────",
+    "# Δ_F : D-instance → C-instance   (precomposition / pullback)",
+    "# ────────────────────────────────────────────"]
+  for c in sp.cObjs do
+    let some fc := fImageObj sp c | continue
+    let outs := outArrows sp c
+    let tbl := s!"D_{fc}"
+    if outs.isEmpty then
+      let line := "let " ++ c ++ " = (from " ++ tbl ++ " | select { id = id } | group {id} (take 1))"
+      out := out ++ [s!"# C-object {c} ↦ D-object {fc} : vertex-like (no out-arrows)",
+                     line, ""]
+    else
+      let cols := "id = id" :: outs.filterMap fun (a, _) =>
+        match fImageArr sp a with
+        | none   => none
+        | some p => some s!"{qId a} = {prqlFollow sp fc p}"
+      let line := "let " ++ c ++ " = (from " ++ tbl ++ " | select { " ++
+                  ", ".intercalate cols ++ " })"
+      out := out ++ [s!"# C-object {c} ↦ D-object {fc}", line, ""]
+  return out
+
+/-! ### Σ_F : left Kan extension -/
+
+private def qSigmaIdentity (_sp : Spec) : List String :=
+  ["/ F is the identity functor — Σ_F is the identity.",
+   "sigma:{[I] I}"]
+
+private def qSigmaTerminal (sp : Spec) : List String := Id.run do
+  let star := terminalObj sp
+  let mut out : List String := [
+    s!"/ D is terminal (`{star}`) — Σ_F is the colim of I_C, i.e. the",
+    "/ union-find quotient of (∑_c I(c)) by every C-arrow.  Two elements",
+    "/ (c, x) and (c′, y) become equal iff some chain of C-arrows takes",
+    "/ one to the other (relation closed under refl/sym/trans).",
+    "sigma:{[I]",
+    "  / find: walk parent pointers via converge scan.  scan terminates on",
+    "  / fixpoint OR cycle, so this is bounded even for ill-formed input.",
+    "  / NB: `(p)\\v` inside a lambda is mis-parsed (q reads it as `p\\v` divide);",
+    "  / project p into a unary closure {p y}[p;] before scanning.",
+    "  fnd:{[p;v] last {[p;v] p v}[p;]\\[v]};",
+    "  / `uf` calls `fnd`; q lambdas don't close over outer locals,",
+    "  / so project `fnd` into uf as a captured first argument.",
+    "  uf:{[fnd;par;a;b] ra:fnd[par;a]; rb:fnd[par;b]; $[ra~rb; par; @[par;ra;:;rb]]}[fnd;];"]
+  let eltLines : List String := sp.cObjs.map fun c =>
+    s!"  elts_{qId c}: ((`{qId c};) each (I`{qId c})`id);"
+  out := out ++ eltLines
+  -- raze descends one level, so for a single-object schema we must NOT
+  -- wrap in a list (otherwise raze would flatten the (cobj;id) tuples
+  -- themselves).  For 2+ objects we raze a list-of-lists once.
+  let allElts := match sp.cObjs with
+    | [c]  => s!"  elts: elts_{qId c};"
+    | many => "  elts: raze (" ++ "; ".intercalate (many.map fun c => s!"elts_{qId c}") ++ ");"
+  out := out ++ [allElts, "  par: elts!elts;"]
+  let edgeLines : List String := sp.cArrows.map fun (a, src, tgt) =>
+    s!"  edges_{qId a}: flip (((`{qId src};) each (I`{qId src})`id); " ++
+    s!"((`{qId tgt};) each (I`{qId src})`{qId a}));"
+  out := out ++ edgeLines
+  if sp.cArrows.isEmpty then
+    out := out ++ ["  / no C-arrows: each element is its own orbit"]
+  else
+    let allEdges := match sp.cArrows with
+      | [(a, _, _)] => s!"  edges: edges_{qId a};"
+      | many        => "  edges: raze (" ++ "; ".intercalate
+                         (many.map fun (a, _, _) => s!"edges_{qId a}") ++ ");"
+    -- q lambdas don't close over enclosing-function locals, so we
+    -- explicitly project `uf` into the inner lambda by treating it as
+    -- the first argument and pre-applying it.
+    out := out ++ [allEdges,
+      "  par: {[uf;par;ab] uf[par; ab 0; ab 1]}[uf;]/[par; edges];"]
+  out := out ++ [
+    "  / orbits: one canonical representative per equivalence class,",
+    "  /         rendered as `<c>_<id>` for readability.",
+    "  reps: asc distinct fnd[par;] each elts;",
+    "  ([] orbit: {string[x 0],\"_\",string[x 1]} each reps)}"]
+  return out
+
+private def qSigmaGeneric (sp : Spec) : List String := Id.run do
+  let mut out := [
+    "/ Σ_F is the pointwise left Kan extension along F.  For each",
+    "/ d ∈ D and each c ∈ F⁻¹(d) we get a 'branch' contributing rows",
+    "/ to (Σ_F I)(d); the dinatural relation then identifies",
+    "/ (c, F(g)∘α, x) ~ (c′, α, I(g)(x)).",
+    "sigma:{[I]"]
+  for d in sp.dObjs do
+    out := out ++ [s!"  / d = {d}: fibre F⁻¹({d}) = {fibre sp d}"]
+  out := out ++ ["  'TODO: quotient by C-arrows}"]
+  return out
+
+def emitQSigma (sp : Spec) : List String :=
+  let hdr := [
+    "",
+    "/ ────────────────────────────────────────────",
+    "/ Σ_F : C-instance → D-instance   (left Kan extension)",
+    "/ ────────────────────────────────────────────"]
+  if sp.isIdentity then hdr ++ qSigmaIdentity sp
+  else if sp.isTerminal then hdr ++ qSigmaTerminal sp
+  else hdr ++ qSigmaGeneric sp
+
+/-! ### Π_F : right Kan extension -/
+
+private def qPiIdentity (_sp : Spec) : List String :=
+  ["/ F is the identity functor — Π_F is the identity.",
+   "pi:{[I] I}"]
+
+private def qPiTerminal (sp : Spec) : List String := Id.run do
+  let star := terminalObj sp
+  let mut out := [
+    s!"/ D is terminal (`{star}`) — Π_F is the limit of I_C, i.e. the",
+    "/ set of compatible families (x_c ∈ I(c))_c with I(a)(x_c) = x_(c′)",
+    "/ for every C-arrow a:c→c′.",
+    "pi:{[I]"]
+  if sp.cObjs.isEmpty then
+    return out ++ ["  ()}"]
+  let firstC := sp.cObjs.head!
+  out := out ++ [s!"  fam:select x_{qId firstC}:id from I`{qId firstC};"]
+  for c in sp.cObjs.tail! do
+    out := out ++ [s!"  fam:fam cross select x_{qId c}:id from I`{qId c};"]
+  if sp.cArrows.isEmpty then
+    out := out ++ ["  fam}"]
+    return out
+  let conds : List String := sp.cArrows.map fun (a, src, tgt) =>
+    "(((I`" ++ qId src ++ ")`id) ! ((I`" ++ qId src ++ ")`" ++ qId a ++
+      "))[x_" ++ qId src ++ "] = x_" ++ qId tgt
+  let line := "  select from fam where (" ++ ") and (".intercalate conds ++ ")}"
+  out := out ++ [line]
+  return out
+
+private def qPiGeneric (sp : Spec) : List String := Id.run do
+  let mut out := [
+    "/ Π_F is the pointwise right Kan extension along F.  For each",
+    "/ d ∈ D, an element of (Π_F I)(d) is a dinatural family of",
+    "/ sections sect_c : (d → F(c)) → I(c) — i.e. for every D-arrow",
+    "/ α : d → F(c) one picks an element of I(c), compatibly with",
+    "/ all C-arrows.",
+    "pi:{[I]"]
+  for d in sp.dObjs do
+    out := out ++ [s!"  / d = {d}: fibre F⁻¹({d}) = {fibre sp d}"]
+  out := out ++ ["  'TODO: enumerate dinatural sections}"]
+  return out
+
+def emitQPi (sp : Spec) : List String :=
+  let hdr := [
+    "",
+    "/ ────────────────────────────────────────────",
+    "/ Π_F : C-instance → D-instance   (right Kan extension)",
+    "/ ────────────────────────────────────────────"]
+  if sp.isIdentity then hdr ++ qPiIdentity sp
+  else if sp.isTerminal then hdr ++ qPiTerminal sp
+  else hdr ++ qPiGeneric sp
+
+/-! ### PRQL — best-effort: pure PRQL has no recursion or cross-product;
+for the terminal cases we emit a raw-SQL recursive CTE in a comment. -/
+
+def emitPrqlSigma (sp : Spec) : List String :=
+  let hdr := ["",
+    "# ────────────────────────────────────────────",
+    "# Σ_F : C-instance → D-instance   (left Kan extension)",
+    "# ────────────────────────────────────────────"]
+  if sp.isIdentity then hdr ++ ["# Identity."]
+  else if sp.isTerminal then
+    hdr ++ ["# Σ_! = orbit set of the C-arrow relation.",
+            "# Pure PRQL has no recursion; the orbit set needs a recursive CTE:",
+            "# WITH RECURSIVE rel(a,b) AS ("] ++
+      (sp.cArrows.map fun (a, src, tgt) =>
+        s!"#   SELECT id AS a, {qId a} AS b FROM {src}  -- C-arrow {a}: {src}→{tgt}") ++
+    ["#   UNION",
+     "#   SELECT r.a, x.b FROM rel r JOIN rel x ON r.b = x.a",
+     "# )",
+     "# SELECT DISTINCT MIN(b) AS orbit FROM rel GROUP BY a"]
+  else
+    let fibres := sp.dObjs.map fun d => s!"# d = {d}: fibre F⁻¹({d}) = {fibre sp d}"
+    hdr ++ ["# General Σ_F: per-d colim, see q version."] ++ fibres
+
+def emitPrqlPi (sp : Spec) : List String :=
+  let hdr := ["",
+    "# ────────────────────────────────────────────",
+    "# Π_F : C-instance → D-instance   (right Kan extension)",
+    "# ────────────────────────────────────────────"]
+  if sp.isIdentity then hdr ++ ["# Identity."]
+  else if sp.isTerminal then
+    let conds := sp.cArrows.map fun (a, src, tgt) =>
+        s!"  AND s_{src}.{qId a} = s_{tgt}.id    -- {a}: {src}→{tgt}"
+    let froms := sp.cObjs.map (fun c => s!"  {c} s_{c}")
+    hdr ++ ["# Π_! = compatible families across all C-objects and C-arrows.",
+            "# SELECT " ++ ", ".intercalate (sp.cObjs.map fun c => s!"s_{c}.id AS x_{c}"),
+            "# FROM " ++ ", ".intercalate froms,
+            "# WHERE 1=1"] ++ conds
+  else
+    let fibres := sp.dObjs.map fun d => s!"# d = {d}: fibre F⁻¹({d}) = {fibre sp d}"
+    hdr ++ ["# General Π_F: per-d limit, see q version."] ++ fibres
+
+private def header (sp : Spec) (com : String) : List String :=
+  [s!"{com} migration triple — generated by migration.lean",
+   s!"{com} ────────────────────────────────────────",
+   s!"{com}   C objects = {sp.cObjs}",
+   s!"{com}   C arrows  = {sp.cArrows}",
+   s!"{com}   D objects = {sp.dObjs}",
+   s!"{com}   D arrows  = {sp.dArrows}",
+   s!"{com}   F obj map = {sp.fObj}",
+   s!"{com}   F arr map = {sp.fArr}",
+   ""]
+
+def emitQ (sp : Spec) : String :=
+  "\n".intercalate <| (header sp "/") ++ emitQDelta sp ++ emitQSigma sp ++ emitQPi sp
+
+def emitPrql (sp : Spec) : String :=
+  "\n".intercalate <| (header sp "#") ++ emitPrqlDelta sp ++
+    emitPrqlSigma sp ++ emitPrqlPi sp
+
+end Migrate
+
+/-- CLI: `lean --run migration.lean <spec> <prql|q>` reads a spec file
+and prints the generated migration-triple code. -/
+def main (args : List String) : IO Unit := do
+  match args with
+  | [path, target] =>
+    let src ← IO.FS.readFile path
+    let sp := Migrate.Spec.parse src
+    let out := match target with
+      | "q"    => Migrate.emitQ sp
+      | "prql" => Migrate.emitPrql sp
+      | other  => panic! s!"unknown target {other}; expected prql or q"
+    IO.println out
+  | _ =>
+    IO.eprintln "usage: migration <spec.txt> <prql|q>"
+    IO.Process.exit 1

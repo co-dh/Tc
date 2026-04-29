@@ -1,0 +1,34 @@
+Fong & Spivak §3.2 — the airline-reservation schema, terminal functor.
+
+  C = Air (City, Flight, Person, Booking with five arrows)
+  D = 1   (the terminal category — bare object `star`)
+  F = !  : Air → 1
+
+  Σ_!  = connected components of the graph on  C ⊔ F ⊔ P ⊔ B  glued
+         by all five arrows.
+  Δ_!  = flat Air-instance: the same set in every cell, every
+         arrow is the identity.
+  Π_!  = compatible families  (x_F, x_C, x_P, x_B)  with
+         src(x_F)=tgt(x_F)=home(x_P)=x_C  and  flight(x_B)=x_F,
+         who(x_B)=x_P.   (Limit.)
+
+%% id: C
+F -- src    --> C
+F -- tgt    --> C
+B -- flight --> F
+B -- who    --> P
+P -- home   --> C
+
+%% id: D
+star
+
+%% id: F
+F -- F --> star
+C -- F --> star
+P -- F --> star
+B -- F --> star
+src    -- F --> id
+tgt    -- F --> id
+flight -- F --> id
+who    -- F --> id
+home   -- F --> id

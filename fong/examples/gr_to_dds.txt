@@ -1,0 +1,19 @@
+Fong & Spivak §3.11 — the running example.
+
+  C = Gr (a directed graph: edges and vertices, with src/tgt arrows)
+  D = DDS (a discrete dynamical system: a state set with a `next` arrow)
+  F : Gr → DDS  collapses both objects to S, sends `s ↦ id` and `t ↦ next`,
+  so a DDS-instance pulled back along F becomes its trajectory graph.
+
+%% id: C
+E -- s --> V
+E -- t --> V
+
+%% id: D
+S -- next --> S
+
+%% id: F
+V -- F --> S
+E -- F --> S
+s -- F --> id
+t -- F --> next
